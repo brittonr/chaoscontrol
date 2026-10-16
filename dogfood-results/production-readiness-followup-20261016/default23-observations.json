@@ -1,0 +1,254 @@
+{
+  "schema": "chaoscontrol.default-raft-replay-observations.v1",
+  "correction_attempt": 23,
+  "summary": {
+    "accepted": true,
+    "accepted_bug": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/bug_4.json",
+    "accepted_verdict": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/replay-verdict-bug4.json",
+    "bugs": [
+      {
+        "assertion_id": 1343285588,
+        "file": "bug_0.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 2168331750,
+        "file": "bug_1.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 3383364242,
+        "file": "bug_2.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 4111840024,
+        "file": "bug_3.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 3463273124,
+        "file": "bug_4.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 1343285588,
+        "file": "bug_5.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 2168331750,
+        "file": "bug_6.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 3383364242,
+        "file": "bug_7.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 4111840024,
+        "file": "bug_8.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      },
+      {
+        "assertion_id": 3463273124,
+        "file": "bug_9.json",
+        "has_assertion_identity": true,
+        "has_snapshot_ref": true,
+        "replay_parent_depth": 1
+      }
+    ],
+    "export_exit_status": 0,
+    "receipt": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/proof-receipt.json",
+    "reproduce_exit_status": 0,
+    "run_exit_status": 1,
+    "seed": 0,
+    "snapshot_probe_fail_after": 1,
+    "verdict": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/replay-verdict-bug4.json",
+      "replay_class": "snapshot_backed_reproduced",
+      "replay_parent_depth": 1,
+      "reproduced": true,
+      "snapshot_status": "valid"
+    },
+    "workload": "raft"
+  },
+  "build_command_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "nix",
+      "develop",
+      "--no-update-lock-file",
+      "-c",
+      "env",
+      "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+      "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+      "cargo",
+      "build",
+      "--release",
+      "--offline",
+      "--locked",
+      "-p",
+      "chaoscontrol-evidence",
+      "--bin",
+      "accepted-snapshot-verdict-dogfood"
+    ],
+    "display_command": "nix develop --no-update-lock-file -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo build --release --offline --locked -p chaoscontrol-evidence --bin accepted-snapshot-verdict-dogfood",
+    "timeout_seconds": 900,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T15:58:45.464522+00:00",
+    "finished": "2026-10-16T15:59:10.318655+00:00",
+    "elapsed_seconds": 24.85413872600475,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-default-replay-build/stdout.log",
+        "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+        "bytes": 882
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-default-replay-build/stderr.log",
+        "digest": "blake3:a978080663bc1e6f0facd31f32f4bd7832d78fdd2bd5151a989af9c5a69c9428",
+        "bytes": 1765
+      }
+    ]
+  },
+  "command_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood",
+      "--workload",
+      "raft",
+      "--cohort",
+      "contracts/fresh-workload-proofs/cohort.json",
+      "--evidence-prefix",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23",
+      "--run-timeout",
+      "240",
+      "--export-timeout",
+      "300",
+      "--repro-timeout",
+      "300",
+      "--explore",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+      "--kernel",
+      "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+      "--initrd",
+      "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+      "--assertion-id",
+      "3463273124",
+      "--vms",
+      "3",
+      "--rounds",
+      "3",
+      "--branches",
+      "2",
+      "--ticks",
+      "80",
+      "--memory-mb",
+      "256",
+      "--fail-after-values",
+      "1",
+      "--max-attempts",
+      "1",
+      "--start-seed",
+      "0",
+      "--output",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23"
+    ],
+    "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood --workload raft --cohort contracts/fresh-workload-proofs/cohort.json --evidence-prefix /tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23 --run-timeout 240 --export-timeout 300 --repro-timeout 300 --explore /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore --kernel /nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --assertion-id 3463273124 --vms 3 --rounds 3 --branches 2 --ticks 80 --memory-mb 256 --fail-after-values 1 --max-attempts 1 --start-seed 0 --output /tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23",
+    "timeout_seconds": 1200,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T15:59:10.357257+00:00",
+    "finished": "2026-10-16T16:04:09.833939+00:00",
+    "elapsed_seconds": 299.4766927269957,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23-command/stdout.log",
+        "digest": "blake3:f8fce6abe41fd42cecff63ba22cadcc5b5c7777093e6875a2b31cc647bc3d97a",
+        "bytes": 133
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23-command/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "parent_materialization_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/result-release18/bin/materialize-snapshot-chunks",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/snapshots/f341c8f803830a79dc1000e8ded0364d9bc98441065881f0d4a085d31671f133.snapshot.bin.chunks.json"
+    ],
+    "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-release18/bin/materialize-snapshot-chunks /tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/snapshots/f341c8f803830a79dc1000e8ded0364d9bc98441065881f0d4a085d31671f133.snapshot.bin.chunks.json",
+    "timeout_seconds": 120,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T16:07:08.646247+00:00",
+    "finished": "2026-10-16T16:07:08.761974+00:00",
+    "elapsed_seconds": 0.11573785801010672,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23-materialize-command/stdout.log",
+        "digest": "blake3:f0f175ac3b585178c57399a6e3db25e9058f75bc3aa6c37b3063361d6458c731",
+        "bytes": 261
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23-materialize-command/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/bug_4.json",
+      "digest": "blake3:a773b5ebe1a9f752abbe738d09ce118a766a2a092ab967a53ce20d9eecbb1705",
+      "bytes": 4358
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/replay-verdict-bug4.json",
+      "digest": "blake3:a893acb5311231bc4b737c4ff1d497bdc30a0097feb6879bb5cc2aed5abd0f8f",
+      "bytes": 5515
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/snapshots/f341c8f803830a79dc1000e8ded0364d9bc98441065881f0d4a085d31671f133.snapshot.bin",
+      "digest": "blake3:cd90aaebd69517b0525a6b31fa3f15cdb11484264600b26d90794f3d03c63a0d",
+      "bytes": 57580068
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-default23/proof-receipt.json",
+      "digest": "blake3:ac7d3bab3e02a916dead18ac7711dff4b86b2819d6ec7f9ee5c45f6ff0ff2dfd",
+      "bytes": 3322
+    }
+  ],
+  "passed": true,
+  "non_claim": "Actual implicit CLI default verified without --cmdline-template. This is a separately retained current cohort, not a substitution for the unavailable historical initrd or a deep replay."
+}

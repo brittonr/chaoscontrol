@@ -1,0 +1,84 @@
+{
+  "schema": "chaoscontrol.source-built-followup-artifacts.v1",
+  "correction_attempt": 21,
+  "build_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "nix",
+      "--option",
+      "builders",
+      "",
+      "--option",
+      "secret-key-files",
+      "",
+      "--option",
+      "max-jobs",
+      "1",
+      "build",
+      "--no-update-lock-file",
+      ".#net-vmlinux",
+      "--out-link",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/result-kernel21",
+      "--print-out-paths",
+      "-L"
+    ],
+    "display_command": "nix --option builders '' --option secret-key-files '' --option max-jobs 1 build --no-update-lock-file '.#net-vmlinux' --out-link /tmp/chaoscontrol-production-readiness-closure-20261015/result-kernel21 --print-out-paths -L",
+    "timeout_seconds": 7200,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T14:42:06.744283+00:00",
+    "finished": "2026-10-16T15:34:03.718294+00:00",
+    "elapsed_seconds": 3116.9740175540064,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/kernel21-build/stdout.log",
+        "digest": "blake3:729d48750ed17057d0c7ac61e8f013ba44014cc738d58056cb8c40bd37117dbf",
+        "bytes": 65
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/kernel21-build/stderr.log",
+        "digest": "blake3:3d1b8a9c87cbaa3da87b392a3d7f12a7f05b9dea409ac3b45c6d238945c3d923",
+        "bytes": 8559170
+      }
+    ]
+  },
+  "bindings": [
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt21-inputs.tar",
+      "bytes": 133120,
+      "digest": "blake3:b879bd044b528722c00cca9f9193c9351380ec9362d6517dd72832440f4acd01"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/nix/linux-runtime-tsc-capability.patch",
+      "bytes": 2293,
+      "digest": "blake3:412e9c50e841d63c8dd9f33de7ee5a5c4d972f8e9db162a17c3120aa36d1a19b"
+    },
+    {
+      "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+      "bytes": 410793408,
+      "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b"
+    },
+    {
+      "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+      "bytes": 466387,
+      "digest": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/examples/raft_lineage_proof",
+      "bytes": 8951496,
+      "digest": "blake3:efe5786fc87ead4f024c3fe4484991726c53166c60ea95dc40469e5cef69efc7"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+      "bytes": 15474408,
+      "digest": "blake3:9dad7fc42e5bcd3f3a096dfe13eecd26b8d6253f52d72086269eb2ea5b60f1ae"
+    }
+  ],
+  "kernel_source_boundary": "Repository-owned guest kernel built from the pinned Linux source with inherited upstream patches; no host kernel change. Runtime acceptance is separate from build success.",
+  "retention_roots": [
+    "/tmp/chaoscontrol-production-readiness-closure-20261015/result-kernel21",
+    "/tmp/chaoscontrol-production-readiness-closure-20261015/result-raft-initrd18"
+  ]
+}

@@ -37,7 +37,7 @@ const DEFAULT_ASSERTION_ID: i64 = 1_806_003_755;
 const DEFAULT_FAIL_AFTER: &str = "1";
 const DEFAULT_WORKLOAD: &str = "raft";
 const DEFAULT_CMDLINE: &str =
-    "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}";
+    "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc";
 const SNAPSHOT_CHUNK_BYTES: usize = 20 * 1_024 * 1_024;
 const MAX_EXPORTED_BUGS: i64 = 8;
 const EXECUTABLE_MAX_BYTES: u64 = 1_073_741_824;

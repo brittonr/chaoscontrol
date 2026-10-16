@@ -70,7 +70,7 @@
         "ticks": 80,
         "vms": 3
       },
-      "cmdline_template": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}",
+      "cmdline_template": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc",
       "order": 1,
       "workload": "raft"
     },

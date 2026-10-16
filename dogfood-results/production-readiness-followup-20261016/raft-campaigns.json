@@ -1,0 +1,234 @@
+{
+  "artifact_boundary": "Current source-built patched guest kernel and retained initrd, independently BLAKE3-bound. Preserve the earlier exact CLI bitmap/frontier binding; no historical input or receipt is rewritten.",
+  "clock_boundary": "Explicit Linux clocksource=jiffies notsc through the existing guest command-line interface. CPU feature visibility and public VM defaults are unchanged. No universal determinism claim.",
+  "control": {
+    "artifacts": {
+      "disk": null,
+      "initrd": {
+        "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+        "kind": "absolute-path",
+        "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+      },
+      "kernel": {
+        "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "kind": "absolute-path",
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+      }
+    },
+    "coverage": {
+      "bitmap_gpa": 917504,
+      "mode": "bitmap"
+    },
+    "exploration": {
+      "bootstrap_budget": 10000,
+      "branch_factor": 2,
+      "max_frontier": 50,
+      "max_rounds": 10,
+      "mode": "hybrid",
+      "quantum": 100,
+      "stale_round_limit": 10,
+      "ticks_per_branch": 500
+    },
+    "guest_cmdline": "raft_bug=none clocksource=jiffies notsc",
+    "logging": {
+      "determinism_log_output": null,
+      "determinism_log_policy": "disabled",
+      "memory_hash": false,
+      "raw_log_policy": "debug-only-excluded-from-git",
+      "register_interval": 0
+    },
+    "mode": "vm-exploration",
+    "profile_id": "production-lineage-control-jiffies-ten-round",
+    "schema": "chaoscontrol.run-profile.v2",
+    "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+    "seed": 42,
+    "topology": {
+      "memory_mib": 128,
+      "num_vcpus": 1,
+      "num_vms": 3,
+      "scheduling": {
+        "diversity": false,
+        "maximum_quantum": 100,
+        "minimum_quantum": 100,
+        "strategy": "round-robin"
+      }
+    }
+  },
+  "deep_probe": {
+    "artifacts": {
+      "disk": null,
+      "initrd": {
+        "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+        "kind": "absolute-path",
+        "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+      },
+      "kernel": {
+        "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "kind": "absolute-path",
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+      }
+    },
+    "coverage": {
+      "bitmap_gpa": 917504,
+      "mode": "bitmap"
+    },
+    "exploration": {
+      "bootstrap_budget": 10000,
+      "branch_factor": 2,
+      "max_frontier": 50,
+      "max_rounds": 10,
+      "mode": "hybrid",
+      "quantum": 100,
+      "stale_round_limit": 10,
+      "ticks_per_branch": 500
+    },
+    "guest_cmdline": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=6000 clocksource=jiffies notsc",
+    "logging": {
+      "determinism_log_output": null,
+      "determinism_log_policy": "disabled",
+      "memory_hash": false,
+      "raw_log_policy": "debug-only-excluded-from-git",
+      "register_interval": 0
+    },
+    "mode": "vm-exploration",
+    "profile_id": "production-lineage-deep-snapshot-probe-jiffies-ten-round",
+    "schema": "chaoscontrol.run-profile.v2",
+    "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+    "seed": 42,
+    "topology": {
+      "memory_mib": 128,
+      "num_vcpus": 1,
+      "num_vms": 3,
+      "scheduling": {
+        "diversity": false,
+        "maximum_quantum": 100,
+        "minimum_quantum": 100,
+        "strategy": "round-robin"
+      }
+    }
+  },
+  "deep_probe_boundary": "Separate existing-guest mechanism validation. Threshold 6000 is a guest iteration, not a larger VMM or wall-clock bound. Require actual retained parent depth >=3 and snapshot_backed_reproduced for every retained deep safety finding; do not infer an algorithm bug or alter the release cohort.",
+  "derived_from": "dogfood-results/production-readiness-closure-20261015/raft-campaigns.ncl",
+  "diagnostic_environment": {
+    "RUST_LOG": "chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info"
+  },
+  "non_claims": [
+    "An operational timeout, failed branch, or absent finding is not a guest bug or successful replay.",
+    "The admitted snapshot replay probe is intentional mechanism-validation evidence, not discovery or reproduction of a fig8 algorithm defect.",
+    "Campaign completion does not establish native readiness, release eligibility, universal determinism, or exhaustive exploration.",
+    "This current projection corrects the historical profile's blind-mode description; historical receipts remain unchanged and are not promoted."
+  ],
+  "overlay_measurement": "Existing incremental snapshot debug records report total retained overlay pages; multiply by snapshot PAGE_SIZE=4096 for payload bytes, not encoded-artifact bytes",
+  "owner": "chaoscontrol-vmm",
+  "planted": {
+    "artifacts": {
+      "disk": null,
+      "initrd": {
+        "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+        "kind": "absolute-path",
+        "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+      },
+      "kernel": {
+        "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "kind": "absolute-path",
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+      }
+    },
+    "coverage": {
+      "bitmap_gpa": 917504,
+      "mode": "bitmap"
+    },
+    "exploration": {
+      "bootstrap_budget": 10000,
+      "branch_factor": 2,
+      "max_frontier": 50,
+      "max_rounds": 10,
+      "mode": "hybrid",
+      "quantum": 100,
+      "stale_round_limit": 10,
+      "ticks_per_branch": 500
+    },
+    "guest_cmdline": "raft_bug=fig8_commit clocksource=jiffies notsc",
+    "logging": {
+      "determinism_log_output": null,
+      "determinism_log_policy": "disabled",
+      "memory_hash": false,
+      "raw_log_policy": "debug-only-excluded-from-git",
+      "register_interval": 0
+    },
+    "mode": "vm-exploration",
+    "profile_id": "production-lineage-planted-jiffies-ten-round",
+    "schema": "chaoscontrol.run-profile.v2",
+    "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+    "seed": 42,
+    "topology": {
+      "memory_mib": 128,
+      "num_vcpus": 1,
+      "num_vms": 3,
+      "scheduling": {
+        "diversity": false,
+        "maximum_quantum": 100,
+        "minimum_quantum": 100,
+        "strategy": "round-robin"
+      }
+    }
+  },
+  "schema": "chaoscontrol.production-lineage-campaign-followup-inputs.v1",
+  "selected_probe": {
+    "artifacts": {
+      "disk": null,
+      "initrd": {
+        "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+        "kind": "absolute-path",
+        "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+      },
+      "kernel": {
+        "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "kind": "absolute-path",
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+      }
+    },
+    "coverage": {
+      "bitmap_gpa": 917504,
+      "mode": "bitmap"
+    },
+    "exploration": {
+      "bootstrap_budget": 10000,
+      "branch_factor": 2,
+      "max_frontier": 50,
+      "max_rounds": 3,
+      "mode": "hybrid",
+      "quantum": 100,
+      "stale_round_limit": 10,
+      "ticks_per_branch": 80
+    },
+    "guest_cmdline": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=1 clocksource=jiffies notsc",
+    "logging": {
+      "determinism_log_output": null,
+      "determinism_log_policy": "disabled",
+      "memory_hash": false,
+      "raw_log_policy": "debug-only-excluded-from-git",
+      "register_interval": 0
+    },
+    "mode": "vm-exploration",
+    "profile_id": "production-lineage-selected-snapshot-probe-jiffies",
+    "schema": "chaoscontrol.run-profile.v2",
+    "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+    "seed": 0,
+    "topology": {
+      "memory_mib": 256,
+      "num_vcpus": 1,
+      "num_vms": 3,
+      "scheduling": {
+        "diversity": false,
+        "maximum_quantum": 100,
+        "minimum_quantum": 100,
+        "strategy": "round-robin"
+      }
+    }
+  },
+  "selected_probe_authority": "contracts/fresh-workload-proofs/cohort.ncl raft row; seed zero from contracts/kvm-release/matrix.ncl fresh-workload-replay",
+  "timeout_seconds": 600,
+  "timeout_source": "Unchanged operator bound recorded by the historical and closure execution observations; not the release matrix's separate 3600-second fresh-replay bound",
+  "workers": 1
+}

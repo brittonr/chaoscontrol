@@ -572,9 +572,15 @@
                   DEBUG_FS = yes;
                 })
                 // extraConfig;
-              kernel = pkgs.linuxPackages_latest.kernel.override {
+              kernel = pkgs.linuxPackages_latest.kernel.override (original: {
                 structuredExtraConfig = cfg;
-              };
+                kernelPatches = (original.kernelPatches or [ ]) ++ [
+                  {
+                    name = "runtime-tsc-capability";
+                    patch = ./nix/linux-runtime-tsc-capability.patch;
+                  }
+                ];
+              });
             in
             pkgs.runCommand "chaoscontrol-vmlinux" { } ''
               mkdir -p $out

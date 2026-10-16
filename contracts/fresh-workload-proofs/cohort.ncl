@@ -48,7 +48,9 @@ let FreshWorkloadProofProfile = import "profile.ncl" in
         { role = "guest-kernel", nix_output = "chaoscontrol-kernel-virtio-net", digest_policy = "sha256-runtime-observation" },
         { role = "guest-initrd", nix_output = "initrd-raft", digest_policy = "sha256-runtime-observation" },
       ],
-      cmdline_template = "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}",
+      # Keep the existing bounds; runtime TSC reads made one guest miss setup.
+      # Use the admitted Linux jiffies policy, not a larger bootstrap allowance.
+      cmdline_template = "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc",
       bounds = {
         max_attempts = 1,
         vms = 3,

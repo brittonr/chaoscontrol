@@ -1,0 +1,1540 @@
+{
+  "schema": "chaoscontrol.production-lineage-campaign-observations.v1",
+  "campaigns": [
+    {
+      "id": "control23",
+      "command_observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "env",
+          "RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+          "run",
+          "--kernel",
+          "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+          "--initrd",
+          "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+          "--seed",
+          "42",
+          "--vms",
+          "3",
+          "--vcpus",
+          "1",
+          "--memory-mb",
+          "128",
+          "--rounds",
+          "10",
+          "--branches",
+          "2",
+          "--ticks",
+          "500",
+          "--quantum",
+          "100",
+          "--max-frontier",
+          "50",
+          "--bootstrap-budget",
+          "10000",
+          "--mode",
+          "hybrid",
+          "--workers",
+          "1",
+          "--extra-cmdline",
+          "raft_bug=none clocksource=jiffies notsc",
+          "--output",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/control23",
+          "--emit-metrics"
+        ],
+        "display_command": "env RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore run --kernel /nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --seed 42 --vms 3 --vcpus 1 --memory-mb 128 --rounds 10 --branches 2 --ticks 500 --quantum 100 --max-frontier 50 --bootstrap-budget 10000 --mode hybrid --workers 1 --extra-cmdline 'raft_bug=none clocksource=jiffies notsc' --output /tmp/chaoscontrol-production-readiness-closure-20261015/control23 --emit-metrics",
+        "timeout_seconds": 600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T15:54:39.784306+00:00",
+        "finished": "2026-10-16T15:57:02.601905+00:00",
+        "elapsed_seconds": 142.8176042010018,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control23-command/stdout.log",
+            "digest": "blake3:f68c203f32012f4959f6522aed42bb69b4ab8ef616429efbd37f080a1ccbf25d",
+            "bytes": 458319
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control23-command/stderr.log",
+            "digest": "blake3:d85fff624bee46d5ed8c27b03e4df313a7b4bf67942eb7aebd5de03f2ed269fb",
+            "bytes": 24086
+          }
+        ]
+      },
+      "checkpoint": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control23/checkpoint.json",
+        "digest": "blake3:3da766e2069d1cc9ea11759f0c014aada5f09c53039aa61fcdf3c202ea6fea7d",
+        "bytes": 709170
+      },
+      "valid_campaign_output": true,
+      "rounds_completed": 10,
+      "branches_run": 20,
+      "maximum_admitted_depth": 10,
+      "selections": [
+        {
+          "round": 1,
+          "selected_seq": 0,
+          "parent_depth": 0,
+          "child_depth": 1,
+          "admitted": [
+            1
+          ]
+        },
+        {
+          "round": 2,
+          "selected_seq": 1,
+          "parent_depth": 1,
+          "child_depth": 2,
+          "admitted": [
+            2,
+            3
+          ]
+        },
+        {
+          "round": 3,
+          "selected_seq": 2,
+          "parent_depth": 2,
+          "child_depth": 3,
+          "admitted": [
+            4
+          ]
+        },
+        {
+          "round": 4,
+          "selected_seq": 4,
+          "parent_depth": 3,
+          "child_depth": 4,
+          "admitted": [
+            5
+          ]
+        },
+        {
+          "round": 5,
+          "selected_seq": 5,
+          "parent_depth": 4,
+          "child_depth": 5,
+          "admitted": [
+            6
+          ]
+        },
+        {
+          "round": 6,
+          "selected_seq": 6,
+          "parent_depth": 5,
+          "child_depth": 6,
+          "admitted": [
+            7,
+            8
+          ]
+        },
+        {
+          "round": 7,
+          "selected_seq": 7,
+          "parent_depth": 6,
+          "child_depth": 7,
+          "admitted": [
+            9
+          ]
+        },
+        {
+          "round": 8,
+          "selected_seq": 9,
+          "parent_depth": 7,
+          "child_depth": 8,
+          "admitted": [
+            10,
+            11
+          ]
+        },
+        {
+          "round": 9,
+          "selected_seq": 10,
+          "parent_depth": 8,
+          "child_depth": 9,
+          "admitted": [
+            12
+          ]
+        },
+        {
+          "round": 10,
+          "selected_seq": 12,
+          "parent_depth": 9,
+          "child_depth": 10,
+          "admitted": [
+            13
+          ]
+        }
+      ],
+      "overlay_captures": [
+        {
+          "round": 1,
+          "overlay_pages_in_emitted_vm_order": [
+            739,
+            539,
+            576
+          ],
+          "total_pages": 1854,
+          "payload_bytes": 7593984,
+          "stderr_lines": [
+            75,
+            76,
+            77
+          ],
+          "selected_seq": 0,
+          "parent_depth": 0,
+          "child_depth": 1
+        },
+        {
+          "round": 1,
+          "overlay_pages_in_emitted_vm_order": [
+            739,
+            539,
+            610
+          ],
+          "total_pages": 1888,
+          "payload_bytes": 7733248,
+          "stderr_lines": [
+            80,
+            81,
+            82
+          ],
+          "selected_seq": 0,
+          "parent_depth": 0,
+          "child_depth": 1
+        },
+        {
+          "round": 2,
+          "overlay_pages_in_emitted_vm_order": [
+            905,
+            668,
+            885
+          ],
+          "total_pages": 2458,
+          "payload_bytes": 10067968,
+          "stderr_lines": [
+            89,
+            90,
+            91
+          ],
+          "selected_seq": 1,
+          "parent_depth": 1,
+          "child_depth": 2
+        },
+        {
+          "round": 2,
+          "overlay_pages_in_emitted_vm_order": [
+            905,
+            668,
+            885
+          ],
+          "total_pages": 2458,
+          "payload_bytes": 10067968,
+          "stderr_lines": [
+            96,
+            97,
+            98
+          ],
+          "selected_seq": 1,
+          "parent_depth": 1,
+          "child_depth": 2
+        },
+        {
+          "round": 3,
+          "overlay_pages_in_emitted_vm_order": [
+            1114,
+            905,
+            1119
+          ],
+          "total_pages": 3138,
+          "payload_bytes": 12853248,
+          "stderr_lines": [
+            106,
+            107,
+            108
+          ],
+          "selected_seq": 2,
+          "parent_depth": 2,
+          "child_depth": 3
+        },
+        {
+          "round": 3,
+          "overlay_pages_in_emitted_vm_order": [
+            1114,
+            892,
+            1119
+          ],
+          "total_pages": 3125,
+          "payload_bytes": 12800000,
+          "stderr_lines": [
+            111,
+            112,
+            113
+          ],
+          "selected_seq": 2,
+          "parent_depth": 2,
+          "child_depth": 3
+        },
+        {
+          "round": 4,
+          "overlay_pages_in_emitted_vm_order": [
+            1285,
+            1021,
+            1164
+          ],
+          "total_pages": 3470,
+          "payload_bytes": 14213120,
+          "stderr_lines": [
+            120,
+            121,
+            122
+          ],
+          "selected_seq": 4,
+          "parent_depth": 3,
+          "child_depth": 4
+        },
+        {
+          "round": 4,
+          "overlay_pages_in_emitted_vm_order": [
+            1285,
+            1021,
+            1164
+          ],
+          "total_pages": 3470,
+          "payload_bytes": 14213120,
+          "stderr_lines": [
+            127,
+            128,
+            129
+          ],
+          "selected_seq": 4,
+          "parent_depth": 3,
+          "child_depth": 4
+        },
+        {
+          "round": 5,
+          "overlay_pages_in_emitted_vm_order": [
+            1372,
+            1221,
+            1306
+          ],
+          "total_pages": 3899,
+          "payload_bytes": 15970304,
+          "stderr_lines": [
+            136,
+            137,
+            138
+          ],
+          "selected_seq": 5,
+          "parent_depth": 4,
+          "child_depth": 5
+        },
+        {
+          "round": 5,
+          "overlay_pages_in_emitted_vm_order": [
+            1372,
+            1221,
+            1306
+          ],
+          "total_pages": 3899,
+          "payload_bytes": 15970304,
+          "stderr_lines": [
+            141,
+            142,
+            143
+          ],
+          "selected_seq": 5,
+          "parent_depth": 4,
+          "child_depth": 5
+        },
+        {
+          "round": 6,
+          "overlay_pages_in_emitted_vm_order": [
+            1755,
+            1299,
+            1665
+          ],
+          "total_pages": 4719,
+          "payload_bytes": 19329024,
+          "stderr_lines": [
+            150,
+            151,
+            152
+          ],
+          "selected_seq": 6,
+          "parent_depth": 5,
+          "child_depth": 6
+        },
+        {
+          "round": 6,
+          "overlay_pages_in_emitted_vm_order": [
+            1784,
+            1299,
+            1716
+          ],
+          "total_pages": 4799,
+          "payload_bytes": 19656704,
+          "stderr_lines": [
+            157,
+            158,
+            159
+          ],
+          "selected_seq": 6,
+          "parent_depth": 5,
+          "child_depth": 6
+        },
+        {
+          "round": 7,
+          "overlay_pages_in_emitted_vm_order": [
+            1925,
+            1614,
+            1989
+          ],
+          "total_pages": 5528,
+          "payload_bytes": 22642688,
+          "stderr_lines": [
+            167,
+            168,
+            169
+          ],
+          "selected_seq": 7,
+          "parent_depth": 6,
+          "child_depth": 7
+        },
+        {
+          "round": 7,
+          "overlay_pages_in_emitted_vm_order": [
+            1925,
+            1510,
+            2288
+          ],
+          "total_pages": 5723,
+          "payload_bytes": 23441408,
+          "stderr_lines": [
+            172,
+            173,
+            174
+          ],
+          "selected_seq": 7,
+          "parent_depth": 6,
+          "child_depth": 7
+        },
+        {
+          "round": 8,
+          "overlay_pages_in_emitted_vm_order": [
+            2026,
+            3297,
+            2109
+          ],
+          "total_pages": 7432,
+          "payload_bytes": 30441472,
+          "stderr_lines": [
+            181,
+            182,
+            183
+          ],
+          "selected_seq": 9,
+          "parent_depth": 7,
+          "child_depth": 8
+        },
+        {
+          "round": 8,
+          "overlay_pages_in_emitted_vm_order": [
+            2026,
+            3297,
+            2087
+          ],
+          "total_pages": 7410,
+          "payload_bytes": 30351360,
+          "stderr_lines": [
+            188,
+            189,
+            190
+          ],
+          "selected_seq": 9,
+          "parent_depth": 7,
+          "child_depth": 8
+        },
+        {
+          "round": 9,
+          "overlay_pages_in_emitted_vm_order": [
+            2119,
+            3365,
+            2210
+          ],
+          "total_pages": 7694,
+          "payload_bytes": 31514624,
+          "stderr_lines": [
+            198,
+            199,
+            200
+          ],
+          "selected_seq": 10,
+          "parent_depth": 8,
+          "child_depth": 9
+        },
+        {
+          "round": 9,
+          "overlay_pages_in_emitted_vm_order": [
+            2119,
+            3365,
+            2210
+          ],
+          "total_pages": 7694,
+          "payload_bytes": 31514624,
+          "stderr_lines": [
+            203,
+            204,
+            205
+          ],
+          "selected_seq": 10,
+          "parent_depth": 8,
+          "child_depth": 9
+        },
+        {
+          "round": 10,
+          "overlay_pages_in_emitted_vm_order": [
+            2230,
+            3478,
+            2320
+          ],
+          "total_pages": 8028,
+          "payload_bytes": 32882688,
+          "stderr_lines": [
+            212,
+            213,
+            214
+          ],
+          "selected_seq": 12,
+          "parent_depth": 9,
+          "child_depth": 10
+        },
+        {
+          "round": 10,
+          "overlay_pages_in_emitted_vm_order": [
+            2230,
+            3478,
+            2320
+          ],
+          "total_pages": 8028,
+          "payload_bytes": 32882688,
+          "stderr_lines": [
+            219,
+            220,
+            221
+          ],
+          "selected_seq": 12,
+          "parent_depth": 9,
+          "child_depth": 10
+        }
+      ],
+      "bugs": [],
+      "retained_safety_findings_depth_at_least_three": 0,
+      "host_watchdog_timeouts": 0,
+      "assertions.json": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control23/assertions.json",
+        "digest": "blake3:2da54a46d3d2c42f911a19dd385ae8fc159159f45a357fc4a187798fafadce58",
+        "bytes": 72076
+      },
+      "report.txt": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control23/report.txt",
+        "digest": "blake3:e9703322b3170af057587ab540a03a8a0d61c611d45f30e42d4834c5ca9ef843",
+        "bytes": 8239
+      }
+    },
+    {
+      "id": "planted23",
+      "command_observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "env",
+          "RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+          "run",
+          "--kernel",
+          "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+          "--initrd",
+          "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+          "--seed",
+          "42",
+          "--vms",
+          "3",
+          "--vcpus",
+          "1",
+          "--memory-mb",
+          "128",
+          "--rounds",
+          "10",
+          "--branches",
+          "2",
+          "--ticks",
+          "500",
+          "--quantum",
+          "100",
+          "--max-frontier",
+          "50",
+          "--bootstrap-budget",
+          "10000",
+          "--mode",
+          "hybrid",
+          "--workers",
+          "1",
+          "--extra-cmdline",
+          "raft_bug=fig8_commit clocksource=jiffies notsc",
+          "--output",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/planted23",
+          "--emit-metrics"
+        ],
+        "display_command": "env RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore run --kernel /nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --seed 42 --vms 3 --vcpus 1 --memory-mb 128 --rounds 10 --branches 2 --ticks 500 --quantum 100 --max-frontier 50 --bootstrap-budget 10000 --mode hybrid --workers 1 --extra-cmdline 'raft_bug=fig8_commit clocksource=jiffies notsc' --output /tmp/chaoscontrol-production-readiness-closure-20261015/planted23 --emit-metrics",
+        "timeout_seconds": 600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T15:57:02.640063+00:00",
+        "finished": "2026-10-16T15:59:27.710840+00:00",
+        "elapsed_seconds": 145.07078559200454,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted23-command/stdout.log",
+            "digest": "blake3:f9e65ad5f4da2a32a6c0de1d8752e0455edfacb5f5751b33280dec40a0e69543",
+            "bytes": 458530
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted23-command/stderr.log",
+            "digest": "blake3:0ab857e200f3cbb86d29bd7cfafec3261690a608b7508899930d827adc6e24c6",
+            "bytes": 24086
+          }
+        ]
+      },
+      "checkpoint": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted23/checkpoint.json",
+        "digest": "blake3:accba604537b7d5a4d99fcd3bdd673332068c59e06b9e45c06b2778060f2f74b",
+        "bytes": 709176
+      },
+      "valid_campaign_output": true,
+      "rounds_completed": 10,
+      "branches_run": 20,
+      "maximum_admitted_depth": 10,
+      "selections": [
+        {
+          "round": 1,
+          "selected_seq": 0,
+          "parent_depth": 0,
+          "child_depth": 1,
+          "admitted": [
+            1
+          ]
+        },
+        {
+          "round": 2,
+          "selected_seq": 1,
+          "parent_depth": 1,
+          "child_depth": 2,
+          "admitted": [
+            2,
+            3
+          ]
+        },
+        {
+          "round": 3,
+          "selected_seq": 2,
+          "parent_depth": 2,
+          "child_depth": 3,
+          "admitted": [
+            4
+          ]
+        },
+        {
+          "round": 4,
+          "selected_seq": 4,
+          "parent_depth": 3,
+          "child_depth": 4,
+          "admitted": [
+            5,
+            6
+          ]
+        },
+        {
+          "round": 5,
+          "selected_seq": 5,
+          "parent_depth": 4,
+          "child_depth": 5,
+          "admitted": [
+            7
+          ]
+        },
+        {
+          "round": 6,
+          "selected_seq": 7,
+          "parent_depth": 5,
+          "child_depth": 6,
+          "admitted": [
+            8,
+            9
+          ]
+        },
+        {
+          "round": 7,
+          "selected_seq": 8,
+          "parent_depth": 6,
+          "child_depth": 7,
+          "admitted": [
+            10
+          ]
+        },
+        {
+          "round": 8,
+          "selected_seq": 10,
+          "parent_depth": 7,
+          "child_depth": 8,
+          "admitted": [
+            11
+          ]
+        },
+        {
+          "round": 9,
+          "selected_seq": 11,
+          "parent_depth": 8,
+          "child_depth": 9,
+          "admitted": [
+            12
+          ]
+        },
+        {
+          "round": 10,
+          "selected_seq": 12,
+          "parent_depth": 9,
+          "child_depth": 10,
+          "admitted": [
+            13
+          ]
+        }
+      ],
+      "overlay_captures": [
+        {
+          "round": 1,
+          "overlay_pages_in_emitted_vm_order": [
+            741,
+            547,
+            622
+          ],
+          "total_pages": 1910,
+          "payload_bytes": 7823360,
+          "stderr_lines": [
+            75,
+            76,
+            77
+          ],
+          "selected_seq": 0,
+          "parent_depth": 0,
+          "child_depth": 1
+        },
+        {
+          "round": 1,
+          "overlay_pages_in_emitted_vm_order": [
+            740,
+            546,
+            584
+          ],
+          "total_pages": 1870,
+          "payload_bytes": 7659520,
+          "stderr_lines": [
+            80,
+            81,
+            82
+          ],
+          "selected_seq": 0,
+          "parent_depth": 0,
+          "child_depth": 1
+        },
+        {
+          "round": 2,
+          "overlay_pages_in_emitted_vm_order": [
+            901,
+            654,
+            804
+          ],
+          "total_pages": 2359,
+          "payload_bytes": 9662464,
+          "stderr_lines": [
+            89,
+            90,
+            91
+          ],
+          "selected_seq": 1,
+          "parent_depth": 1,
+          "child_depth": 2
+        },
+        {
+          "round": 2,
+          "overlay_pages_in_emitted_vm_order": [
+            899,
+            654,
+            804
+          ],
+          "total_pages": 2357,
+          "payload_bytes": 9654272,
+          "stderr_lines": [
+            96,
+            97,
+            98
+          ],
+          "selected_seq": 1,
+          "parent_depth": 1,
+          "child_depth": 2
+        },
+        {
+          "round": 3,
+          "overlay_pages_in_emitted_vm_order": [
+            1127,
+            925,
+            1074
+          ],
+          "total_pages": 3126,
+          "payload_bytes": 12804096,
+          "stderr_lines": [
+            106,
+            107,
+            108
+          ],
+          "selected_seq": 2,
+          "parent_depth": 2,
+          "child_depth": 3
+        },
+        {
+          "round": 3,
+          "overlay_pages_in_emitted_vm_order": [
+            1133,
+            919,
+            1044
+          ],
+          "total_pages": 3096,
+          "payload_bytes": 12681216,
+          "stderr_lines": [
+            111,
+            112,
+            113
+          ],
+          "selected_seq": 2,
+          "parent_depth": 2,
+          "child_depth": 3
+        },
+        {
+          "round": 4,
+          "overlay_pages_in_emitted_vm_order": [
+            1317,
+            1042,
+            1140
+          ],
+          "total_pages": 3499,
+          "payload_bytes": 14331904,
+          "stderr_lines": [
+            120,
+            121,
+            122
+          ],
+          "selected_seq": 4,
+          "parent_depth": 3,
+          "child_depth": 4
+        },
+        {
+          "round": 4,
+          "overlay_pages_in_emitted_vm_order": [
+            1342,
+            1042,
+            1416
+          ],
+          "total_pages": 3800,
+          "payload_bytes": 15564800,
+          "stderr_lines": [
+            127,
+            128,
+            129
+          ],
+          "selected_seq": 4,
+          "parent_depth": 3,
+          "child_depth": 4
+        },
+        {
+          "round": 5,
+          "overlay_pages_in_emitted_vm_order": [
+            1496,
+            1246,
+            1305
+          ],
+          "total_pages": 4047,
+          "payload_bytes": 16576512,
+          "stderr_lines": [
+            137,
+            138,
+            139
+          ],
+          "selected_seq": 5,
+          "parent_depth": 4,
+          "child_depth": 5
+        },
+        {
+          "round": 5,
+          "overlay_pages_in_emitted_vm_order": [
+            1431,
+            1227,
+            1289
+          ],
+          "total_pages": 3947,
+          "payload_bytes": 16166912,
+          "stderr_lines": [
+            142,
+            143,
+            144
+          ],
+          "selected_seq": 5,
+          "parent_depth": 4,
+          "child_depth": 5
+        },
+        {
+          "round": 6,
+          "overlay_pages_in_emitted_vm_order": [
+            1851,
+            1330,
+            1696
+          ],
+          "total_pages": 4877,
+          "payload_bytes": 19976192,
+          "stderr_lines": [
+            151,
+            152,
+            153
+          ],
+          "selected_seq": 7,
+          "parent_depth": 5,
+          "child_depth": 6
+        },
+        {
+          "round": 6,
+          "overlay_pages_in_emitted_vm_order": [
+            1950,
+            1328,
+            1686
+          ],
+          "total_pages": 4964,
+          "payload_bytes": 20332544,
+          "stderr_lines": [
+            158,
+            159,
+            160
+          ],
+          "selected_seq": 7,
+          "parent_depth": 5,
+          "child_depth": 6
+        },
+        {
+          "round": 7,
+          "overlay_pages_in_emitted_vm_order": [
+            2033,
+            1667,
+            1982
+          ],
+          "total_pages": 5682,
+          "payload_bytes": 23273472,
+          "stderr_lines": [
+            168,
+            169,
+            170
+          ],
+          "selected_seq": 8,
+          "parent_depth": 6,
+          "child_depth": 7
+        },
+        {
+          "round": 7,
+          "overlay_pages_in_emitted_vm_order": [
+            2024,
+            1549,
+            1976
+          ],
+          "total_pages": 5549,
+          "payload_bytes": 22728704,
+          "stderr_lines": [
+            173,
+            174,
+            175
+          ],
+          "selected_seq": 8,
+          "parent_depth": 6,
+          "child_depth": 7
+        },
+        {
+          "round": 8,
+          "overlay_pages_in_emitted_vm_order": [
+            2142,
+            3425,
+            2105
+          ],
+          "total_pages": 7672,
+          "payload_bytes": 31424512,
+          "stderr_lines": [
+            182,
+            183,
+            184
+          ],
+          "selected_seq": 10,
+          "parent_depth": 7,
+          "child_depth": 8
+        },
+        {
+          "round": 8,
+          "overlay_pages_in_emitted_vm_order": [
+            2151,
+            3426,
+            2110
+          ],
+          "total_pages": 7687,
+          "payload_bytes": 31485952,
+          "stderr_lines": [
+            189,
+            190,
+            191
+          ],
+          "selected_seq": 10,
+          "parent_depth": 7,
+          "child_depth": 8
+        },
+        {
+          "round": 9,
+          "overlay_pages_in_emitted_vm_order": [
+            2248,
+            3526,
+            2206
+          ],
+          "total_pages": 7980,
+          "payload_bytes": 32686080,
+          "stderr_lines": [
+            198,
+            199,
+            200
+          ],
+          "selected_seq": 11,
+          "parent_depth": 8,
+          "child_depth": 9
+        },
+        {
+          "round": 9,
+          "overlay_pages_in_emitted_vm_order": [
+            2232,
+            3525,
+            2200
+          ],
+          "total_pages": 7957,
+          "payload_bytes": 32591872,
+          "stderr_lines": [
+            203,
+            204,
+            205
+          ],
+          "selected_seq": 11,
+          "parent_depth": 8,
+          "child_depth": 9
+        },
+        {
+          "round": 10,
+          "overlay_pages_in_emitted_vm_order": [
+            2365,
+            3647,
+            2321
+          ],
+          "total_pages": 8333,
+          "payload_bytes": 34131968,
+          "stderr_lines": [
+            212,
+            213,
+            214
+          ],
+          "selected_seq": 12,
+          "parent_depth": 9,
+          "child_depth": 10
+        },
+        {
+          "round": 10,
+          "overlay_pages_in_emitted_vm_order": [
+            2359,
+            3645,
+            2321
+          ],
+          "total_pages": 8325,
+          "payload_bytes": 34099200,
+          "stderr_lines": [
+            219,
+            220,
+            221
+          ],
+          "selected_seq": 12,
+          "parent_depth": 9,
+          "child_depth": 10
+        }
+      ],
+      "bugs": [],
+      "retained_safety_findings_depth_at_least_three": 0,
+      "host_watchdog_timeouts": 0,
+      "assertions.json": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted23/assertions.json",
+        "digest": "blake3:6b43e99fe2683b37251e5e275fe504d8a4236741c492904f5fdf0e807a7b3b65",
+        "bytes": 72076
+      },
+      "report.txt": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted23/report.txt",
+        "digest": "blake3:5baa2b241014f763e4aaf0f3de18594c4707a849c7fae587a06ceb2b2e0cd4c3",
+        "bytes": 8239
+      }
+    }
+  ],
+  "deep_retained_safety_findings": [],
+  "deep_replays": [],
+  "selected_planted_probe": {
+    "summary": {
+      "accepted": true,
+      "accepted_bug": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/bug_4.json",
+      "accepted_verdict": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/replay-verdict-bug4.json",
+      "bugs": [
+        {
+          "assertion_id": 1343285588,
+          "file": "bug_0.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 2168331750,
+          "file": "bug_1.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 3383364242,
+          "file": "bug_2.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 4111840024,
+          "file": "bug_3.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 3463273124,
+          "file": "bug_4.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 1343285588,
+          "file": "bug_5.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 2168331750,
+          "file": "bug_6.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 3383364242,
+          "file": "bug_7.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 4111840024,
+          "file": "bug_8.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 3463273124,
+          "file": "bug_9.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        }
+      ],
+      "export_exit_status": 0,
+      "receipt": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/proof-receipt.json",
+      "reproduce_exit_status": 0,
+      "run_exit_status": 1,
+      "seed": 0,
+      "snapshot_probe_fail_after": 1,
+      "verdict": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/replay-verdict-bug4.json",
+        "replay_class": "snapshot_backed_reproduced",
+        "replay_parent_depth": 1,
+        "reproduced": true,
+        "snapshot_status": "valid"
+      },
+      "workload": "raft"
+    },
+    "bug": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/bug_4.json",
+      "digest": "blake3:15c66b6ade74ac79b5f55b7057c6cbce67df3cad8b6034abc0a6ac1e510ab707",
+      "bytes": 4358
+    },
+    "verdict": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/replay-verdict-bug4.json",
+      "digest": "blake3:c4b1ca92d65c3a765d3e920912ea96886b29c71b393205c4cb76b1d0a9bbe5f7",
+      "bytes": 5520
+    },
+    "parent": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/snapshots/62ebd2841030a2c6298ce1368e0ed0a5842dbfd628cc3ae4b91a54814ad7ae27.snapshot.bin",
+      "digest": "blake3:3e60b9b48c0ae27b70b7d5abbd596fab81f308a1a5054576055ab0dfd67714cc",
+      "bytes": 57584300
+    },
+    "assertions": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/assertions.json",
+      "digest": "blake3:9b5ec1c1d3f6900b31e026c96ef7bbe861a3da7e4e75686199cc94d9a2565d06",
+      "bytes": 71571
+    },
+    "proof_receipt": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23/proof-receipt.json",
+      "digest": "blake3:3068f48a5767eb87d49d597f9ab5af918352fa99f2e5819d34273aaa9f62d4e2",
+      "bytes": 3326
+    },
+    "command_observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood",
+        "--workload",
+        "raft",
+        "--cohort",
+        "contracts/fresh-workload-proofs/cohort.json",
+        "--evidence-prefix",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23",
+        "--run-timeout",
+        "240",
+        "--export-timeout",
+        "300",
+        "--repro-timeout",
+        "300",
+        "--explore",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+        "--kernel",
+        "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+        "--initrd",
+        "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+        "--assertion-id",
+        "3463273124",
+        "--cmdline-template",
+        "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc",
+        "--vms",
+        "3",
+        "--rounds",
+        "3",
+        "--branches",
+        "2",
+        "--ticks",
+        "80",
+        "--memory-mb",
+        "256",
+        "--fail-after-values",
+        "1",
+        "--max-attempts",
+        "1",
+        "--start-seed",
+        "0",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood --workload raft --cohort contracts/fresh-workload-proofs/cohort.json --evidence-prefix /tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23 --run-timeout 240 --export-timeout 300 --repro-timeout 300 --explore /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore --kernel /nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --assertion-id 3463273124 --cmdline-template 'raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc' --vms 3 --rounds 3 --branches 2 --ticks 80 --memory-mb 256 --fail-after-values 1 --max-attempts 1 --start-seed 0 --output /tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23",
+      "timeout_seconds": 1200,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T15:59:27.749144+00:00",
+      "finished": "2026-10-16T16:04:24.251800+00:00",
+      "elapsed_seconds": 296.5026669009967,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23-command/stdout.log",
+          "digest": "blake3:972318cb0ec6bc4a6574ca034927cb0aa3141bc78ebb1c68d056b44eb1a9439b",
+          "bytes": 134
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot23-command/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "passed": true,
+    "parent_depth": 1,
+    "assertion_identity": {
+      "identity_version": 1,
+      "namespace": "org.onixresearch.chaoscontrol.raft",
+      "logical_key": {
+        "type": "stable",
+        "key": "snapshot-replay-probe.v1"
+      },
+      "compatibility_id": 3463273124,
+      "kind": "always",
+      "message": "snapshot replay probe trips only after restored parent context",
+      "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+      "source_line": 1053,
+      "source_column": 13,
+      "guest": "raft",
+      "category": "invariant"
+    },
+    "observed_faults": [
+      {
+        "time_ns": 879110718,
+        "fault": {
+          "ClockJump": {
+            "target": 1,
+            "delta_ns": -57235731
+          }
+        },
+        "label": null
+      }
+    ]
+  },
+  "non_claims": [
+    "Structural frontier traces reconstruct selected depth only; they do not satisfy product replay or readiness evidence.",
+    "Overlay bytes are actual retained page payloads, not compressed snapshot artifact sizes.",
+    "A zero deep-finding inventory is not a deep replay success claim.",
+    "Existing schema-v2 snapshot wire references retain their mandated SHA-256 format; all new closure artifact identities use BLAKE3.",
+    "The planted snapshot replay probe is mechanism-validation evidence, not a discovered fig8 Raft algorithm defect."
+  ],
+  "effective_input_profiles": {
+    "control": {
+      "artifacts": {
+        "disk": null,
+        "initrd": {
+          "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+          "kind": "absolute-path",
+          "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+        },
+        "kernel": {
+          "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+          "kind": "absolute-path",
+          "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+        }
+      },
+      "coverage": {
+        "bitmap_gpa": 917504,
+        "mode": "bitmap"
+      },
+      "exploration": {
+        "bootstrap_budget": 10000,
+        "branch_factor": 2,
+        "max_frontier": 50,
+        "max_rounds": 10,
+        "mode": "hybrid",
+        "quantum": 100,
+        "stale_round_limit": 10,
+        "ticks_per_branch": 500
+      },
+      "guest_cmdline": "raft_bug=none clocksource=jiffies notsc",
+      "logging": {
+        "determinism_log_output": null,
+        "determinism_log_policy": "disabled",
+        "memory_hash": false,
+        "raw_log_policy": "debug-only-excluded-from-git",
+        "register_interval": 0
+      },
+      "mode": "vm-exploration",
+      "profile_id": "production-lineage-control-jiffies-ten-round",
+      "schema": "chaoscontrol.run-profile.v2",
+      "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+      "seed": 42,
+      "topology": {
+        "memory_mib": 128,
+        "num_vcpus": 1,
+        "num_vms": 3,
+        "scheduling": {
+          "diversity": false,
+          "maximum_quantum": 100,
+          "minimum_quantum": 100,
+          "strategy": "round-robin"
+        }
+      }
+    },
+    "planted": {
+      "artifacts": {
+        "disk": null,
+        "initrd": {
+          "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+          "kind": "absolute-path",
+          "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+        },
+        "kernel": {
+          "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+          "kind": "absolute-path",
+          "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+        }
+      },
+      "coverage": {
+        "bitmap_gpa": 917504,
+        "mode": "bitmap"
+      },
+      "exploration": {
+        "bootstrap_budget": 10000,
+        "branch_factor": 2,
+        "max_frontier": 50,
+        "max_rounds": 10,
+        "mode": "hybrid",
+        "quantum": 100,
+        "stale_round_limit": 10,
+        "ticks_per_branch": 500
+      },
+      "guest_cmdline": "raft_bug=fig8_commit clocksource=jiffies notsc",
+      "logging": {
+        "determinism_log_output": null,
+        "determinism_log_policy": "disabled",
+        "memory_hash": false,
+        "raw_log_policy": "debug-only-excluded-from-git",
+        "register_interval": 0
+      },
+      "mode": "vm-exploration",
+      "profile_id": "production-lineage-planted-jiffies-ten-round",
+      "schema": "chaoscontrol.run-profile.v2",
+      "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+      "seed": 42,
+      "topology": {
+        "memory_mib": 128,
+        "num_vcpus": 1,
+        "num_vms": 3,
+        "scheduling": {
+          "diversity": false,
+          "maximum_quantum": 100,
+          "minimum_quantum": 100,
+          "strategy": "round-robin"
+        }
+      }
+    },
+    "selected_probe": {
+      "artifacts": {
+        "disk": null,
+        "initrd": {
+          "identity": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+          "kind": "absolute-path",
+          "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+        },
+        "kernel": {
+          "identity": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+          "kind": "absolute-path",
+          "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+        }
+      },
+      "coverage": {
+        "bitmap_gpa": 917504,
+        "mode": "bitmap"
+      },
+      "exploration": {
+        "bootstrap_budget": 10000,
+        "branch_factor": 2,
+        "max_frontier": 50,
+        "max_rounds": 3,
+        "mode": "hybrid",
+        "quantum": 100,
+        "stale_round_limit": 10,
+        "ticks_per_branch": 80
+      },
+      "guest_cmdline": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=1 clocksource=jiffies notsc",
+      "logging": {
+        "determinism_log_output": null,
+        "determinism_log_policy": "disabled",
+        "memory_hash": false,
+        "raw_log_policy": "debug-only-excluded-from-git",
+        "register_interval": 0
+      },
+      "mode": "vm-exploration",
+      "profile_id": "production-lineage-selected-snapshot-probe-jiffies",
+      "schema": "chaoscontrol.run-profile.v2",
+      "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+      "seed": 0,
+      "topology": {
+        "memory_mib": 256,
+        "num_vcpus": 1,
+        "num_vms": 3,
+        "scheduling": {
+          "diversity": false,
+          "maximum_quantum": 100,
+          "minimum_quantum": 100,
+          "strategy": "round-robin"
+        }
+      }
+    }
+  },
+  "profile_binding_checks": [
+    {
+      "campaign": "control23",
+      "profile": "control",
+      "matched_checkpoint_fields": {
+        "num_vms": 3,
+        "seed": 42,
+        "branch_factor": 2,
+        "ticks_per_branch": 500,
+        "max_rounds": 10,
+        "max_frontier": 50,
+        "quantum": 100,
+        "coverage_gpa": 917504,
+        "bootstrap_budget": 10000
+      },
+      "matched_command_fields": [
+        "guest_cmdline",
+        "memory_mib",
+        "timeout_seconds"
+      ],
+      "passed": true
+    },
+    {
+      "campaign": "planted23",
+      "profile": "planted",
+      "matched_checkpoint_fields": {
+        "num_vms": 3,
+        "seed": 42,
+        "branch_factor": 2,
+        "ticks_per_branch": 500,
+        "max_rounds": 10,
+        "max_frontier": 50,
+        "quantum": 100,
+        "coverage_gpa": 917504,
+        "bootstrap_budget": 10000
+      },
+      "matched_command_fields": [
+        "guest_cmdline",
+        "memory_mib",
+        "timeout_seconds"
+      ],
+      "passed": true
+    }
+  ],
+  "source_profile": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-followup-20261016/raft-campaigns.ncl",
+    "digest": "blake3:828e67352ec278645e9190079fe628725708588c70b1a9a7e69893987eafa4bd",
+    "bytes": 2466
+  },
+  "profile_projection": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-followup-20261016/raft-campaigns.json",
+    "digest": "blake3:3c2a1bea0ee939a0da658f64a993342a2d31e869efd3e2f66ea3bb956b2cebfc",
+    "bytes": 9225
+  },
+  "initial_projection": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/runtime23-inputs.json",
+    "digest": "blake3:fce47a57bbb1d77fe0524555cd81da61f2af8c4ec5d57138fec10dbaa986b81d",
+    "bytes": 4264
+  },
+  "profile_projection_correction": "Reuse the existing closure profile binding, including bitmap coverage at GPA 917504. The first throwaway projection inherited obsolete blind-mode metadata; actual commands/checkpoints always used bitmap coverage. No runtime command, bound, criterion or Rust record was changed or rerun for this correction."
+}

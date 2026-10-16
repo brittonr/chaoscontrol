@@ -1,0 +1,72 @@
+[
+  {
+    "description": "A retained ChaosControl schema-v2 snapshot parent reference; canonicalization only, not a replay or artifact-availability claim.",
+    "expected_hash": "1272c72c1b2c76e5ce1fc255b40d455a953031d382c73139e1d7d9ea55e431f8",
+    "id": "raft-parent-reference",
+    "value": {
+      "replay_parent_depth": 1,
+      "replay_parent_snapshot_ref": {
+        "codec": "simulation-snapshot-cbor-zstd-v2",
+        "digest": "sha256:e092ddba0dbec515a03090455c65538f681cf147b4e7b5052cad14ffa9423991",
+        "path": "snapshots/e092ddba0dbec515a03090455c65538f681cf147b4e7b5052cad14ffa9423991.snapshot.bin",
+        "schema_version": 2,
+        "store": "file-content-addressed"
+      }
+    }
+  },
+  {
+    "description": "The retained selected Raft finding's schedule exercises ordered faults, a negative clock delta, and an absent label.",
+    "expected_hash": "694826271c5eeb1a0cdd4bd880baa23c23f4de3cb028e51e9d631ff717f407e6",
+    "id": "raft-clock-jump-schedule",
+    "value": {
+      "faults": [
+        {
+          "fault": {
+            "ClockJump": {
+              "delta_ns": -57235731,
+              "target": 1
+            }
+          },
+          "label": null,
+          "time_ns": 879110718
+        }
+      ]
+    }
+  },
+  {
+    "description": "Observed host-watchdog recovery facts preserve the distinction between operational interruption and guest-bug evidence.",
+    "expected_hash": "6ded9612cf97427e25cf5a6ee750f6af328303162cf339b5bb239e59cae1a06e",
+    "id": "operational-watchdog-classification",
+    "value": {
+      "classification": "operational-host-watchdog-timeout",
+      "guest_bug": false,
+      "immediate_incremental_recapture": {
+        "dirty_pages": 3605,
+        "memory_equal": true
+      },
+      "replacement_created": true,
+      "restored_parent_memory_equal": true,
+      "schema": "chaoscontrol.watchdog-recovery-event.v1",
+      "timer_signal_code": "SI_TIMER",
+      "watchdog_observed": true
+    }
+  },
+  {
+    "description": "Consumer-owned reviewed control/planted campaign bounds, optional disk, and command-line selection; not a campaign success claim.",
+    "expected_hash": "c04f0af824dec697b151c386590139309697f0f1c296df553247fdeac4ad50cf",
+    "id": "bounded-raft-campaign-input",
+    "value": {
+      "disk": null,
+      "guest_cmdlines": [
+        "raft_bug=none",
+        "raft_bug=fig8_commit"
+      ],
+      "max_frontier": 50,
+      "max_rounds": 10,
+      "owner": "chaoscontrol-vmm",
+      "schema": "chaoscontrol.production-lineage-campaign-inputs.v1",
+      "timeout_seconds": 600,
+      "workers": 1
+    }
+  }
+]

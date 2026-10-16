@@ -55,7 +55,7 @@ timeout "$RUN_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" run \
   --mode "$EXPLORATION_MODE" \
   --bootstrap-budget "$BOOTSTRAP_BUDGET" \
   --memory-mb "$MEMORY_MIB" \
-  --extra-cmdline "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=$PROBE_FAIL_AFTER" \
+  --extra-cmdline "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=$PROBE_FAIL_AFTER clocksource=jiffies notsc" \
   >"$run_log" 2>&1
 run_rc=$?
 set -e
@@ -104,7 +104,7 @@ timeout "$REPRO_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" reproduce \
   --vms "$VM_COUNT" \
   --bootstrap-budget "$BOOTSTRAP_BUDGET" \
   --memory-mb "$MEMORY_MIB" \
-  --extra-cmdline "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=$PROBE_FAIL_AFTER" \
+  --extra-cmdline "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=$PROBE_FAIL_AFTER clocksource=jiffies notsc" \
   --verdict-output "$verdict_path" \
   >"$reproduce_log" 2>&1
 reproduce_rc=$?

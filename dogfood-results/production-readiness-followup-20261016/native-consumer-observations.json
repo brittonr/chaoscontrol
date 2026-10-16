@@ -1,0 +1,664 @@
+{
+  "schema": "chaoscontrol.native-consumer-followup-observations.v1",
+  "owner": "chaoscontrol-vmm",
+  "correction_attempt": 22,
+  "outcome": "consumer-preserves-freshness-passed-overall-native-readiness-blocked",
+  "commands": {
+    "followup-corpus-stale-preview": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+        "preserves-corpus",
+        "update",
+        "--path",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-consumer-corpus-draft.json"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn preserves-corpus update --path /tmp/chaoscontrol-production-readiness-closure-20261015/followup-consumer-corpus-draft.json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T14:49:05.596170+00:00",
+      "finished": "2026-10-16T14:49:05.611840+00:00",
+      "elapsed_seconds": 0.01566967400140129,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-stale-preview/stdout.log",
+          "digest": "blake3:6eee9cd3fb0b4fef4c878a5d5ab9eaa169909dde0faf92aced5c12fc0e823296",
+          "bytes": 1467
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-stale-preview/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "followup-corpus-reviewed-update": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+        "preserves-corpus",
+        "update",
+        "--path",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-consumer-corpus-draft.json",
+        "--execute"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn preserves-corpus update --path /tmp/chaoscontrol-production-readiness-closure-20261015/followup-consumer-corpus-draft.json --execute",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T14:49:17.615113+00:00",
+      "finished": "2026-10-16T14:49:17.618654+00:00",
+      "elapsed_seconds": 0.003540456003975123,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-reviewed-update/stdout.log",
+          "digest": "blake3:3bd3f2846ded8d36b7180dd834138bc462c443f42635e4f3fc245969c94c3e72",
+          "bytes": 1464
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-reviewed-update/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "followup-corpus-export": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "--output",
+        "fixtures/preserves-canonicalization/corpus.json",
+        "fixtures/preserves-canonicalization/corpus.ncl"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel export --format json --output fixtures/preserves-canonicalization/corpus.json fixtures/preserves-canonicalization/corpus.ncl",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T14:49:55.249920+00:00",
+      "finished": "2026-10-16T14:49:55.281741+00:00",
+      "elapsed_seconds": 0.03182705301151145,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-export/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-export/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "followup-corpus-explain": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+        "preserves-corpus",
+        "explain",
+        "--path",
+        "fixtures/preserves-canonicalization/corpus.json"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn preserves-corpus explain --path fixtures/preserves-canonicalization/corpus.json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T14:50:06.111543+00:00",
+      "finished": "2026-10-16T14:50:06.119289+00:00",
+      "elapsed_seconds": 0.0077439570013666525,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-explain/stdout.log",
+          "digest": "blake3:9bb253ec8a5740d05cdd39658de997c2cf857ff49af9dd6f7fb73bd007081f8b",
+          "bytes": 1918
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-explain/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "followup-corpus-freshness": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+        "preserves-corpus",
+        "update",
+        "--path",
+        "fixtures/preserves-canonicalization/corpus.json"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn preserves-corpus update --path fixtures/preserves-canonicalization/corpus.json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T14:50:06.134985+00:00",
+      "finished": "2026-10-16T14:50:06.142671+00:00",
+      "elapsed_seconds": 0.007685536998906173,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-freshness/stdout.log",
+          "digest": "blake3:2809474bcd89f7b1ed1a0aee2c5385dbfb26d03b393d40e16ebe7a51b0a3bad9",
+          "bytes": 1426
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-freshness/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "followup-corpus-native-readiness": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+        "release-readiness",
+        "--root",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "--policy",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn release-readiness --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --policy /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T14:50:31.681170+00:00",
+      "finished": "2026-10-16T14:50:31.744871+00:00",
+      "elapsed_seconds": 0.06370778699056245,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-native-readiness/stdout.log",
+          "digest": "blake3:278ce7a9504f1e4d00b20187068d986ae29e7e1d55519a209ff926d7a288e8ee",
+          "bytes": 8674
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-corpus-native-readiness/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "followup-cairn-cohort-build": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "--option",
+        "builders",
+        "",
+        "--option",
+        "secret-key-files",
+        "",
+        "--option",
+        "max-jobs",
+        "1",
+        "build",
+        "--no-update-lock-file",
+        "git+file:///tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-readonly.git?rev=d2c1dd7867350b787cfffe0e311fd20115238339#cairn",
+        "--out-link",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn-followup",
+        "--print-out-paths",
+        "-L"
+      ],
+      "display_command": "nix --option builders '' --option secret-key-files '' --option max-jobs 1 build --no-update-lock-file 'git+file:///tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-readonly.git?rev=d2c1dd7867350b787cfffe0e311fd20115238339#cairn' --out-link /tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn-followup --print-out-paths -L",
+      "timeout_seconds": 7200,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T14:47:24.421268+00:00",
+      "finished": "2026-10-16T14:50:19.216206+00:00",
+      "elapsed_seconds": 174.79494364900165,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-cairn-cohort-build/stdout.log",
+          "digest": "blake3:bab875368f192955939cddd1a4febc5cb75b197c419b1f58aeb7aea548d29895",
+          "bytes": 56
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-cairn-cohort-build/stderr.log",
+          "digest": "blake3:8732e6684f26f261defd227b47e8c47a937a096a2c265c06e3b2e97bb968785e",
+          "bytes": 31276
+        }
+      ]
+    }
+  },
+  "report_observations": {
+    "followup-corpus-stale-preview": {
+      "case_count": 4,
+      "cases": [
+        {
+          "computed_hash": "1272c72c1b2c76e5ce1fc255b40d455a953031d382c73139e1d7d9ea55e431f8",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "raft-parent-reference",
+          "index": 0,
+          "stale": true
+        },
+        {
+          "computed_hash": "694826271c5eeb1a0cdd4bd880baa23c23f4de3cb028e51e9d631ff717f407e6",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "raft-clock-jump-schedule",
+          "index": 1,
+          "stale": true
+        },
+        {
+          "computed_hash": "6ded9612cf97427e25cf5a6ee750f6af328303162cf339b5bb239e59cae1a06e",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "operational-watchdog-classification",
+          "index": 2,
+          "stale": true
+        },
+        {
+          "computed_hash": "c04f0af824dec697b151c386590139309697f0f1c296df553247fdeac4ad50cf",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "bounded-raft-campaign-input",
+          "index": 3,
+          "stale": true
+        }
+      ],
+      "command": "preserves-corpus update",
+      "execute": false,
+      "issues": [],
+      "mutated": false,
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-consumer-corpus-draft.json",
+      "receipt_hash": "ab2fd56dcb0ddda7573820bbc60feaa5fe4821faba38980d0da2826a97f250dc",
+      "stale_count": 4,
+      "valid": false
+    },
+    "followup-corpus-reviewed-update": {
+      "case_count": 4,
+      "cases": [
+        {
+          "computed_hash": "1272c72c1b2c76e5ce1fc255b40d455a953031d382c73139e1d7d9ea55e431f8",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "raft-parent-reference",
+          "index": 0,
+          "stale": true
+        },
+        {
+          "computed_hash": "694826271c5eeb1a0cdd4bd880baa23c23f4de3cb028e51e9d631ff717f407e6",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "raft-clock-jump-schedule",
+          "index": 1,
+          "stale": true
+        },
+        {
+          "computed_hash": "6ded9612cf97427e25cf5a6ee750f6af328303162cf339b5bb239e59cae1a06e",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "operational-watchdog-classification",
+          "index": 2,
+          "stale": true
+        },
+        {
+          "computed_hash": "c04f0af824dec697b151c386590139309697f0f1c296df553247fdeac4ad50cf",
+          "expected_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "id": "bounded-raft-campaign-input",
+          "index": 3,
+          "stale": true
+        }
+      ],
+      "command": "preserves-corpus update",
+      "execute": true,
+      "issues": [],
+      "mutated": true,
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-consumer-corpus-draft.json",
+      "receipt_hash": "717b0dd302e0eb9f6eef90011fe5e7611001413d3e8c2b39833f4a62a9bdbaea",
+      "stale_count": 4,
+      "valid": true
+    },
+    "followup-corpus-explain": {
+      "case_count": 4,
+      "cases": [
+        {
+          "description": "A retained ChaosControl schema-v2 snapshot parent reference; canonicalization only, not a replay or artifact-availability claim.",
+          "expected_hash_present": true,
+          "expected_hash_shape": "hex64",
+          "id": "raft-parent-reference",
+          "index": 0,
+          "value_present": true,
+          "value_redacted": true
+        },
+        {
+          "description": "The retained selected Raft finding's schedule exercises ordered faults, a negative clock delta, and an absent label.",
+          "expected_hash_present": true,
+          "expected_hash_shape": "hex64",
+          "id": "raft-clock-jump-schedule",
+          "index": 1,
+          "value_present": true,
+          "value_redacted": true
+        },
+        {
+          "description": "Observed host-watchdog recovery facts preserve the distinction between operational interruption and guest-bug evidence.",
+          "expected_hash_present": true,
+          "expected_hash_shape": "hex64",
+          "id": "operational-watchdog-classification",
+          "index": 2,
+          "value_present": true,
+          "value_redacted": true
+        },
+        {
+          "description": "Consumer-owned reviewed control/planted campaign bounds, optional disk, and command-line selection; not a campaign success claim.",
+          "expected_hash_present": true,
+          "expected_hash_shape": "hex64",
+          "id": "bounded-raft-campaign-input",
+          "index": 3,
+          "value_present": true,
+          "value_redacted": true
+        }
+      ],
+      "command": "preserves-corpus explain",
+      "issues": [],
+      "mutated": false,
+      "path": "fixtures/preserves-canonicalization/corpus.json",
+      "receipt_hash": "0f01d61f3624ea254357c5b9e910b8c3be1e3cbc8a8a8b3bb0a849f1a168cb8f",
+      "review_guidance": [
+        "Values are intentionally redacted; use preserves-corpus update for hash recomputation.",
+        "Duplicate ids, missing values, and malformed expected_hash fields require operator review."
+      ],
+      "valid": true
+    },
+    "followup-corpus-freshness": {
+      "case_count": 4,
+      "cases": [
+        {
+          "computed_hash": "1272c72c1b2c76e5ce1fc255b40d455a953031d382c73139e1d7d9ea55e431f8",
+          "expected_hash": "1272c72c1b2c76e5ce1fc255b40d455a953031d382c73139e1d7d9ea55e431f8",
+          "id": "raft-parent-reference",
+          "index": 0,
+          "stale": false
+        },
+        {
+          "computed_hash": "694826271c5eeb1a0cdd4bd880baa23c23f4de3cb028e51e9d631ff717f407e6",
+          "expected_hash": "694826271c5eeb1a0cdd4bd880baa23c23f4de3cb028e51e9d631ff717f407e6",
+          "id": "raft-clock-jump-schedule",
+          "index": 1,
+          "stale": false
+        },
+        {
+          "computed_hash": "6ded9612cf97427e25cf5a6ee750f6af328303162cf339b5bb239e59cae1a06e",
+          "expected_hash": "6ded9612cf97427e25cf5a6ee750f6af328303162cf339b5bb239e59cae1a06e",
+          "id": "operational-watchdog-classification",
+          "index": 2,
+          "stale": false
+        },
+        {
+          "computed_hash": "c04f0af824dec697b151c386590139309697f0f1c296df553247fdeac4ad50cf",
+          "expected_hash": "c04f0af824dec697b151c386590139309697f0f1c296df553247fdeac4ad50cf",
+          "id": "bounded-raft-campaign-input",
+          "index": 3,
+          "stale": false
+        }
+      ],
+      "command": "preserves-corpus update",
+      "execute": false,
+      "issues": [],
+      "mutated": false,
+      "path": "fixtures/preserves-canonicalization/corpus.json",
+      "receipt_hash": "bfb1a6cc730d35c1921b93be320f2a106a47b936023c0187572188b335e252eb",
+      "stale_count": 0,
+      "valid": true
+    },
+    "followup-corpus-native-readiness": {
+      "authenticated_release_gate": {
+        "boundary": "Authenticated readiness proves measured-byte linkage, configured producer authorization, and lifecycle-policy conformance only; it does not prove source correctness, verifier soundness, build correctness, semantic equivalence, runtime authority, or universal release fitness",
+        "issues": [],
+        "passed": true,
+        "required": false
+      },
+      "cairn_validation_hash": "2c0460783a6a5fc9b9a497683d9f7997dffaeb3f0733d970988cb4d5a6ca54a9",
+      "checks": [
+        {
+          "name": "cairn_validate",
+          "passed": true,
+          "receipt_hash": "2c0460783a6a5fc9b9a497683d9f7997dffaeb3f0733d970988cb4d5a6ca54a9",
+          "source": "cairn validate --root <root>"
+        },
+        {
+          "name": "traceability_coverage",
+          "passed": false,
+          "receipt_hash": "ac5ed3b6493ea3be854aade0c29eb79ef93a7434ea45acd42dd65fe88582df9d",
+          "source": "cairn traceability coverage --root <root>"
+        },
+        {
+          "issue": "No such file or directory (os error 2)",
+          "name": "mcp_agent_smoke",
+          "passed": false,
+          "source": "cairn agent-receipt smoke-mcp --root <root>"
+        },
+        {
+          "name": "determinism_coverage_audit",
+          "passed": true,
+          "receipt_hash": "cf1727f1b6a09ddfb274f2e71d455db36d88349ed9419c4aa9e7adb60ca62d03",
+          "source": "cairn determinism coverage-audit --root <root>"
+        },
+        {
+          "name": "release_evidence_index_freshness",
+          "passed": true,
+          "receipt_hash": "52878cd62bf8458a68c3ec89dd1497977de491d9a1c075e5e3a69e24fc489d94",
+          "skipped": true,
+          "source": "cairn release-evidence check-index --root <root> --index docs/release-evidence-current-head.md"
+        },
+        {
+          "name": "preserves_corpus_freshness",
+          "passed": true,
+          "receipt_hash": "411a3ded3338ab960eca204714f2ea4a13ad56896055a25a8c3dfd7a7fc1086b",
+          "source": "cairn preserves-corpus update --path fixtures/preserves-canonicalization/corpus.json"
+        },
+        {
+          "name": "semantic_review_ledger",
+          "passed": true,
+          "receipt_hash": "257a82dfa9cca553c40dcfc39e00c22b27e66debf2d36ca4eccf688c9e0f80bf",
+          "skipped": true,
+          "source": "cairn release-readiness --root <root> --review-ledger <review-ledger.json>"
+        },
+        {
+          "disposition": "absent",
+          "name": "stack_provenance",
+          "passed": true,
+          "receipt_hash": "eecb0fe04069e8e597684fe29014da551f9bf2d5d9b3ae789d653703755f7caa",
+          "skipped": true,
+          "source": "cairn release-readiness --root <root> --stack-provenance <valence-receipt.json> --stack-provenance-graph <graph-summary.json>"
+        },
+        {
+          "disposition": "absent",
+          "name": "function_address",
+          "passed": true,
+          "receipt_hash": "351e24f284980bdd3a25a78b4ced95b67becc3bb9214da2115713a98edd82bef",
+          "skipped": true,
+          "source": "cairn release-readiness --root <root> --function-address-valence <valence-receipt.json> --function-address-mantle <mantle-binding.json> --function-address-kamacite <kamacite-receipt.json> --function-address-graph <graph-summary.json>"
+        },
+        {
+          "name": "stack-provenance_authentication",
+          "passed": true,
+          "skipped": true,
+          "source": "authentication manifest not supplied"
+        },
+        {
+          "name": "function-address_authentication",
+          "passed": true,
+          "skipped": true,
+          "source": "authentication manifest not supplied"
+        },
+        {
+          "name": "authenticated_evidence_release_profile",
+          "passed": true,
+          "required": false,
+          "source": "cairn authenticated evidence policy"
+        },
+        {
+          "disposition": "disabled",
+          "name": "workspace_contract_matrix",
+          "passed": true,
+          "receipt_hash": "c54edfa6882b1bcc2a324dacb362b73251844af7a934b580a3c755bceb99b81b",
+          "skipped": true,
+          "source": "cairn release-readiness --root <root> --workspace-contract-matrix-receipt <receipt.json>"
+        },
+        {
+          "evidence_hash": "216802afc678ef77798bb0a0746f479f13ba98d3aaf48619f1a48daf754c7401",
+          "name": "repository_gate_policy_listed",
+          "passed": true,
+          "required_external_commands": [
+            "cargo fmt --check",
+            "cargo test --workspace",
+            "cargo clippy --workspace --all-targets -- -D warnings",
+            "nix build .#checks.x86_64-linux.slotcar --no-link -L",
+            "nix flake check path:$PWD -L"
+          ],
+          "source": "maintained local policy"
+        }
+      ],
+      "command": "release-readiness",
+      "coverage_audit_receipt_hash": "cf1727f1b6a09ddfb274f2e71d455db36d88349ed9419c4aa9e7adb60ca62d03",
+      "coverage_audit_valid": true,
+      "cross_repo_dependencies": [],
+      "cross_repo_evidence_issues": [],
+      "determinism_replay": {
+        "command": "determinism replay --root <root>",
+        "included": false,
+        "reason": "workspace replay may copy fixtures and is an explicit operator/CI preflight",
+        "required": true
+      },
+      "function_address": {
+        "boundary": "Cairn consumed Valence, Mantle, and Kamacite function-address evidence for lifecycle/release policy conformance only; it did not prove Rust semantic correctness, compiler correctness, whole-program safety, verifier soundness, or release eligibility",
+        "canonical_preserves_receipt_hash": null,
+        "claim_scope": null,
+        "disposition": "absent",
+        "evidence_chain_hash": null,
+        "graph_summary": null,
+        "issues": [],
+        "json_projection_authority": null,
+        "kamacite_receipt_hash": null,
+        "mantle_binding_hash": null,
+        "mode": "optional",
+        "name": "function_address_evidence",
+        "passed": true,
+        "required": false,
+        "skipped": true,
+        "valence_receipt_hash": null
+      },
+      "function_address_authentication": {
+        "evidence_kind": "function-address",
+        "passed": true,
+        "skipped": true
+      },
+      "function_address_hash": "351e24f284980bdd3a25a78b4ced95b67becc3bb9214da2115713a98edd82bef",
+      "mcp": {
+        "destructive": false,
+        "read_only": true
+      },
+      "mcp_smoke_receipt_hash": "",
+      "onix_release_ready": false,
+      "preserves_content_hash": "13a899406dcbf2391e19b1ee8e5eb75aa2548f05f4d59eaacfa769bd8efc7d7b",
+      "preserves_corpus_freshness_hash": "411a3ded3338ab960eca204714f2ea4a13ad56896055a25a8c3dfd7a7fc1086b",
+      "receipt_hash": "e3bf5a78902725485ce6624c5fb4cf87de2d3d71b6d11ab11aac0eddb483240d",
+      "release_evidence_index_check_hash": "52878cd62bf8458a68c3ec89dd1497977de491d9a1c075e5e3a69e24fc489d94",
+      "repository_gate_summary": {
+        "note": "The bundle records the maintained release gate policy; operators still run heavyweight repository gates outside this local receipt command. The maintained traceability gate is Cairn-owned and does not require the external Tracey binary.",
+        "policy": "maintained-local-gates",
+        "required_commands": [
+          "cargo fmt --check",
+          "cargo test --workspace",
+          "cargo clippy --workspace --all-targets -- -D warnings",
+          "nix build .#checks.x86_64-linux.slotcar --no-link -L",
+          "nix flake check path:$PWD -L"
+        ]
+      },
+      "root": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "semantic_review_ledger_hash": "257a82dfa9cca553c40dcfc39e00c22b27e66debf2d36ca4eccf688c9e0f80bf",
+      "stack_provenance": {
+        "boundary": "Cairn consumed Valence and Mantle stack provenance receipts for lifecycle/release policy conformance only; it did not prove source-code correctness, Valence verifier soundness, Mantle build correctness, or Trellis/Octet proof validity",
+        "claim_scope": null,
+        "disposition": "absent",
+        "graph_summary": null,
+        "issues": [],
+        "mode": "optional",
+        "name": "stack_provenance",
+        "passed": true,
+        "required": false,
+        "skipped": true,
+        "valence_receipt_hash": null
+      },
+      "stack_provenance_authentication": {
+        "evidence_kind": "stack-provenance",
+        "passed": true,
+        "skipped": true
+      },
+      "stack_provenance_hash": "eecb0fe04069e8e597684fe29014da551f9bf2d5d9b3ae789d653703755f7caa",
+      "traceability_coverage_hash": "ac5ed3b6493ea3be854aade0c29eb79ef93a7434ea45acd42dd65fe88582df9d",
+      "valid": false,
+      "verdict": "fail",
+      "verification_role_boundary": "verification_role_summary counts only property artifacts as verified; recorded_only and boundary artifacts prove nothing",
+      "workspace_contract_matrix": {
+        "boundary": "workspace contract matrix validation proves declared edge health only; it does not prove provider correctness, does not prove consumer behavioral correctness, does not prove verifier soundness, or does not prove release eligibility",
+        "disposition": "disabled",
+        "issues": [],
+        "mode": "disabled",
+        "passed": true,
+        "receipt_hash": null,
+        "required": false,
+        "skipped": true
+      },
+      "workspace_contract_matrix_hash": "c54edfa6882b1bcc2a324dacb362b73251844af7a934b580a3c755bceb99b81b"
+    }
+  },
+  "artifact_bindings": [
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/fixtures/preserves-canonicalization/corpus.ncl",
+      "bytes": 2709,
+      "digest": "blake3:8649d33e9c7fa89fc21280ee2bb4370a5bbaf19beb11b2d47a57adf1cc5978c4"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/fixtures/preserves-canonicalization/corpus.json",
+      "bytes": 2589,
+      "digest": "blake3:d2fb86beb0091b1bbfbf701c4ffbe5149987ac2537d3b6eda3258935e2ae5672"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-cairn-producer-boundary.tar",
+      "bytes": 133120,
+      "digest": "blake3:ee8906babac74a738816e61dfec26fad01673b0af68621d4e31296cd12de6c95"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn-followup/bin/cairn",
+      "bytes": 675,
+      "digest": "blake3:d92e3571f43f5371ffc4508f442c09489dc1f9c8e93ac9b17178221e9429be89"
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn-followup/bin/.cairn-wrapped",
+      "bytes": 21205472,
+      "digest": "blake3:2b6cc9c3c4e4f7bde3ae362c724ec4cae17ac605bd7dc4bdd37d669e9be28c2a"
+    }
+  ],
+  "producer_prerequisite": {
+    "upstream_revision": "d2c1dd7867350b787cfffe0e311fd20115238339",
+    "source": "/nix/store/daqs219app3gq6zvazgy1yw863sd3198-source",
+    "observed_by": "immutable source inspection after successful upstream-owned package build",
+    "dependency_observation": "Nonempty dependency identities are rejected before execution.",
+    "nix_payload_admission": "No native Nix payload decoder; no passing Nix completion rows even after process success.",
+    "references": [
+      "docs/check-evidence-producer.md:64-88",
+      "crates/cairn-cli/src/check_evidence/run.rs:74-79"
+    ]
+  },
+  "non_claims": [
+    "Consumer corpus values are not replay or artifact-availability evidence.",
+    "No upstream self-fixtures were copied or required check/dependency omitted.",
+    "A successful process is not an overall report verdict.",
+    "The acquired newer CLI did not migrate the existing four-file policy import.",
+    "No complete MCP completion inputs or production readiness are claimed."
+  ]
+}

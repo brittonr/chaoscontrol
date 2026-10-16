@@ -1,0 +1,62 @@
+From: ChaosControl maintainers
+Subject: [PATCH] x86: honor runtime TSC capability and preflight entropy clocks
+
+Linux 6.19 can compile out runtime TSC checks under CONFIG_X86_TSC.
+Respect the boot CPU capability bitmap in cycle and interrupt-entropy reads.
+TSC-advertising guests retain their existing rdtsc paths; guests without the
+capability use the existing zero-cycle and clocksource fallback paths.
+
+Jitter entropy currently warms a newly allocated collector before its timer
+sanity checks. A non-advancing clock can therefore hang before reporting that
+it is unsuitable. Check the timer before allocation, returning the existing
+no-timer/coarse-timer result without manufacturing entropy or changing the
+subsequent health tests for a usable timer. This patch affects only the
+repository-owned guest kernel, not the host.
+
+--- a/arch/x86/include/asm/tsc.h
++++ b/arch/x86/include/asm/tsc.h
+@@ -77,8 +77,7 @@ extern void disable_TSC(void);
+ 
+ static inline cycles_t get_cycles(void)
+ {
+-	if (!IS_ENABLED(CONFIG_X86_TSC) &&
+-	    !cpu_feature_enabled(X86_FEATURE_TSC))
++	if (!test_cpu_cap(&boot_cpu_data, X86_FEATURE_TSC))
+ 		return 0;
+ 	return rdtsc();
+ }
+
+--- a/arch/x86/include/asm/timex.h
++++ b/arch/x86/include/asm/timex.h
+@@ -8,7 +8,6 @@
+ static inline unsigned long random_get_entropy(void)
+ {
+-	if (!IS_ENABLED(CONFIG_X86_TSC) &&
+-	    !cpu_feature_enabled(X86_FEATURE_TSC))
++	if (!test_cpu_cap(&boot_cpu_data, X86_FEATURE_TSC))
+ 		return random_get_entropy_fallback();
+ 	return rdtsc();
+ }
+
+--- a/crypto/jitterentropy.c
++++ b/crypto/jitterentropy.c
+@@ -714,6 +714,19 @@ int jent_entropy_init(unsigned int osr, unsigned int flags, void *hash_state,
+ 	struct rand_data *ec = p_ec;
+ 	int i, time_backwards = 0, ret = 0, ec_free = 0;
+ 	unsigned int health_test_result;
++	__u64 probe_start = 0, probe_end = 0;
++
++	/*
++	 * Collector allocation performs entropy warmup before the sanity tests
++	 * below. Admit a working timer first so warmup cannot wait forever for
++	 * jitter from an unavailable or non-advancing clock.
++	 */
++	jent_get_nstime(&probe_start);
++	jent_get_nstime(&probe_end);
++	if (!probe_start || !probe_end)
++		return JENT_ENOTIME;
++	if (probe_start == probe_end)
++		return JENT_ECOARSETIME;
+ 
+ 	if (!ec) {
+ 		ec = jent_entropy_collector_alloc(osr, flags, hash_state);

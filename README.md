@@ -522,6 +522,8 @@ nix run .#local-multi-hypervisor-kvm-smoke
 
 That rail drives at least two replay-readiness dogfood workloads through the bounded local multi-hypervisor campaign runner, persists queue state and per-run receipts, and validates the campaign receipt. It covers local multi-hypervisor KVM proof only; it is not a hosted service, shared remote queue, cross-machine scheduler, or Antithesis parity claim.
 
+The smoke exits zero only when the bounded scheduler succeeds and every validated workload report passes. A `failed` or `partial` campaign, failed workload report, or invalid receipt is not success merely because the scheduler emitted files and exited zero. Proof children share the existing 900-second enclosing campaign budget; the selected proof's guest and per-phase bounds remain unchanged. `metadata.json` retains the scheduler's raw exit and typed command observation separately from the smoke verdict.
+
 Replay-readiness scheduler plans now use typed executable, argument, environment, input, limit, and teardown facts. Rust passes the executable and arguments directly to the pinned `bounded-exec` mechanism. Legacy command text remains diagnostic-only and cannot execute. See [`docs/typed-operator-commands.md`](docs/typed-operator-commands.md).
 
 Compiled Rust tools also own dogfood, receipt, summary, audit, scaffold, and local KVM product automation. See [`docs/rust-product-automation.md`](docs/rust-product-automation.md).

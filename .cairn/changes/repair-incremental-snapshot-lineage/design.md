@@ -84,6 +84,11 @@ Attempt 23 exercised the existing Linux `clocksource=jiffies notsc` boot policy 
 
 The active `incremental_validation` requirement needs an actual finding at replay-parent depth three or more. Keep the ten-round control and `fig8_commit` campaigns and the fail-after-one release cohort unchanged. Attempt 24 uses the existing Rust guest's snapshot probe in a separately labeled campaign, with a 6000-guest-tick threshold and the same seed, topology, faults, ticks, branches, rounds and operational bound as the reviewed ten-round profile. The completed earlier campaign reached guest tick 9742 within those bounds. Export and replay every retained safety finding whose actual parent depth is at least three; require the real replay verdict, retained parent and identity checks. A shallow finding or a missing deep finding cannot close this requirement. This tests snapshot mechanics, not a discovered Raft algorithm defect.
 
+### 13. Compose the local KVM smoke gate with actual proof verdicts
+
+The retained local multi-hypervisor report distinguishes a Raft child killed by a generic 30-second deadline from a Rust child exiting 2. Its scheduler successfully emitted a failed report; the smoke command and Nix check accepted that process/file outcome. Attempt 25 removes the incompatible generic child deadline, keeps the existing 900-second enclosing campaign bound and all per-phase proof bounds, and requires successful bounded scheduler execution plus every validated workload report passing. Both default workloads remain. `local-kvm25-observations.json` records three passing regressions and actual failed-report rejection: smoke exit 1 despite scheduler exit 0 and a valid failed campaign. The raw scheduler observation remains distinct from the smoke verdict. Default-workload KVM execution and exact clean-source release gates remain separate requirements; the ongoing earlier clean-revision run stays unchanged.
+
+
 
 ## Risks
 

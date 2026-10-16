@@ -19,7 +19,6 @@ const DEFAULT_WORKLOADS: &str = "raft,rust-workload";
 const DEFAULT_REPLAY: &str = "replay-readiness";
 const DEFAULT_SCHEDULER: &str = "replay-readiness-scheduler-receipt";
 const EXECUTABLE_MAX_BYTES: u64 = 1_073_741_824;
-const COMMAND_TIMEOUT_MS: u64 = 30_000;
 const ORCHESTRATOR_TIMEOUT_MS: u64 = 900_000;
 const STDIN_MAX_BYTES: u64 = 1_024;
 const OUTPUT_MAX_BYTES: u64 = 8_388_608;
@@ -79,7 +78,13 @@ fn run(args: Vec<String>) -> Result<i32, String> {
                     .to_string(),
             ];
             args.extend(options.dogfood_extra.clone());
-            let plan = command_plan(replay_executable.clone(), args, COMMAND_TIMEOUT_MS, vec![0]);
+            // The enclosing campaign still bounds the complete proof sequence.
+            let plan = command_plan(
+                replay_executable.clone(),
+                args,
+                ORCHESTRATOR_TIMEOUT_MS,
+                vec![0],
+            );
             let value = serde_json::to_value(&plan).map_err(|error| error.to_string())?;
             write_json(&out.join(format!("command-plan-{number:02}.json")), &value)?;
             Ok(value)
@@ -105,7 +110,16 @@ fn run(args: Vec<String>) -> Result<i32, String> {
         env::current_dir().map_err(|error| format!("current directory: {error}"))?;
     let captured = execute_typed_operator_command_captured(&scheduler_plan, &execution_root)
         .map_err(|error| error.to_string())?;
-    let exit_code = captured.observation.exit_code.unwrap_or(1);
+    let scheduler_exit_code = captured.observation.exit_code.unwrap_or(1);
+    let exit_code = if scheduler_exit_code == 0 && captured.observation.disposition == "succeeded" {
+        let bytes = fs::read(&receipt_path)
+            .map_err(|error| format!("{}: {error}", receipt_path.display()))?;
+        let receipt = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("{}: {error}", receipt_path.display()))?;
+        campaign_exit_code(&receipt)?
+    } else {
+        scheduler_exit_code.max(1)
+    };
     let stdout = String::from_utf8_lossy(&captured.stdout);
     let stderr = String::from_utf8_lossy(&captured.stderr);
     let command_output = format!("{stdout}{stderr}");
@@ -126,6 +140,8 @@ fn run(args: Vec<String>) -> Result<i32, String> {
             "started_at": started_at,
             "finished_at": now()?,
             "exit_code": exit_code,
+            "scheduler_exit_code": scheduler_exit_code,
+            "scheduler_observation": captured.observation,
             "workloads": options.workloads,
             "artifacts": {
                 "plan": plan_path,
@@ -149,6 +165,22 @@ fn run(args: Vec<String>) -> Result<i32, String> {
         );
     }
     Ok(exit_code)
+}
+
+fn campaign_exit_code(receipt: &Value) -> Result<i32, String> {
+    chaoscontrol_evidence::validate_replay_readiness_multi_hypervisor_campaign_receipt(receipt)
+        .map_err(|error| error.to_string())?;
+    let passed = receipt["status"] == "recorded"
+        && receipt["runs"].as_array().is_some_and(|runs| {
+            runs.iter().all(|run| {
+                run["status"] == "passed"
+                    && run["exit_code"] == 0
+                    && run["receipt_summary"].as_str().is_some_and(|summary| {
+                        summary.starts_with("replay-readiness status=passed ")
+                    })
+            })
+        });
+    Ok(if passed { 0 } else { 1 })
 }
 
 fn command_plan(
@@ -298,4 +330,41 @@ fn now() -> Result<String, String> {
         .map_err(|error| format!("system clock before Unix epoch: {error}"))?
         .as_secs();
     rfc3339_utc(seconds)
+}
+
+#[cfg(test)]
+mod tests {
+    use chaoscontrol_evidence::sample_replay_readiness_multi_hypervisor_campaign_receipt;
+    use serde_json::json;
+
+    use super::campaign_exit_code;
+
+    #[test]
+    fn recorded_campaign_requires_every_workload_report_to_pass() {
+        let mut receipt = sample_replay_readiness_multi_hypervisor_campaign_receipt();
+        assert_eq!(campaign_exit_code(&receipt).unwrap(), 0);
+
+        receipt["runs"][0]["receipt_summary"] =
+            json!("replay-readiness status=failed dogfood=raft:fail scope=bounded");
+        assert_eq!(campaign_exit_code(&receipt).unwrap(), 1);
+    }
+
+    #[test]
+    fn recorded_label_cannot_mask_a_failed_run() {
+        let mut receipt = sample_replay_readiness_multi_hypervisor_campaign_receipt();
+        receipt["runs"][0]["status"] = json!("failed");
+        receipt["runs"][0]["exit_code"] = json!(124);
+        receipt["runs"][0]["receipt_summary"] = json!(null);
+        assert_eq!(campaign_exit_code(&receipt).unwrap(), 1);
+
+        for status in ["partial", "failed"] {
+            receipt["status"] = json!(status);
+            assert_eq!(campaign_exit_code(&receipt).unwrap(), 1);
+        }
+    }
+
+    #[test]
+    fn incomplete_receipt_cannot_pass_as_recorded() {
+        assert!(campaign_exit_code(&json!({"status": "recorded"})).is_err());
+    }
 }

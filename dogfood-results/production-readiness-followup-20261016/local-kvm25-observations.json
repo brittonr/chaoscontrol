@@ -1,0 +1,427 @@
+{
+  "schema": "chaoscontrol.local-kvm-gate-correction-observations.v1",
+  "owner": "chaoscontrol-vmm",
+  "correction_attempt": 25,
+  "report_verdict_correction_verified": true,
+  "baseline_command_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25",
+    "command": [
+      "nix",
+      "--option",
+      "builders",
+      "",
+      "--option",
+      "secret-key-files",
+      "",
+      "develop",
+      "--no-update-lock-file",
+      "-c",
+      "env",
+      "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+      "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-p",
+      "chaoscontrol-evidence",
+      "--lib",
+      "rust_automation::local_kvm"
+    ],
+    "display_command": "nix --option builders '' --option secret-key-files '' develop --no-update-lock-file -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo test --offline --locked -p chaoscontrol-evidence --lib rust_automation::local_kvm",
+    "timeout_seconds": 1200,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T16:38:29.426093+00:00",
+    "finished": "2026-10-16T16:38:46.032690+00:00",
+    "elapsed_seconds": 16.60662136199244,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-baseline-command/stdout.log",
+        "digest": "blake3:5b43962cd055da7cb29795a3fcf9a3c4f515b72dd6ea0e715de9cd8b37476a82",
+        "bytes": 1174
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-baseline-command/stderr.log",
+        "digest": "blake3:1dea397ab69737f9c3276231f5badd7f88357e4aab2f7b7105b7eea3fc773e2d",
+        "bytes": 1796
+      }
+    ]
+  },
+  "regression_command_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25",
+    "command": [
+      "nix",
+      "--option",
+      "builders",
+      "",
+      "--option",
+      "secret-key-files",
+      "",
+      "develop",
+      "--no-update-lock-file",
+      "-c",
+      "env",
+      "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+      "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+      "cargo",
+      "test",
+      "--offline",
+      "--locked",
+      "-p",
+      "chaoscontrol-evidence",
+      "--bin",
+      "local-multi-hypervisor-kvm-smoke"
+    ],
+    "display_command": "nix --option builders '' --option secret-key-files '' develop --no-update-lock-file -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo test --offline --locked -p chaoscontrol-evidence --bin local-multi-hypervisor-kvm-smoke",
+    "timeout_seconds": 1200,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T17:04:55.747223+00:00",
+    "finished": "2026-10-16T17:05:04.930661+00:00",
+    "elapsed_seconds": 9.183455679987674,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-final-regression-command/stdout.log",
+        "digest": "blake3:c9912e34dbd8f2d9dbcfa797c128be1d3af85329c06418a65d97b1041c726042",
+        "bytes": 1192
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-final-regression-command/stderr.log",
+        "digest": "blake3:c4cfc9596afe4958ada357f4658325ff22df8effd92f7cdf70bd3fe74343a5e7",
+        "bytes": 511
+      }
+    ]
+  },
+  "regression_cases": [
+    "recorded_campaign_requires_every_workload_report_to_pass",
+    "recorded_label_cannot_mask_a_failed_run",
+    "incomplete_receipt_cannot_pass_as_recorded"
+  ],
+  "actual_cli_negative": {
+    "schema": "chaoscontrol.local-kvm-report-negative-observation.v1",
+    "expected_failure_observed": true,
+    "build_observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25",
+      "command": [
+        "nix",
+        "--option",
+        "builders",
+        "",
+        "--option",
+        "secret-key-files",
+        "",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "env",
+        "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+        "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+        "cargo",
+        "build",
+        "--release",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-evidence",
+        "--bin",
+        "local-multi-hypervisor-kvm-smoke",
+        "--bin",
+        "replay-readiness-scheduler-receipt"
+      ],
+      "display_command": "nix --option builders '' --option secret-key-files '' develop --no-update-lock-file -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo build --release --offline --locked -p chaoscontrol-evidence --bin local-multi-hypervisor-kvm-smoke --bin replay-readiness-scheduler-receipt",
+      "timeout_seconds": 1200,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T17:10:07.982468+00:00",
+      "finished": "2026-10-16T17:10:09.248997+00:00",
+      "elapsed_seconds": 1.2665345919958781,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-final-cli-build-command/stdout.log",
+          "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+          "bytes": 882
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-final-cli-build-command/stderr.log",
+          "digest": "blake3:eb77e642b4539900be71e0bf905e37f5f8dabb22899e7f69a49bf0d4bddbcf66",
+          "bytes": 213
+        }
+      ]
+    },
+    "command_observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/local-multi-hypervisor-kvm-smoke-961e2e3f0780810554f477952a0914f40c6f9938f9416ce9f1021ab89a7a7b09",
+        "--replay-readiness",
+        "/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin/env",
+        "--scheduler-receipt",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/replay-readiness-scheduler-receipt-f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c",
+        "--out",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/local-multi-hypervisor-kvm-smoke-961e2e3f0780810554f477952a0914f40c6f9938f9416ce9f1021ab89a7a7b09 --replay-readiness /nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin/env --scheduler-receipt /tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/replay-readiness-scheduler-receipt-f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c --out /tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T17:15:11.173525+00:00",
+      "finished": "2026-10-16T17:15:11.237286+00:00",
+      "elapsed_seconds": 0.06376465500216,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected-command/stdout.log",
+          "digest": "blake3:5f5b07448807a5c067f7212846c078fe222d27f2ed8623b4c26e9ea9a103df50",
+          "bytes": 380
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected-command/stderr.log",
+          "digest": "blake3:b86faeda5854a13fb91a7935e195a76d2eeb759a5dba9dbb8c36dccc19853ee7",
+          "bytes": 146
+        }
+      ]
+    },
+    "bindings": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25/crates/chaoscontrol-evidence/src/bin/local-multi-hypervisor-kvm-smoke.rs",
+        "digest": "blake3:17be15fd2e40997c87687427b9abb3c91d8e7bd32b91a356c685f6bcf4b12134",
+        "bytes": 13646
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/local-multi-hypervisor-kvm-smoke-961e2e3f0780810554f477952a0914f40c6f9938f9416ce9f1021ab89a7a7b09",
+        "digest": "blake3:961e2e3f0780810554f477952a0914f40c6f9938f9416ce9f1021ab89a7a7b09",
+        "bytes": 1506472
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/replay-readiness-scheduler-receipt-f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c",
+        "digest": "blake3:f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c",
+        "bytes": 2137928
+      }
+    ],
+    "campaign_status": "failed",
+    "metadata": {
+      "artifacts": {
+        "plan": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/campaign-plan.json",
+        "queue_state": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/campaign-state.json",
+        "receipt": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/campaign-receipt.json",
+        "summary": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/summary.txt"
+      },
+      "command": "local-multi-hypervisor-kvm-smoke",
+      "exit_code": 1,
+      "finished_at": "2026-10-16T17:15:11Z",
+      "scheduler_exit_code": 0,
+      "scheduler_observation": {
+        "cancellation": "not-requested",
+        "command_identity_blake3": "259118fa06764d9c82055f124632bfa3b9b4219ac971cd80c168834f16f5b2db",
+        "completion": "exited",
+        "disposition": "succeeded",
+        "executable_blake3": "f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c",
+        "exit_code": 0,
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "schema": "chaoscontrol.typed-command-observation.v1",
+        "signal": null,
+        "stderr": {
+          "observed_bytes": 0,
+          "retained_blake3": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "retained_bytes": 0,
+          "truncated": false
+        },
+        "stdout": {
+          "observed_bytes": 380,
+          "retained_blake3": "5f5b07448807a5c067f7212846c078fe222d27f2ed8623b4c26e9ea9a103df50",
+          "retained_bytes": 380,
+          "truncated": false
+        },
+        "teardown": "completed"
+      },
+      "schema_version": 1,
+      "scope": "bounded local KVM multi-hypervisor campaign smoke only; not a hosted service, not a shared remote queue, not cross-machine scheduling, not fleet-scale throughput",
+      "started_at": "2026-10-16T17:15:11Z",
+      "workloads": [
+        "raft",
+        "rust-workload"
+      ]
+    },
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/campaign-receipt.json",
+        "digest": "blake3:76d2419b155af4492fe8e7ea23fc6b1194b97ffd3c29005cfd93165cd2ffc9f5",
+        "bytes": 13128
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/metadata.json",
+        "digest": "blake3:d68722badc195d3b416194cdf82533396dd9399f7b784bfdcbd1e1647d8215f8",
+        "bytes": 1889
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/campaign-plan.json",
+        "digest": "blake3:62cab7a4975595dc77481d96ad585afcc48bdbbf21e2ce5e5e9e0a11b057cc40",
+        "bytes": 5053
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/campaign-state.json",
+        "digest": "blake3:870a36c71a65f4c85332ccd9b290451cbb9b74b6da40d4e3e23d8caeacd8d9cd",
+        "bytes": 828
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-corrected/summary.txt",
+        "digest": "blake3:9c43dffba0367778ebe9aefde1785dedb85dba550fd32b3468dce58d0f4d3d1f",
+        "bytes": 1316
+      }
+    ],
+    "initial_runner_error": {
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25",
+        "command": [
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/local-multi-hypervisor-kvm-smoke-961e2e3f0780810554f477952a0914f40c6f9938f9416ce9f1021ab89a7a7b09",
+          "--replay-readiness",
+          "/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin/env",
+          "--scheduler",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/replay-readiness-scheduler-receipt-f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c",
+          "--out",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative"
+        ],
+        "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/local-multi-hypervisor-kvm-smoke-961e2e3f0780810554f477952a0914f40c6f9938f9416ce9f1021ab89a7a7b09 --replay-readiness /nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin/env --scheduler /tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/replay-readiness-scheduler-receipt-f7d2f0631c973f0c6e6ea4db7c58e0091c5debded83e1e640d1381a077111a4c --out /tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative",
+        "timeout_seconds": 120,
+        "operational_timeout": false,
+        "exit_code": 2,
+        "started": "2026-10-16T17:10:09.334924+00:00",
+        "finished": "2026-10-16T17:10:09.338538+00:00",
+        "elapsed_seconds": 0.0036085460014874116,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-command/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-actual-negative-command/stderr.log",
+            "digest": "blake3:cb6c73efb4ebc4ee5c75a8a58dc3687a318b040807454e39806b9dab0eb0c541",
+            "bytes": 105
+          }
+        ]
+      },
+      "reason": "The throwaway caller used unsupported --scheduler instead of --scheduler-receipt; that invocation error remains retained. Only the failed invocation was resumed; the successful build and regressions were not repeated."
+    },
+    "non_claim": "Actual negative CLI input: a real env executable rejects the replay interface. No guest is run or classified buggy. Default-workload KVM execution and clean-source release verdicts remain separate."
+  },
+  "previous_failed_report": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25/dogfood-results/production-readiness-closure-20261015/local-multi-hypervisor.json",
+    "digest": "blake3:b2dd27c5a506a136a9892876f0feb5d9cb4fd24ee314e0c1c888e1670e3de8d4",
+    "bytes": 12924
+  },
+  "budget_policy": {
+    "enclosing_campaign_milliseconds": 900000,
+    "enclosing_campaign_bound_extended": false,
+    "previous_generic_child_milliseconds": 30000,
+    "proof_children_use_enclosing_budget": true,
+    "guest_and_proof_phase_bounds_changed": false
+  },
+  "cache_retention": {
+    "disposable_debug_cache_release": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/followup-local-kvm-25",
+      "command": [
+        "nix",
+        "--option",
+        "builders",
+        "",
+        "--option",
+        "secret-key-files",
+        "",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "clean",
+        "--offline",
+        "--locked",
+        "--profile",
+        "dev",
+        "--target-dir",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target"
+      ],
+      "display_command": "nix --option builders '' --option secret-key-files '' develop --no-update-lock-file -c cargo clean --offline --locked --profile dev --target-dir /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T17:08:12.684782+00:00",
+      "finished": "2026-10-16T17:08:15.508710+00:00",
+      "elapsed_seconds": 2.8239368840004317,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-debug-cache-release-command/stdout.log",
+          "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+          "bytes": 882
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/local-kvm25-debug-cache-release-command/stderr.log",
+          "digest": "blake3:2429ff96548ddaa9beb5e0590f608b7c2c7588e704ea878fce28c1ef4b5e78e9",
+          "bytes": 128
+        }
+      ]
+    },
+    "future_clean_gate_target": "/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-followup-20261016/cargo-target",
+    "compiler_and_profile_flags_changed": false,
+    "runtime_binary_retention": {
+      "schema": "chaoscontrol.runtime-artifact-retention.v1",
+      "identity_algorithm": "blake3",
+      "locations": [
+        {
+          "original": {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/examples/raft_lineage_proof",
+            "bytes": 8951496,
+            "digest": "blake3:efe5786fc87ead4f024c3fe4484991726c53166c60ea95dc40469e5cef69efc7"
+          },
+          "retained": {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/raft_lineage_proof-efe5786fc87ead4f024c3fe4484991726c53166c60ea95dc40469e5cef69efc7",
+            "digest": "blake3:efe5786fc87ead4f024c3fe4484991726c53166c60ea95dc40469e5cef69efc7",
+            "bytes": 8951496
+          }
+        },
+        {
+          "original": {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+            "bytes": 15474408,
+            "digest": "blake3:9dad7fc42e5bcd3f3a096dfe13eecd26b8d6253f52d72086269eb2ea5b60f1ae"
+          },
+          "retained": {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/chaoscontrol-explore-9dad7fc42e5bcd3f3a096dfe13eecd26b8d6253f52d72086269eb2ea5b60f1ae",
+            "digest": "blake3:9dad7fc42e5bcd3f3a096dfe13eecd26b8d6253f52d72086269eb2ea5b60f1ae",
+            "bytes": 15474408
+          }
+        },
+        {
+          "original": {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood",
+            "digest": "blake3:a8843b1a2c11cae440eeef46e2796b9f2d776f94dfa18bee8485011b3a2f62f0",
+            "bytes": 1540424
+          },
+          "retained": {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-runtime-binaries/accepted-snapshot-verdict-dogfood-a8843b1a2c11cae440eeef46e2796b9f2d776f94dfa18bee8485011b3a2f62f0",
+            "digest": "blake3:a8843b1a2c11cae440eeef46e2796b9f2d776f94dfa18bee8485011b3a2f62f0",
+            "bytes": 1540424
+          },
+          "scope": "Actually exercised --cmdline-template default in correction 23"
+        }
+      ],
+      "non_claim": "Content identities are preserved independently of later Cargo target-path reuse. These are local artifact locators, not new product dependencies."
+    }
+  },
+  "boundaries": [
+    "The real negative CLI returned 1 while its successful bounded scheduler returned 0 and emitted status=failed. This is process/report rejection, not guest execution or a guest finding.",
+    "Default Raft/Rust KVM smoke success and the exact clean-source release gates are separate obligations, not inferred from this negative proof.",
+    "The initial throwaway caller flag error is retained; only its failed invocation was resumed.",
+    "Historical receipts, raw logs, snapshots and retained runtime binaries are unchanged; disposable debug intermediates are not VM evidence."
+  ]
+}

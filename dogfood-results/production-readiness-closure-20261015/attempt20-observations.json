@@ -1,0 +1,569 @@
+{
+  "schema": "chaoscontrol.unadopted-kernel-correction-observations.v1",
+  "starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+  "source_boundary": "Uncommitted experimental kernel cohort; not clean-source release evidence. Both failed kernel corrections were backed out before the retained-source freeze.",
+  "attempt": 20,
+  "adopted": false,
+  "source_archive": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/unadopted-kernel-corrections.tar",
+    "digest": "blake3:253dba27cda0809035a0cb89a90250669b7e7af05b6abd9a698124b7f47a3bb9",
+    "bytes": 112640
+  },
+  "built_artifacts": {
+    "kernel": {
+      "path": "/nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux",
+      "digest": "blake3:0b6ef024e6a96dc11d192aa6a23d8f7f9254bed9d93845796dc53bdedb4eeca6",
+      "bytes": 410793320
+    },
+    "initrd": {
+      "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+      "digest": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+      "bytes": 466387
+    },
+    "runtime_proof_binary": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/examples/raft_lineage_proof",
+      "digest": "blake3:efe5786fc87ead4f024c3fe4484991726c53166c60ea95dc40469e5cef69efc7",
+      "bytes": 8951496,
+      "retained_archive": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cohort20-binaries.tar",
+        "digest": "blake3:9dfa5d4012514c3bdf5cb63529594ec8c8f944d61e1f1b851780a39b9dc5758b",
+        "bytes": 24432640,
+        "member": "examples/raft_lineage_proof"
+      }
+    },
+    "explorer_binary": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+      "digest": "blake3:9dad7fc42e5bcd3f3a096dfe13eecd26b8d6253f52d72086269eb2ea5b60f1ae",
+      "bytes": 15474408,
+      "retained_archive": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cohort20-binaries.tar",
+        "digest": "blake3:9dfa5d4012514c3bdf5cb63529594ec8c8f944d61e1f1b851780a39b9dc5758b",
+        "bytes": 24432640,
+        "member": "chaoscontrol-explore"
+      }
+    }
+  },
+  "commands": {
+    "kernel20-build": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "build",
+        ".#net-vmlinux",
+        "--out-link",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-kernel20",
+        "--print-out-paths",
+        "--no-update-lock-file",
+        "--builders",
+        "",
+        "--option",
+        "secret-key-files",
+        "",
+        "-L"
+      ],
+      "display_command": "nix build '.#net-vmlinux' --out-link /tmp/chaoscontrol-production-readiness-closure-20261015/result-kernel20 --print-out-paths --no-update-lock-file --builders '' --option secret-key-files '' -L",
+      "timeout_seconds": 10800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T02:53:57.937141+00:00",
+      "finished": "2026-10-16T04:29:07.113297+00:00",
+      "elapsed_seconds": 5709.176197793,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/kernel20-build/stdout.log",
+          "digest": "blake3:5e5777d750b12d89b3a3f7f5bbf29d9d56a004185f95ea645f38cb731485b75c",
+          "bytes": 65
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/kernel20-build/stderr.log",
+          "digest": "blake3:30d1af8b8eadb10d3fe01c15ff19cee4dd0362358f633f97ecfbe5234aa6667d",
+          "bytes": 8434855
+        }
+      ]
+    },
+    "kernel20-entropy-disassembly": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "objdump",
+        "-d",
+        "--disassemble=add_interrupt_randomness",
+        "/nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux"
+      ],
+      "display_command": "objdump -d --disassemble=add_interrupt_randomness /nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T04:35:56.526164+00:00",
+      "finished": "2026-10-16T04:35:56.690191+00:00",
+      "elapsed_seconds": 0.16403576199809322,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/kernel20-entropy-disassembly/stdout.log",
+          "digest": "blake3:d727e48796c2f45688a075a9755287cc368ac2df471b2f8ce89127111c08483e",
+          "bytes": 4458
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/kernel20-entropy-disassembly/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "profile20": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "dogfood-results/production-readiness-closure-20261015/raft-campaigns.ncl"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel export --format json dogfood-results/production-readiness-closure-20261015/raft-campaigns.ncl",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T04:33:38.262374+00:00",
+      "finished": "2026-10-16T04:33:38.277946+00:00",
+      "elapsed_seconds": 0.015575696001178585,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/profile20/stdout.log",
+          "digest": "blake3:5856528a41384a3d08466b2fec05544e536227aa6dfa2ddc8def7c583cac2ff9",
+          "bytes": 6969
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/profile20/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "watchdog-proof20-command": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/examples/raft_lineage_proof",
+        "--kernel",
+        "/nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux",
+        "--initrd",
+        "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof20"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/examples/raft_lineage_proof --kernel /nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --output /tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof20",
+      "timeout_seconds": 600,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T04:32:19.524064+00:00",
+      "finished": "2026-10-16T04:32:26.900406+00:00",
+      "elapsed_seconds": 7.37634876499942,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof20-command/stdout.log",
+          "digest": "blake3:43104a1975e424d4dea0765ca326182123f7528d004fa9491e3f586bb4ffdb52",
+          "bytes": 44879
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof20-command/stderr.log",
+          "digest": "blake3:ac3293f2bef0d5c30de1c952971d45c787e5def4131398f0e9b699665ae49f45",
+          "bytes": 39
+        }
+      ]
+    },
+    "control20-command": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "env",
+        "RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+        "run",
+        "--kernel",
+        "/nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux",
+        "--initrd",
+        "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+        "--seed",
+        "42",
+        "--vms",
+        "3",
+        "--vcpus",
+        "1",
+        "--memory-mb",
+        "128",
+        "--rounds",
+        "10",
+        "--branches",
+        "2",
+        "--ticks",
+        "500",
+        "--quantum",
+        "100",
+        "--max-frontier",
+        "50",
+        "--bootstrap-budget",
+        "10000",
+        "--mode",
+        "hybrid",
+        "--workers",
+        "1",
+        "--extra-cmdline",
+        "raft_bug=none",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/control20",
+        "--emit-metrics"
+      ],
+      "display_command": "env RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore run --kernel /nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --seed 42 --vms 3 --vcpus 1 --memory-mb 128 --rounds 10 --branches 2 --ticks 500 --quantum 100 --max-frontier 50 --bootstrap-budget 10000 --mode hybrid --workers 1 --extra-cmdline raft_bug=none --output /tmp/chaoscontrol-production-readiness-closure-20261015/control20 --emit-metrics",
+      "timeout_seconds": 600,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T04:32:26.946901+00:00",
+      "finished": "2026-10-16T04:33:12.232085+00:00",
+      "elapsed_seconds": 45.285190260998206,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control20-command/stdout.log",
+          "digest": "blake3:9eb7d0d8c378c4b7595281b6d55f07e38f0d1f37c5af285bac0c6998d63aeb25",
+          "bytes": 247155
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/control20-command/stderr.log",
+          "digest": "blake3:f3bde067c56d2a35a6913f21d0bec192483029b18e1c755bf0c5482168ab0b81",
+          "bytes": 26321
+        }
+      ]
+    },
+    "planted20-command": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "env",
+        "RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+        "run",
+        "--kernel",
+        "/nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux",
+        "--initrd",
+        "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+        "--seed",
+        "42",
+        "--vms",
+        "3",
+        "--vcpus",
+        "1",
+        "--memory-mb",
+        "128",
+        "--rounds",
+        "10",
+        "--branches",
+        "2",
+        "--ticks",
+        "500",
+        "--quantum",
+        "100",
+        "--max-frontier",
+        "50",
+        "--bootstrap-budget",
+        "10000",
+        "--mode",
+        "hybrid",
+        "--workers",
+        "1",
+        "--extra-cmdline",
+        "raft_bug=fig8_commit",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/planted20",
+        "--emit-metrics"
+      ],
+      "display_command": "env RUST_LOG=chaoscontrol_explore::explorer=debug,chaoscontrol_vmm::vm=info /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore run --kernel /nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --seed 42 --vms 3 --vcpus 1 --memory-mb 128 --rounds 10 --branches 2 --ticks 500 --quantum 100 --max-frontier 50 --bootstrap-budget 10000 --mode hybrid --workers 1 --extra-cmdline raft_bug=fig8_commit --output /tmp/chaoscontrol-production-readiness-closure-20261015/planted20 --emit-metrics",
+      "timeout_seconds": 600,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T04:33:12.282502+00:00",
+      "finished": "2026-10-16T04:35:05.439029+00:00",
+      "elapsed_seconds": 113.1565329100049,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted20-command/stdout.log",
+          "digest": "blake3:4c5a1288bad535c5717190662e607d1cda318dec8df8aed528f8e3a1ef4347da",
+          "bytes": 571099
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted20-command/stderr.log",
+          "digest": "blake3:72ef4547e6fd549b665acf0c96b766501919afa754190248ce297c01a2a79e83",
+          "bytes": 25767
+        }
+      ]
+    },
+    "planted-snapshot20-command": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood",
+        "--workload",
+        "raft",
+        "--cohort",
+        "contracts/fresh-workload-proofs/cohort.json",
+        "--evidence-prefix",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot20",
+        "--run-timeout",
+        "240",
+        "--export-timeout",
+        "300",
+        "--repro-timeout",
+        "300",
+        "--explore",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore",
+        "--kernel",
+        "/nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux",
+        "--initrd",
+        "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+        "--assertion-id",
+        "3463273124",
+        "--cmdline-template",
+        "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}",
+        "--vms",
+        "3",
+        "--rounds",
+        "3",
+        "--branches",
+        "2",
+        "--ticks",
+        "80",
+        "--memory-mb",
+        "256",
+        "--fail-after-values",
+        "1",
+        "--max-attempts",
+        "1",
+        "--start-seed",
+        "0",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot20"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/accepted-snapshot-verdict-dogfood --workload raft --cohort contracts/fresh-workload-proofs/cohort.json --evidence-prefix /tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot20 --run-timeout 240 --export-timeout 300 --repro-timeout 300 --explore /tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target/release/chaoscontrol-explore --kernel /nix/store/x8x4xw2x3r0dr5l1867rf5mzmrwq7p9l-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --assertion-id 3463273124 --cmdline-template 'raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}' --vms 3 --rounds 3 --branches 2 --ticks 80 --memory-mb 256 --fail-after-values 1 --max-attempts 1 --start-seed 0 --output /tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot20",
+      "timeout_seconds": 1200,
+      "operational_timeout": false,
+      "exit_code": 2,
+      "started": "2026-10-16T04:35:05.488519+00:00",
+      "finished": "2026-10-16T04:36:00.188053+00:00",
+      "elapsed_seconds": 54.699543747999996,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot20-command/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/planted-snapshot20-command/stderr.log",
+          "digest": "blake3:7402a2967e0fc5f01268f46494147ddf81265d6ee8759589cbab0f2ecc65077e",
+          "bytes": 204
+        }
+      ]
+    },
+    "nix-checks20": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "flake",
+        "check",
+        "--no-update-lock-file",
+        "--builders",
+        "",
+        "--option",
+        "secret-key-files",
+        "",
+        "--keep-going",
+        "-L"
+      ],
+      "display_command": "nix flake check --no-update-lock-file --builders '' --option secret-key-files '' --keep-going -L",
+      "timeout_seconds": 10800,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T02:53:57.955508+00:00",
+      "finished": "2026-10-16T04:32:18.481700+00:00",
+      "elapsed_seconds": 5900.526229434006,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/nix-checks20/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/nix-checks20/stderr.log",
+          "digest": "blake3:8fbcb02853712cac9122482fd731504e96962e2f0f04ee1f1331fd7a56650dcd",
+          "bytes": 16942858
+        }
+      ]
+    }
+  },
+  "runtime_proof_report": null,
+  "runtime_proof_absence": "No runtime-proof.json was emitted. The only retained proof output is profile.json; stderr reports HostWatchdogTimeout during Linux bootstrap.",
+  "vmm_operational_watchdog": true,
+  "outer_command_timeouts": false,
+  "control_serial_panic_detections": 32,
+  "control_serial_kernel_panic_text_observed": false,
+  "campaign_report_verdict": "Both ten-round structural completions were rejected with FatalConflict / report merge rejected: IneligibleInput; neither is accepted campaign evidence.",
+  "selected_probe_attempt": {
+    "accepted": false,
+    "attempts": [
+      {
+        "bugs": [],
+        "export_exit_status": 0,
+        "reproduce_exit_status": null,
+        "run_exit_status": 1,
+        "seed": 0,
+        "snapshot_probe_fail_after": 1,
+        "verdict": null,
+        "workload": "raft"
+      }
+    ]
+  },
+  "nix_local_campaign": {
+    "artifact": {
+      "path": "/nix/store/zx25x025xi692qa4n5rayfcra4lwy8xf-local-multi-hypervisor-kvm-smoke-check/campaign-receipt.json",
+      "digest": "blake3:5b16c9c84f2da002bfc7c2b38cbb7c6643c02244182ccc7d7877fd3bf814351f",
+      "bytes": 12924
+    },
+    "status": "failed",
+    "summary": null
+  },
+  "pre_freeze_cargo_observations": {
+    "workspace-tests18": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "develop",
+        "-c",
+        "env",
+        "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+        "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+        "cargo",
+        "--config",
+        "/nix/store/xfyd5ainw7nh3nfd5cbg4b9v66xnpyjq-vendor-cargo-deps/config.toml",
+        "test",
+        "--offline",
+        "--locked",
+        "--workspace",
+        "--all-targets"
+      ],
+      "display_command": "nix develop -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo --config /nix/store/xfyd5ainw7nh3nfd5cbg4b9v66xnpyjq-vendor-cargo-deps/config.toml test --offline --locked --workspace --all-targets",
+      "timeout_seconds": 3600,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T01:42:58.305064+00:00",
+      "finished": "2026-10-16T01:46:11.442662+00:00",
+      "elapsed_seconds": 193.13760248199833,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/workspace-tests18/stdout.log",
+          "digest": "blake3:d010e9cba7a460d3b3c65be36069fd3828c9219f8c7427186b07f94cb2f5e5a4",
+          "bytes": 4364072
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/workspace-tests18/stderr.log",
+          "digest": "blake3:c254d4fb9b2ebbff972c26c460180e4e505ddfeafe49d4d2877c81c159ec311d",
+          "bytes": 38833
+        }
+      ]
+    },
+    "clippy19": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "develop",
+        "-c",
+        "env",
+        "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+        "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+        "cargo",
+        "clippy",
+        "--offline",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "display_command": "nix develop -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo clippy --offline --locked --workspace --all-targets -- -D warnings",
+      "timeout_seconds": 3600,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T01:47:21.142730+00:00",
+      "finished": "2026-10-16T01:47:45.574696+00:00",
+      "elapsed_seconds": 24.431969267003296,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clippy19/stdout.log",
+          "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+          "bytes": 882
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clippy19/stderr.log",
+          "digest": "blake3:9deaab5664ca819582cf5838a2b956713878a00b5d6ae2cf7933871d40cca0ca",
+          "bytes": 10299
+        }
+      ]
+    },
+    "formatting18": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "develop",
+        "-c",
+        "env",
+        "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+        "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+        "cargo",
+        "--config",
+        "/nix/store/xfyd5ainw7nh3nfd5cbg4b9v66xnpyjq-vendor-cargo-deps/config.toml",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "display_command": "nix develop -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo --config /nix/store/xfyd5ainw7nh3nfd5cbg4b9v66xnpyjq-vendor-cargo-deps/config.toml fmt --all -- --check",
+      "timeout_seconds": 3600,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T01:46:18.769014+00:00",
+      "finished": "2026-10-16T01:46:26.298456+00:00",
+      "elapsed_seconds": 7.5294502890028525,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/formatting18/stdout.log",
+          "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+          "bytes": 882
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/formatting18/stderr.log",
+          "digest": "blake3:956d6649913be5ee3b0373e2f4945dc3e95b8d391e1be29c73d0451ba33132f1",
+          "bytes": 155
+        }
+      ]
+    }
+  },
+  "non_claims": [
+    "An outer timeout flag of false does not turn the VMM watchdog into a guest bug.",
+    "A serial panic detection without an admitted assertion/bug identity is not a retained safety finding.",
+    "No failed report is replaced by command success, structural depth, a partial directory, or an earlier cohort."
+  ]
+}

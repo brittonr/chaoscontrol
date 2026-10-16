@@ -1145,7 +1145,11 @@ impl VmSnapshot {
         }
 
         // Restore in-kernel devices BEFORE vCPU state
-        vm.set_pit2(&self.pit).context(SetPitSnafu)?;
+        // Older snapshots may lack the host-timer inhibit flag. Set it in the
+        // restored KVM state without changing the serialized snapshot identity.
+        let mut pit = self.pit;
+        pit.flags |= kvm_bindings::KVM_PIT_FLAGS_HPET_LEGACY;
+        vm.set_pit2(&pit).context(SetPitSnafu)?;
         vm.set_clock(&self.clock).context(SetClockSnafu)?;
         vm.set_irqchip(&self.pic_master).context(SetIrqchipSnafu)?;
         vm.set_irqchip(&self.pic_slave).context(SetIrqchipSnafu)?;

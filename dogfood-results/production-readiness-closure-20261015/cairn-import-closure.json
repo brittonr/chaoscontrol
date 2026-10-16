@@ -1,0 +1,54 @@
+{
+  "schema": "chaoscontrol.cairn-import-closure-proof.v1",
+  "upstream_revision": "b6759012db4dab0158936e995b7bad39ac10465b",
+  "command": [
+    "b3sum",
+    "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/contracts.ncl",
+    "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/upstream-default.ncl",
+    "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/lifecycle-store-contracts.ncl",
+    "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/nominal-evidence-identities.ncl",
+    "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/cairn-policy/contracts.ncl",
+    "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/cairn-policy/default.ncl",
+    "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/cairn-policy/lifecycle-store-contracts.ncl",
+    "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/cairn-policy/nominal-evidence-identities.ncl"
+  ],
+  "files": [
+    {
+      "consumer_path": "cairn-policy/contracts.ncl",
+      "upstream_path": "cairn-policy/contracts.ncl",
+      "consumer_blake3": "blake3:9cac31a916b9836881173ae9606b19450f179fe25e2a3cbf6193829841609d60",
+      "upstream_blake3": "blake3:845a0f4038dfc198bc0a4aa72672b570f9d8f0e64ae821aec6c719736f53188f",
+      "byte_identical": false,
+      "comment_only_adaptation": true
+    },
+    {
+      "consumer_path": "cairn-policy/upstream-default.ncl",
+      "upstream_path": "cairn-policy/default.ncl",
+      "consumer_blake3": "blake3:97c79749114d24ce963049f525ffe4e783f094a90e222fcc7fdd2487a5c8d5d8",
+      "upstream_blake3": "blake3:97c79749114d24ce963049f525ffe4e783f094a90e222fcc7fdd2487a5c8d5d8",
+      "byte_identical": true,
+      "comment_only_adaptation": false
+    },
+    {
+      "consumer_path": "cairn-policy/lifecycle-store-contracts.ncl",
+      "upstream_path": "cairn-policy/lifecycle-store-contracts.ncl",
+      "consumer_blake3": "blake3:cfa0842a93d34d87db473c5f3a26b2e6b8285bf4d0fffc6bc9ffc54c77f32b99",
+      "upstream_blake3": "blake3:cfa0842a93d34d87db473c5f3a26b2e6b8285bf4d0fffc6bc9ffc54c77f32b99",
+      "byte_identical": true,
+      "comment_only_adaptation": false
+    },
+    {
+      "consumer_path": "cairn-policy/nominal-evidence-identities.ncl",
+      "upstream_path": "cairn-policy/nominal-evidence-identities.ncl",
+      "consumer_blake3": "blake3:6e4798683072695e0c06feb2ceac31d9aa9fa74f6821c048c875dfe5b4c92b6c",
+      "upstream_blake3": "blake3:6e4798683072695e0c06feb2ceac31d9aa9fa74f6821c048c875dfe5b4c92b6c",
+      "byte_identical": true,
+      "comment_only_adaptation": false
+    }
+  ],
+  "normalized_contract_hash": "blake3:9cac31a916b9836881173ae9606b19450f179fe25e2a3cbf6193829841609d60",
+  "normalization": "Remove exactly one whole comment line: # r[impl cairn.lifecycle_directory.hidden_default]",
+  "normalized_contract_matches_consumer": true,
+  "original_reassembled_source_matches_binary_hash": true,
+  "non_claim": "Comment-only byte equivalence proves import identity, not policy correctness or consumer applicability."
+}

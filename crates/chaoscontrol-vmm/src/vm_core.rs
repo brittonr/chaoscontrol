@@ -158,7 +158,7 @@ fn validate_dirty_bitmap(bitmap: &[u64], page_count: usize) -> Result<(), Increm
     Ok(())
 }
 
-// r[impl chaoscontrol.deterministic_snapshots.incremental_core]
+// r[impl chaoscontrol.deterministic_snapshots.boundary]
 pub(crate) fn merge_dirty_pages(
     current: &mut Vec<u64>,
     incoming: &[u64],
@@ -197,7 +197,7 @@ pub(crate) fn overlay_page_bitmap(
 }
 
 /// Reuse the retained and KVM-provided bitmaps; no per-page allocation.
-// r[impl chaoscontrol.deterministic_snapshots.incremental_core]
+// r[impl chaoscontrol.deterministic_snapshots.boundary]
 pub(crate) fn plan_incremental_restore(
     current: Vec<u64>,
     mut dirty: Vec<u64>,
@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(sanitize_serial_for_terminal(raw), b"ok.[2J.");
     }
 
-    // r[verify chaoscontrol.deterministic_snapshots.incremental_core]
+    // r[verify chaoscontrol.deterministic_snapshots.validation.core]
     #[test]
     fn incremental_plan_reverts_inherited_and_guest_pages_then_tracks_only_target() {
         let plan =

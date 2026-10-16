@@ -96,7 +96,6 @@ let SteelProfileMode = std.contract.from_predicate (fun value =>
   std.is_string value && (value == "disabled" || value == "comparison" || value == "opt_in" || value == "selected_default" || value == "broad_default")
 ) in
 
-# r[impl cairn.lifecycle_directory.hidden_default]
 let SafeRelativePath = std.contract.from_predicate (fun value =>
   std.is_string value
   && std.string.length value > 0

@@ -14,3 +14,14 @@
 
 The ten-round control and planted campaigns (`cc-production-raft-control-ten-round` and `cc-production-raft-planted-ten-round`) each hit the unchanged 600-second operational bound. Both emitted metrics through round three; their last valid checkpoints retain two rounds and three branches, with eight depth-one sometimes records and no retained safety finding. `campaign-observations.json` retains the exact commands, profiles, checkpoint hashes, records, and limitations. These partial runs do not close the depth-four control or deep-finding replay requirements; no lifecycle sync, archive, or promotion was performed.
 
+## Closure evidence and unchanged task state
+
+`dogfood-results/production-readiness-closure-20261015/attempts.ncl` conservatively continues the seven historical attempts through attempt 20. No further corrective implementation is authorized by that ledger. Unchanged-source release observations are separate from corrective attempts.
+
+The last complete three-controller proof observed the actual `SI_TIMER` watchdog, poisoned-controller rejection, production replacement, exact retained-parent memory, and immediate incremental recapture. Traces, all admitted assertion outcomes, attributed fault ledgers and rounds matched, but final guest memory still differed in Linux's interrupt entropy pool. `runtime-observations.json` preserves that failed verdict and the complete admitted outcomes once. The watchdog/continuation task remains unchecked.
+
+`campaign-observations.json` preserves successful early ten-round control/planted runs through depth nine, the later accepted planted depth-eight run with overlay measurements, rejected paired controls, and the unaccepted final kernel cohort. The separate depth-one planted snapshot probe reproduced on the unpatched cohort. No deep safety finding was retained in the listed fresh campaigns; no deep replay success is inferred. The paired campaign/overlay requirement remains unchecked.
+
+The two guest-kernel corrections were not adopted: the first retained an unconditional entropy TSC read; the second stopped during bootstrap with operational `HostWatchdogTimeout`. Their sources and built artifacts remain locally retained, and their activation was backed out within failed attempt 20. Workspace tests, denied-warning Clippy and formatting passed on the retained Rust sources, but the recorded Nix snapshot smoke and native readiness verdicts did not. Fresh clean-source release observations remain a separate gate. No lifecycle sync, archive or promotion is supported by these partial observations.
+
+

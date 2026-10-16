@@ -1,0 +1,1103 @@
+{
+  "schema": "chaoscontrol.irq-entropy-diagnosis.v1",
+  "runtime_proof": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/runtime-proof.json",
+    "digest": "blake3:18d21df6f48d83657a6fd3a64bd12a5bb5f876482bbd257ced84d4964febaeaa",
+    "bytes": 4463141
+  },
+  "kernel": {
+    "path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+    "digest": "blake3:b21d78e8169b34eb776d37d0f3ba15c2d0e58063423823a35a3424fca6e17fc2",
+    "bytes": 410778784
+  },
+  "kernel_version": "6.19",
+  "nm_symbols": {
+    "__per_cpu_offset": "0xffffffff829656e0",
+    "page_offset_base": "0xffffffff8295c6a8",
+    "irq_randomness": "0xffffffff83b5afc0"
+  },
+  "comparisons": [
+    {
+      "vm": 0,
+      "other": "fresh-full",
+      "command": [
+        "cmp",
+        "-l",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_0.memory.bin",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/fresh-full/vm_0.memory.bin"
+      ],
+      "exit_code": 0,
+      "per_cpu_offset_cpu0": "0xffff888083ede000",
+      "directmap_base": "0xffff888000000000",
+      "irq_randomness_virtual": "0xffff888007a38fc0",
+      "irq_randomness_physical": "0x7a38fc0",
+      "different_bytes": 32,
+      "all_differences_inside_32_byte_pool": true,
+      "differences": [
+        {
+          "offset": 128159680,
+          "long_lived": 175,
+          "other": 179
+        },
+        {
+          "offset": 128159681,
+          "long_lived": 121,
+          "other": 199
+        },
+        {
+          "offset": 128159682,
+          "long_lived": 4,
+          "other": 94
+        },
+        {
+          "offset": 128159683,
+          "long_lived": 175,
+          "other": 195
+        },
+        {
+          "offset": 128159684,
+          "long_lived": 129,
+          "other": 147
+        },
+        {
+          "offset": 128159685,
+          "long_lived": 197,
+          "other": 8
+        },
+        {
+          "offset": 128159686,
+          "long_lived": 119,
+          "other": 170
+        },
+        {
+          "offset": 128159687,
+          "long_lived": 223,
+          "other": 230
+        },
+        {
+          "offset": 128159688,
+          "long_lived": 106,
+          "other": 248
+        },
+        {
+          "offset": 128159689,
+          "long_lived": 23,
+          "other": 154
+        },
+        {
+          "offset": 128159690,
+          "long_lived": 221,
+          "other": 85
+        },
+        {
+          "offset": 128159691,
+          "long_lived": 92,
+          "other": 213
+        },
+        {
+          "offset": 128159692,
+          "long_lived": 216,
+          "other": 173
+        },
+        {
+          "offset": 128159693,
+          "long_lived": 189,
+          "other": 7
+        },
+        {
+          "offset": 128159694,
+          "long_lived": 92,
+          "other": 235
+        },
+        {
+          "offset": 128159695,
+          "long_lived": 172,
+          "other": 50
+        },
+        {
+          "offset": 128159696,
+          "long_lived": 209,
+          "other": 224
+        },
+        {
+          "offset": 128159697,
+          "long_lived": 162,
+          "other": 215
+        },
+        {
+          "offset": 128159698,
+          "long_lived": 67,
+          "other": 3
+        },
+        {
+          "offset": 128159699,
+          "long_lived": 227,
+          "other": 29
+        },
+        {
+          "offset": 128159700,
+          "long_lived": 135,
+          "other": 37
+        },
+        {
+          "offset": 128159701,
+          "long_lived": 63,
+          "other": 92
+        },
+        {
+          "offset": 128159702,
+          "long_lived": 47,
+          "other": 55
+        },
+        {
+          "offset": 128159703,
+          "long_lived": 165,
+          "other": 74
+        },
+        {
+          "offset": 128159704,
+          "long_lived": 74,
+          "other": 110
+        },
+        {
+          "offset": 128159705,
+          "long_lived": 239,
+          "other": 217
+        },
+        {
+          "offset": 128159706,
+          "long_lived": 203,
+          "other": 80
+        },
+        {
+          "offset": 128159707,
+          "long_lived": 151,
+          "other": 221
+        },
+        {
+          "offset": 128159708,
+          "long_lived": 249,
+          "other": 5
+        },
+        {
+          "offset": 128159709,
+          "long_lived": 166,
+          "other": 161
+        },
+        {
+          "offset": 128159710,
+          "long_lived": 38,
+          "other": 57
+        },
+        {
+          "offset": 128159711,
+          "long_lived": 209,
+          "other": 193
+        }
+      ]
+    },
+    {
+      "vm": 0,
+      "other": "watchdog-replacement-incremental",
+      "command": [
+        "cmp",
+        "-l",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_0.memory.bin",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/watchdog-replacement-incremental/vm_0.memory.bin"
+      ],
+      "exit_code": 0,
+      "per_cpu_offset_cpu0": "0xffff888083ede000",
+      "directmap_base": "0xffff888000000000",
+      "irq_randomness_virtual": "0xffff888007a38fc0",
+      "irq_randomness_physical": "0x7a38fc0",
+      "different_bytes": 32,
+      "all_differences_inside_32_byte_pool": true,
+      "differences": [
+        {
+          "offset": 128159680,
+          "long_lived": 175,
+          "other": 167
+        },
+        {
+          "offset": 128159681,
+          "long_lived": 121,
+          "other": 79
+        },
+        {
+          "offset": 128159682,
+          "long_lived": 4,
+          "other": 176
+        },
+        {
+          "offset": 128159683,
+          "long_lived": 175,
+          "other": 217
+        },
+        {
+          "offset": 128159684,
+          "long_lived": 129,
+          "other": 146
+        },
+        {
+          "offset": 128159685,
+          "long_lived": 197,
+          "other": 180
+        },
+        {
+          "offset": 128159686,
+          "long_lived": 119,
+          "other": 73
+        },
+        {
+          "offset": 128159687,
+          "long_lived": 223,
+          "other": 171
+        },
+        {
+          "offset": 128159688,
+          "long_lived": 106,
+          "other": 221
+        },
+        {
+          "offset": 128159689,
+          "long_lived": 23,
+          "other": 116
+        },
+        {
+          "offset": 128159690,
+          "long_lived": 221,
+          "other": 79
+        },
+        {
+          "offset": 128159691,
+          "long_lived": 92,
+          "other": 101
+        },
+        {
+          "offset": 128159692,
+          "long_lived": 216,
+          "other": 124
+        },
+        {
+          "offset": 128159693,
+          "long_lived": 189,
+          "other": 124
+        },
+        {
+          "offset": 128159694,
+          "long_lived": 92,
+          "other": 205
+        },
+        {
+          "offset": 128159695,
+          "long_lived": 172,
+          "other": 212
+        },
+        {
+          "offset": 128159696,
+          "long_lived": 209,
+          "other": 131
+        },
+        {
+          "offset": 128159697,
+          "long_lived": 162,
+          "other": 38
+        },
+        {
+          "offset": 128159698,
+          "long_lived": 67,
+          "other": 232
+        },
+        {
+          "offset": 128159699,
+          "long_lived": 227,
+          "other": 53
+        },
+        {
+          "offset": 128159700,
+          "long_lived": 135,
+          "other": 121
+        },
+        {
+          "offset": 128159701,
+          "long_lived": 63,
+          "other": 137
+        },
+        {
+          "offset": 128159702,
+          "long_lived": 47,
+          "other": 0
+        },
+        {
+          "offset": 128159703,
+          "long_lived": 165,
+          "other": 214
+        },
+        {
+          "offset": 128159704,
+          "long_lived": 74,
+          "other": 195
+        },
+        {
+          "offset": 128159705,
+          "long_lived": 239,
+          "other": 59
+        },
+        {
+          "offset": 128159706,
+          "long_lived": 203,
+          "other": 112
+        },
+        {
+          "offset": 128159707,
+          "long_lived": 151,
+          "other": 98
+        },
+        {
+          "offset": 128159708,
+          "long_lived": 249,
+          "other": 231
+        },
+        {
+          "offset": 128159709,
+          "long_lived": 166,
+          "other": 160
+        },
+        {
+          "offset": 128159710,
+          "long_lived": 38,
+          "other": 25
+        },
+        {
+          "offset": 128159711,
+          "long_lived": 209,
+          "other": 5
+        }
+      ]
+    },
+    {
+      "vm": 1,
+      "other": "fresh-full",
+      "command": [
+        "cmp",
+        "-l",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_1.memory.bin",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/fresh-full/vm_1.memory.bin"
+      ],
+      "exit_code": 0,
+      "per_cpu_offset_cpu0": "0xffff888083ede000",
+      "directmap_base": "0xffff888000000000",
+      "irq_randomness_virtual": "0xffff888007a38fc0",
+      "irq_randomness_physical": "0x7a38fc0",
+      "different_bytes": 31,
+      "all_differences_inside_32_byte_pool": true,
+      "differences": [
+        {
+          "offset": 128159680,
+          "long_lived": 254,
+          "other": 29
+        },
+        {
+          "offset": 128159681,
+          "long_lived": 220,
+          "other": 95
+        },
+        {
+          "offset": 128159682,
+          "long_lived": 56,
+          "other": 37
+        },
+        {
+          "offset": 128159683,
+          "long_lived": 85,
+          "other": 6
+        },
+        {
+          "offset": 128159684,
+          "long_lived": 204,
+          "other": 76
+        },
+        {
+          "offset": 128159685,
+          "long_lived": 145,
+          "other": 15
+        },
+        {
+          "offset": 128159686,
+          "long_lived": 126,
+          "other": 28
+        },
+        {
+          "offset": 128159687,
+          "long_lived": 13,
+          "other": 14
+        },
+        {
+          "offset": 128159689,
+          "long_lived": 232,
+          "other": 112
+        },
+        {
+          "offset": 128159690,
+          "long_lived": 45,
+          "other": 206
+        },
+        {
+          "offset": 128159691,
+          "long_lived": 118,
+          "other": 51
+        },
+        {
+          "offset": 128159692,
+          "long_lived": 119,
+          "other": 201
+        },
+        {
+          "offset": 128159693,
+          "long_lived": 31,
+          "other": 189
+        },
+        {
+          "offset": 128159694,
+          "long_lived": 78,
+          "other": 71
+        },
+        {
+          "offset": 128159695,
+          "long_lived": 182,
+          "other": 58
+        },
+        {
+          "offset": 128159696,
+          "long_lived": 201,
+          "other": 194
+        },
+        {
+          "offset": 128159697,
+          "long_lived": 110,
+          "other": 172
+        },
+        {
+          "offset": 128159698,
+          "long_lived": 41,
+          "other": 197
+        },
+        {
+          "offset": 128159699,
+          "long_lived": 154,
+          "other": 191
+        },
+        {
+          "offset": 128159700,
+          "long_lived": 21,
+          "other": 199
+        },
+        {
+          "offset": 128159701,
+          "long_lived": 116,
+          "other": 65
+        },
+        {
+          "offset": 128159702,
+          "long_lived": 193,
+          "other": 188
+        },
+        {
+          "offset": 128159703,
+          "long_lived": 226,
+          "other": 34
+        },
+        {
+          "offset": 128159704,
+          "long_lived": 142,
+          "other": 146
+        },
+        {
+          "offset": 128159705,
+          "long_lived": 228,
+          "other": 143
+        },
+        {
+          "offset": 128159706,
+          "long_lived": 147,
+          "other": 92
+        },
+        {
+          "offset": 128159707,
+          "long_lived": 132,
+          "other": 166
+        },
+        {
+          "offset": 128159708,
+          "long_lived": 205,
+          "other": 102
+        },
+        {
+          "offset": 128159709,
+          "long_lived": 133,
+          "other": 125
+        },
+        {
+          "offset": 128159710,
+          "long_lived": 38,
+          "other": 217
+        },
+        {
+          "offset": 128159711,
+          "long_lived": 99,
+          "other": 212
+        }
+      ]
+    },
+    {
+      "vm": 1,
+      "other": "watchdog-replacement-incremental",
+      "command": [
+        "cmp",
+        "-l",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_1.memory.bin",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/watchdog-replacement-incremental/vm_1.memory.bin"
+      ],
+      "exit_code": 0,
+      "per_cpu_offset_cpu0": "0xffff888083ede000",
+      "directmap_base": "0xffff888000000000",
+      "irq_randomness_virtual": "0xffff888007a38fc0",
+      "irq_randomness_physical": "0x7a38fc0",
+      "different_bytes": 32,
+      "all_differences_inside_32_byte_pool": true,
+      "differences": [
+        {
+          "offset": 128159680,
+          "long_lived": 254,
+          "other": 96
+        },
+        {
+          "offset": 128159681,
+          "long_lived": 220,
+          "other": 1
+        },
+        {
+          "offset": 128159682,
+          "long_lived": 56,
+          "other": 30
+        },
+        {
+          "offset": 128159683,
+          "long_lived": 85,
+          "other": 156
+        },
+        {
+          "offset": 128159684,
+          "long_lived": 204,
+          "other": 159
+        },
+        {
+          "offset": 128159685,
+          "long_lived": 145,
+          "other": 99
+        },
+        {
+          "offset": 128159686,
+          "long_lived": 126,
+          "other": 216
+        },
+        {
+          "offset": 128159687,
+          "long_lived": 13,
+          "other": 14
+        },
+        {
+          "offset": 128159688,
+          "long_lived": 7,
+          "other": 232
+        },
+        {
+          "offset": 128159689,
+          "long_lived": 232,
+          "other": 129
+        },
+        {
+          "offset": 128159690,
+          "long_lived": 45,
+          "other": 215
+        },
+        {
+          "offset": 128159691,
+          "long_lived": 118,
+          "other": 44
+        },
+        {
+          "offset": 128159692,
+          "long_lived": 119,
+          "other": 174
+        },
+        {
+          "offset": 128159693,
+          "long_lived": 31,
+          "other": 39
+        },
+        {
+          "offset": 128159694,
+          "long_lived": 78,
+          "other": 10
+        },
+        {
+          "offset": 128159695,
+          "long_lived": 182,
+          "other": 125
+        },
+        {
+          "offset": 128159696,
+          "long_lived": 201,
+          "other": 104
+        },
+        {
+          "offset": 128159697,
+          "long_lived": 110,
+          "other": 129
+        },
+        {
+          "offset": 128159698,
+          "long_lived": 41,
+          "other": 164
+        },
+        {
+          "offset": 128159699,
+          "long_lived": 154,
+          "other": 71
+        },
+        {
+          "offset": 128159700,
+          "long_lived": 21,
+          "other": 67
+        },
+        {
+          "offset": 128159701,
+          "long_lived": 116,
+          "other": 216
+        },
+        {
+          "offset": 128159702,
+          "long_lived": 193,
+          "other": 91
+        },
+        {
+          "offset": 128159703,
+          "long_lived": 226,
+          "other": 120
+        },
+        {
+          "offset": 128159704,
+          "long_lived": 142,
+          "other": 18
+        },
+        {
+          "offset": 128159705,
+          "long_lived": 228,
+          "other": 135
+        },
+        {
+          "offset": 128159706,
+          "long_lived": 147,
+          "other": 45
+        },
+        {
+          "offset": 128159707,
+          "long_lived": 132,
+          "other": 197
+        },
+        {
+          "offset": 128159708,
+          "long_lived": 205,
+          "other": 168
+        },
+        {
+          "offset": 128159709,
+          "long_lived": 133,
+          "other": 106
+        },
+        {
+          "offset": 128159710,
+          "long_lived": 38,
+          "other": 135
+        },
+        {
+          "offset": 128159711,
+          "long_lived": 99,
+          "other": 28
+        }
+      ]
+    },
+    {
+      "vm": 2,
+      "other": "fresh-full",
+      "command": [
+        "cmp",
+        "-l",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_2.memory.bin",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/fresh-full/vm_2.memory.bin"
+      ],
+      "exit_code": 0,
+      "per_cpu_offset_cpu0": "0xffff888083ede000",
+      "directmap_base": "0xffff888000000000",
+      "irq_randomness_virtual": "0xffff888007a38fc0",
+      "irq_randomness_physical": "0x7a38fc0",
+      "different_bytes": 32,
+      "all_differences_inside_32_byte_pool": true,
+      "differences": [
+        {
+          "offset": 128159680,
+          "long_lived": 135,
+          "other": 53
+        },
+        {
+          "offset": 128159681,
+          "long_lived": 23,
+          "other": 129
+        },
+        {
+          "offset": 128159682,
+          "long_lived": 187,
+          "other": 36
+        },
+        {
+          "offset": 128159683,
+          "long_lived": 142,
+          "other": 33
+        },
+        {
+          "offset": 128159684,
+          "long_lived": 199,
+          "other": 28
+        },
+        {
+          "offset": 128159685,
+          "long_lived": 247,
+          "other": 101
+        },
+        {
+          "offset": 128159686,
+          "long_lived": 139,
+          "other": 183
+        },
+        {
+          "offset": 128159687,
+          "long_lived": 30,
+          "other": 242
+        },
+        {
+          "offset": 128159688,
+          "long_lived": 235,
+          "other": 135
+        },
+        {
+          "offset": 128159689,
+          "long_lived": 241,
+          "other": 233
+        },
+        {
+          "offset": 128159690,
+          "long_lived": 207,
+          "other": 244
+        },
+        {
+          "offset": 128159691,
+          "long_lived": 90,
+          "other": 59
+        },
+        {
+          "offset": 128159692,
+          "long_lived": 60,
+          "other": 34
+        },
+        {
+          "offset": 128159693,
+          "long_lived": 243,
+          "other": 217
+        },
+        {
+          "offset": 128159694,
+          "long_lived": 27,
+          "other": 152
+        },
+        {
+          "offset": 128159695,
+          "long_lived": 185,
+          "other": 240
+        },
+        {
+          "offset": 128159696,
+          "long_lived": 97,
+          "other": 202
+        },
+        {
+          "offset": 128159697,
+          "long_lived": 149,
+          "other": 126
+        },
+        {
+          "offset": 128159698,
+          "long_lived": 59,
+          "other": 73
+        },
+        {
+          "offset": 128159699,
+          "long_lived": 139,
+          "other": 213
+        },
+        {
+          "offset": 128159700,
+          "long_lived": 57,
+          "other": 249
+        },
+        {
+          "offset": 128159701,
+          "long_lived": 61,
+          "other": 243
+        },
+        {
+          "offset": 128159702,
+          "long_lived": 215,
+          "other": 154
+        },
+        {
+          "offset": 128159703,
+          "long_lived": 172,
+          "other": 131
+        },
+        {
+          "offset": 128159704,
+          "long_lived": 37,
+          "other": 18
+        },
+        {
+          "offset": 128159705,
+          "long_lived": 167,
+          "other": 182
+        },
+        {
+          "offset": 128159706,
+          "long_lived": 26,
+          "other": 57
+        },
+        {
+          "offset": 128159707,
+          "long_lived": 8,
+          "other": 206
+        },
+        {
+          "offset": 128159708,
+          "long_lived": 50,
+          "other": 88
+        },
+        {
+          "offset": 128159709,
+          "long_lived": 44,
+          "other": 179
+        },
+        {
+          "offset": 128159710,
+          "long_lived": 212,
+          "other": 249
+        },
+        {
+          "offset": 128159711,
+          "long_lived": 95,
+          "other": 102
+        }
+      ]
+    },
+    {
+      "vm": 2,
+      "other": "watchdog-replacement-incremental",
+      "command": [
+        "cmp",
+        "-l",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_2.memory.bin",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/watchdog-replacement-incremental/vm_2.memory.bin"
+      ],
+      "exit_code": 0,
+      "per_cpu_offset_cpu0": "0xffff888083ede000",
+      "directmap_base": "0xffff888000000000",
+      "irq_randomness_virtual": "0xffff888007a38fc0",
+      "irq_randomness_physical": "0x7a38fc0",
+      "different_bytes": 32,
+      "all_differences_inside_32_byte_pool": true,
+      "differences": [
+        {
+          "offset": 128159680,
+          "long_lived": 135,
+          "other": 88
+        },
+        {
+          "offset": 128159681,
+          "long_lived": 23,
+          "other": 191
+        },
+        {
+          "offset": 128159682,
+          "long_lived": 187,
+          "other": 120
+        },
+        {
+          "offset": 128159683,
+          "long_lived": 142,
+          "other": 244
+        },
+        {
+          "offset": 128159684,
+          "long_lived": 199,
+          "other": 132
+        },
+        {
+          "offset": 128159685,
+          "long_lived": 247,
+          "other": 69
+        },
+        {
+          "offset": 128159686,
+          "long_lived": 139,
+          "other": 111
+        },
+        {
+          "offset": 128159687,
+          "long_lived": 30,
+          "other": 40
+        },
+        {
+          "offset": 128159688,
+          "long_lived": 235,
+          "other": 50
+        },
+        {
+          "offset": 128159689,
+          "long_lived": 241,
+          "other": 191
+        },
+        {
+          "offset": 128159690,
+          "long_lived": 207,
+          "other": 191
+        },
+        {
+          "offset": 128159691,
+          "long_lived": 90,
+          "other": 42
+        },
+        {
+          "offset": 128159692,
+          "long_lived": 60,
+          "other": 85
+        },
+        {
+          "offset": 128159693,
+          "long_lived": 243,
+          "other": 177
+        },
+        {
+          "offset": 128159694,
+          "long_lived": 27,
+          "other": 84
+        },
+        {
+          "offset": 128159695,
+          "long_lived": 185,
+          "other": 241
+        },
+        {
+          "offset": 128159696,
+          "long_lived": 97,
+          "other": 3
+        },
+        {
+          "offset": 128159697,
+          "long_lived": 149,
+          "other": 229
+        },
+        {
+          "offset": 128159698,
+          "long_lived": 59,
+          "other": 4
+        },
+        {
+          "offset": 128159699,
+          "long_lived": 139,
+          "other": 73
+        },
+        {
+          "offset": 128159700,
+          "long_lived": 57,
+          "other": 169
+        },
+        {
+          "offset": 128159701,
+          "long_lived": 61,
+          "other": 71
+        },
+        {
+          "offset": 128159702,
+          "long_lived": 215,
+          "other": 148
+        },
+        {
+          "offset": 128159703,
+          "long_lived": 172,
+          "other": 85
+        },
+        {
+          "offset": 128159704,
+          "long_lived": 37,
+          "other": 22
+        },
+        {
+          "offset": 128159705,
+          "long_lived": 167,
+          "other": 234
+        },
+        {
+          "offset": 128159706,
+          "long_lived": 26,
+          "other": 250
+        },
+        {
+          "offset": 128159707,
+          "long_lived": 8,
+          "other": 23
+        },
+        {
+          "offset": 128159708,
+          "long_lived": 50,
+          "other": 40
+        },
+        {
+          "offset": 128159709,
+          "long_lived": 44,
+          "other": 229
+        },
+        {
+          "offset": 128159710,
+          "long_lived": 212,
+          "other": 193
+        },
+        {
+          "offset": 128159711,
+          "long_lived": 95,
+          "other": 14
+        }
+      ]
+    }
+  ],
+  "instruction_evidence": {
+    "command": [
+      "objdump",
+      "-d",
+      "--disassemble=add_interrupt_randomness",
+      "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux"
+    ],
+    "rdtsc_address": "ffffffff81c7d03e",
+    "observation": "Unconditional RDTSC feeds fast_mix into irq_randomness.pool before any runtime TSC feature check."
+  },
+  "upstream_source": "https://raw.githubusercontent.com/torvalds/linux/v6.19/arch/x86/include/asm/tsc.h",
+  "root_cause": "CONFIG_X86_TSC bypasses the runtime capability guard in get_cycles; required-feature shortcuts can also mask explicitly hidden TSC. Guest kernel interrupt entropy therefore samples host time.",
+  "non_claim": "This is the failing pre-fix cohort, not a passing continuation, guest bug, entropy-security claim, or release verdict."
+}

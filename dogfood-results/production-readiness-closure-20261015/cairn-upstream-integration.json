@@ -1,0 +1,58 @@
+{
+  "schema": "chaoscontrol.cairn-consumer-integration-audit.v1",
+  "starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+  "policy_source_revision": "b6759012db4dab0158936e995b7bad39ac10465b",
+  "pinned_cli": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+  "retained_source": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source",
+  "newer_installed_source": "/nix/store/6bpdhd8hszl5jgggf0k16yys89wgxhi5-source",
+  "upstream_update_applied": false,
+  "workflow": {
+    "commands": ["setup plan", "setup apply (preview-first)", "setup check"],
+    "upgrade_precondition": "Pinned source bundle upgrade_from must identify the installed cohort; consumer-owned policy migration is not performed by setup.",
+    "published_consumer_migration_cohort": "not established by retrieved source or bundle"
+  },
+  "observed_retrieval_blockers": [
+    {
+      "command": "git ls-remote https://github.com/OnixResearch/cairn.git HEAD refs/heads/main",
+      "exit_status": 128,
+      "observation": "credential helper failed and Git could not obtain a username for the public GitHub endpoint; no credentials were supplied"
+    },
+    {
+      "url": "https://api.github.com/repos/OnixResearch/cairn/commits/main",
+      "observation": "HTTP 404 from the reader"
+    }
+  ],
+  "import_adaptation": {
+    "file": "cairn-policy/contracts.ncl",
+    "removed_comment": "# r[impl cairn.lifecycle_directory.hidden_default]",
+    "semantic_effect": "none: only the upstream-owned implementation-marker comment was removed; SafeRelativePath is unchanged",
+    "reason": "The Cairn requirement is not among ChaosControl accepted requirements."
+  },
+  "downstream_applicability": {
+    "supported_selection": "none in either inspected installed source",
+    "release_readiness_source_blake3": "blake3:a336e94f95ae2689bfa629beb85b20f880b2f2d677cf008d04ec5fc031ecbfe6",
+    "checks": [
+      {
+        "id": "mcp_agent_smoke",
+        "required_inputs": ["fixtures/agent-completion/contract.json", "fixtures/agent-completion/results.json"]
+      },
+      {
+        "id": "preserves_corpus_freshness",
+        "required_inputs": ["fixtures/preserves-canonicalization/corpus.json"]
+      }
+    ],
+    "current_semantics": "Both checks run unconditionally under the consumer root; absent producer self-fixtures remain non-pass, not not-applicable."
+  },
+  "upstream_requirement": "Publish a retrievable immutable compatible CLI/policy cohort, documented consumer-overlay migration, and explicit receipt-visible downstream applicability for the two self-checks, or maintained downstream inputs with matching producer validation.",
+  "forbidden_shortcuts_not_used": [
+    "No copied upstream self-fixtures",
+    "No suppressed failed check",
+    "No required-check skip",
+    "No pin invented from an installed store path",
+    "No historical production-readiness receipt edits"
+  ],
+  "non_claims": [
+    "Source identity and declared linkage do not prove policy correctness, test execution, consumer compatibility, or release eligibility.",
+    "The newer-policy migration remains active and incomplete."
+  ]
+}

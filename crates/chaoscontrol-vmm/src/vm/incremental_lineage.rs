@@ -68,8 +68,8 @@ fn guest_store(vm: &mut DeterministicVm, page: usize, value: u8) {
     assert!(completed, "complete pending output before snapshot");
 }
 
-// r[verify chaoscontrol.deterministic_snapshots.incremental_lineage]
-// r[verify chaoscontrol.deterministic_snapshots.incremental_validation]
+// r[verify chaoscontrol.deterministic_snapshots.complete_state]
+// r[verify chaoscontrol.deterministic_snapshots.validation]
 #[test]
 fn incremental_lineage_matches_full_memory_through_depth_four() {
     let (mut vm, bootstrap, base) = harness();
@@ -92,7 +92,7 @@ fn incremental_lineage_matches_full_memory_through_depth_four() {
     }
 }
 
-// r[verify chaoscontrol.deterministic_snapshots.incremental_revert]
+// r[verify chaoscontrol.deterministic_snapshots.complete_state]
 #[test]
 fn sibling_restore_reverts_guest_writes_without_an_intervening_capture() {
     let (mut vm, mut parent, base) = harness();
@@ -221,4 +221,87 @@ fn public_dirty_log_observation_preserves_incremental_memory() {
         .snapshot_incremental(&base)
         .expect("capture after public dirty read");
     assert!(child.memory.materialize() == expected.memory.materialize());
+}
+
+#[test]
+fn single_vcpu_run_bounded_reaches_real_output_and_commits_guest_store() {
+    const STORED_VALUE: u8 = 0xa5;
+    // A leaked SMP single-step returns after MOV instead of the caller's OUT bound.
+    let (mut vm, _, _) = harness();
+    let address = (DATA_FIRST_PAGE * PAGE_SIZE) as u64;
+    let mut regs = vm.vcpus[0].get_regs().expect("read initial registers");
+    regs.rbx = address;
+    regs.rax = u64::from(STORED_VALUE);
+    vm.vcpus[0].set_regs(&regs).expect("select guest store");
+
+    let (exits, halted) = vm.run_bounded(1).expect("run to one ordinary guest exit");
+
+    assert_eq!(
+        vm.io_exit_count, 1,
+        "one-real-exit budget stopped before OUT"
+    );
+    assert_eq!(exits, 1);
+    assert!(!halted);
+    assert_eq!(
+        vm.read_guest_memory(address, 1)
+            .expect("read committed guest store"),
+        [STORED_VALUE],
+    );
+}
+
+#[test]
+fn uart_restore_does_not_reassert_an_already_delivered_interrupt() {
+    const SERVICE_EXITS: u64 = 1000;
+    const ISR_ADDRESS: u16 = 0x100;
+    const IRQ4_VECTOR: u64 = 0x24;
+    // Initialize the master PIC, unmask IRQ4, enable UART THRE, write one byte,
+    // then acknowledge guest I/O forever. The ISR deliberately leaves IIR pending.
+    const PROGRAM: &[u8] = &[
+        0xfa, 0xb0, 0x11, 0xe6, 0x20, 0xb0, 0x20, 0xe6, 0x21, 0xb0, 0x04, 0xe6, 0x21, 0xb0, 0x01,
+        0xe6, 0x21, 0xb0, 0xef, 0xe6, 0x21, 0xba, 0xf9, 0x03, 0xb0, 0x02, 0xee, 0xba, 0xf8, 0x03,
+        0xb0, b'a', 0xee, 0xfb, 0x90, 0xe6, 0x10, 0xeb, 0xfb,
+    ];
+    // push ax; inc byte [bx]; send EOI; pop ax; iret.
+    const ISR: &[u8] = &[0x50, 0xfe, 0x07, 0xb0, 0x20, 0xe6, 0x20, 0x58, 0xcf];
+    let (mut vm, _, _) = harness();
+    vm.write_guest_memory(0, PROGRAM)
+        .expect("install serial guest");
+    vm.write_guest_memory(u64::from(ISR_ADDRESS), ISR)
+        .expect("install IRQ4 handler");
+    vm.write_guest_memory(
+        IRQ4_VECTOR * 4,
+        &[ISR_ADDRESS as u8, (ISR_ADDRESS >> 8) as u8, 0, 0],
+    )
+    .expect("install IRQ4 vector");
+    let address = (DATA_FIRST_PAGE * PAGE_SIZE) as u64;
+    let mut regs = vm.vcpus[0].get_regs().expect("read guest registers");
+    regs.rbx = address;
+    vm.vcpus[0].set_regs(&regs).expect("select IRQ counter");
+    vm.run_bounded(SERVICE_EXITS)
+        .expect("service original UART interrupt");
+    assert_eq!(
+        vm.read_guest_memory(address, 1).expect("read ISR counter"),
+        [1]
+    );
+    let parent = vm
+        .snapshot()
+        .expect("capture acknowledged IRQ with pending UART condition");
+    let mut fresh = DeterministicVm::new(VmConfig {
+        memory_size: TEST_MEMORY_BYTES,
+        ..VmConfig::default()
+    })
+    .expect("create fresh serial VM");
+    for controller in [&mut vm, &mut fresh] {
+        controller.restore(&parent).expect("restore serial parent");
+        controller
+            .run_bounded(SERVICE_EXITS)
+            .expect("continue serial parent");
+        assert_eq!(
+            controller
+                .read_guest_memory(address, 1)
+                .expect("read restored ISR counter"),
+            [1],
+            "restoring a pending UART condition fabricated another interrupt edge"
+        );
+    }
 }

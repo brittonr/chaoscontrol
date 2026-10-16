@@ -53,7 +53,8 @@ use chaoscontrol_sim_core::{
 use kvm_bindings::{
     kvm_clock_data, kvm_enable_cap, kvm_fpu, kvm_guest_debug, kvm_pit_config, kvm_regs,
     kvm_userspace_memory_region, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP,
-    KVM_MEM_LOG_DIRTY_PAGES, KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
+    KVM_MEM_LOG_DIRTY_PAGES, KVM_MP_STATE_RUNNABLE, KVM_PIT_FLAGS_HPET_LEGACY,
+    KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Cap, Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -119,7 +120,6 @@ use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemoryMmap};
-use vmm_sys_util::eventfd::EventFd;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Constants
@@ -610,14 +610,16 @@ fn deliver_virtio_interrupt_with(
 //  Serial I/O helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Wrapper to implement `vm_superio::Trigger` for `EventFd`.
-struct SerialTrigger(EventFd);
+/// UART interrupt fact, committed synchronously at the guest-exit boundary.
+#[derive(Default)]
+struct SerialTrigger(std::cell::Cell<bool>);
 
 impl vm_superio::Trigger for SerialTrigger {
     type E = io::Error;
 
     fn trigger(&self) -> Result<(), Self::E> {
-        self.0.write(1).map_err(io::Error::other)
+        self.0.set(true);
+        Ok(())
     }
 }
 
@@ -951,29 +953,24 @@ impl DeterministicVm {
         // Create in-kernel IRQ chip (PIC, IOAPIC, LAPIC) — MUST be before create_vcpu
         vm.create_irq_chip().context(CreateIrqChipSnafu)?;
 
-        // Create KVM PIT with speaker dummy flag.
-        // KVM's PIT handles I/O ports 0x40-0x43, 0x61 internally and
-        // delivers IRQ 0 via the in-kernel PIC. We use set_pit2() to
-        // reset its count_load_time before each vcpu.run(), pinning
-        // timer delivery to our virtual TSC instead of host wall time.
+        // Keep KVM's PIT port emulation, but disable its host-clock IRQ timer.
+        // HPET_LEGACY is KVM's PIT timer-inhibit flag; no HPET is required.
+        // DeterministicPit supplies IRQ 0 through set_irq_line instead.
         let pit_config = kvm_pit_config {
             flags: KVM_PIT_SPEAKER_DUMMY,
             ..Default::default()
         };
         vm.create_pit2(pit_config).context(CreatePitSnafu)?;
 
-        // Immediately disable KVM PIT channel 0 timer so it never fires
-        // on host time. We'll deliver IRQ 0 ourselves via set_irq_line
-        // at deterministic virtual-time points.
+        // Set the state flag before any guest execution. KVM's 0 -> 1
+        // HPET_LEGACY transition cancels and flushes the timer, and subsequent
+        // guest reloads cannot rearm it. count_load_time does not inhibit it.
         {
             let mut pit_state = vm.get_pit2().context(CreatePitSnafu)?;
-            // Set channel 0 to mode 0 (one-shot) with max count and
-            // a far-future load time so it never triggers
+            pit_state.flags |= KVM_PIT_FLAGS_HPET_LEGACY;
             pit_state.channels[0].count = 0; // 0 = 65536
             pit_state.channels[0].mode = 0; // mode 0 = one-shot
             pit_state.channels[0].gate = 1;
-            // Set count_load_time far in the future (year 2100)
-            pit_state.channels[0].count_load_time = i64::MAX / 2;
             vm.set_pit2(&pit_state).context(CreatePitSnafu)?;
         }
 
@@ -1071,15 +1068,10 @@ impl DeterministicVm {
         // interrupts at exact virtual-time points via set_irq_line.
         let pit = DeterministicPit::new(config.cpu.tsc_khz);
 
-        // Set up serial port with interrupt support
-        let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
-        let serial_trigger = SerialTrigger(serial_evt.try_clone()?);
+        // UART IRQ delivery must not depend on host irqfd work scheduling.
+        let serial_trigger = SerialTrigger::default();
         let serial_writer = CapturingWriter::new();
         let serial = vm_superio::Serial::new(serial_trigger, serial_writer.clone());
-
-        // Register the serial EventFd with KVM IRQ line 4 (COM1)
-        vm.register_irqfd(&serial_evt, SERIAL_IRQ)
-            .context(CreateIrqChipSnafu)?;
 
         // Define the deterministic instruction schedule before any guest runs.
         let scheduler_config = SchedulerConfig {
@@ -1777,8 +1769,8 @@ impl DeterministicVm {
         };
         self.vm.set_clock(&clock_data).context(SetClockSnafu)?;
 
-        // KVM PIT channel 0 is disabled (count_load_time = far future)
-        // so it won't fire. Our DeterministicPit delivers IRQ 0 instead.
+        // KVM PIT's HPET_LEGACY flag inhibits its host timer.
+        // Our DeterministicPit delivers IRQ 0 instead.
 
         Ok(())
     }
@@ -3141,9 +3133,8 @@ impl DeterministicVm {
 
         self.restore_virtio_snapshot(snapshot)?;
 
-        // Restore serial state with new EventFd and our capturing writer
-        let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
-        let serial_trigger = SerialTrigger(serial_evt.try_clone()?);
+        // The captured IRQ chips already contain the UART's delivered edge.
+        let serial_trigger = SerialTrigger::default();
         self.serial_writer = CapturingWriter::new();
         self.serial = vm_superio::Serial::from_state(
             &snapshot.serial_state,
@@ -3158,10 +3149,9 @@ impl DeterministicVm {
             .build()
         })?;
 
-        // Re-register IRQ fd
-        self.vm
-            .register_irqfd(&serial_evt, SERIAL_IRQ)
-            .context(CreateIrqChipSnafu)?;
+        // from_state reasserts a pending UART condition. Do not manufacture
+        // another edge on top of the authoritative restored PIC state.
+        self.serial.interrupt_evt().0.set(false);
 
         self.dlog_emit(
             self.dlog_record(DlogTag::SnapshotRestored)
@@ -3303,8 +3293,7 @@ impl DeterministicVm {
 
         self.restore_virtio_snapshot(snapshot)?;
 
-        let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
-        let serial_trigger = SerialTrigger(serial_evt.try_clone()?);
+        let serial_trigger = SerialTrigger::default();
         self.serial_writer = CapturingWriter::new();
         self.serial = vm_superio::Serial::from_state(
             &snapshot.serial_state,
@@ -3318,9 +3307,8 @@ impl DeterministicVm {
             }
             .build()
         })?;
-        self.vm
-            .register_irqfd(&serial_evt, SERIAL_IRQ)
-            .context(CreateIrqChipSnafu)?;
+        // Pending UART identification is not a second interrupt edge.
+        self.serial.interrupt_evt().0.set(false);
 
         self.dlog_emit(
             self.dlog_record(DlogTag::SnapshotRestored)
@@ -3335,17 +3323,13 @@ impl DeterministicVm {
 
     // ─── Internal: VM exit handling ──────────────────────────────────
 
-    /// Execute one vCPU run cycle and handle the resulting exit.
-    ///
-    /// Returns `true` if the VM halted or shut down.
-    /// Advances the virtual TSC on every exit for deterministic time progression.
-    /// Synchronize PIT state: read KVM PIT, mirror to our DeterministicPit,
-    /// then suppress KVM's timer by pushing count_load_time to far future.
-    /// We deliver IRQ 0 ourselves at deterministic virtual-time points.
-    fn sync_and_suppress_pit(&mut self) -> Result<(), VmError> {
+    /// Mirror KVM PIT configuration to the virtual-time DeterministicPit,
+    /// maintaining KVM's host-timer inhibit flag. Software IRQ 0 remains routed
+    /// through the in-kernel interrupt controllers.
+    /// Returns whether a software IRQ 0 edge was delivered.
+    fn sync_and_suppress_pit(&mut self) -> Result<bool, VmError> {
         let mut pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
         let current_tsc = self.virtual_tsc.read();
-        let _tsc_khz = self.virtual_tsc.tsc_khz() as u128;
 
         // ── Channel 0: mirror config + suppress KVM timer ──────────
         let ch0 = &pit_state.channels[0];
@@ -3360,9 +3344,11 @@ impl DeterministicVm {
             self.pit.write_port(0x40, (reload >> 8) as u8, current_tsc);
             self.last_kvm_pit_mode = mode;
         }
-        // Suppress KVM PIT channel 0 timer: push count_load_time far
-        // into future so KVM never thinks the counter expired.
-        pit_state.channels[0].count_load_time = i64::MAX / 2;
+        // KVM's create_pit_timer() uses ktime_get() + reload period, not
+        // channel 0's count_load_time. HPET_LEGACY both cancels an existing
+        // timer on transition and prevents guest reloads/SET_PIT2 rearming it.
+        // See Linux arch/x86/kvm/i8254.c, kvm_vm_ioctl_set_pit2().
+        pit_state.flags |= KVM_PIT_FLAGS_HPET_LEGACY;
 
         // ── Channel 2: freeze for deterministic calibration ────────
         // The kernel uses channel 2 for TSC calibration, reading port 0x42.
@@ -3402,8 +3388,9 @@ impl DeterministicVm {
                 .set_irq_line(PIT_IRQ, false)
                 .context(CreateIrqChipSnafu)?;
             self.pit.acknowledge_irq();
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
 
     fn hlt_latches_from_snapshot(snapshot: &crate::snapshot::VmSnapshot) -> Vec<bool> {
@@ -3609,38 +3596,59 @@ impl DeterministicVm {
     fn handle_hlt_exit(&mut self) -> Result<(bool, DlogRecord, Option<usize>), VmError> {
         self.exit_count += 1;
         self.exits_since_last_sdk += 1;
-        self.virtual_tsc.tick();
 
-        let pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
-        let channel = &pit_state.channels[0];
-        let reload = if channel.count == 0 {
-            PIT_ZERO_RELOAD
+        let (halted, wake_vcpu) = if self.vcpus.len() == 1 {
+            // KVM consumes HLT internally with an in-kernel LAPIC. Whether
+            // observed directly or through MP_STATE_HALTED after a host
+            // interrupt, only the architectural halt permits this time jump.
+            // Mirror guest PIT programming that occurred within KVM_RUN.
+            let mut delivered = self.sync_and_suppress_pit()?;
+            if !delivered {
+                if let Some(deadline) = self.pit.next_irq_tsc() {
+                    // Generic advance_to rounds up to an exit-time quantum.
+                    // Architectural idle instead reaches this exact deadline.
+                    if !self.virtual_tsc.is_frozen() {
+                        self.virtual_tsc.set(self.virtual_tsc.read().max(deadline));
+                    }
+                    delivered = self.sync_and_suppress_pit()?;
+                }
+            }
+            (!delivered, delivered.then_some(BSP_VCPU_INDEX))
         } else {
-            u64::from(channel.count)
+            // Preserve the existing SMP HLT policy.
+            self.virtual_tsc.tick();
+            let pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
+            let channel = &pit_state.channels[0];
+            let reload = if channel.count == 0 {
+                PIT_ZERO_RELOAD
+            } else {
+                u64::from(channel.count)
+            };
+            if channel.gate != 0 && reload > 0 {
+                const KILOHERTZ_TO_HERTZ: u128 = 1_000;
+                let tsc_khz = u128::from(self.virtual_tsc.tsc_khz());
+                let tsc_per_period = (u128::from(reload) * tsc_khz * KILOHERTZ_TO_HERTZ)
+                    .div_ceil(PIT_FREQ_HZ) as u64;
+                self.virtual_tsc
+                    .advance_to(self.virtual_tsc.read() + tsc_per_period);
+                self.vm
+                    .set_irq_line(PIT_IRQ, true)
+                    .context(CreateIrqChipSnafu)?;
+                self.vm
+                    .set_irq_line(PIT_IRQ, false)
+                    .context(CreateIrqChipSnafu)?;
+                (false, Some(BSP_VCPU_INDEX))
+            } else {
+                (true, None)
+            }
         };
-
-        let (halted, wake_vcpu) = if channel.gate != 0 && reload > 0 {
-            const KILOHERTZ_TO_HERTZ: u128 = 1_000;
-            let tsc_khz = u128::from(self.virtual_tsc.tsc_khz());
-            let tsc_per_period =
-                (u128::from(reload) * tsc_khz * KILOHERTZ_TO_HERTZ).div_ceil(PIT_FREQ_HZ) as u64;
-            self.virtual_tsc
-                .advance_to(self.virtual_tsc.read() + tsc_per_period);
-            self.vm
-                .set_irq_line(PIT_IRQ, true)
-                .context(CreateIrqChipSnafu)?;
-            self.vm
-                .set_irq_line(PIT_IRQ, false)
-                .context(CreateIrqChipSnafu)?;
-            (false, Some(BSP_VCPU_INDEX))
-        } else {
+        if halted {
             info!(
                 "VM halted (exit_count={}, vtsc={})",
                 self.exit_count,
                 self.virtual_tsc.read()
             );
-            (true, None)
-        };
+        }
         let record = DlogRecord::new(
             0,
             self.virtual_tsc.read(),
@@ -3830,6 +3838,11 @@ impl DeterministicVm {
     }
 
     fn prepare_progress_source_for_run(&mut self, vcpu: usize) -> Result<Option<u64>, VmError> {
+        // Single-vCPU execution is bounded by ordinary guest exits and its
+        // operational watchdog, not the SMP retired-instruction scheduler.
+        if self.num_vcpus() <= 1 {
+            return Ok(None);
+        }
         match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
             (ProgressMode::ExactSingleStep, ExactStepState::Inactive)
             | (ProgressMode::PmuAccelerated { .. }, ExactStepState::Active { .. }) => {
@@ -3890,13 +3903,22 @@ impl DeterministicVm {
         // must handle the SDK hypercall after the KVM exit borrow closes.
         let mut vmcall_sdk_pending = false;
 
-        // SIGALRM is an operational watchdog only for single-vCPU runs.
-        // Deterministic SMP progress never arms a wall-clock timer.
-        if num_vcpus == 1 && self.fault_engine.is_setup_complete() {
+        // Bootstrap can halt inside KVM too. The operational timer returns
+        // control so MP_STATE_HALTED can be observed; elapsed host time never
+        // determines a virtual deadline or an IRQ. Runnable timeouts retain
+        // their existing operational-error meaning, before and after setup.
+        // Deterministic SMP never arms this wall-clock timer.
+        if num_vcpus == 1 {
             Self::install_sigalrm_handler();
             self.arm_preemption_timer(SINGLE_VCPU_WATCHDOG_MICROSECONDS);
         }
-        let run_result = self.vcpus[executed_vcpu].run();
+        let run_result = self.vcpus[executed_vcpu].run().or_else(|error| {
+            if error.errno() == libc::EINTR {
+                Ok(VcpuExit::Intr)
+            } else {
+                Err(error)
+            }
+        });
         if num_vcpus == 1 {
             Self::set_preemption_timer(self.thread_timer.as_ref(), 0);
         }
@@ -4342,9 +4364,23 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::Intr) => {
                 if num_vcpus == 1 {
-                    Err(VmError::HostWatchdogTimeout {
-                        vcpu: executed_vcpu,
-                    })
+                    let mp_state = self.vcpus[executed_vcpu].get_mp_state().map_err(|error| {
+                        VmError::ProgressCapability {
+                            message: format!(
+                                "vCPU {executed_vcpu} halt observation failed: {error}"
+                            ),
+                        }
+                    })?;
+                    if mp_state.mp_state == kvm_bindings::KVM_MP_STATE_HALTED {
+                        let (halted, record, wake_vcpu) = self.handle_hlt_exit()?;
+                        pending_dlog = Some(record);
+                        pending_explicit_wake = wake_vcpu;
+                        Ok(halted)
+                    } else {
+                        Err(VmError::HostWatchdogTimeout {
+                            vcpu: executed_vcpu,
+                        })
+                    }
                 } else {
                     // PMU overflow can produce an admitted deterministic
                     // progress record. Any other interrupt is a host-owned
@@ -4422,20 +4458,14 @@ impl DeterministicVm {
                 info!("Unhandled VM exit: {:?} — stopping", exit);
                 Ok(true)
             }
-            Err(error) => {
-                if error.errno() == libc::EINTR {
-                    if num_vcpus == 1 {
-                        Err(VmError::HostWatchdogTimeout {
-                            vcpu: executed_vcpu,
-                        })
-                    } else {
-                        Ok(false)
-                    }
-                } else {
-                    Err(VmError::VcpuRun { source: error })
-                }
-            }
+            Err(error) => Err(VmError::VcpuRun { source: error }),
         };
+        let result = result.and_then(|halted| {
+            if self.serial.interrupt_evt().0.replace(false) {
+                self.inject_interrupt(SERIAL_IRQ)?;
+            }
+            Ok(halted)
+        });
         let committed_smp_progress = num_vcpus > 1 && pending_schedule_record.is_some();
         let exit_halted = if committed_smp_progress {
             self.finish_after_committed_progress(SchedulePoisonStage::ExitHandling, result)?
@@ -4889,6 +4919,187 @@ mod tests {
     use super::*;
     use crate::devices::virtio_types::VirtioFailure;
     use crate::vm_core::MAX_SERIAL_CAPTURE_BYTES;
+
+    #[test]
+    fn bootstrap_hlt_wakes_at_virtual_pit_deadline_but_running_guest_times_out() {
+        const TEST_MEMORY_BYTES: usize = 4 * 1024 * 1024;
+        const CODE_ADDRESS: u64 = 0x200;
+        const IRQ_HANDLER_ADDRESS: u64 = 0x100;
+        const IRQ_VECTOR: u8 = 0x20;
+        const STACK_ADDRESS: u64 = 0x1000;
+        const OUTPUT_MARKER: u8 = 0x5a;
+        // STI; HLT; MOV AL,marker; OUT 0x10,AL; CLI; JMP $.
+        const CODE: [u8; 9] = [
+            0xfb,
+            0xf4,
+            0xb0,
+            OUTPUT_MARKER,
+            0xe6,
+            0x10,
+            0xfa,
+            0xeb,
+            0xfe,
+        ];
+        // Acknowledge IRQ0 in the PIC, then return from the real-mode interrupt.
+        const IRQ_HANDLER: [u8; 5] = [0xb0, 0x20, 0xe6, 0x20, 0xcf];
+        const PERIODIC_RELOAD: u32 = 1193;
+
+        let mut vm = DeterministicVm::new(VmConfig {
+            memory_size: TEST_MEMORY_BYTES,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.init_thread_timer().unwrap();
+        assert!(
+            vm.thread_timer.is_some(),
+            "test requires a thread-local timer"
+        );
+        assert!(!vm.fault_engine.is_setup_complete());
+
+        vm.memory
+            .inner()
+            .write_slice(&CODE, GuestAddress(CODE_ADDRESS))
+            .unwrap();
+        vm.memory
+            .inner()
+            .write_slice(&IRQ_HANDLER, GuestAddress(IRQ_HANDLER_ADDRESS))
+            .unwrap();
+        let vector = [
+            IRQ_HANDLER_ADDRESS as u8,
+            (IRQ_HANDLER_ADDRESS >> 8) as u8,
+            0,
+            0,
+        ];
+        vm.memory
+            .inner()
+            .write_slice(&vector, GuestAddress(u64::from(IRQ_VECTOR) * 4))
+            .unwrap();
+        let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+        sregs.cs.base = 0;
+        sregs.cs.selector = 0;
+        sregs.ss.base = 0;
+        sregs.ss.selector = 0;
+        vm.vcpus[0].set_sregs(&sregs).unwrap();
+        let regs = kvm_regs {
+            rip: CODE_ADDRESS,
+            rsp: STACK_ADDRESS,
+            rflags: 2,
+            ..Default::default()
+        };
+        vm.vcpus[0].set_regs(&regs).unwrap();
+
+        let mut chip = kvm_bindings::kvm_irqchip {
+            chip_id: kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
+            ..Default::default()
+        };
+        vm.vm.get_irqchip(&mut chip).unwrap();
+        // SAFETY: chip_id selects the PIC member of the returned union.
+        let mut pic = unsafe { chip.chip.pic };
+        pic.irq_base = IRQ_VECTOR;
+        pic.imr = 0xfe;
+        chip.chip.pic = pic;
+        vm.vm.set_irqchip(&chip).unwrap();
+        let mut pit = vm.vm.get_pit2().unwrap();
+        pit.channels[0].count = PERIODIC_RELOAD;
+        pit.channels[0].mode = 2;
+        pit.channels[0].gate = 1;
+        vm.vm.set_pit2(&pit).unwrap();
+        vm.sync_and_suppress_pit().unwrap();
+        let deadline = vm.pit.next_irq_tsc().unwrap();
+
+        // Actual guest HLT is consumed by KVM. Its architectural MP state,
+        // not the observation timer's elapsed time, authorizes this deadline.
+        assert!(!vm.step().unwrap());
+        assert_eq!(vm.virtual_tsc.read(), deadline);
+        assert_eq!(vm.pit.irqs_delivered(), 1);
+        assert_eq!(vm.exit_count, 1);
+        assert!(!vm.step().unwrap());
+        let regs = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(regs.rax as u8, OUTPUT_MARKER);
+        assert_eq!(vm.exit_count, 2);
+
+        // The pending OUT completes on re-entry, then CLI/JMP cannot halt.
+        // Even before setup, the timeout is operational, with no virtual progress.
+        // Settle IRQs already due after the normal I/O-exit time advance.
+        vm.sync_and_suppress_pit().unwrap();
+        let irqs_before_timeout = vm.pit.irqs_delivered();
+        let tsc_before_timeout = vm.virtual_tsc.read();
+        assert!(matches!(
+            vm.run_bounded(1),
+            Err(VmError::HostWatchdogTimeout { vcpu: 0 })
+        ));
+        assert_eq!(vm.virtual_tsc.read(), tsc_before_timeout);
+        assert_eq!(vm.exit_count, 2);
+        assert_eq!(vm.pit.irqs_delivered(), irqs_before_timeout);
+    }
+
+    #[test]
+    fn pit_irq0_uses_virtual_time_across_fresh_and_retained_restore() {
+        const TEST_MEMORY_BYTES: usize = 4 * 1024 * 1024;
+        const PERIODIC_RELOAD: u32 = 1193; // Approximately 1 ms at PIT frequency.
+                                           // Exceeds even the constructor's maximum-count one-shot (~55 ms).
+        const HOST_TIMER_OBSERVATION: std::time::Duration = std::time::Duration::from_millis(100);
+        const IRQ0_MASK: u8 = 1;
+
+        fn irq0_pending(vm: &DeterministicVm) -> bool {
+            let mut chip = kvm_bindings::kvm_irqchip {
+                chip_id: kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
+                ..Default::default()
+            };
+            vm.vm.get_irqchip(&mut chip).unwrap();
+            // SAFETY: chip_id selects the PIC member of the returned union.
+            unsafe { chip.chip.pic.irr & IRQ0_MASK != 0 }
+        }
+
+        fn assert_virtual_irq_only(vm: &mut DeterministicVm) {
+            // No vCPU executes during this observation. A pending IRQ can only
+            // come from the host timer, not virtual-time progress.
+            std::thread::sleep(HOST_TIMER_OBSERVATION);
+            assert!(!irq0_pending(vm), "host time generated IRQ 0");
+
+            let deadline = vm.pit.next_irq_tsc().expect("armed software PIT");
+            vm.virtual_tsc.set(deadline - 1);
+            vm.sync_and_suppress_pit().unwrap();
+            assert!(
+                !irq0_pending(vm),
+                "software IRQ 0 arrived before its deadline"
+            );
+            vm.virtual_tsc.set(deadline);
+            vm.sync_and_suppress_pit().unwrap();
+            assert!(irq0_pending(vm), "software IRQ 0 did not reach the PIC");
+        }
+
+        let config = VmConfig {
+            memory_size: TEST_MEMORY_BYTES,
+            ..VmConfig::default()
+        };
+        let mut retained = DeterministicVm::new(config.clone()).unwrap();
+        std::thread::sleep(HOST_TIMER_OBSERVATION);
+        assert!(!irq0_pending(&retained), "constructor armed a host timer");
+
+        let mut pit = retained.vm.get_pit2().unwrap();
+        pit.channels[0].count = PERIODIC_RELOAD;
+        pit.channels[0].mode = 2;
+        pit.channels[0].gate = 1;
+        retained.vm.set_pit2(&pit).unwrap();
+        retained.sync_and_suppress_pit().unwrap();
+        let mut snapshot = retained.snapshot().unwrap();
+        assert_virtual_irq_only(&mut retained);
+
+        // A compatible pre-fix snapshot has no inhibit flag. Neither restore
+        // path may briefly rearm a host timer while installing its PIT state.
+        snapshot.pit.flags &= !KVM_PIT_FLAGS_HPET_LEGACY;
+        retained.restore(&snapshot).unwrap();
+        assert_virtual_irq_only(&mut retained);
+
+        let mut fresh = DeterministicVm::new(config).unwrap();
+        fresh.restore(&snapshot).unwrap();
+        assert_virtual_irq_only(&mut fresh);
+
+        let base = vec![0; TEST_MEMORY_BYTES];
+        retained.restore_incremental(&snapshot, &base).unwrap();
+        assert_virtual_irq_only(&mut retained);
+    }
 
     #[test]
     fn serial_capture_small_writes_accumulate() {

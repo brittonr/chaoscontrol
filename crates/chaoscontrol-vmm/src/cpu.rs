@@ -88,11 +88,11 @@ pub const CPUID_LEAF_APM: u32 = 0x8000_0007;
 
 /// EDX bit 4 — Time Stamp Counter (TSC) feature.
 ///
-/// When hidden, the guest kernel's `get_cycles()` returns 0, preventing
-/// all TSC-based calibration (PIT + TSC calibration loop). RDTSC still
-/// works at the hardware level (KVM provides it), but the kernel never
-/// reads it. This eliminates non-deterministic calibration during early
-/// boot in SMP configurations.
+/// The admitted guest kernel's `get_cycles()` respects this runtime bit.
+/// Upstream kernels built with `CONFIG_X86_TSC` may still read RDTSC even
+/// when CPUID hides it; filtering alone does not trap the instruction or
+/// guarantee deterministic interrupt entropy. `mkChaosKernel` applies the
+/// runtime-capability patch required by the hide-TSC profile.
 pub const CPUID_1_EDX_TSC: u32 = 1 << 4;
 
 // -- Leaf 0x1, ECX --
@@ -214,9 +214,8 @@ pub enum CpuError {
 pub struct CpuConfig {
     /// TSC frequency exposed to the guest, in kHz.
     ///
-    /// KVM will scale host TSC reads to this rate.  Use the same value
-    /// across all runs and all hosts to ensure `RDTSC` returns identical
-    /// sequences.
+    /// KVM scales host TSC reads to this rate. Matching rates do not make
+    /// hardware RDTSC reads deterministic: elapsed host time still matters.
     pub tsc_khz: u32,
 
     /// Allow the guest to use AVX2 (256-bit integer SIMD).
@@ -240,10 +239,9 @@ pub struct CpuConfig {
 
     /// Hide the CPUID TSC feature bit (leaf 0x1, EDX bit 4).
     ///
-    /// When `true`, the guest kernel believes there is no TSC and skips
-    /// all TSC-based calibration. RDTSC still works (KVM provides it),
-    /// but the kernel never reads it. This prevents non-deterministic
-    /// PIT-based TSC calibration during early boot.
+    /// The admitted kernel skips TSC-based sampling with the runtime
+    /// capability patch applied by `mkChaosKernel`. RDTSC still works at
+    /// the hardware level; hiding CPUID alone does not prevent reads.
     pub hide_tsc: bool,
 
     /// If `Some`, override the CPUID processor family to this value.

@@ -1,0 +1,1699 @@
+{
+  "schema": "chaoscontrol.cairn-native-source-audit.v1",
+  "starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+  "evidence_class": "declared exact-marker inventory plus inspected implementation/behavioral-test/documentary source and fresh pinned native coverage/strict validation observations; not runtime correctness or readiness",
+  "native_commands_executed_by_this_slice": true,
+  "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+  "source_audit": "cairn-policy/native-traceability-closure-20261015.ncl",
+  "commands_for_parent": [
+    {
+      "id": "native_validation",
+      "argv": [
+        "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+        "validate",
+        "--root",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "--policy",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+        "--strict"
+      ],
+      "require_json": {
+        "valid": true,
+        "issues": [],
+        "findings": []
+      },
+      "exit_caveat": "Without --strict, invalid receipts can exit successfully. Capture stdout even on nonzero status.",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "execution_owner": "Main; not executed by source-audit slice",
+      "retain_stdout_as": "cairn-validate.json"
+    },
+    {
+      "id": "native_traceability",
+      "argv": [
+        "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+        "traceability",
+        "coverage",
+        "--root",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "--policy",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+        "--profile",
+        "chaoscontrol-default",
+        "--json"
+      ],
+      "require_json": {
+        "valid": true,
+        "verdict": "pass",
+        "missing": [],
+        "dangling": [],
+        "requirements": 382,
+        "referenced": 382
+      },
+      "additional_requirements": [
+        "profile_id must be chaoscontrol-default",
+        "profile assurance_level must remain declared",
+        "profile evidence roots/extensions and requirement roots/extensions must equal the repository overlay",
+        "Retain input_hash, policy_hash, receipt_hash and source_summary; compare missing with the exact residual list, never suppress it."
+      ],
+      "exit_caveat": "Missing or dangling references produce JSON plus nonzero status; retain the failure report.",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "execution_owner": "Main; not executed by source-audit slice",
+      "retain_stdout_as": "cairn-traceability.json"
+    },
+    {
+      "id": "native_release_readiness",
+      "argv": [
+        "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+        "release-readiness",
+        "--root",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "--policy",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json"
+      ],
+      "require_json": {
+        "valid": true,
+        "verdict": "pass",
+        "coverage_audit_valid": true
+      },
+      "additional_requirements": [
+        "Every checks[] entry must retain its name and passed=true; no omitted or suppressed required check.",
+        "mcp_agent_smoke and preserves_corpus_freshness must pass under supported upstream consumer semantics, not copied producer fixtures.",
+        "repository_gate_policy_listed records command policy only, not execution of heavyweight external gates.",
+        "determinism_replay.included=false means the separate required replay preflight has not run; this command does not replace it.",
+        "onix_release_ready is a distinct stronger authenticated-release claim; require true before making that claim.",
+        "Retain optional component required/skipped/disposition fields exactly; do not reinterpret policy-permitted optional skips as executed evidence, and never make a required self-check optional.",
+        "A local pass bundle is not whole-system production readiness: Main must bind the separate required external gate commands and strict runtime replay/lineage proofs to their current receipts."
+      ],
+      "exit_caveat": "The implementation prints the receipt without converting valid=false into process failure. Gate on JSON fields and all named checks, not exit status.",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "execution_owner": "Main; not executed by source-audit slice",
+      "retain_stdout_as": "cairn-release-readiness.json"
+    },
+    {
+      "id": "policy_projection_freshness",
+      "argv": [
+        "nix",
+        "run",
+        "--no-update-lock-file",
+        "path:/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source#cairn",
+        "--",
+        "policy",
+        "export",
+        "--source",
+        "cairn-policy/default.ncl",
+        "--output",
+        "cairn-policy/generated/cairn-policy.json",
+        "--check"
+      ],
+      "require_output": "Zero exit with policy fresh message and matching committed bytes, observed by Main. Retain actual errors/non-pass unchanged; descriptor literals alone do not establish measured executable identity or newer-policy migration.",
+      "mutation": "Compares without updating committed projection. The dual-run helper creates/removes target/cairn-nickel-export-observation/<pid> scratch request/output/manifest files.",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "execution_owner": "Main; observed current execution receipt recorded in parent_observed_policy_freshness",
+      "retain_stdout_as": "cairn-policy-freshness.log",
+      "environment": "Invoke the official retained wrapper directly; it supplies its matching Nickel 1.16.0/exporter closure before executing .cairn-wrapped. Outside-wrapper PATH lookup is not a blocker.",
+      "direct_cli_argv": [
+        "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+        "policy",
+        "export",
+        "--source",
+        "cairn-policy/default.ncl",
+        "--output",
+        "cairn-policy/generated/cairn-policy.json",
+        "--check"
+      ]
+    },
+    {
+      "id": "audit_data_export",
+      "argv": [
+        "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "cairn-policy/native-traceability-closure-20261015.ncl"
+      ],
+      "require_output": "valid JSON audit data; not a native traceability/readiness receipt",
+      "environment": "Main reports fresh --version and BLAKE3 match for this exact repository-reviewed 1.17.0 locator; not rerun by this slice. Portable source alternative uses the existing flake input, not an invented store revision pin.",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "execution_owner": "Main; not executed by source-audit slice",
+      "retain_stdout_as": "cairn-native-traceability-data.json",
+      "portable_source_argv": [
+        "nix",
+        "shell",
+        "github:nickel-lang/nickel/1320a983e6c3d1e2fb53dd2464b084b4903b1426",
+        "--command",
+        "nickel",
+        "export",
+        "--format",
+        "json",
+        "cairn-policy/native-traceability-closure-20261015.ncl"
+      ]
+    }
+  ],
+  "source_contracts": {
+    "validation": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/native/validate.rs:18-35,131-154",
+    "traceability": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/tracey.rs:80-129,199-237",
+    "readiness": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/release_readiness.rs:147-164,244-309",
+    "policy_export": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/policy.rs:26-54",
+    "policy_loading": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/support/layout.rs:42-55",
+    "newer_bootstrap": "/nix/store/6bpdhd8hszl5jgggf0k16yys89wgxhi5-source/docs/consumer-bootstrap-preview.md:6-101",
+    "upstream_self_checks": [
+      "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/mcp/mod.rs:98-108",
+      "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/release_readiness.rs:157-164,472-478"
+    ],
+    "newer_policy_selection": "/nix/store/6bpdhd8hszl5jgggf0k16yys89wgxhi5-source/crates/cairn-cli/src/project_policy.rs:43-104",
+    "repository_evaluator": "flake.nix:6,67-72,125-126,2340-2352"
+  },
+  "upstream_applicability_blocker": {
+    "checks": [
+      "mcp_agent_smoke",
+      "preserves_corpus_freshness"
+    ],
+    "current_semantics": "Unconditional upstream self-fixture checks beneath consumer root in both retained and newer inspected sources. No supported downstream applicability selector found.",
+    "required_inputs": [
+      "fixtures/agent-completion/contract.json",
+      "fixtures/agent-completion/results.json",
+      "fixtures/preserves-canonicalization/corpus.json"
+    ],
+    "required_upstream_deliverable": "Retrievable immutable compatible CLI/policy cohort, documented consumer-owned-overlay update path, and explicit receipt-visible downstream applicability semantics or maintained downstream inputs with matching producer validation.",
+    "retrieval_status": "Prior import audit reports public Git fetch failure without credentials and GitHub API HTTP 404; no newly retrievable cohort was established.",
+    "evidence": "dogfood-results/production-readiness-closure-20261015/cairn-upstream-integration.json",
+    "release_readiness_source_blake3": "blake3:a336e94f95ae2689bfa629beb85b20f880b2f2d677cf008d04ec5fc031ecbfe6"
+  },
+  "lifecycle": {
+    "change": "refresh-vendored-cairn-policy",
+    "state": "active",
+    "completed_foundation_tasks": 1,
+    "unchecked_implementation_and_verification_tasks": 4,
+    "newer_upstream_update_applied": false,
+    "historical_receipts_unchanged": true
+  },
+  "non_claims": [
+    "Declared links do not prove requirement satisfaction, execution, policy correctness, whole-system correctness, or production readiness.",
+    "No fixture copying, applicability override, acceptance-bound weakening, required-check suppression, generated projection mutation, new dependency pin, credential access, or historical receipt edit.",
+    "Existing strict controller memory/trace equivalence remains authoritative; matching assertion/round counts is not continuation equivalence. Timer correction and runtime evidence belong to Main.",
+    "The 156 historical pre-existing links are inventory inputs, not newly inspected proof of all previously linked requirement contracts."
+  ],
+  "observed_identities": {
+    "retained_release_readiness_blake3": "blake3:a336e94f95ae2689bfa629beb85b20f880b2f2d677cf008d04ec5fc031ecbfe6",
+    "newer_release_readiness_blake3": "blake3:a336e94f95ae2689bfa629beb85b20f880b2f2d677cf008d04ec5fc031ecbfe6",
+    "cli_wrapper_blake3": "blake3:357cafdb1b186e329b531f4a58927e3d13c024e96e22488bb48dfb3053b3c301"
+  },
+  "policy_discovery": {
+    "retained_cli": "Explicit --policy or working-directory-relative cairn-policy/generated/cairn-policy.json; --root does not rebase that path.",
+    "traceability_profile": "chaoscontrol-default; accepted requirements .cairn/specs/*.md; evidence crates/*.rs, scripts/*.rs, tools/*.rs and cairn-policy/*.ncl (recursive). The audit is discovered as exact-marker evidence without importing its record into the policy expression.",
+    "newer_bootstrap": "Validation, doctor and gates use explicit --policy first, then complete project selection beneath root, then old working-directory default only if selection absent. Other families/MCP retain old loaders; do not generalize bootstrap discovery to coverage/readiness.",
+    "integration": "Repository-owned vendored source closure, overlay and committed projection remain current. Setup does not install CLI or migrate consumer-owned overlay. No new upstream update cohort established.",
+    "ambient_nickel_locator": "/nix/store/igr59k7fiwvxhdnpx5jf2d6gb9mbnvlv-nickel-1.15.1/bin/nickel",
+    "outside_wrapper_path_lookup": "Ambient nickel/nickel-export lookup describes the calling shell only. The retained official Cairn wrapper prefixes its packaged Nickel 1.16.0/exporter closure; do not infer a missing runtime dependency from ambient lookup."
+  },
+  "native_observation_status": "Attempt19 pinned coverage: valid=false, verdict=fail, missing=120, dangling=0, requirements=382, referenced=262. Strict native validation: valid=true, issues=[], findings=[]; no verdict field emitted. Supported projection check reports fresh. Exact observations and BLAKE3 bindings are in corrective_attempt19; release-readiness remains separately upstream blocked.",
+  "source_inventory_method": "Read-only aggregation using accepted spec-marker and allowed exact reference-marker rules inspected in retained cairn-core/src/verified/traceability.rs. Only impl/verify links cover a requirement; all four allowed verbs participate in dangling-reference discovery. Final native receipt is authoritative.",
+  "preserved_scope": {
+    "historical_receipt_root": "dogfood-results/production-readiness-20261015/",
+    "unchanged_by_this_slice": [
+      "global attempts.ncl",
+      "Rust/VMM source",
+      "historical receipts",
+      "required-check policy",
+      "generated policy projection",
+      "accepted requirements and campaign bounds"
+    ],
+    "additional_work": "Only exact source links, residual explanations, Cairn integration/update documentation and concise source-audit handoff artifact."
+  },
+  "baseline": {
+    "requirements": 382,
+    "referenced": 156,
+    "missing_count": 226,
+    "dangling_count": 5,
+    "receipt": "dogfood-results/production-readiness-20261015/traceability.json"
+  },
+  "integration_records": [
+    "cairn-policy/UPSTREAM.md",
+    "dogfood-results/production-readiness-closure-20261015/cairn-import-closure.json",
+    "dogfood-results/production-readiness-closure-20261015/cairn-upstream-integration.json",
+    ".cairn/changes/refresh-vendored-cairn-policy/tasks.md"
+  ],
+  "historical_dangling_resolution": {
+    "ids": [
+      "cairn.lifecycle_directory.hidden_default",
+      "chaoscontrol.deterministic_snapshots.incremental_core",
+      "chaoscontrol.deterministic_snapshots.incremental_lineage",
+      "chaoscontrol.deterministic_snapshots.incremental_revert",
+      "chaoscontrol.deterministic_snapshots.incremental_validation"
+    ],
+    "resolution": "Parent removed exactly one upstream-owned hidden-default marker comment from the imported adapted contracts and retargeted four obsolete incremental snapshot markers to accepted snapshot requirements. This slice does not alter imported predicates, Rust source or marker acceptance policy.",
+    "import_proof": "dogfood-results/production-readiness-closure-20261015/cairn-import-closure.json"
+  },
+  "audited_scope": "The 226 historically missing links and 5 historically dangling IDs, plus exact current declared-marker inventory. Previously linked accepted requirements are not re-proved as a whole-system satisfaction audit.",
+  "observed_environment_commands": [
+    [
+      "command",
+      "-v",
+      "nickel"
+    ],
+    [
+      "command",
+      "-v",
+      "nickel-export"
+    ]
+  ],
+  "retained_policy_export_cohort": {
+    "source": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/nickel_export_boundary.rs:15-17,69-155,170-228",
+    "packaging_source": "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/flake.nix:77-85",
+    "wrapper_source": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn:1-14",
+    "exporter_source_revision": "257fafc1c746f1faf156207043a4c826bfb16d49",
+    "evaluator_descriptor_identity": "nixpkgs:nickel",
+    "evaluator_descriptor_version": "nickel-lang-cli-1.16.0",
+    "descriptor_is_measured_executable_identity": false,
+    "wrapper_supplies_exporter_and_evaluator": true,
+    "outside_wrapper_path_lookup_is_missing_cohort_proof": false,
+    "wrapped_cli_blake3": "blake3:2d7b6d8269706c7ed0e9fd331daa191355d1c294ff70e43f8df2a517967d84fc",
+    "nickel_path": "/nix/store/5yhl5ar0pnbykzm5f288d7ibxvwwrfwm-nickel-1.16.0/bin/nickel",
+    "nickel_blake3": "blake3:62d9e78b0d78ec4f72987f8a46f50217a054149c6bc627f03ae254117a1210e6",
+    "exporter_path": "/nix/store/6bs4wzpdvyzp9xml6p30wgfza8047xdl-nickel-export-0.1.0/bin/nickel-export",
+    "exporter_blake3": "blake3:f67b46ca14d91dfa2382a87e90e958f855b64a02f351d00b59cc7937be3249a2",
+    "scope": "Measured local executable bytes plus exact inspected wrapper/source; not a new dependency pin, update-cohort admission, policy correctness or downstream applicability proof."
+  },
+  "observed_identity_commands": [
+    [
+      "b3sum",
+      "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+      "/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source/crates/cairn-cli/src/release_readiness.rs",
+      "/nix/store/6bpdhd8hszl5jgggf0k16yys89wgxhi5-source/crates/cairn-cli/src/release_readiness.rs"
+    ],
+    [
+      "b3sum",
+      "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/.cairn-wrapped",
+      "/nix/store/5yhl5ar0pnbykzm5f288d7ibxvwwrfwm-nickel-1.16.0/bin/nickel",
+      "/nix/store/6bs4wzpdvyzp9xml6p30wgfza8047xdl-nickel-export-0.1.0/bin/nickel-export"
+    ],
+    [
+      "b3sum",
+      "cairn-policy/native-traceability-closure-20261015.ncl",
+      "cairn-policy/UPSTREAM.md",
+      ".cairn/changes/refresh-vendored-cairn-policy/tasks.md"
+    ]
+  ],
+  "current_source_revision_binding": "starting_revision is the historical baseline, not a claim that the current uncommitted source equals that revision. Main must retain fresh native source_summary/input_hash and bind final current-source receipts/revision after integration.",
+  "source_inventory": {
+    "accepted_requirements": 382,
+    "referenced_requirements": 262,
+    "missing_requirements": 120,
+    "dangling_references": 0,
+    "curated_entries": 71,
+    "curated_linked_requirement_ids": 102,
+    "explicit_residual_rows": 120,
+    "already_linked_snapshot_contract_blockers": 4
+  },
+  "residual_requirement_ids": [
+    "chaoscontrol.bounded_tree_adoption.evidence_boundary",
+    "chaoscontrol.bounded_tree_adoption.parity",
+    "chaoscontrol.bounded_tree_adoption.prerequisite",
+    "chaoscontrol.bounded_tree_adoption.rollback",
+    "chaoscontrol.bounded_tree_adoption.tree_observation",
+    "chaoscontrol.campaign_policy.baseline",
+    "chaoscontrol.campaign_policy.baseline.missing",
+    "chaoscontrol.campaign_policy.baseline.valid",
+    "chaoscontrol.campaign_policy.boundary.invalid",
+    "chaoscontrol.campaign_policy.boundary.seed_runner",
+    "chaoscontrol.campaign_policy.cutover",
+    "chaoscontrol.campaign_policy.cutover.invalid",
+    "chaoscontrol.campaign_policy.effects.invalid",
+    "chaoscontrol.campaign_policy.kvm_parity",
+    "chaoscontrol.campaign_policy.kvm_parity.missing",
+    "chaoscontrol.campaign_policy.kvm_parity.valid",
+    "chaoscontrol.campaign_policy.product_authority.invalid",
+    "chaoscontrol.campaign_policy.progress.invalid",
+    "chaoscontrol.campaign_policy.source_pins",
+    "chaoscontrol.campaign_policy.source_pins.invalid",
+    "chaoscontrol.campaign_policy.source_pins.valid",
+    "chaoscontrol.deterministic_smp.snapshot_state",
+    "chaoscontrol.deterministic_smp.validation",
+    "chaoscontrol.deterministic_smp.validation.host_perturbation",
+    "chaoscontrol.deterministic_smp.validation.snapshot",
+    "chaoscontrol.deterministic_smp.validation.spurious_interrupts",
+    "chaoscontrol.deterministic_smp.watchdog",
+    "chaoscontrol.deterministic_snapshots.preflight",
+    "chaoscontrol.deterministic_snapshots.restore_atomicity",
+    "chaoscontrol.deterministic_snapshots.validation.continuation",
+    "chaoscontrol.deterministic_snapshots.validation.preflight",
+    "chaoscontrol.deterministic_snapshots.validation.round_trip",
+    "chaoscontrol.deterministic_snapshots.vcpu_state",
+    "chaoscontrol.deterministic_snapshots.virtio_state",
+    "chaoscontrol.event_branching.evidence_binding",
+    "chaoscontrol.event_branching.frontier_entry",
+    "chaoscontrol.event_branching.validation",
+    "chaoscontrol.fallback_assertion_transport.deterministic_ingestion",
+    "chaoscontrol.fallback_assertion_transport.evidence_scope",
+    "chaoscontrol.fallback_assertion_transport.record_format",
+    "chaoscontrol.fallback_assertion_transport.validation",
+    "chaoscontrol.guest_processes.evidence_scope",
+    "chaoscontrol.guest_processes.manifest",
+    "chaoscontrol.guest_processes.shared_storage",
+    "chaoscontrol.guest_processes.supervisor",
+    "chaoscontrol.guest_processes.transport_isolation",
+    "chaoscontrol.guest_processes.validation",
+    "chaoscontrol.nickel_toolchain.cohort.scenario.exact",
+    "chaoscontrol.nickel_toolchain.cohort.scenario.rejected",
+    "chaoscontrol.nickel_toolchain.compatibility",
+    "chaoscontrol.nickel_toolchain.lockfile",
+    "chaoscontrol.nickel_toolchain.lockfile.scenario.generated",
+    "chaoscontrol.nickel_toolchain.validation",
+    "chaoscontrol.nickel_toolchain.validation.scenario.passed",
+    "chaoscontrol.oci_intake.bundle_lowering",
+    "chaoscontrol.oci_intake.claim_boundary",
+    "chaoscontrol.oci_intake.nickel_topology",
+    "chaoscontrol.oci_intake.provenance",
+    "chaoscontrol.oci_intake.validation",
+    "chaoscontrol.runtime_capacity.verification",
+    "chaoscontrol.rust_automation.boundary",
+    "chaoscontrol.rust_automation.inventory",
+    "chaoscontrol.schedule_diversity.evidence_identity",
+    "chaoscontrol.sdk_parity.mapping",
+    "chaoscontrol.simulation_kernel.compatibility",
+    "chaoscontrol.simulation_kernel.determinism",
+    "chaoscontrol.simulation_kernel.execution_boundary",
+    "chaoscontrol.simulation_kernel.snapshot_model",
+    "chaoscontrol.simulation_kernel.validation",
+    "chaoscontrol.simulator_campaign_profiles.fixtures",
+    "chaoscontrol.simulator_campaign_profiles.ownership_registry",
+    "chaoscontrol.simulator_campaign_profiles.shared_contracts",
+    "chaoscontrol.smr_chain.adapter",
+    "chaoscontrol.smr_chain.evidence",
+    "chaoscontrol.smr_chain.fault_campaign",
+    "chaoscontrol.smr_chain.indefinite_outcomes",
+    "chaoscontrol.smr_chain.replay",
+    "chaoscontrol.smr_chain.validation",
+    "chaoscontrol.spacewasm_mvp.admission_refresh",
+    "chaoscontrol.spacewasm_mvp.bounds",
+    "chaoscontrol.spacewasm_mvp.corpus",
+    "chaoscontrol.spacewasm_mvp.differential",
+    "chaoscontrol.spacewasm_mvp.evidence",
+    "chaoscontrol.spacewasm_mvp.execution",
+    "chaoscontrol.spacewasm_mvp.functional_core",
+    "chaoscontrol.spacewasm_mvp.materialization",
+    "chaoscontrol.spacewasm_mvp.profile",
+    "chaoscontrol.spacewasm_mvp.resume",
+    "chaoscontrol.spacewasm_mvp.shrink",
+    "chaoscontrol.spacewasm_mvp.streaming",
+    "chaoscontrol.spacewasm_mvp.validation",
+    "chaoscontrol.unified_agpl.authority",
+    "chaoscontrol.unified_agpl.metadata",
+    "chaoscontrol.unified_agpl.scope",
+    "chaoscontrol.unified_agpl.validation",
+    "chaoscontrol.virtio_safety.boundary",
+    "chaoscontrol.virtio_safety.descriptor_validation",
+    "chaoscontrol.virtio_safety.mutation_order",
+    "chaoscontrol.virtio_safety.queue_configuration",
+    "chaoscontrol.virtio_safety.request_validation",
+    "chaoscontrol.virtio_safety.snapshot_state",
+    "chaoscontrol.virtio_safety.validation",
+    "chaoscontrol.virtio_safety.validation.core",
+    "chaoscontrol.virtio_safety.validation.fuzz",
+    "chaoscontrol.virtio_safety.validation.kvm",
+    "chaoscontrol.vm_cohort.source",
+    "chaoscontrol.waltier_dst.verification",
+    "ebpf_trace_evidence.comparison",
+    "ebpf_trace_evidence.evidence",
+    "ebpf_trace_evidence.lifecycle",
+    "ebpf_trace_evidence.ordering",
+    "ebpf_trace_evidence.verification",
+    "kernel_bundle_validation.admission",
+    "kernel_bundle_validation.boot",
+    "kernel_bundle_validation.bpf",
+    "kernel_bundle_validation.evidence",
+    "kernel_bundle_validation.modules",
+    "kernel_bundle_validation.profile",
+    "kernel_bundle_validation.rails",
+    "kernel_bundle_validation.verification"
+  ],
+  "residual_reasons": "Exact per-ID implementation/test pointers and unmet accepted clauses are in cairn-policy/native-traceability-closure-20261015.ncl residual[]. No implementation marker is added for these rows.",
+  "residual_count_by_accepted_spec": {
+    ".cairn/specs/bounded-tree-adoption/spec.md": 5,
+    ".cairn/specs/campaign-core-adoption/spec.md": 16,
+    ".cairn/specs/deterministic-schedule-diversity/spec.md": 1,
+    ".cairn/specs/deterministic-simulation-kernel/spec.md": 5,
+    ".cairn/specs/deterministic-smp-scheduling/spec.md": 6,
+    ".cairn/specs/deterministic-snapshots/spec.md": 8,
+    ".cairn/specs/ebpf-trace-evidence/spec.md": 5,
+    ".cairn/specs/fallback-assertion-transport/spec.md": 4,
+    ".cairn/specs/guest-multiprocess-topology/spec.md": 6,
+    ".cairn/specs/kernel-bundle-validation/spec.md": 8,
+    ".cairn/specs/nickel-toolchain/spec.md": 7,
+    ".cairn/specs/oci-container-intake/spec.md": 5,
+    ".cairn/specs/record-waltier-dst-reference/spec.md": 1,
+    ".cairn/specs/runtime-capacity/spec.md": 1,
+    ".cairn/specs/rust-owned-product-automation/spec.md": 2,
+    ".cairn/specs/sdk-parity-and-guidance/spec.md": 1,
+    ".cairn/specs/simulator-campaign-profiles/spec.md": 3,
+    ".cairn/specs/smr-reliability-workload/spec.md": 6,
+    ".cairn/specs/spacewasm-mvp-differential/spec.md": 13,
+    ".cairn/specs/sut-declared-event-branching/spec.md": 3,
+    ".cairn/specs/unified-agpl-license/spec.md": 4,
+    ".cairn/specs/virtio-guest-input-safety/spec.md": 10
+  },
+  "already_linked_snapshot_contract_blockers": [
+    {
+      "id": "chaoscontrol.deterministic_snapshots.complete_state",
+      "status": "blocked",
+      "implementation": [
+        "crates/chaoscontrol-vmm/src/snapshot.rs::VmSnapshot::capture",
+        "crates/chaoscontrol-vmm/src/vm.rs::snapshot"
+      ],
+      "tests": [
+        "crates/chaoscontrol-vmm/src/vm/incremental_lineage.rs::incremental_lineage_matches_full_memory_through_depth_four",
+        "crates/chaoscontrol-vmm/src/snapshot.rs::tests::vcpu_snapshot_serialization_round_trips_and_rejects_truncation"
+      ],
+      "accepted_source": ".cairn/specs/deterministic-snapshots/spec.md",
+      "reason": "Marker links real component inventory and capture source, but cannot imply entire contract satisfied: full mutated-state field-complete round-trip is not established, unavailable capture capability is generally reported as Snapshot/Get* error rather than inspected typed eligibility diagnostic before capture, and strict continuation remains unproven. Memory-lineage evidence alone cannot establish complete component fidelity."
+    },
+    {
+      "id": "chaoscontrol.deterministic_snapshots.boundary",
+      "status": "blocked",
+      "implementation": [
+        "crates/chaoscontrol-vmm/src/snapshot.rs::build_snapshot_inventory",
+        "crates/chaoscontrol-vmm/src/snapshot.rs::validate_snapshot_metadata",
+        "crates/chaoscontrol-vmm/src/vm_core.rs::plan_incremental_restore",
+        "crates/chaoscontrol-vmm/src/vm.rs::validate_fault_engine_snapshot"
+      ],
+      "tests": [
+        "crates/chaoscontrol-vmm/src/vm_core.rs::tests::incremental_plan_rejects_out_of_range_overlay_before_any_shell_effect"
+      ],
+      "accepted_source": ".cairn/specs/deterministic-snapshots/spec.md",
+      "reason": "Pure metadata and memory-page planners exist, but complete validation/eligibility is still coupled to live KVM inventory, mmap construction and virtqueue reconstruction in integrated preflight. Existing marker is legitimate partial linkage, not support for full facts-only restore planning contract."
+    },
+    {
+      "id": "chaoscontrol.deterministic_snapshots.validation",
+      "status": "blocked",
+      "implementation": [
+        "crates/chaoscontrol-vmm/src/vm.rs::restore_validated"
+      ],
+      "tests": [
+        "crates/chaoscontrol-vmm/src/vm/incremental_lineage.rs::incremental_lineage_matches_full_memory_through_depth_four",
+        "crates/chaoscontrol-vmm/tests/exact_snapshot_kvm.rs::serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence"
+      ],
+      "accepted_source": ".cairn/specs/deterministic-snapshots/spec.md",
+      "reason": "Inventory, lineage and bounded CPU tests are partial evidence. Contract additionally requires field-complete round trips, integrated preflight failure isolation and bounded KVM continuation across every supported state owner. Parent reports strict controller trace/memory divergence; assertion/round equality cannot substitute. Marker cannot assert complete validation."
+    },
+    {
+      "id": "chaoscontrol.deterministic_snapshots.validation.core",
+      "status": "blocked",
+      "implementation": [
+        "crates/chaoscontrol-vmm/src/snapshot.rs::validate_snapshot_metadata",
+        "crates/chaoscontrol-vmm/src/vm.rs::validate_fault_engine_snapshot"
+      ],
+      "tests": [
+        "crates/chaoscontrol-vmm/src/snapshot.rs::tests::exact_metadata_accepts_complete_matching_inventory",
+        "crates/chaoscontrol-vmm/src/snapshot.rs::tests::exact_metadata_rejects_topology_mismatch_and_duplicate_identity"
+      ],
+      "accepted_source": ".cairn/specs/deterministic-snapshots/spec.md",
+      "reason": "These tests cover a pure metadata subset, not a complete normalized-facts snapshot core producing identical plans/blockers. Integrated preflight performs KVM inventory ioctl and memory/queue shell work, so no full I/O-free planner scenario is established."
+    }
+  ],
+  "source_consistency": {
+    "curated_ids_absent_from_accepted": [],
+    "curated_residual_overlap": [],
+    "source_missing_not_explicit_residual": [],
+    "explicit_residual_not_source_missing": [],
+    "dangling_ids": [],
+    "assurance": "Read-only source aggregation; final native coverage remains authoritative."
+  },
+  "final_source_blake3": {
+    "cairn-policy/native-traceability-closure-20261015.ncl": "blake3:ee26634c017c61ceaa26f4881dd709abd6df6681798c28dd2c46214a5f76a33f",
+    "cairn-policy/UPSTREAM.md": "blake3:0d68951661d0a9b1b68c04ff241edae7ece8e9f591b595885a1b62add3e0d8ab",
+    ".cairn/changes/refresh-vendored-cairn-policy/tasks.md": "blake3:c519517b976cdfa498ad42b991f5b29440e2cfd2a8ae100bffb39efdef1b6258"
+  },
+  "parent_observed_policy_freshness": {
+    "execution_receipt": "/tmp/chaoscontrol-production-readiness-closure-20261015/policy-freshness/execution.json",
+    "argv": [
+      "nix",
+      "run",
+      "--no-update-lock-file",
+      "path:/nix/store/nh55gw93v3xdks6bg2h9yq3z44sw18f3-source#cairn",
+      "--",
+      "policy",
+      "export",
+      "--source",
+      "cairn-policy/default.ncl",
+      "--output",
+      "cairn-policy/generated/cairn-policy.json",
+      "--check"
+    ],
+    "exit_code": 0,
+    "operational_timeout": false,
+    "elapsed_seconds": 0.36489547499877517,
+    "stdout": "policy fresh: cairn-policy/generated/cairn-policy.json",
+    "stdout_blake3": "blake3:626bb5e31eed06caa9eff49fd1d1a339f21e19bb3347e93255daa23e716b1f47",
+    "scope": "Observed parent execution of retained cohort freshness only; not a newer import/update, native coverage pass, downstream applicability or readiness pass."
+  },
+  "changed_files": [
+    "cairn-policy/native-traceability-closure-20261015.ncl",
+    "cairn-policy/UPSTREAM.md",
+    ".cairn/changes/refresh-vendored-cairn-policy/tasks.md",
+    "dogfood-results/production-readiness-closure-20261015/cairn-native-source-audit.json"
+  ],
+  "corrective_attempt19": {
+    "status": "blocked",
+    "allocated_attempt": 19,
+    "new_requirement_links": 0,
+    "attempt_disposition": "Diagnostic-only reserved batch19; zero genuine new links, not a consumed corrective implementation. Parent owns the attempt ledger.",
+    "global_source_tree_hash": null,
+    "source_freeze_boundary": "No global source-tree hash is computed while the admitted guest kernel is rebuilt independently. Native command source_summary values and individual file/link identities describe their observed bytes only; Main must bind the frozen integrated source separately.",
+    "reason": "No inspected whole residual requirement with its mandatory scenarios is established; partial implementations are deliberately not padded with implementation markers. Existing 71 curated entries and 102 curated IDs are unchanged. The 106 baseline-to-current coverage improvement includes four links outside this curated file.",
+    "targeted_reinspection": [
+      {
+        "accepted_source": ".cairn/specs/bounded-tree-adoption/spec.md",
+        "scope": "All six requirements; positive bytes alone do not satisfy negative failure-class parity or observation-promotion and coupled-rollback rejection scenarios."
+      },
+      {
+        "accepted_source": ".cairn/specs/campaign-core-adoption/spec.md",
+        "scope": "Missing baseline/source/architecture/KVM/cutover rows remain distinct from already linked opaque-record, mapping and parity implementation."
+      },
+      {
+        "accepted_source": ".cairn/specs/unified-agpl-license/spec.md",
+        "scope": "Whole-ID obligations explicitly include archive contents and migration-wide ownership authority; metadata/text fixtures alone do not satisfy them."
+      },
+      {
+        "accepted_source": ".cairn/specs/rust-owned-product-automation/spec.md",
+        "scope": "Inventory removal admission and report-claim rejection are explicit scenarios, not merely documentary non-claims."
+      },
+      {
+        "accepted_source": ".cairn/specs/virtio-guest-input-safety/spec.md",
+        "implementation": "crates/chaoscontrol-vmm/src/devices/virtio_chain.rs::plan_descriptor_chain",
+        "scope": "Generic unsupported-flag guard exists; focused fixture sets INDIRECT only. It does not establish the separately named unknown-flag scenario or head/count-bound negative oracles. No extra marker is added.",
+        "tests": "crates/chaoscontrol-vmm/tests/virtio_validation.rs::cycles_bad_indices_and_flags_are_typed"
+      },
+      {
+        "implementation": "crates/chaoscontrol-vmm/src/vm.rs::validate_fault_engine_snapshot",
+        "scope": "Integrated preflight still calls snapshot_topology before malformed payload checks and materializes mmap-backed guest memory; this does not close facts-only/no-ioctl preflight requirements."
+      }
+    ],
+    "native_observation": {
+      "schema": "chaoscontrol.native-attempt19-observations.v1",
+      "new_requirement_links": 0,
+      "coverage": {
+        "valid": false,
+        "verdict": "fail",
+        "missing": 120,
+        "dangling": 0,
+        "requirements": 382,
+        "referenced": 262,
+        "input_hash": "e1a1e487ed403b2b48633ae0ba858abc6a69f619736227084974f0242c2d8abc",
+        "policy_hash": "0e65fe24216177125699c0b618fe50bf68031c6d13807269b0adaca29995eb14",
+        "receipt_hash": "ac5ed3b6493ea3be854aade0c29eb79ef93a7434ea45acd42dd65fe88582df9d",
+        "source_summary": {
+          "evidence_files": 524,
+          "evidence_manifest_hash": "ac58145519dc46d2a2933d97d928adfe37d3f45fcbd8335c28a01696590e5216",
+          "requirement_files": 37,
+          "requirement_manifest_hash": "550d6188d379fd4ed127c09bef08ce089ca9e9458401744e0e82250999660c06"
+        },
+        "missing_matches_all_residual_ids": true
+      },
+      "validation": {
+        "valid": true,
+        "verdict": null,
+        "verdict_field_present": false,
+        "issues": 0,
+        "findings": 0,
+        "changes": 24
+      },
+      "policy_projection": {
+        "fresh": true,
+        "regenerated": false,
+        "reason": "Supported pinned policy export --check reports fresh; audit data is not imported into default policy."
+      },
+      "non_claims": [
+        "Strict validation success is not coverage or release readiness.",
+        "Coverage remains fail with all 120 exact residual IDs; none are made inapplicable.",
+        "No project build/test/lint/formatter executed by this slice.",
+        "No historical receipt changed; no upstream fixtures copied or required checks skipped."
+      ]
+    },
+    "local_summary": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-native-summary.json",
+    "executions": {
+      "coverage": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+          "traceability",
+          "coverage",
+          "--root",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+          "--policy",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+          "--profile",
+          "chaoscontrol-default",
+          "--json"
+        ],
+        "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn traceability coverage --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --policy /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json --profile chaoscontrol-default --json",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 1,
+        "started": "2026-10-16T01:42:20.225329+00:00",
+        "finished": "2026-10-16T01:42:20.396203+00:00",
+        "elapsed_seconds": 0.17081293999945046,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-native-coverage/stdout.log",
+            "digest": "blake3:b05cdfdef063ef4c8c5c005c8effce834750a17b1ae83593f2ac915db239305c",
+            "bytes": 7789
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-native-coverage/stderr.log",
+            "digest": "blake3:0d6b37b85f7098e17c14dfd421bdf089b3b545a8c04e73e315c9f32fc26a50be",
+            "bytes": 36
+          }
+        ]
+      },
+      "validation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+          "validate",
+          "--root",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+          "--policy",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+          "--strict"
+        ],
+        "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn validate --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --policy /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json --strict",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T01:42:20.499983+00:00",
+        "finished": "2026-10-16T01:42:20.668133+00:00",
+        "elapsed_seconds": 0.1681530659989221,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-native-validation/stdout.log",
+            "digest": "blake3:d9bad6d171e5e098d3087819480db4ce0c6c78c19a7c23442794615d172af935",
+            "bytes": 77137
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-native-validation/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "freshness": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+          "policy",
+          "export",
+          "--source",
+          "cairn-policy/default.ncl",
+          "--output",
+          "cairn-policy/generated/cairn-policy.json",
+          "--check"
+        ],
+        "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn policy export --source cairn-policy/default.ncl --output cairn-policy/generated/cairn-policy.json --check",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T01:42:20.459769+00:00",
+        "finished": "2026-10-16T01:42:21.443120+00:00",
+        "elapsed_seconds": 0.983356251999794,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-policy-freshness/stdout.log",
+            "digest": "blake3:626bb5e31eed06caa9eff49fd1d1a339f21e19bb3347e93255daa23e716b1f47",
+            "bytes": 55
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-policy-freshness/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "export": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+          "export",
+          "--format",
+          "json",
+          "cairn-policy/native-traceability-closure-20261015.ncl"
+        ],
+        "display_command": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel export --format json cairn-policy/native-traceability-closure-20261015.ncl",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T01:42:20.460763+00:00",
+        "finished": "2026-10-16T01:42:20.577381+00:00",
+        "elapsed_seconds": 0.11661582200031262,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-audit-data-export/stdout.log",
+            "digest": "blake3:a178b037f82f2f192365d6ff57a780e52f630ceb5d5d11c596e67d07106931ac",
+            "bytes": 229251
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/attempt19-audit-data-export/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    "residual_gap_summary": [
+      {
+        "accepted_source": ".cairn/specs/bounded-tree-adoption/spec.md",
+        "requirements": [
+          "chaoscontrol.bounded_tree_adoption.evidence_boundary",
+          "chaoscontrol.bounded_tree_adoption.parity",
+          "chaoscontrol.bounded_tree_adoption.prerequisite",
+          "chaoscontrol.bounded_tree_adoption.rollback",
+          "chaoscontrol.bounded_tree_adoption.tree_observation"
+        ],
+        "gap": "Missing negative old/shared failure-class parity, producer completion/admission evidence, observation-to-behavior promotion rejection, and coupled rollback validation.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/campaign-core-adoption/spec.md",
+        "requirements": [
+          "chaoscontrol.campaign_policy.baseline",
+          "chaoscontrol.campaign_policy.baseline.missing",
+          "chaoscontrol.campaign_policy.baseline.valid",
+          "chaoscontrol.campaign_policy.boundary.invalid",
+          "chaoscontrol.campaign_policy.boundary.seed_runner",
+          "chaoscontrol.campaign_policy.cutover",
+          "chaoscontrol.campaign_policy.cutover.invalid",
+          "chaoscontrol.campaign_policy.effects.invalid",
+          "chaoscontrol.campaign_policy.kvm_parity",
+          "chaoscontrol.campaign_policy.kvm_parity.missing",
+          "chaoscontrol.campaign_policy.kvm_parity.valid",
+          "chaoscontrol.campaign_policy.product_authority.invalid",
+          "chaoscontrol.campaign_policy.progress.invalid",
+          "chaoscontrol.campaign_policy.source_pins",
+          "chaoscontrol.campaign_policy.source_pins.invalid",
+          "chaoscontrol.campaign_policy.source_pins.valid"
+        ],
+        "gap": "Missing focused legacy baseline negatives/admission, cross-declaration compatible published source admission, shared ownership/effect mutation guard, and current receipt-conditioned adaptive KVM cutover denial.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/deterministic-schedule-diversity/spec.md",
+        "requirements": [
+          "chaoscontrol.schedule_diversity.evidence_identity"
+        ],
+        "gap": "Variant drift helper is test-only; production replay artifact admission does not compare recorded policy identity to executed policy.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/deterministic-simulation-kernel/spec.md",
+        "requirements": [
+          "chaoscontrol.simulation_kernel.compatibility",
+          "chaoscontrol.simulation_kernel.determinism",
+          "chaoscontrol.simulation_kernel.execution_boundary",
+          "chaoscontrol.simulation_kernel.snapshot_model",
+          "chaoscontrol.simulation_kernel.validation"
+        ],
+        "gap": "Missing pre-split seeded equivalence, complete effect adapter corpus, pre/post snapshot and public artifact schema inventory compatibility, and complete extraction gate evidence.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/deterministic-smp-scheduling/spec.md",
+        "requirements": [
+          "chaoscontrol.deterministic_smp.snapshot_state",
+          "chaoscontrol.deterministic_smp.validation",
+          "chaoscontrol.deterministic_smp.validation.host_perturbation",
+          "chaoscontrol.deterministic_smp.validation.snapshot",
+          "chaoscontrol.deterministic_smp.validation.spurious_interrupts",
+          "chaoscontrol.deterministic_smp.watchdog"
+        ],
+        "gap": "Missing complete VM partial-quantum/correction continuation and actual interleaved interrupt, watchdog-cadence/timeout, and competing CPU contention behavioral matrix.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/deterministic-snapshots/spec.md",
+        "requirements": [
+          "chaoscontrol.deterministic_snapshots.preflight",
+          "chaoscontrol.deterministic_snapshots.restore_atomicity",
+          "chaoscontrol.deterministic_snapshots.validation.continuation",
+          "chaoscontrol.deterministic_snapshots.validation.preflight",
+          "chaoscontrol.deterministic_snapshots.validation.round_trip",
+          "chaoscontrol.deterministic_snapshots.vcpu_state",
+          "chaoscontrol.deterministic_snapshots.virtio_state",
+          "chaoscontrol.vm_cohort.source"
+        ],
+        "gap": "Integrated preflight still queries KVM/materializes guest memory; required field-complete round trips, forced apply-error isolation and all-owner continuation matrix remain unsupported. Accepted VM Cohort revision differs from actual pin.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/ebpf-trace-evidence/spec.md",
+        "requirements": [
+          "ebpf_trace_evidence.comparison",
+          "ebpf_trace_evidence.evidence",
+          "ebpf_trace_evidence.lifecycle",
+          "ebpf_trace_evidence.ordering",
+          "ebpf_trace_evidence.verification"
+        ],
+        "gap": "Missing payload validation, claimed privacy/cohort/ordering eligibility enforcement, explicit complete collector lifecycle ownership, and required privileged adversarial matrix.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/fallback-assertion-transport/spec.md",
+        "requirements": [
+          "chaoscontrol.fallback_assertion_transport.deterministic_ingestion",
+          "chaoscontrol.fallback_assertion_transport.evidence_scope",
+          "chaoscontrol.fallback_assertion_transport.record_format",
+          "chaoscontrol.fallback_assertion_transport.validation"
+        ],
+        "gap": "Missing separately valid replayed-sink comparison, malformed record process diagnostics, and end-to-end Rust artifact DTO process/record/sink scope binding.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/guest-multiprocess-topology/spec.md",
+        "requirements": [
+          "chaoscontrol.guest_processes.evidence_scope",
+          "chaoscontrol.guest_processes.manifest",
+          "chaoscontrol.guest_processes.shared_storage",
+          "chaoscontrol.guest_processes.supervisor",
+          "chaoscontrol.guest_processes.transport_isolation",
+          "chaoscontrol.guest_processes.validation"
+        ],
+        "gap": "Missing zero-declarations legacy boot equivalence, admitted deterministic shared mounts, deterministic actual-child exit/replay, concurrent ownership transport proof, and dynamic owner propagation through bug/verdict DTOs.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/kernel-bundle-validation/spec.md",
+        "requirements": [
+          "kernel_bundle_validation.admission",
+          "kernel_bundle_validation.boot",
+          "kernel_bundle_validation.bpf",
+          "kernel_bundle_validation.evidence",
+          "kernel_bundle_validation.modules",
+          "kernel_bundle_validation.profile",
+          "kernel_bundle_validation.rails",
+          "kernel_bundle_validation.verification"
+        ],
+        "gap": "Missing canonical Onix/Mantle/component admission, typed Nickel profile, complete guest readiness identity, measured module facts, exact BPF trigger/event evidence and cheap wiring/adversarial KVM closeout rails.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/nickel-toolchain/spec.md",
+        "requirements": [
+          "chaoscontrol.nickel_toolchain.cohort.scenario.exact",
+          "chaoscontrol.nickel_toolchain.cohort.scenario.rejected",
+          "chaoscontrol.nickel_toolchain.compatibility",
+          "chaoscontrol.nickel_toolchain.lockfile",
+          "chaoscontrol.nickel_toolchain.lockfile.scenario.generated",
+          "chaoscontrol.nickel_toolchain.validation",
+          "chaoscontrol.nickel_toolchain.validation.scenario.passed"
+        ],
+        "gap": "Ambient direct Nickel invocations are not cohort-admitted; evaluator-substitution negatives, actual lock-command provenance, and complete current validation receipts are missing.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/oci-container-intake/spec.md",
+        "requirements": [
+          "chaoscontrol.oci_intake.bundle_lowering",
+          "chaoscontrol.oci_intake.claim_boundary",
+          "chaoscontrol.oci_intake.nickel_topology",
+          "chaoscontrol.oci_intake.provenance",
+          "chaoscontrol.oci_intake.validation"
+        ],
+        "gap": "Missing capability admission/Nickel bundle export, two-service shared-directory lowering proof, root/bundle remeasurement comparison, and claim-promotion negative.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/record-waltier-dst-reference/spec.md",
+        "requirements": [
+          "chaoscontrol.waltier_dst.verification"
+        ],
+        "gap": "Missing positive/negative documentation checks enforcing the reference posture.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/runtime-capacity/spec.md",
+        "requirements": [
+          "chaoscontrol.runtime_capacity.verification"
+        ],
+        "gap": "Missing allocation-attempt probe measuring selected initialized steady-state operations; stable numeric capacity is not an allocation observation.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/rust-owned-product-automation/spec.md",
+        "requirements": [
+          "chaoscontrol.rust_automation.boundary",
+          "chaoscontrol.rust_automation.inventory"
+        ],
+        "gap": "Missing inventory/caller removal admission and rejection of workflow correctness claims based merely on language migration.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/sdk-parity-and-guidance/spec.md",
+        "requirements": [
+          "chaoscontrol.sdk_parity.mapping"
+        ],
+        "gap": "Public branch_marker and cc_branch_marker surfaces are absent from the versioned parity map; several sections lack explicit required status classifications.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/simulator-campaign-profiles/spec.md",
+        "requirements": [
+          "chaoscontrol.simulator_campaign_profiles.fixtures",
+          "chaoscontrol.simulator_campaign_profiles.ownership_registry",
+          "chaoscontrol.simulator_campaign_profiles.shared_contracts"
+        ],
+        "gap": "Missing per-family negative category matrix, per-family ownership admission, and shared-primitive disagreement/exception enforcement.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/smr-reliability-workload/spec.md",
+        "requirements": [
+          "chaoscontrol.smr_chain.adapter",
+          "chaoscontrol.smr_chain.evidence",
+          "chaoscontrol.smr_chain.fault_campaign",
+          "chaoscontrol.smr_chain.indefinite_outcomes",
+          "chaoscontrol.smr_chain.replay",
+          "chaoscontrol.smr_chain.validation"
+        ],
+        "gap": "Missing consumer-commit observation provenance guard, raw observation/control receipt identity, campaign activation contract, changed-logical-ID retry rejection, and standalone parent/precondition-bound replay.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/spacewasm-mvp-differential/spec.md",
+        "requirements": [
+          "chaoscontrol.spacewasm_mvp.admission_refresh",
+          "chaoscontrol.spacewasm_mvp.bounds",
+          "chaoscontrol.spacewasm_mvp.corpus",
+          "chaoscontrol.spacewasm_mvp.differential",
+          "chaoscontrol.spacewasm_mvp.evidence",
+          "chaoscontrol.spacewasm_mvp.execution",
+          "chaoscontrol.spacewasm_mvp.functional_core",
+          "chaoscontrol.spacewasm_mvp.materialization",
+          "chaoscontrol.spacewasm_mvp.profile",
+          "chaoscontrol.spacewasm_mvp.resume",
+          "chaoscontrol.spacewasm_mvp.shrink",
+          "chaoscontrol.spacewasm_mvp.streaming",
+          "chaoscontrol.spacewasm_mvp.validation"
+        ],
+        "gap": "MVP lane lacks required complete observation/resource/profile/corpus/resume/stream/shrink/evidence contracts and negative corpus; component-lane implementation cannot substitute. Admission refresh projections also disagree.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/sut-declared-event-branching/spec.md",
+        "requirements": [
+          "chaoscontrol.event_branching.evidence_binding",
+          "chaoscontrol.event_branching.frontier_entry",
+          "chaoscontrol.event_branching.validation"
+        ],
+        "gap": "Missing marker-only branch retention integration corpus and marker/process/tick/state/parent identity propagation into bug/replay carriers.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/unified-agpl-license/spec.md",
+        "requirements": [
+          "chaoscontrol.unified_agpl.authority",
+          "chaoscontrol.unified_agpl.metadata",
+          "chaoscontrol.unified_agpl.scope",
+          "chaoscontrol.unified_agpl.validation"
+        ],
+        "gap": "Missing migration-wide path authority inventory, package archive content validation, and complete current crate-local license artifact coverage.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      },
+      {
+        "accepted_source": ".cairn/specs/virtio-guest-input-safety/spec.md",
+        "requirements": [
+          "chaoscontrol.virtio_safety.boundary",
+          "chaoscontrol.virtio_safety.descriptor_validation",
+          "chaoscontrol.virtio_safety.mutation_order",
+          "chaoscontrol.virtio_safety.queue_configuration",
+          "chaoscontrol.virtio_safety.request_validation",
+          "chaoscontrol.virtio_safety.snapshot_state",
+          "chaoscontrol.virtio_safety.validation",
+          "chaoscontrol.virtio_safety.validation.core",
+          "chaoscontrol.virtio_safety.validation.fuzz",
+          "chaoscontrol.virtio_safety.validation.kvm"
+        ],
+        "gap": "Missing specified unknown-flag/head/count/request-status/entropy-retry behavioral oracles; FAILED device processing guard, complete failed/pending snapshot state, pure transition boundary and production malicious descriptor/generated-shell matrix remain incomplete.",
+        "exact_per_id_findings": "cairn-policy/native-traceability-closure-20261015.ncl::residual"
+      }
+    ],
+    "source_identities": {
+      "algorithm": "BLAKE3",
+      "scope": "Exact existing bytes of all 177 repository-relative source/spec/test/documentary pointers extracted from entries and residual records plus owned policy and blocker sources. Hashing a file is not a claim it was newly read or its tests executed. Parent must rebind any subsequently changed source.",
+      "paths": {
+        ".cairn/archive/2026-08-30-causality-analysis-engine/design.md": "blake3:87e11fa3cdef119d5579d86c1220932ae76ea8ce5a29ea209d1ce277ab74f293",
+        ".cairn/archive/2026-09-26-adopt-campaign-core/evidence/kvm-smoke-2026-09-26-frontier-parity-receipt.json": "blake3:13abf29e4d717aaabeffd8a61eb8aca4ed89884ec08a4a7e901c265adfe91c03",
+        ".cairn/archive/2026-09-26-adopt-campaign-core/verification-2026-09-07.md": "blake3:afe3251a034b4a7e9e77f63c8bd2578ee961c995c2835246678b74d0e8f18d59",
+        ".cairn/archive/2026-09-26-adopt-campaign-core/verification.md": "blake3:2c961536906e42c41ab11b5a91dbd3af3a8a7aeb27a5c71a4682be6b3d5e66cf",
+        ".cairn/specs/assertion-identity/spec.md": "blake3:51a5a6e7079251755d5d05d6d47530a89d428bb633427480d2b8329a17654376",
+        ".cairn/specs/bounded-tree-adoption/spec.md": "blake3:63992e07d2874435408b10d8785c85f9fa5f2b46be963487ee024a26c04161c0",
+        ".cairn/specs/campaign-core-adoption/spec.md": "blake3:7a4b42cfb7ff6789289342e8f6c092ae4ea1555dfd7b8568b8a7953326e5220e",
+        ".cairn/specs/causality-analysis-engine/spec.md": "blake3:584b7a027a46c47e9cd0a3c067bd81df06ff558b32bfe270d205b58a86ac4280",
+        ".cairn/specs/complete-fault-surface/spec.md": "blake3:2493fbce0253e1c8122d7843be87739a9aeb8f6f5b2af28e99b6a03153cf94e6",
+        ".cairn/specs/deterministic-schedule-diversity/spec.md": "blake3:86c32afe8ad9ccc5af91e4c2df9c9d59a055286c793b77010c89fabfa0969ec9",
+        ".cairn/specs/deterministic-simulation-kernel/spec.md": "blake3:b9344495eddde1a96ea8495962d9b6542f34156e2e8dc82806a6db411dbecb00",
+        ".cairn/specs/deterministic-smp-scheduling/spec.md": "blake3:60c6a89e458043acb881d3a6208e37a6e8eb58be79822a0e637bfecd7696ece9",
+        ".cairn/specs/deterministic-snapshots/spec.md": "blake3:230ba5ae9e6c3dadf7d2111af432b66c086ca3839f2e9c4c138417a82bb7c24c",
+        ".cairn/specs/ebpf-trace-evidence/spec.md": "blake3:4e4d732e6f9df12a0d2135e9e19369cf130bad5f31eeb9a9a75279e97dc10d1a",
+        ".cairn/specs/fallback-assertion-transport/spec.md": "blake3:19e5dfaa815273b7fa7d2f8a739ad64c66251b9d25007b5126c1fb094152546d",
+        ".cairn/specs/findability-survival-statistics/spec.md": "blake3:65bb43d24a0b10db7fdd5e07c88377954f7033b448cb89a9e18a7731e7969ecb",
+        ".cairn/specs/guest-multiprocess-topology/spec.md": "blake3:6899245f70d1fbae7f14d7db45835b40f79baeeafea7c44a05276a259a60edc3",
+        ".cairn/specs/history-phenomena-checker/spec.md": "blake3:e290df18b7b00947e40a23d845f0733ef2649161cf3f16fd9ef38bcb932cc681",
+        ".cairn/specs/kernel-bundle-validation/spec.md": "blake3:4b094a739dfb58bc2b3c803b6810b31d395441047663a3267fb2f424b05f573a",
+        ".cairn/specs/nickel-toolchain/spec.md": "blake3:84818ab3864a52e240ad97ae903e94dbe8739579f1007429590df54fda81cdc5",
+        ".cairn/specs/oci-container-intake/spec.md": "blake3:7596f9b3f41685d697e357440cd44d73b2ba8acd3190e0d84c5f8cc8f0f615aa",
+        ".cairn/specs/record-waltier-dst-reference/spec.md": "blake3:f736b4b4b288f90c7387d270f12a51202e9d4fdc596f8985f41d36f218f707b1",
+        ".cairn/specs/runtime-capacity/spec.md": "blake3:63d9cfc02a486f8d3e3771bb637387e735e6c5d40856700b36db79f68d2876f0",
+        ".cairn/specs/rust-owned-product-automation/spec.md": "blake3:34f37ad25ed03ad55cc5e4021dac7199a742a8942182839d67b5c926901b4579",
+        ".cairn/specs/sdk-parity-and-guidance/spec.md": "blake3:497e684341c5c06c300c51c14ad4d8895b146a1f5d154a7ea7c1db0841b7d301",
+        ".cairn/specs/simulator-campaign-profiles/spec.md": "blake3:49390ac519434cab8dc7f6c308132f0eed84b3ef31ed23b43dd74e1a36cb2327",
+        ".cairn/specs/smr-reliability-workload/spec.md": "blake3:9499b9615314faf21abf25d92946b1baf5620d7be181f094e418f6bb4a717957",
+        ".cairn/specs/spacewasm-mvp-differential/spec.md": "blake3:1000f4d5986997ce628df4354f8094cb734cfb8a1bb3e3f52454b6e741bab745",
+        ".cairn/specs/sut-declared-event-branching/spec.md": "blake3:d8c918a0d0192a42776d5c5d95423ec9eded04765c375fae3294038d3ce4e4ee",
+        ".cairn/specs/unified-agpl-license/spec.md": "blake3:17369a685c80ada1af73604dee479837ab22e7a5052a0355f042bae87aa4a935",
+        ".cairn/specs/virtio-guest-input-safety/spec.md": "blake3:5d0496b1177bee586032f686068a42d193ebc274d0aadf455e6b428f22df23a4",
+        "AGENTS.md": "blake3:690f64fc4e274830bd5efcccf889a7ad06328256be006fcf72e963d5da01017d",
+        "LICENSES/Apache-2.0.txt": "blake3:83cb3a2fcf829b6138e095b083016c34ddcdfa07b68d38782722c14fcf85ace6",
+        "cairn-policy/default.ncl": "blake3:0821db73c3d0078f235eb7e9ef79f59f865565b2fc7573436044a915cd983122",
+        "cairn-policy/generated/cairn-policy.json": "blake3:e623f470a978fecad0ae2ec2b0deb26dee5ca392d4ba42dee97198da01bf3134",
+        "cairn-policy/native-traceability-closure-20261015.ncl": "blake3:ee26634c017c61ceaa26f4881dd709abd6df6681798c28dd2c46214a5f76a33f",
+        "contracts/evidence/campaign-profile.ncl": "blake3:dd050710aefb3c39a81eb0b4f4b5cd15c35f202e511233adc12a5d2e1ade5efa",
+        "contracts/evidence/ebpf-trace-capture-profile.ncl": "blake3:60f27ffdf0f441fbb8ad39d7d33a74cd1a0b5d92373cd13bda3a08ea933d1d93",
+        "contracts/evidence/fault-schedule-profile.ncl": "blake3:de501efbcb8b33f2d70c0b2b6dafb54ae27da7629cc47c3d040ca4d2bb16d22f",
+        "contracts/evidence/run-config.ncl": "blake3:15324d64c5e0adeb34a49575ae29ca08308e46c5d1ef2cfd68b61c70fffe693e",
+        "contracts/evidence/simulator-profile.ncl": "blake3:9fd2db62d183f0c571f41a88787e8451760527759eb87027132878e8d923fb06",
+        "contracts/oci-intake/topology.ncl": "blake3:eb1ec82260b1ef471888f09787c7d55db31fa93fde87f4b7caf2c8b8e60d0108",
+        "crates/chaoscontrol-evidence/src/bin/check-sim-core-purity.rs": "blake3:56920ef7082b02d2515d04b881257f241c6e23d8b8f612cf00f45cc61982ec2d",
+        "crates/chaoscontrol-evidence/src/causality_shell.rs": "blake3:192de588194ab60f24cd5a9e21e2ac97c7e71cb64590b59e3a78f3e909643148",
+        "crates/chaoscontrol-evidence/src/evidence_contracts.rs": "blake3:450db2832a5a74d05018712ba1ec53c9b30f7e738f2b0361f068517c545a7b12",
+        "crates/chaoscontrol-evidence/src/findability_shell.rs": "blake3:c14598a4524279b19a04eb833dd16300e3768f90110273da77b414b6139a1442",
+        "crates/chaoscontrol-evidence/src/in_process_simulator.rs": "blake3:4abffa79355c8b19d7e1ac3b53647861f32472b1d3ef27a8e94292f3677a3f1f",
+        "crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs": "blake3:4662d622318806a0621e531e6c827c67387e0d0325d42289b8714619a395ed09",
+        "crates/chaoscontrol-evidence/src/lib.rs": "blake3:8178f049dc1e71701e5e2b9869191e87970c36feb1c752a84e2fd0ccb85b6d3e",
+        "crates/chaoscontrol-evidence/src/oci_intake.rs": "blake3:ef0b5630c6835593ef6b023363919a11f5d9afc6974ab730ab9ca2d4618bca68",
+        "crates/chaoscontrol-evidence/src/phenomena_shell.rs": "blake3:fce7c62403713e9a77c135af1b91dec7357df68c2e700587474af4fcd003faf1",
+        "crates/chaoscontrol-evidence/src/profile_projection.rs": "blake3:6b8e29845b39fe688727ddc52def9eda4fa547e15299f5341d4ec93dcf6b987a",
+        "crates/chaoscontrol-evidence/src/profile_projection_spec.rs": "blake3:7ddeee5ef8ae68572fb35a99a9e280311f92c3907c6969722b3ffddd97b64b30",
+        "crates/chaoscontrol-evidence/src/profile_projection_tests.rs": "blake3:f053e69d3f1f75832a4f3c3ecd157987500eff0c8237b588a7183fe70b1162c1",
+        "crates/chaoscontrol-evidence/src/profile_projection_verification.rs": "blake3:02c9961d6fb962a3071c32612abe36964081f5c73170a5b77591cfee8d1f1247",
+        "crates/chaoscontrol-evidence/src/replay_verdict_artifact.rs": "blake3:e7ec586b8bc31d4962aa982c4237c73215582313cac1b96363ee1469df37a2c0",
+        "crates/chaoscontrol-evidence/src/rust_automation/scaffold.rs": "blake3:08515257e79bcedb4c056f9fb8d38a00c014e989fb2866be8eb80981e9b5f9f7",
+        "crates/chaoscontrol-evidence/src/sdk_local_catalog.rs": "blake3:35cfcdb5a298abbc3a1a32ec6b0c157abc9f27b2e98bcd3950864299cef102f5",
+        "crates/chaoscontrol-evidence/src/simulator_profile.rs": "blake3:297d33e3d259d0d193dfcb90c05690cd7cc6dc4cc05e810b0987f31004057cd3",
+        "crates/chaoscontrol-evidence/tests/causality_shell.rs": "blake3:a6d57b54706d8348f7e3dd2e574114a5238b671ff2fcacdcc65cb33ed38bfffc",
+        "crates/chaoscontrol-evidence/tests/findability_shell.rs": "blake3:86bc4e78872b9d6a340fb809cc7035cb0cd6098d84391d074ffd3a67917a6056",
+        "crates/chaoscontrol-evidence/tests/history_phenomena_shell.rs": "blake3:ab4fda8d81e309704b8cd901c632fdf02c243df2f31d3666aef6364c7f9d4794",
+        "crates/chaoscontrol-evidence/tests/sdk_local_identity.rs": "blake3:c4217460b56df425b24f26da365788ef3ceedae3191a2ccd17c7866b70b91610",
+        "crates/chaoscontrol-explore/Cargo.toml": "blake3:b2cafda533bd81cffe4a04cacfbcbad04b199601471679c7d5f35684be190502",
+        "crates/chaoscontrol-explore/src/bug/identity.rs": "blake3:9ed7c618883994fbc32d24aa9cb1f3fee4abedcb5dafe3ce1a889150b973bf32",
+        "crates/chaoscontrol-explore/src/campaign.rs": "blake3:2832c324155d920c5b4e11e1cf8236f39fa6ee9d2c0130238a958968d71e0003",
+        "crates/chaoscontrol-explore/src/campaign_adapter/candidates.rs": "blake3:acb19d656924a4140a17e818ab921dfa9cdbcd6d2b422e992da8f680827d02e5",
+        "crates/chaoscontrol-explore/src/campaign_adapter/results.rs": "blake3:f53e36e7db664db269ccf59aec2b7ad3d860b2597d27f053df16f8c907c2a74e",
+        "crates/chaoscontrol-explore/src/explorer.rs": "blake3:b9df0830169da26746d42614bb2c8df39ee8cdb4fb806a89f7279259b4f52270",
+        "crates/chaoscontrol-explore/src/explorer/frontier_backend/leakage_tests.rs": "blake3:f6e5f869109358de9c4ce90b9ff9b9fd68d86bef802be8d8e558e3008e4abd18",
+        "crates/chaoscontrol-explore/src/explorer/frontier_backend/parity.rs": "blake3:46e0865b2b6f792c92f3447f4ed03d6f91e616b86b32a2d6a5e227190cbfc10f",
+        "crates/chaoscontrol-explore/src/explorer/frontier_backend/session.rs": "blake3:f910b1b0cd37882e9adfc852456e71e9df90cc8dfbee5da98e95ceb34a4ba47b",
+        "crates/chaoscontrol-explore/src/explorer/frontier_policy.rs": "blake3:f8b198f9cacb404409d44d0b3a79e3a1e0f56e4fc91aa6c20fe23f202f4478cc",
+        "crates/chaoscontrol-explore/src/marker_branching.rs": "blake3:df83b7e7ffcfabd97f35fdf398bfca573924a81e01d98a133b44bed8d7f92a61",
+        "crates/chaoscontrol-explore/src/minimizer.rs": "blake3:42946e8d2c0bd601da207285196de4cd6aef156e51992769be3622ae83b58f74",
+        "crates/chaoscontrol-explore/src/mutator.rs": "blake3:6404f3c1136d45c0d9189b5be9fa474a0bef7cc89ec035f41faa1d561f5c4291",
+        "crates/chaoscontrol-explore/src/profile/campaign.rs": "blake3:2370a706544fccd5036ee78e183f6fb459fbbc72653f5a053bcd868793c4dd79",
+        "crates/chaoscontrol-explore/src/profile/run.rs": "blake3:74d098cb4b4add7b07fbc4048a9da97a9f7430954d544e00e9ab7c36be0e96a0",
+        "crates/chaoscontrol-explore/src/profile/schedule.rs": "blake3:3d330e2d8205361a095f4177815548d7de14f23bb0c4e25d84efd23acdcb8f70",
+        "crates/chaoscontrol-explore/src/profile/tests.rs": "blake3:bd11e521c22577776090fbcd85e3599a245b56cb3abab41d13b0e66f88cc50e7",
+        "crates/chaoscontrol-explore/src/replay_verdict.rs": "blake3:3c117316de76f0e18b7ade1e962a817a6134ef8f503182c2a14c124d3988af1d",
+        "crates/chaoscontrol-explore/src/worker.rs": "blake3:cea574823b78bafd7c7eacaaf36073bbe2edaa95c254895dad3b9d2648043980",
+        "crates/chaoscontrol-fault/src/engine.rs": "blake3:2904ae13453cd3e32d813a915a739b961f67c5569f1c8ee131d6fdb32be36c4f",
+        "crates/chaoscontrol-fault/src/oracle.rs": "blake3:50aa9e1f3cb89d77562c461b2ed3bcd281f11a02481f1c1b5f79eac1dab3c3af",
+        "crates/chaoscontrol-fault/src/oracle_snapshot_validation.rs": "blake3:b9ad1bc4a2cd43c444fbb2612e6d0def6febef8d71409e18dd8f27a13758c30c",
+        "crates/chaoscontrol-fault/src/oracle_tests.rs": "blake3:a63a7b333c02f5dc5df3fa65ac13bdf49240eb5fe492d058a7ffe8bd072c36fc",
+        "crates/chaoscontrol-fault/src/outcomes.rs": "blake3:9628530c46e7643d1b9251e879f419622f5194808bf73e9dbeea8e7a702556ba",
+        "crates/chaoscontrol-fault/src/report_merge.rs": "blake3:aa346afe2e6c59f3c3579c9117f48f7ab266e04669259d242b4250010dad9e79",
+        "crates/chaoscontrol-fault/tests/assertion_identity_transport.rs": "blake3:e12275774e99549af23ce2806dc93ea7e295771c3b0e84918c12fd66be8f985b",
+        "crates/chaoscontrol-fault/tests/assertion_report_merge.rs": "blake3:e80f4b6b6572f3d2ae4957fc79b792620d0a680cb597084574c612f1c492d90e",
+        "crates/chaoscontrol-fault/tests/fallback_assertion_transport.rs": "blake3:f2347675b13819e873b3fef270a45c8a6813e92e6f2e06dc42674f5f3112cb70",
+        "crates/chaoscontrol-fault/tests/oracle_snapshot_restore.rs": "blake3:483a9798e2df12ea6e8a0b4066b5d4ab1191d57755e612804a51e7f1cbe13a1c",
+        "crates/chaoscontrol-property-suite/src/virtio.rs": "blake3:2d59693ef450b2daa48807d006105cd581a1c4f305b0cf1c78fcda0a0d150ac9",
+        "crates/chaoscontrol-protocol/src/admission/mod.rs": "blake3:76e8ce281104e772bd6ec63d3567ab63b0a628b4db7e44f4b0c5be264f231c0a",
+        "crates/chaoscontrol-protocol/src/fallback.rs": "blake3:d6cdee22fe057aa8255a62b8afa5ac6f79b06c4793275710735a9626bdc1f416",
+        "crates/chaoscontrol-protocol/src/guest_process.rs": "blake3:67f4ab37047cff678aac25a6a7271be7c9a9b388cab476d14e60569323101873",
+        "crates/chaoscontrol-protocol/src/identity.rs": "blake3:5049cba523e555a5fff11d52527b7c291a735e6208bae59463d9c651db015fb7",
+        "crates/chaoscontrol-protocol/src/oci_intake.rs": "blake3:47b205045b0538ae21d521b1892fc2c8d68c8f617e7f569c39095d1999838b93",
+        "crates/chaoscontrol-protocol/tests/assertion_identity.rs": "blake3:f2f3eba75a74b0fb4eeee55d91e17836fa3a299ec243ed60dd2888986867775a",
+        "crates/chaoscontrol-raft-guest/src/lib.rs": "blake3:fab445f2e4a707eb11ac2a48133e057618bbb6e7abc5ca07233045340d8b444d",
+        "crates/chaoscontrol-raft-guest/src/main.rs": "blake3:f1afcda7b6c7918bbf51818c30b0c9f8c263d4a56b6b8c123c35cc89a424ccf2",
+        "crates/chaoscontrol-sdk/src/assert.rs": "blake3:a82f353ecfe1ff9ddcefa1af64963db62f2fd7830402dc33ec1a1744f6b80fd9",
+        "crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs": "blake3:7f6bd897ebb252f7294771648a25d360f571cf39006742c6455bbbeaaf437f49",
+        "crates/chaoscontrol-sdk/src/internal.rs": "blake3:ffd5a2afc3e31c54e30113e0a783cc0fb85702a6418abeb355c94a44344096ed",
+        "crates/chaoscontrol-sdk/src/marker.rs": "blake3:c75c25c02a0108c44e3ed642c3b9ee3750997e501a6f0c5bbc60374cef5e2fde",
+        "crates/chaoscontrol-sdk/src/prelude.rs": "blake3:2fbc290272db8eee9bac2bc3d9bd80051e52ffbc5fd84b3160bba822ec539034",
+        "crates/chaoscontrol-sdk/src/supervisor.rs": "blake3:e23ec31683b899cce9a3b8f69432fd0e3d5575a6fd0b43647615579c964acbb5",
+        "crates/chaoscontrol-sdk/src/transport.rs": "blake3:ce552ff8e6aaef80ae1b768935c907ef057c5170e96bbdcadc4255c2f05f56ff",
+        "crates/chaoscontrol-sdk/tests/multiprocess_shell.rs": "blake3:d885433f80d4e958a96c66794481022b617ad2a583e9f37a1e23fca0fec066db",
+        "crates/chaoscontrol-sim-core/src/boundary.rs": "blake3:746ff42bc7446e0da6ae87a8b6692d3c4b48d1a28120c44eb386a0edc593b842",
+        "crates/chaoscontrol-sim-core/src/causality/attribution.rs": "blake3:9cf65ebf27d297406a776433bfe3fea09a60aa5a268b472f31ed64ce1252450b",
+        "crates/chaoscontrol-sim-core/src/causality/minimization.rs": "blake3:29ca26482dd7f18a170fc999b1528c4080a1af28ded9debb8b790177866eb215",
+        "crates/chaoscontrol-sim-core/src/causality/model.rs": "blake3:fd7a1f70380cb573db3686723d4c5423d1bc4d9ec1d5ad75606038c8ae0e8620",
+        "crates/chaoscontrol-sim-core/src/findability/model.rs": "blake3:be66eef0259ac1565dab41a7f908ff378864f88f214a660a13079faa96bf5f59",
+        "crates/chaoscontrol-sim-core/src/findability/statistics.rs": "blake3:fd3519363e4c7f41379f823d2f27e6f92e5ad8d9ebac40d55a7dc5f19477ec28",
+        "crates/chaoscontrol-sim-core/src/kernel.rs": "blake3:8058f9e10bb4753d49dc1676b3fe81325a8d6aa2b6eae97a8fb0544c5daee4e4",
+        "crates/chaoscontrol-sim-core/src/lib.rs": "blake3:067b0a8c866ae41c197b1115c4ed9665df8e70c9c871cbf52db33dc365d2024e",
+        "crates/chaoscontrol-sim-core/src/runtime_capacity.rs": "blake3:3e75d1dfb4dd8cb91e6b448aef3fbe4bcafe6c1bedf31b10d0e3bd7a18dd5e32",
+        "crates/chaoscontrol-sim-core/src/scheduler.rs": "blake3:9d04c384378add9f26d67d63fb65ed67e653336d7622ad4c7d53d977aa746287",
+        "crates/chaoscontrol-sim-core/src/scheduler/core.rs": "blake3:67508aef5c3e30eab47fcc85dc798588085928375c8e8004d029c03918438be4",
+        "crates/chaoscontrol-sim-core/src/snapshot.rs": "blake3:826a8e640519c1af39090663d0b75ced55faf9e8576d0f3a97f448d59a60f497",
+        "crates/chaoscontrol-sim-core/tests/causality_analysis.rs": "blake3:358aebd0565d81143cde4426563e065d180070504a10b36f3961fbb217fa2fc8",
+        "crates/chaoscontrol-sim-core/tests/findability_statistics.rs": "blake3:88d87fa7fa407368e05c8b103223936a65f1a9f3f1fe211010215a83335228cc",
+        "crates/chaoscontrol-smr/src/lib.rs": "blake3:4c5b2deb4f5d570877a8d60cb74c6ac9485f40a1e9d6d6ae80e35fecd50cf0f3",
+        "crates/chaoscontrol-smr/src/phenomena/checker.rs": "blake3:826a8891435d79aca327cbdac194cfa6f38204dbc183bf5f2a49ca22fbc208bf",
+        "crates/chaoscontrol-smr/src/phenomena/model.rs": "blake3:486975e0795e764414e302f59f56d0bce43de53c65c1dd2b740bbc2d3c40732c",
+        "crates/chaoscontrol-smr/tests/history_phenomena.rs": "blake3:ffcea975fe94ee45230fe4505604fada66489bd619fe6b84138872eda43f73ac",
+        "crates/chaoscontrol-trace/src/bpf/kvm_trace.bpf.c": "blake3:183959af64fe4d2c34c2b660b9b55c2afe4c1bba959bfacac47fdd7b8b4ffb37",
+        "crates/chaoscontrol-trace/src/collector.rs": "blake3:eed867ebf0b36cd04408d19da344d8e900e620af0f74e30915ddba7a9f9c94a1",
+        "crates/chaoscontrol-trace/src/evidence.rs": "blake3:08bd09d1b683683388035870ab9ee898f659cfadf30b0217ee0eec93b7c6c5e2",
+        "crates/chaoscontrol-vmm/src/controller.rs": "blake3:3897dc4df2d0689601e77c59159638388ba26bc8d1ee0f9b594d242f5bac87ab",
+        "crates/chaoscontrol-vmm/src/controller_core.rs": "blake3:e460c4831e796917772239d523507c20173737d91a2d302a4e07a585d6b9e045",
+        "crates/chaoscontrol-vmm/src/devices/block.rs": "blake3:9fd9d53ae7b1c6bdc6911c5a318a4a7274d01d74b7cd0e56bcf4948c8a38a05f",
+        "crates/chaoscontrol-vmm/src/devices/entropy.rs": "blake3:b938f355021845ab6995bd9581b200cad65743420b82fbdd0a23554c10256920",
+        "crates/chaoscontrol-vmm/src/devices/net.rs": "blake3:c5ef4958d7424bba2805abb5b71a7a523eb09f5df63464e5b1f4a3bcd3048679",
+        "crates/chaoscontrol-vmm/src/devices/virtio_block.rs": "blake3:c4fb5aeba3f6f29620e4e17d20473b85613d71dd82c0664c5bdfa9b2c1184432",
+        "crates/chaoscontrol-vmm/src/devices/virtio_buffer.rs": "blake3:376e176b3d2d9581ea95c9f1e795943938026b1b24e3cc7732e3cecf8efd486f",
+        "crates/chaoscontrol-vmm/src/devices/virtio_chain.rs": "blake3:5cb96b75be7179be12854cd981379ebef803cc982500fee7db18f99b8dda4d41",
+        "crates/chaoscontrol-vmm/src/devices/virtio_entropy.rs": "blake3:2a04e103d9d8bde717fe961b85ed5ca731d2fb6829d90bb9dd7f9084395d98c9",
+        "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs": "blake3:5639c25888c6247d0db0efaabd4175f69aaeb38fd81171e7ba89998a27e33418",
+        "crates/chaoscontrol-vmm/src/devices/virtio_net.rs": "blake3:49108d4882105edd25c1ccd27d1a25f6ee5cfae449bd85c449b303024b4793f9",
+        "crates/chaoscontrol-vmm/src/devices/virtio_request.rs": "blake3:a9c35dc8d40e2bc57e0f00659dcb0901c8685a482f5c16ed65b0be7ad6ab4f33",
+        "crates/chaoscontrol-vmm/src/devices/virtio_status.rs": "blake3:6d396528933e73b072326ad2796b696c160e995eae6c1ec3305e93d118b0e21b",
+        "crates/chaoscontrol-vmm/src/devices/virtio_types.rs": "blake3:2a0a3d488c59c8a707bf97987ea5b8969a6dcad886ea5b2c2e3a025e14621aab",
+        "crates/chaoscontrol-vmm/src/devices/virtio_validation.rs": "blake3:dd69dcef3cdb5c76882767dd6698dc9b910bec3d2d37ea66272d5d25cc63364a",
+        "crates/chaoscontrol-vmm/src/sim_adapter.rs": "blake3:9670e98b4a4fe88d0a0dfcd9b71ce88dc9557b55b7ffc28b25283057f46dfc1b",
+        "crates/chaoscontrol-vmm/src/snapshot.rs": "blake3:5ada23fef6463be2b043218d5bfd536e01e5e6ee47d0d656be516995cdb36304",
+        "crates/chaoscontrol-vmm/src/vm.rs": "blake3:2242ef317204281ed00aa6a4a822ea60f472161864541f099513d45905d71d42",
+        "crates/chaoscontrol-vmm/src/vm/incremental_lineage.rs": "blake3:79c8683cc6ccb53471dc69f78cbd06510a8e5f178ccf72b066520447f95784b4",
+        "crates/chaoscontrol-vmm/src/vm_core.rs": "blake3:d17e6e7596fbdbcf240c75fb0055ddb4fcb1f149c926e625e1c34486c672b35f",
+        "crates/chaoscontrol-vmm/tests/deterministic_smp_kvm.rs": "blake3:8a47a931710276972c1741580c6b525b926a3383a5d29f402348d4e51cb6b51d",
+        "crates/chaoscontrol-vmm/tests/exact_snapshot_kvm.rs": "blake3:e4d73e2bcf8a8d8c5f0eb93270bd73a8191926efe7896e998e146282e154ea8b",
+        "crates/chaoscontrol-vmm/tests/prop_scheduler.rs": "blake3:3d4cc27be956abfbe8eb5c11124530ce101d96a6379cdf4cef31d5d26e0b5311",
+        "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs": "blake3:0f92f894aab8a99ce5d056eb7fcb08f3218597e31d0f573afdecfcd521dfa4b6",
+        "crates/chaoscontrol-vmm/tests/virtio_kvm_smoke.rs": "blake3:a592b76901e04d3c1fab29990c838261a1c2115da1d21ca1071a17fc51f957df",
+        "crates/chaoscontrol-vmm/tests/virtio_net_entropy_paths.rs": "blake3:1a17f9fd53754fe617deb12a556ee30c655695490d3df8c9ac464ec6bc0314e4",
+        "crates/chaoscontrol-vmm/tests/virtio_post_progress.rs": "blake3:577f3e25d7b95075804d5837368005527e5deab65ac6479592ac2a3332a01c0f",
+        "crates/chaoscontrol-vmm/tests/virtio_properties.rs": "blake3:0c8d08394258825914290bdeec7360526d864063c21317e7d398ddb0936a22cc",
+        "crates/chaoscontrol-vmm/tests/virtio_transport.rs": "blake3:fc02f140c2948984fbb5815c4651983054364d8ee1b4ae001d71084d3d7ec749",
+        "crates/chaoscontrol-vmm/tests/virtio_validation.rs": "blake3:8c2c08d04d5b73bb0633dce223e17d20e97b7ffdebac2cd4cfa519c3d418dd03",
+        "crates/chaoscontrol-wasm-differential/src/lib.rs": "blake3:87405de2d40e3d8cfc81cc7855faa0ee568f73e47c7c0be1f58e642dd2f64987",
+        "crates/chaoscontrol-wasm-differential/src/main.rs": "blake3:4006eefd99afebd437a7aef17bcefa2c22267337c3ec3d3fbca104c6864ecb38",
+        "deny.toml": "blake3:d00b9f47b6ea6da31a2a62064a8bff27ed4e8262d1588f352995d0e3d12ff0b4",
+        "docs/campaign-source-acquisition.md": "blake3:513c4f06f02b6fd9cac67aa3194e8c94882008256294b8044a0a987cba772409",
+        "docs/licensing.md": "blake3:fb8704a45f7f7f500455f02a33b4755a6d0870ccb1063806ff67357ed557f7ca",
+        "docs/references/antithesis-documentation.md": "blake3:3b8ba82d3ca21d36080dddf3fb38cf42ad52fe52ef5bbf2a2dd64270a5100ef1",
+        "docs/references/sdk-antithesis-rust-parity.md": "blake3:6248f2290a6bca1ba765a0ade5e0b0aac9c9614932ccb2551167efd2669b8a1c",
+        "docs/references/waltier-dst.md": "blake3:d41f6e075f978d3846d7e7a674ba1563e6554c3035b1fd0ebaa32e1e5e285b0a",
+        "docs/simulator-campaign-profile-boundary.md": "blake3:9db8a84b70af5aa5c694cc36342d8ebe7fe1af6097009c192fae3c116ac865f3",
+        "docs/templates/rust-workload/src/main.rs": "blake3:fedc10af1426fa63a4a4f9e39566a60f55377df36862c548fae7b4c00499dc32",
+        "docs/templates/rust-workload/src/service.rs": "blake3:74889e1316fc8734659afa5f840c180f8e2a86167238389fe98d7ee130f967fd",
+        "dogfood-results/production-readiness-closure-20261015/cairn-upstream-integration.json": "blake3:0573e153a7e69c043b443340fb0749771dd4bb29090cb05fe58fd219821da422",
+        "flake.nix": "blake3:88ea188f4ff99196cdacbd1130753055e3a3a478051be1aeda09f699cee22851",
+        "license-policy.tsv": "blake3:20c48f9fa20aea194a1c3ed903e8159d54b6120368155f5e4be82c0babc73dfb",
+        "tools/check-campaign-dependency-policy.rs": "blake3:82a1df57294c823997ed58d5d8535b1f0f623a24c149631bd93d8f301b41f2f6",
+        "tools/check-license-boundary.rs": "blake3:864d22594dbf60713bd9e45b215f84a35513d5c4054a49602e04fddd0fa989a0",
+        "tools/spacewasm-resume-probe.rs": "blake3:e60200618f842af5bb0a3141ccb863611ba1906d2939fe8b4f5d565f085d85ed"
+      }
+    },
+    "link_identities": {
+      "algorithm": "BLAKE3",
+      "domain": "chaoscontrol.native-source-link.v1 followed by NUL and canonical UTF-8 JSON (sorted keys, compact separators, non-ASCII unescaped) of each exported entries[] object",
+      "set_domain": "chaoscontrol.native-source-links.v1 followed by NUL and canonical UTF-8 JSON of link identities in entries[] order",
+      "set_blake3": "blake3:310b558ce93fcf784e3fcb8eeecb586303186b1d64cb6105fe9456ba26f90336",
+      "entries": [
+        {
+          "requirements": [
+            "chaoscontrol.causality.attribution",
+            "chaoscontrol.causality.budget",
+            "chaoscontrol.causality.boundary",
+            "chaoscontrol.causality.evidence_binding",
+            "chaoscontrol.causality.validation"
+          ],
+          "blake3": "blake3:2700eba3e7cf5744621417bdf6da89b550af06fcbe31e392db9360d980002de8"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.findability.observations",
+            "chaoscontrol.findability.model",
+            "chaoscontrol.findability.confidence",
+            "chaoscontrol.findability.independence",
+            "chaoscontrol.findability.boundary",
+            "chaoscontrol.findability.evidence_binding",
+            "chaoscontrol.findability.validation"
+          ],
+          "blake3": "blake3:4fcc4b5d626c86343bd1aa3b947f1ca23db4fab171416444af9c174fb1090bb2"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.phenomena.history",
+            "chaoscontrol.phenomena.checker",
+            "chaoscontrol.phenomena.incomplete",
+            "chaoscontrol.phenomena.boundary",
+            "chaoscontrol.phenomena.evidence_binding",
+            "chaoscontrol.phenomena.validation"
+          ],
+          "blake3": "blake3:1944543ed9da5f9dc15ae4072d5adeaecf5f6427c5f950585bab7d6659450ea4"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.model",
+            "chaoscontrol.assertion_identity.catalog_validation",
+            "chaoscontrol.assertion_identity.catalog_protocol",
+            "chaoscontrol.assertion_identity.event_binding",
+            "chaoscontrol.assertion_identity.validation.conflicts",
+            "chaoscontrol.assertion_identity.validation.events",
+            "chaoscontrol.assertion_identity.boundary"
+          ],
+          "blake3": "blake3:d4faa4132ffd82427adb8c762daeac1abd3deda09196a55f0167edfd5d0fc828"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.merge",
+            "chaoscontrol.assertion_identity.validation.merge"
+          ],
+          "blake3": "blake3:40bd53ccd78f4984445bd9fdaf7ee5d6efc971dbc70dbf57830d33fbeca6352d"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.local_reports",
+            "chaoscontrol.assertion_identity.validation.local"
+          ],
+          "blake3": "blake3:a476f6e355a91e48bf138c99e0244f1b3b0b4780ffabd184f8dc221ed8a13c19"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.runtime_capacity.plan",
+            "chaoscontrol.runtime_capacity.journal",
+            "chaoscontrol.runtime_capacity.virtio_pool",
+            "chaoscontrol.runtime_capacity.network_pool",
+            "chaoscontrol.runtime_capacity.observation",
+            "chaoscontrol.runtime_capacity.boundary"
+          ],
+          "blake3": "blake3:c25eac6eebb168b28b51c331b07b2858ca2bae9d03a36cd7cad581a504439b96"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.schedule_diversity.generation"
+          ],
+          "blake3": "blake3:ade96a65f8eae15a227fe472e26f435c4169c2260da4ce8cbeee9b844184ea89"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.event_branching.marker_gap"
+          ],
+          "blake3": "blake3:792d3b958a6d9a9737d05c7dcd2747351c98893d090f4fd516092543bc27bb2f"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulation_kernel.validation.fixtures"
+          ],
+          "blake3": "blake3:720d84904490e5767e532ad518faf62a808f1b996e6f71bae22681bc7ff4e98d"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulation_kernel.validation.purity"
+          ],
+          "blake3": "blake3:9e8bdd465c9f19b7ee6272a89adc42704e77f1a5d35a7dc30ad6be32a470923a"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.event_branching.marker_api"
+          ],
+          "blake3": "blake3:e180775948dc88b58974fc603c5c7c45d2833f79fef46a82ca416eb328691fab"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.schedule_diversity.application"
+          ],
+          "blake3": "blake3:7a65b007f3dd57dddd495e6f0089020481941dd90c776677c789ad6011eeee01"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.causality.minimization_core"
+          ],
+          "blake3": "blake3:434e45559fe292f043deda1effd5fd3240f0729eb51c95897d1c5c53022fbe8b"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.smr_chain.profile"
+          ],
+          "blake3": "blake3:8fd718789183d336ebbab85d0a42faeff39b96e6cf3f4caf35c1aa0c2607b2ca"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.smr_chain.transition"
+          ],
+          "blake3": "blake3:6d3455cbe5d1eaa1c44416bf0c7c0d17f2cd1e5ee99a7543abd779861bbd182d"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.smr_chain.history"
+          ],
+          "blake3": "blake3:059d499d133e4031b8e4ce1183249e86faa045387d7d3aa4dff27992ba3c28fa"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.smr_chain.safety"
+          ],
+          "blake3": "blake3:e571bc7b1d136137d9a6dfaf7a175e41308d7c44df36b4e34c827c86f6d1b8df"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.smr_chain.liveness"
+          ],
+          "blake3": "blake3:4d18951c98c24ec89f07ffa9a1cedebd358d487e7be77a846e1eba20ebc3b3d9"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.smr_chain.boundary"
+          ],
+          "blake3": "blake3:29c9f7d0b36293d16961a519dbcb2bbfecb0c9c54ff14679b740cdb587ee6a29"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.guest_processes.process_faults"
+          ],
+          "blake3": "blake3:5db4a78165b2afbb7ead10f2a99141b66d484347a47e2999c96bfe54083f602d"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.oci_intake.image_boundary"
+          ],
+          "blake3": "blake3:f956e73d1290f99486bffa4ef339b99cd5f09ac85554d2e266d35df007ec612b"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.fallback_assertion_transport.bounded_sink"
+          ],
+          "blake3": "blake3:5168156c0811b3f4a78b886dcc252627be296be3d9949c67f73a79bb522318f8"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.fallback_assertion_transport.identity_conflict"
+          ],
+          "blake3": "blake3:2836e98b69b24f0429f42f2beb295e389349080405a089479b4cd9f3acb19428"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.replay_artifacts"
+          ],
+          "blake3": "blake3:9267ac9d45099c5388bd095619297e8c3dd20b6d1e5d9d32791c312853d19ca1"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.report_identity",
+            "chaoscontrol.assertion_identity.validation.legacy"
+          ],
+          "blake3": "blake3:a90d10fdf26f60834e56a746138ca5ca146bf92db097f660fb945cf36559cc11"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.fault_surface.unsupported_visible"
+          ],
+          "blake3": "blake3:d4dd526dba0aa0021a1129bd66fe3988c4f7076de5e2c4801a813d29d800550a"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulation_kernel.pure_core"
+          ],
+          "blake3": "blake3:cf1779ec73f156783099bce43e467f59a36d41fe5cf56d39e3d664ba7a8a1af5"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.validation"
+          ],
+          "blake3": "blake3:caa75f8666da28656b120cbf7e3a4bb1635ea7b0393c0d251bfb20eab4f0c3a0"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.assertion_identity.compatibility"
+          ],
+          "blake3": "blake3:44da0baea2a18bdd49eb6bf3a9653a3607ce3ec3ee55d1afa857b68cf1308d92"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.campaign_policy.boundary",
+            "chaoscontrol.campaign_policy.boundary.valid",
+            "chaoscontrol.campaign_policy.product_authority.valid"
+          ],
+          "blake3": "blake3:a2e47a310728bf67cb9c708c8059d4f22cbf5bbc25ef9907b2790308646df15d"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.nickel_toolchain.boundary.scenario.product-admission"
+          ],
+          "blake3": "blake3:89a5ccadf8056f2d9df375c0a5a8da3205bd44c7405f74fdea3b2be600c3d892"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.nickel_toolchain.compatibility.scenario.matrix"
+          ],
+          "blake3": "blake3:f8a32eb556f579262438997b451de7f08064ed18c24b20a06e2fd6f1deca2d7e"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulator_campaign_profiles.run_profile"
+          ],
+          "blake3": "blake3:3fcfe343d7584e21f32cca4d72f3eb2f67a5b65bfc0ab3299490495e382169ba"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulator_campaign_profiles.simulator_profile"
+          ],
+          "blake3": "blake3:32635defad1d9a063d8f63a7666b77ed61e1ec1cba4ac21f94bc5e645528186a"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulator_campaign_profiles.campaign_profile"
+          ],
+          "blake3": "blake3:71586047ae880242db4931142b49d1ee91dcdddd9cea18ea993fecdd76150b27"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulator_campaign_profiles.fault_schedule_profile"
+          ],
+          "blake3": "blake3:7cf7df8e574b860ce7ec87ed11a5830b899e037b4a40403d84d01a59a88000ee"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulator_campaign_profiles.projection_boundary"
+          ],
+          "blake3": "blake3:1f9413bf9161bdea27b7bcd6a4b2f0d62ee67826bc2d4877bab156b3c3c6944a"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.simulator_campaign_profiles.runtime_boundary"
+          ],
+          "blake3": "blake3:b2e17e3df1f92699e0de4e82d9ff164774fcb29cf3672934b1496b41deb45c9b"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.unified_agpl.prior_grants"
+          ],
+          "blake3": "blake3:fae1901518051121196e1e0eedbc68e1366e5e89f72678618e5ec4e76eba8151"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.unified_agpl.templates"
+          ],
+          "blake3": "blake3:a5b2787abbbcd9614204a1f708fd247719a97c00be7c6d930c7aecac040da8ae"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.unified_agpl.outputs"
+          ],
+          "blake3": "blake3:95f699c6479ff54f32b4cd6c0641ef73111fe5c30982946c817baefd43a96cca"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.unified_agpl.dependency_policy"
+          ],
+          "blake3": "blake3:0b476934afc4a846c47e825dc6dc0eecdee82a8a0f23c7e0d2ed81d845b4cec1"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.sdk_parity.reference"
+          ],
+          "blake3": "blake3:2d9ad0657d9fd8fb6438d8da87736e19bb1c9b51349dd57dfbeb9b29629b5fee"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.sdk_parity.guidance"
+          ],
+          "blake3": "blake3:41576a8894e8707dd92cce7d043e0a4ed78210317733f1bfcc5dc8ba9fbdb9b4"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.sdk_parity.local_schema"
+          ],
+          "blake3": "blake3:f5320fda96cfe3f791ef7ed92c16fe1d6d769cee4c6adbc7e08495fc44264bec"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.bounded_tree_adoption.archive_boundary"
+          ],
+          "blake3": "blake3:0073bebb018c8980e68063b89009ba5f45967762f0c786658570c092bfa949d3"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.waltier_dst.source"
+          ],
+          "blake3": "blake3:2a6e12806e7ec6d4718c1a2c39145fd8227cb9dd712d4b8b7fe14a098e75f050"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.waltier_dst.oracle"
+          ],
+          "blake3": "blake3:130323133a2991111417df775c1013040fd0bf87433f9ed14cf2ecdd3e27ebae"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.waltier_dst.boundary"
+          ],
+          "blake3": "blake3:34f131d220a4ab040ec93d28183fe6316afd43241124ea9ab22927305f21f01d"
+        },
+        {
+          "requirements": [
+            "ebpf_trace_evidence.profile"
+          ],
+          "blake3": "blake3:20e90deb6b607803526871b2cba22bf56feb648dab469c84c06e6c3c15259eff"
+        },
+        {
+          "requirements": [
+            "ebpf_trace_evidence.admission"
+          ],
+          "blake3": "blake3:174eef5f929711438f361362d476026407ffd0a3e94462bdc5356ee06797664e"
+        },
+        {
+          "requirements": [
+            "ebpf_trace_evidence.accounting"
+          ],
+          "blake3": "blake3:6cb352143e5ad51c383ad00dc8ccadf4cf493028a43e0687bbc8c6c44aa73e43"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.capability_policy"
+          ],
+          "blake3": "blake3:0debbcf5cad8666eb6d1acfb57d1f3ea680af596836502f93860bb5baf753c8d"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.controller_poison"
+          ],
+          "blake3": "blake3:3072e54f9a03ef21a6a438ed7ad526b1842340d2e3923de1cdb84fcd8d7103e9"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.progress_boundary"
+          ],
+          "blake3": "blake3:423c90c786342c4018110edbaae34dd5355e1280389dea6324c57e5eadd083bf"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.schedule_core"
+          ],
+          "blake3": "blake3:001c35f1032d088a6344b033062b843bf69a19133d856fc2aafa6da65c337a03"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.schedule_evidence"
+          ],
+          "blake3": "blake3:cbf868d0e9ecd9954de06e4ec82ab63e329bdeac939f87e89f204fc690c1abc2"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.validation.controller_poison"
+          ],
+          "blake3": "blake3:162a215d2611cd37fb6ffeb1186fe3010d1d104f394c137c2b0ba54145e7f6cb"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.validation.core"
+          ],
+          "blake3": "blake3:79d8298c5cfda38604ed7b9146777951a6efc5df14aee58c21c67eff7b48353b"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.validation.spin_loop"
+          ],
+          "blake3": "blake3:e46cc29a200ebf509d6147b14490550fd9e0885c72cf801b911b2361016b0899"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.validation.vm_poison"
+          ],
+          "blake3": "blake3:11ca6e868adfd4fcf1ebb392ea6ebc5e2127eb01e58cd1239bae2a9f72ed923c"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.vm_poison"
+          ],
+          "blake3": "blake3:aa780e3422906de309edc714229e1b2290074fdbd7a402284452088dcc465d11"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_smp.wall_clock_isolation"
+          ],
+          "blake3": "blake3:ede691eabfcded4c6c36b65c29df98c0ada06177fd251a66ece8aa46931c6332"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_snapshots.compatibility"
+          ],
+          "blake3": "blake3:538d27d1d3e63b4ed6d71d961f3dbbc5b41fead620cb565e4e0b6a38d6ac4a97"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.deterministic_snapshots.compatibility.legacy"
+          ],
+          "blake3": "blake3:297600fccc57a6b1e05e5c2dc2909e37fce6587d85f82a3cba3cfe21e2cf42e1"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.virtio_safety.failure_semantics"
+          ],
+          "blake3": "blake3:8be4eb18b5a21b614b84ae79e2c423937ff87fdc90422077c6047c82ac645c8a"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.virtio_safety.resource_bounds"
+          ],
+          "blake3": "blake3:8a3468e660890cf93eaf91450f06d6817031cde21e7379a4de8472c39d79e73a"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.virtio_safety.ring_progress"
+          ],
+          "blake3": "blake3:2d0f98b5a31098aa90884a215442fa1c6f3fdba6d91bdbb53f1bfef5a5cffe40"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.virtio_safety.validation.negative"
+          ],
+          "blake3": "blake3:bcb8e0283cbc6620f9a1378190427f97e908039302f7c82d345f0464883d7f12"
+        },
+        {
+          "requirements": [
+            "chaoscontrol.virtio_safety.validation.positive"
+          ],
+          "blake3": "blake3:e77c60aef78372f93cd586ac429eddb030ed245c488763759fd8fed499827949"
+        }
+      ]
+    },
+    "upstream_applicability": "Unchanged blocked mcp_agent_smoke/preserves_corpus_freshness; see dogfood-results/production-readiness-closure-20261015/cairn-upstream-integration.json. No copied fixtures, suppressed/optional required checks or applicability changes.",
+    "modified_paths": [
+      "cairn-policy/native-traceability-closure-20261015.ncl",
+      "dogfood-results/production-readiness-closure-20261015/cairn-native-source-audit.json"
+    ]
+  }
+}

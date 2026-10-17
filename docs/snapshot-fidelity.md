@@ -55,6 +55,8 @@ The separate watchdog-only probe executes `cli; jmp` until the existing 100 ms V
 
 UART interrupts are committed synchronously at handled guest-exit boundaries. Restoring a pending UART condition does not inject a second edge over captured PIC state. KVM's host-clock PIT timer is inhibited using `KVM_PIT_FLAGS_HPET_LEGACY`; software `DeterministicPit` still delivers IRQ 0 at virtual-time deadlines. Compatible snapshots retain their serialized bytes while destination PIT restore enforces the same timer inhibition. The focused ISR and PIT regressions cover retained/fresh restore and the positive virtual-time IRQ path.
 
+The Raft guest's `Node::restart` resets volatile protocol state without rolling back its already-applied application prefix. A retained prefix index and the persistent log provide the consumer readback while `commit_index` catches up; uncommitted tail entries remain excluded. Repeated restart and catch-up preserve the same chain, while truncating or changing applied entries still fails the adapter's rollback or divergence checks. This guest model is not a general filesystem-durability guarantee.
+
 Single-vCPU bootstrap and admitted execution both have the existing bounded operational watchdog. After an interrupt, only KVM's architectural `HALTED` state authorizes idle progress to the exact next virtual PIT deadline; a runnable timeout does not advance time or become a guest bug. SMP scheduling remains separate. A strict continuation mismatch retains BLAKE3-bound final VM memory under each local continuation directory for byte-level diagnosis; none of that memory is omitted from the equality decision.
 
 ## Restore rules

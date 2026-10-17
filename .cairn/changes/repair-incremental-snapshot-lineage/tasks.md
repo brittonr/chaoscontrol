@@ -59,11 +59,21 @@ The final release/readiness task remains unchecked. The 35-attempt ledger stays 
 
 ## Prospective continuation through attempt 40
 
-- [x] Record the user's explicit five-attempt continuation in `dogfood-results/production-readiness-continuation-20261017/attempts.ncl`; retain the original objective, previous ledgers, receipts, declared bounds and ownership restrictions unchanged.
-- [ ] Complete and exercise genuine remaining snapshot/SMP/virtio/runtime acceptance gaps; retain every strict memory, execution, assertion, fault and recovery comparison. r[chaoscontrol.deterministic_snapshots.incremental_validation]
-- [ ] Complete and exercise the actual explorer, workload and evidence consumers needed for native requirement closure; unsupported whole requirements remain open, not annotation debt.
-- [ ] Diagnose and correct repository-owned Nix/release-wrapper faults, then require fresh Cargo, Nix, native and all-seven-row clean-source report verdicts. Keep unavailable Cairn producer support as an exact owner prerequisite.
-- [ ] Validate a separate BLAKE3-bound Nickel receipt, update only supported task state, commit verified changes and push main without force. Do not claim production readiness unless every original acceptance criterion passes.
+- [x] [depends:snapshot-lineage-shell] Record the user's explicit five-attempt continuation in `dogfood-results/production-readiness-continuation-20261017/attempts.ncl`; retain the original objective, previous ledgers, receipts, declared bounds and ownership restrictions unchanged.
+- [ ] [depends:snapshot-lineage-shell] Complete and exercise genuine remaining snapshot/SMP/virtio/runtime acceptance gaps; retain every strict memory, execution, assertion, fault and recovery comparison. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [ ] [depends:snapshot-lineage-shell] Complete and exercise the actual explorer, workload and evidence consumers needed for native requirement closure; unsupported whole requirements remain open, not annotation debt.
+- [ ] [depends:snapshot-lineage-campaign] Diagnose and correct repository-owned Nix/release-wrapper faults, then require fresh Cargo, Nix, native and all-seven-row clean-source report verdicts. Keep unavailable Cairn producer support as an exact owner prerequisite.
+- [ ] [depends:snapshot-lineage-campaign] Validate a separate BLAKE3-bound Nickel receipt, update only supported task state, commit verified changes and push main without force. Do not claim production readiness unless every original acceptance criterion passes.
 
 This section records prospective authorization and work, not completion evidence. Existing campaign/replay cohorts and historical release receipts are not relabeled as results of the continuation.
+
+
+## Attempt 36 current-guest consumer correction
+
+- [x] [depends:snapshot-lineage-shell] Preserve the Raft guest's applied application prefix when a node resets volatile protocol state. Exercise restart, catch-up, repeated restart, and changed/truncated-prefix rejection; rebuild the actual guest and rerun the strict three-controller proof without weakening any assertion or declared bound. r[chaoscontrol.smr_chain.adapter] r[chaoscontrol.smr_chain.history] r[chaoscontrol.deterministic_snapshots.incremental_validation]
+
+The original attempt-36 Nix investigation made no implementation change. The retained counting rule excludes read-only diagnosis, so this is that still-unstarted authorized correction, not attempt 41. Current-source `2aa212f87021391f03717b86089330db0c8967d8` already reproduced `raft-adapter-rollback` in all three compared continuations: the guest retained the log but reset `commit_index` on restart. Missing mandatory virtio execution state remains a decode rejection; no healthy defaults or legacy-snapshot substitution are planned. Frozen-source release commands remain separate and unchanged.
+
+
+`target/pr40/correction36-application-before/` retains the reproduced empty-prefix failure. The corrected guest passed all 109 library tests and denied-warning Clippy; its Nix-built initrd then passed `target/pr40/correction36-precommit-lineage/runtime-proof.json`. The actual `SI_TIMER` timeout, permanent poison rejection, production replacement, retained-parent memory and immediate incremental recapture passed. All six strict comparison fields matched across long-lived, fresh-full and watchdog-replacement controllers. The 45 admitted sites retain 44 passed and one unexercised outcome, with no safety failure. This pre-commit proof is scoped behavior evidence, not a clean-source release verdict or whole-SMR requirement closure.
 

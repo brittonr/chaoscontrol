@@ -356,16 +356,7 @@ fn main() {
             if faults.crashed[i] {
                 // Restart decision: ~2% per tick
                 if random::random_choice(50) == 0 {
-                    // Restart: keep persistent state (log, current_term, voted_for),
-                    // reset volatile state
-                    nodes[i].commit_index = 0;
-                    nodes[i].role = Role::Follower;
-                    nodes[i].election_timer = ELECTION_TIMEOUT_BASE;
-                    nodes[i].next_index = vec![1; num_nodes];
-                    nodes[i].match_index = vec![0; num_nodes];
-                    nodes[i].votes_received = 0;
-                    nodes[i].heartbeat_timer = 0;
-                    nodes[i].inbox.clear();
+                    nodes[i].restart();
                     faults.crashed[i] = false;
 
                     cc_assert_reachable_category!(

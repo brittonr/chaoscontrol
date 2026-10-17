@@ -162,6 +162,8 @@ pub struct Node {
     pub voted_for: Option<usize>,
     pub log: Vec<LogEntry>,
     pub commit_index: usize,
+    /// Applied log prefix retained while volatile commit knowledge catches up.
+    retained_applied_index: usize,
     pub role: Role,
     pub election_timer: usize,
     pub heartbeat_timer: usize,
@@ -196,6 +198,7 @@ impl Node {
             voted_for: None,
             log: Vec::new(),
             commit_index: 0,
+            retained_applied_index: 0,
             role: Role::Follower,
             election_timer: ELECTION_TIMEOUT_BASE,
             heartbeat_timer: 0,
@@ -205,6 +208,19 @@ impl Node {
             inbox: Vec::new(),
             bug,
         }
+    }
+
+    /// Restart protocol state without rolling back the applied application prefix.
+    pub fn restart(&mut self) {
+        self.retained_applied_index = self.retained_applied_index.max(self.commit_index);
+        self.commit_index = 0;
+        self.role = Role::Follower;
+        self.election_timer = ELECTION_TIMEOUT_BASE;
+        self.next_index.fill(1);
+        self.match_index.fill(0);
+        self.votes_received = 0;
+        self.heartbeat_timer = 0;
+        self.inbox.clear();
     }
 
     /// Quorum size for this node's cluster.
@@ -982,7 +998,7 @@ impl Node {
     pub fn committed_application_values(&self) -> Vec<u64> {
         self.log
             .iter()
-            .take(self.commit_index)
+            .take(self.commit_index.max(self.retained_applied_index))
             .map(|entry| entry.value)
             .collect()
     }
@@ -1090,6 +1106,93 @@ mod smr_adapter_tests {
             "observer-path"
         );
         assert!(chaoscontrol_smr::validate_history(&plan(), bypass.observations()).is_ok());
+    }
+
+    #[test]
+    fn raft_consumer_retains_applied_history_across_restart() {
+        let mut node = Node::new(0);
+        node.log = vec![
+            LogEntry {
+                term: 1,
+                value: FIRST_VALUE,
+            },
+            LogEntry {
+                term: 1,
+                value: SECOND_VALUE,
+            },
+        ];
+        node.current_term = 1;
+        node.commit_index = 1;
+        let mut adapter = RaftSmrAdapter::new(plan(), "raft-replica-a");
+        adapter.observe_consumer(&node).unwrap();
+        let original_history = adapter.observations().to_vec();
+
+        node.restart();
+        assert_eq!(node.commit_index, 0, "protocol commit state is volatile");
+        assert_eq!(node.committed_application_values(), [FIRST_VALUE]);
+        adapter.observe_consumer(&node).unwrap();
+        assert_eq!(adapter.observations(), original_history);
+        node.restart();
+        assert_eq!(node.committed_application_values(), [FIRST_VALUE]);
+
+        for leader_commit in [1, SECOND_COMMIT_INDEX] {
+            node.handle_message(
+                1,
+                Message::AppendEntries {
+                    term: 1,
+                    leader_id: 1,
+                    prev_log_index: SECOND_COMMIT_INDEX,
+                    prev_log_term: 1,
+                    entries: vec![],
+                    leader_commit,
+                },
+                0,
+            );
+            adapter.observe_consumer(&node).unwrap();
+        }
+        assert_eq!(
+            node.committed_application_values(),
+            [FIRST_VALUE, SECOND_VALUE]
+        );
+        let caught_up_history = adapter.observations().to_vec();
+        assert_eq!(
+            &caught_up_history[..original_history.len()],
+            original_history
+        );
+        node.restart();
+        adapter.observe_consumer(&node).unwrap();
+        assert_eq!(
+            node.committed_application_values(),
+            [FIRST_VALUE, SECOND_VALUE]
+        );
+        assert_eq!(adapter.observations(), caught_up_history);
+    }
+
+    #[test]
+    fn restarted_consumer_rejects_truncated_or_changed_applied_prefix() {
+        for (truncate, expected_class) in [
+            (true, "raft-adapter-rollback"),
+            (false, "raft-adapter-divergence"),
+        ] {
+            let mut node = Node::new(0);
+            node.log = vec![LogEntry {
+                term: 1,
+                value: FIRST_VALUE,
+            }];
+            node.commit_index = 1;
+            let mut adapter = RaftSmrAdapter::new(plan(), "raft-replica-a");
+            adapter.observe_consumer(&node).unwrap();
+            node.restart();
+            if truncate {
+                node.log.clear();
+            } else {
+                node.log[0].value = SECOND_VALUE;
+            }
+            assert_eq!(
+                adapter.observe_consumer(&node).unwrap_err().class,
+                expected_class
+            );
+        }
     }
 
     #[test]

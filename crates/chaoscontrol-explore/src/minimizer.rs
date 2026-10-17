@@ -448,6 +448,7 @@ mod tests {
             assertion_id: 42,
             assertion_identity: crate::test_support::assertion_identity(42),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "assertion".into(),
             schedule: FaultSchedule::new(),

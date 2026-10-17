@@ -1817,6 +1817,88 @@ mod tests {
     }
 
     #[test]
+    fn retained_replay_rejects_unrelated_commands_before_consumer_effects() {
+        let plan = admit_profile(&profile(ObservationMode::Lossless)).unwrap();
+        let generated = plan_campaign(&plan, &campaign_fixture(), SEED).unwrap();
+        let parent = b"retained-initial-state".to_vec();
+        let expected = execute_fixture(&plan, &parent, &generated.commands).unwrap();
+        let mut artifact = retained::RetainedReplay {
+            profile_ref: plan.profile_ref.clone(),
+            parent_state_ref: retained::parent_state_ref(&parent),
+            parent_state: parent,
+            commands: generated.commands,
+            expected,
+        };
+        artifact.commands[0].bytes.push(0);
+        artifact.commands[0].command_ref = domain_hash(
+            b"chaoscontrol.smr-chain.command-ref.v1\0",
+            &[&artifact.commands[0].bytes],
+        );
+        assert_eq!(
+            retained::replay_retained(&plan, &artifact, |_, _| panic!(
+                "unrelated retained commands must not execute"
+            ))
+            .unwrap_err()
+            .class,
+            "replay-command"
+        );
+    }
+
+    #[test]
+    fn semantic_operation_inventory_rejects_omissions_and_duplicates() {
+        let plan = admit_profile(&profile(ObservationMode::Lossless)).unwrap();
+        let generated = plan_campaign(&plan, &campaign_fixture(), SEED).unwrap();
+        let run = execute_fixture(&plan, b"retained-initial-state", &generated.commands).unwrap();
+        retained::validate_semantic_run(&plan, &run).unwrap();
+        let mut missing = run.clone();
+        missing.operation_ids.pop();
+        assert_eq!(
+            retained::validate_semantic_run(&plan, &missing)
+                .unwrap_err()
+                .class,
+            "replay-operation"
+        );
+        let mut duplicate = run;
+        duplicate
+            .operation_ids
+            .push(duplicate.operation_ids[0].clone());
+        assert_eq!(
+            retained::validate_semantic_run(&plan, &duplicate)
+                .unwrap_err()
+                .class,
+            "replay-operation"
+        );
+    }
+
+    #[test]
+    fn retained_replay_preserves_client_bound_before_consumer_effects() {
+        let mut bounded_profile = profile(ObservationMode::Lossless);
+        bounded_profile.bounds.maximum_clients = 1;
+        bounded_profile.bounds.maximum_concurrency = 1;
+        let plan = admit_profile(&bounded_profile).unwrap();
+        let generated = plan_campaign(&plan, &campaign_fixture(), SEED).unwrap();
+        let parent = b"retained-initial-state".to_vec();
+        let expected = execute_fixture(&plan, &parent, &generated.commands).unwrap();
+        let mut commands = generated.commands;
+        commands[1].client_id = "another-client".into();
+        let artifact = retained::RetainedReplay {
+            profile_ref: plan.profile_ref.clone(),
+            parent_state_ref: retained::parent_state_ref(&parent),
+            parent_state: parent,
+            commands,
+            expected,
+        };
+        assert_eq!(
+            retained::replay_retained(&plan, &artifact, |_, _| panic!(
+                "over-bound clients must not execute"
+            ))
+            .unwrap_err()
+            .class,
+            "replay-bound"
+        );
+    }
+
+    #[test]
     fn retained_replay_event_overflow_is_rejected_before_consumer_effects() {
         let mut bounded_profile = profile(ObservationMode::Lossless);
         bounded_profile.bounds.maximum_replay_events = 1;

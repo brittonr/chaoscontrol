@@ -116,7 +116,9 @@ pub fn verdict_from_reproduce(
             Some(&assertion_identity),
             report,
         )?;
-        if record.fallback_scope != bug.fallback_scope {
+        if record.fallback_scope != bug.fallback_scope
+            || record.process_instances != bug.process_instances
+        {
             return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
         }
         let report_failed = record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
@@ -164,6 +166,7 @@ pub fn verdict_from_reproduce(
         assertion_id: Some(bug.assertion_id),
         assertion_identity: Some(assertion_identity),
         fallback_scope: bug.fallback_scope.clone(),
+        process_instances: bug.process_instances.clone(),
         marker_context: bug.marker_context.clone(),
         replay_parent_depth: Some(bug.replay_parent_depth),
         schedule_variant,
@@ -295,6 +298,7 @@ mod tests {
             assertion_id: 1806003755,
             assertion_identity: Some(crate::test_support::assertion_identity(1806003755)),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "raft probe".to_string(),
             schedule: SerializableSchedule { faults: Vec::new() },
@@ -312,6 +316,14 @@ mod tests {
         bug: &SerializableBug,
         observation: bool,
     ) -> chaoscontrol_fault::oracle::OracleReport {
+        report_for_process(bug, observation, None)
+    }
+
+    fn report_for_process(
+        bug: &SerializableBug,
+        observation: bool,
+        process: Option<&str>,
+    ) -> chaoscontrol_fault::oracle::OracleReport {
         let identity = bug.require_replay_identity().expect("test identity");
         let mut builder = CatalogBuilder::begin(1).expect("catalog begins");
         builder
@@ -323,6 +335,12 @@ mod tests {
         let mut oracle = PropertyOracle::new();
         oracle.activate_catalog(catalog).expect("catalog activates");
         oracle.begin_run();
+        let details = process.map(|process| {
+            serde_json::to_vec(&serde_json::json!({
+                "chaoscontrol_process_identity": process,
+            }))
+            .unwrap()
+        });
         oracle
             .record_bound_event(
                 &BoundAssertionEvent {
@@ -331,7 +349,7 @@ mod tests {
                     kind: identity.descriptor.kind,
                 },
                 observation,
-                None,
+                details.as_deref(),
             )
             .expect("observation records");
         oracle.end_run();
@@ -634,6 +652,28 @@ mod tests {
             target_failed: true,
             diagnostic: "retained parent reproduced".to_string(),
         }
+    }
+
+    #[test]
+    fn replay_owner_scope_rejects_process_substitution_and_whole_guest_promotion() {
+        let mut retained = bug(2, true);
+        retained.process_instances.insert("writer".to_string());
+        let executed = report_for_process(&retained, false, Some("writer"));
+        let other_process = report_for_process(&retained, false, Some("checkpoint"));
+        let verdict = verdict_from_reproduce(reproduced_input(&retained, &executed)).unwrap();
+        assert_eq!(
+            verdict.process_instances,
+            std::collections::BTreeSet::from(["writer".to_string()])
+        );
+        assert_eq!(
+            verdict_from_reproduce(reproduced_input(&retained, &other_process)),
+            Err(crate::bug::identity::BugIdentityError::ReportMismatch)
+        );
+        retained.process_instances.clear();
+        assert_eq!(
+            verdict_from_reproduce(reproduced_input(&retained, &executed)),
+            Err(crate::bug::identity::BugIdentityError::ReportMismatch)
+        );
     }
 
     #[test]

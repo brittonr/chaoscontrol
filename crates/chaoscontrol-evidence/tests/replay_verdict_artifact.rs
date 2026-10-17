@@ -212,3 +212,25 @@ fn artifact_join_binds_schedule_seed_strategy_quantum_and_policy_digest() {
         assert!(validate_snapshot_backed_replay_artifact(&verdict_path, &bug_path).is_err());
     }
 }
+
+#[test]
+fn process_owner_join_rejects_scope_removal_and_substitution() {
+    let (_temp, verdict_path, bug_path) = fixture();
+    let mut bug: Value = serde_json::from_slice(&std::fs::read(&bug_path).unwrap()).unwrap();
+    let mut verdict: Value =
+        serde_json::from_slice(&std::fs::read(&verdict_path).unwrap()).unwrap();
+    bug["process_instances"] = json!(["writer"]);
+    verdict["process_instances"] = json!(["writer"]);
+    bind_changed_bug(&bug_path, &bug, &verdict_path, &mut verdict);
+    validate_snapshot_backed_replay_artifact(&verdict_path, &bug_path).unwrap();
+    for owners in [json!([]), json!(["checkpoint"])] {
+        let mut drifted = verdict.clone();
+        drifted["process_instances"] = owners;
+        write_json(&verdict_path, &drifted);
+        let error = validate_snapshot_backed_replay_artifact(&verdict_path, &bug_path).unwrap_err();
+        assert!(error.message().contains("process owner scope mismatch"));
+    }
+    verdict["process_instances"] = json!(["whole guest"]);
+    write_json(&verdict_path, &verdict);
+    assert!(validate_snapshot_backed_replay_artifact(&verdict_path, &bug_path).is_err());
+}

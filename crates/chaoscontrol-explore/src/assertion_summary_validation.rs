@@ -115,6 +115,13 @@ fn validate_strict_identity(detail: &AssertionDetail) -> Result<&AssertionIdenti
 }
 
 fn validate_common(detail: &AssertionDetail) -> Result<(), String> {
+    chaoscontrol_replay_evidence_core::validate::validate_process_instances(
+        &detail.process_instances,
+    )
+    .map_err(|error| error.to_string())?;
+    if !detail.process_instances.is_empty() && detail.identity.is_none() {
+        return Err("process owner scope requires structured assertion identity".to_string());
+    }
     if detail.message.is_empty()
         || detail.message.bytes().any(|byte| byte.is_ascii_control())
         || detail.guest.bytes().any(|byte| byte.is_ascii_control())

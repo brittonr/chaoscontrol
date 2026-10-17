@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub const PROCESS_FAULT_SCHEMA: &str = "chaoscontrol.process-fault.v1";
 pub const MAX_PROCESS_ID_BYTES: usize = 96;
 pub const MAX_PROCESS_FAULT_BYTES: usize = 1024;
+/// Maximum distinct runtime owners retained for one assertion across evidence carriers.
+pub const MAX_PROCESS_INSTANCES_PER_ASSERTION: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

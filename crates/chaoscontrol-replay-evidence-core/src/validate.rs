@@ -379,6 +379,59 @@ fn validate_fallback_scope(verdict: &ReplayVerdict) -> Result<(), ValidationErro
     }
 }
 
+/// Validate runtime process-owner scope without conflating it with a guest claim.
+pub fn validate_process_instances(
+    instances: &std::collections::BTreeSet<String>,
+) -> Result<(), ValidationError> {
+    if instances.len() > chaoscontrol_protocol::process::MAX_PROCESS_INSTANCES_PER_ASSERTION
+        || instances
+            .iter()
+            .any(|identity| !chaoscontrol_protocol::process::validate_process_token(identity))
+    {
+        return Err(ValidationError::new(
+            "process_instances: invalid or excessive owner scope",
+        ));
+    }
+    Ok(())
+}
+
+/// Decode a bounded unique owner sequence without silently normalizing duplicates.
+pub fn deserialize_process_instances<'de, D>(
+    deserializer: D,
+) -> Result<std::collections::BTreeSet<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct ProcessInstancesVisitor;
+    impl<'de> serde::de::Visitor<'de> for ProcessInstancesVisitor {
+        type Value = std::collections::BTreeSet<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a bounded unique sequence of process identities")
+        }
+
+        fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut instances = std::collections::BTreeSet::new();
+            while let Some(identity) = sequence.next_element::<String>()? {
+                if instances.len()
+                    >= chaoscontrol_protocol::process::MAX_PROCESS_INSTANCES_PER_ASSERTION
+                    || !chaoscontrol_protocol::process::validate_process_token(&identity)
+                    || !instances.insert(identity)
+                {
+                    return Err(serde::de::Error::custom(
+                        "invalid, duplicate, or excessive process owner scope",
+                    ));
+                }
+            }
+            Ok(instances)
+        }
+    }
+    deserializer.deserialize_seq(ProcessInstancesVisitor)
+}
+
 /// Validate internal consistency of an emitted replay verdict, for every
 /// replay class. This check is class-agnostic; use
 /// [`validate_accepted_proof`] for the accepted-proof gate.
@@ -414,6 +467,12 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
         validate_schedule_variant(variant)?;
     }
     validate_fallback_scope(verdict)?;
+    validate_process_instances(&verdict.process_instances)?;
+    if !verdict.process_instances.is_empty() && verdict.assertion_identity.is_none() {
+        return Err(ValidationError::new(
+            "process_instances: requires assertion identity",
+        ));
+    }
     if let Some(marker) = verdict.marker_context.as_ref() {
         marker.validate().map_err(|error| {
             ValidationError::new(format!(

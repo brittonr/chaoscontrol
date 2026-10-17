@@ -159,7 +159,9 @@ fn merged_record(
     merged
         .process_instances
         .extend(candidate.process_instances.iter().cloned());
-    if merged.process_instances.len() > crate::oracle::MAX_PROCESS_INSTANCES_PER_ASSERTION {
+    if merged.process_instances.len()
+        > chaoscontrol_protocol::process::MAX_PROCESS_INSTANCES_PER_ASSERTION
+    {
         return Err(ReportMergeConflict::CardinalityOverflow);
     }
     merged.catalog_tokens.clear();

@@ -6,6 +6,7 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Duration;
+use vm_memory::GuestMemory;
 
 const MEMORY_BYTES: usize = 4 * 1024 * 1024;
 const CODE_ADDRESS: u64 = 0x200;
@@ -587,4 +588,182 @@ fn whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match() {
     assert_eq!(shell_device_state(&restored), shell_device_state(&control));
     vm.scheduler.drain_trace().unwrap();
     assert_eq!(future(&mut vm, false, Duration::ZERO), control_future);
+}
+
+#[test]
+fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
+    let mut vm = spin_vm();
+    for _ in 0..3 {
+        vm.step().unwrap();
+    }
+    let checkpoint = vm.snapshot().unwrap();
+    // Keep the live destination observably different from the restore source.
+    // A late rejection must not silently replace memory or rewind the vCPU.
+    const MARKER_ADDRESS: u64 = 0x8000;
+    const DESTINATION_MARKER: [u8; 64] = [0x5a; 64];
+    vm.memory
+        .inner()
+        .write_slice(&DESTINATION_MARKER, GuestAddress(MARKER_ADDRESS))
+        .unwrap();
+    vm.step().unwrap();
+    let before_memory = vm.memory.dump();
+    let before_registers: Vec<_> = vm
+        .vcpus
+        .iter()
+        .map(|vcpu| {
+            let regs = vcpu.get_regs().unwrap();
+            (regs.rax, regs.rip, regs.rflags)
+        })
+        .collect();
+    let before_schedule = vm.scheduler.state_id();
+    let before_counters = (vm.exit_count, vm.virtual_tsc.read());
+    let before_devices = serde_json::to_value(vm.capture_virtio_snapshots().unwrap()).unwrap();
+    for corruption in 0..6 {
+        let mut invalid = checkpoint.clone();
+        let component = match corruption {
+            0 => {
+                invalid.pic_master.chip_id = kvm_bindings::KVM_IRQCHIP_PIC_SLAVE;
+                "pic_master"
+            }
+            1 => {
+                invalid.pic_slave.chip_id = kvm_bindings::KVM_IRQCHIP_IOAPIC;
+                "pic_slave"
+            }
+            2 => {
+                invalid.ioapic.chip_id = u32::MAX;
+                "ioapic"
+            }
+            3 => {
+                invalid.pit_snapshot.tsc_khz = 0;
+                "PIT frequency"
+            }
+            4 => {
+                invalid.pit_snapshot.tsc_khz += 1;
+                "PIT frequency"
+            }
+            5 => {
+                invalid.last_kvm_pit_mode = 8;
+                "PIT mirror mode"
+            }
+            _ => unreachable!(),
+        };
+        let error = vm.restore(&invalid).unwrap_err();
+        assert!(matches!(error, VmError::Snapshot { .. }));
+        assert!(error.to_string().contains(component), "{error}");
+        assert_eq!(vm.memory.dump(), before_memory);
+        let registers: Vec<_> = vm
+            .vcpus
+            .iter()
+            .map(|vcpu| {
+                let regs = vcpu.get_regs().unwrap();
+                (regs.rax, regs.rip, regs.rflags)
+            })
+            .collect();
+        assert_eq!(registers, before_registers);
+        assert_eq!(vm.scheduler.state_id(), before_schedule);
+        assert_eq!((vm.exit_count, vm.virtual_tsc.read()), before_counters);
+        assert_eq!(
+            serde_json::to_value(vm.capture_virtio_snapshots().unwrap()).unwrap(),
+            before_devices
+        );
+        assert!(vm.schedule_execution_poison().is_none());
+    }
+    vm.restore(&checkpoint).unwrap();
+    assert_eq!(vm.memory.dump(), checkpoint.memory.materialize());
+    assert!(!vm.step().unwrap());
+}
+
+// r[verify chaoscontrol.deterministic_snapshots.restore_atomicity]
+#[test]
+fn required_pit_restore_ioctl_failure_after_memory_write_permanently_blocks_resume() {
+    use std::os::fd::{AsRawFd, FromRawFd};
+
+    const MARKER_ADDRESS: u64 = 0x8000;
+    const SOURCE_MARKER: [u8; 64] = [0xa5; 64];
+    const DESTINATION_MARKER: [u8; 64] = [0x5a; 64];
+    let mut vm = spin_vm();
+    vm.memory
+        .inner()
+        .write_slice(&SOURCE_MARKER, GuestAddress(MARKER_ADDRESS))
+        .unwrap();
+    let checkpoint = vm.snapshot().unwrap();
+    vm.memory
+        .inner()
+        .write_slice(&DESTINATION_MARKER, GuestAddress(MARKER_ADDRESS))
+        .unwrap();
+    vm.step().unwrap();
+    vm.validate_fault_engine_snapshot(&checkpoint).unwrap();
+    vm.complete_pending_kvm_exits_for_snapshot().unwrap();
+
+    // This real VM admits the required dirty-log read but intentionally lacks
+    // a PIT. The original vCPUs retain their original kernel VM, so quiesce
+    // succeeds; the first required device-restore ioctl then fails after the
+    // destination's guest memory has actually been replaced.
+    let without_pit = vm.kvm.create_vm().unwrap();
+    let memory_region = kvm_bindings::kvm_userspace_memory_region {
+        slot: 0,
+        guest_phys_addr: 0,
+        memory_size: MEMORY_BYTES as u64,
+        userspace_addr: vm.memory.inner().get_host_address(GuestAddress(0)).unwrap() as u64,
+        flags: kvm_bindings::KVM_MEM_LOG_DIRTY_PAGES,
+    };
+    // SAFETY: vm.memory owns the mapping until after without_pit drops. This
+    // fixture performs no KVM_RUN against the replacement VM.
+    unsafe { without_pit.set_user_memory_region(memory_region) }.unwrap();
+    let descriptor = vm.vm.as_raw_fd();
+    // SAFETY: dup returns a fresh owned descriptor retaining the original VM.
+    let saved_raw = unsafe { libc::dup(descriptor) };
+    assert!(saved_raw >= 0);
+    // SAFETY: saved_raw is uniquely owned and live.
+    let saved = unsafe { std::fs::File::from_raw_fd(saved_raw) };
+    // SAFETY: dup2 replaces the kernel target without closing an independently
+    // owned Rust object or changing descriptor ownership. Both VMs remain live.
+    assert_eq!(
+        unsafe { libc::dup2(without_pit.as_raw_fd(), descriptor) },
+        descriptor
+    );
+    // Preflight remains pure and succeeds even with a different shell fd.
+    vm.validate_fault_engine_snapshot(&checkpoint).unwrap();
+    let result = vm.restore(&checkpoint);
+    // Repair the descriptor before checking the software poison: rejection
+    // must not be merely another required ioctl failing on the fixture VM.
+    assert_eq!(
+        unsafe { libc::dup2(saved.as_raw_fd(), descriptor) },
+        descriptor
+    );
+    match result {
+        Err(VmError::SnapshotRestoreFailed {
+            phase: SnapshotRestorePhase::MemoryAndKernelState,
+            detail,
+        }) => assert!(detail.contains("Failed to set PIT"), "{detail}"),
+        other => panic!("expected required PIT restore failure, got {other:?}"),
+    }
+    assert_eq!(vm.memory.dump(), checkpoint.memory.materialize());
+    assert!(!vm.panic_detected, "a restore failure is not a guest panic");
+    let before = (
+        vm.exit_count,
+        vm.virtual_tsc.read(),
+        vm.scheduler.state_id(),
+    );
+    assert!(matches!(
+        vm.step(),
+        Err(VmError::ScheduleExecutionPoisoned { .. })
+    ));
+    assert!(matches!(
+        vm.snapshot(),
+        Err(VmError::ScheduleExecutionPoisoned { .. })
+    ));
+    assert!(matches!(
+        vm.restore(&checkpoint),
+        Err(VmError::ScheduleExecutionPoisoned { .. })
+    ));
+    assert_eq!(
+        (
+            vm.exit_count,
+            vm.virtual_tsc.read(),
+            vm.scheduler.state_id()
+        ),
+        before
+    );
+    assert_eq!(vm.memory.dump(), checkpoint.memory.materialize());
 }

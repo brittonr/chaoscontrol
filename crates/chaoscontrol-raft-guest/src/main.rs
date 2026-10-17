@@ -583,6 +583,17 @@ fn main() {
                         "candidate won election",
                         &json!({"node": active, "term": node.current_term}),
                     );
+                    let logical_position = format!("node:{active}:term:{}", node.current_term);
+                    cc_branch_marker!(
+                        "raft",
+                        "leader-elected",
+                        "raft",
+                        "Raft leader elected",
+                        &json!({"node": active, "term": node.current_term}),
+                        None,
+                        Some(logical_position.as_str()),
+                    )
+                    .expect("static Raft marker and bounded observed position must be valid");
                 }
 
                 // ── Data invariant: commit_index bounded ────

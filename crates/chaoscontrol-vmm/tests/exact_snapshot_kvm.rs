@@ -1,7 +1,9 @@
 //! KVM continuation evidence for the exact vCPU snapshot profile.
 
 use chaoscontrol_vmm::snapshot::VcpuSnapshot;
-use kvm_bindings::{kvm_mp_state, kvm_userspace_memory_region, KVM_MP_STATE_RUNNABLE};
+use kvm_bindings::{
+    kvm_mp_state, kvm_msr_entry, kvm_userspace_memory_region, Msrs, KVM_MP_STATE_RUNNABLE,
+};
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use vm_memory::{Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
 
@@ -16,6 +18,9 @@ const SNAPSHOT_XMM_MARKER: u8 = 0xA5;
 const MUTATED_XMM_MARKER: u8 = 0x5A;
 const EVENT_SET: u8 = 1;
 const EVENT_CLEAR: u8 = 0;
+const IA32_SYSENTER_ESP: u32 = 0x175;
+const SNAPSHOT_SYSENTER_ESP: u64 = 0x1234_5000;
+const MUTATED_SYSENTER_ESP: u64 = 0x5678_9000;
 const GUEST_CODE: [u8; 12] = [
     0xB0,
     FIRST_OUTPUT,
@@ -113,6 +118,7 @@ impl ContinuationHarness {
     }
 
     fn stage_pending_event_and_extended_state(&self) {
+        self.set_sysenter_esp(SNAPSHOT_SYSENTER_ESP);
         let mut fpu = self.vcpu.get_fpu().expect("read FPU state");
         fpu.xmm[0][0] = SNAPSHOT_XMM_MARKER;
         self.vcpu.set_fpu(&fpu).expect("stage extended state");
@@ -126,6 +132,7 @@ impl ContinuationHarness {
     }
 
     fn mutate_pending_event_and_extended_state(&self) {
+        self.set_sysenter_esp(MUTATED_SYSENTER_ESP);
         let mut fpu = self.vcpu.get_fpu().expect("read FPU state");
         fpu.xmm[0][0] = MUTATED_XMM_MARKER;
         self.vcpu.set_fpu(&fpu).expect("mutate extended state");
@@ -139,6 +146,13 @@ impl ContinuationHarness {
     }
 
     fn assert_pending_event_and_extended_state_restored(&self) {
+        let mut msrs = Msrs::from_entries(&[kvm_msr_entry {
+            index: IA32_SYSENTER_ESP,
+            ..Default::default()
+        }])
+        .unwrap();
+        assert_eq!(self.vcpu.get_msrs(&mut msrs).unwrap(), 1);
+        assert_eq!(msrs.as_slice()[0].data, SNAPSHOT_SYSENTER_ESP);
         let fpu = self.vcpu.get_fpu().expect("read restored FPU state");
         assert_eq!(fpu.xmm[0][0], SNAPSHOT_XMM_MARKER);
 
@@ -148,6 +162,17 @@ impl ContinuationHarness {
             .expect("read restored vCPU events");
         assert_eq!(events.nmi.pending, EVENT_SET);
         assert_eq!(events.nmi.masked, EVENT_SET);
+    }
+
+    fn set_sysenter_esp(&self, value: u64) {
+        assert!(self.msr_indices.contains(&IA32_SYSENTER_ESP));
+        let msrs = Msrs::from_entries(&[kvm_msr_entry {
+            index: IA32_SYSENTER_ESP,
+            data: value,
+            ..Default::default()
+        }])
+        .unwrap();
+        assert_eq!(self.vcpu.set_msrs(&msrs).unwrap(), 1);
     }
 }
 

@@ -149,3 +149,38 @@ fn reordered_evidence_is_rejected_without_partial_oracle_mutation() {
     ));
     assert_eq!(oracle.finalized_report_projection(), before);
 }
+
+#[test]
+fn fallback_payload_cannot_override_its_admitted_process_owner() {
+    let mut assertion = fallback_record(
+        ASSERTION_SEQUENCE,
+        "wal-safe",
+        FallbackRecordType::Always,
+        Some(false),
+    );
+    assertion.details = serde_json::json!({"chaoscontrol_process_identity": "checkpoint"});
+    let mut sink = FallbackSink::new(SINK_RECORD_LIMIT).unwrap();
+    sink.admit_line(&serde_json::to_string(&assertion).unwrap())
+        .unwrap();
+    let evidence = sink.evidence().unwrap();
+    let mut oracle = PropertyOracle::new();
+    oracle
+        .activate_catalog_with_fallback(&base_catalog(), &evidence)
+        .unwrap();
+    oracle.begin_run();
+    oracle.record_fallback_sink(&evidence).unwrap();
+    oracle.end_run();
+    let report = oracle.report();
+    chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(&report).unwrap();
+    let record = report
+        .structured_assertions
+        .values()
+        .find(|record| record.fallback_scope.is_some())
+        .unwrap();
+    assert_eq!(record.verdict(), Verdict::Failed);
+    assert_eq!(record.fallback_scope.as_ref().unwrap().process, process());
+    assert!(
+        record.process_instances.is_empty(),
+        "application details cannot claim an SDK runtime owner"
+    );
+}

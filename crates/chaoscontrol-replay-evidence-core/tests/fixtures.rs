@@ -149,6 +149,7 @@ fn snapshot_backed_verdict(
         assertion_id: Some(TEST_ALIAS),
         assertion_identity: Some(test_identity(TEST_ALIAS)),
         fallback_scope: None,
+        process_instances: Default::default(),
         marker_context: None,
         replay_parent_depth: Some(1),
         schedule_variant: None,
@@ -179,6 +180,7 @@ fn schedule_only_verdict() -> ReplayVerdict {
         assertion_id: Some(TEST_ALIAS),
         assertion_identity: Some(test_identity(TEST_ALIAS)),
         fallback_scope: None,
+        process_instances: Default::default(),
         marker_context: None,
         replay_parent_depth: Some(0),
         schedule_variant: None,
@@ -449,4 +451,32 @@ fn rejects_stale_snapshot_codec_for_accepted_proof() {
     validate_verdict_consistency(&verdict).expect("legacy codec stays readable");
     let error = validate_accepted_proof(&verdict).expect_err("stale codec cannot promote");
     assert!(error.message().contains("CBOR v2"));
+}
+
+#[test]
+fn process_scope_rejects_invalid_owners_and_cardinality_overflow() {
+    let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
+    verdict.process_instances.insert("writer".to_string());
+    validate_accepted_proof(&verdict).unwrap();
+    verdict.process_instances.insert("whole guest".to_string());
+    assert!(validate_accepted_proof(&verdict).is_err());
+    verdict.process_instances = (0
+        ..=chaoscontrol_protocol::process::MAX_PROCESS_INSTANCES_PER_ASSERTION)
+        .map(|index| format!("worker-{index}"))
+        .collect();
+    assert!(validate_accepted_proof(&verdict).is_err());
+    let mut wire = serde_json::to_value(snapshot_backed_verdict(
+        ReplayClass::SnapshotBackedReproduced,
+        true,
+        0,
+    ))
+    .unwrap();
+    for invalid in [
+        serde_json::json!(["writer", "writer"]),
+        serde_json::json!(["whole guest"]),
+        serde_json::Value::Null,
+    ] {
+        wire["process_instances"] = invalid;
+        assert!(serde_json::from_value::<ReplayVerdict>(wire.clone()).is_err());
+    }
 }

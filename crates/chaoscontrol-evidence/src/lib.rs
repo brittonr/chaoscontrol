@@ -2602,6 +2602,12 @@ pub struct BugRecord {
         deserialize_with = "non_null_option::deserialize"
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    #[serde(
+        default,
+        deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances",
+        skip_serializing_if = "std::collections::BTreeSet::is_empty"
+    )]
+    pub process_instances: std::collections::BTreeSet<String>,
     #[serde(default)]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
     #[serde(default)]
@@ -2632,6 +2638,12 @@ pub struct ReplayVerdict {
         deserialize_with = "non_null_option::deserialize"
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    #[serde(
+        default,
+        deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances",
+        skip_serializing_if = "std::collections::BTreeSet::is_empty"
+    )]
+    pub process_instances: std::collections::BTreeSet<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

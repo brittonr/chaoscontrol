@@ -58,10 +58,30 @@ pub fn validate_parent_context(
 }
 
 pub fn observations(report: &OracleReport) -> Result<Vec<MarkerObservation>, MarkerBindingError> {
+    observations_in_run(report, None)
+}
+
+/// Only observations from the just-completed branch can create new parents.
+/// Historical events remain available to coverage and retained-parent validation.
+pub(crate) fn frontier_observations(
+    report: &OracleReport,
+) -> Result<Vec<MarkerObservation>, MarkerBindingError> {
+    let Some(run_id) = report.total_runs.checked_sub(1) else {
+        return Ok(Vec::new());
+    };
+    observations_in_run(report, Some(run_id))
+}
+
+fn observations_in_run(
+    report: &OracleReport,
+    run_id: Option<u32>,
+) -> Result<Vec<MarkerObservation>, MarkerBindingError> {
     report
         .events
         .iter()
-        .filter(|event| event.name == BRANCH_MARKER_EVENT)
+        .filter(|event| {
+            event.name == BRANCH_MARKER_EVENT && run_id.is_none_or(|run_id| event.run_id == run_id)
+        })
         .map(|event| {
             BranchMarker::from_value(&event.details)
                 .map(|marker| MarkerObservation {

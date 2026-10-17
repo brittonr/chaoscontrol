@@ -82,6 +82,12 @@ pub fn validate_snapshot_backed_replay_artifact(
 
 fn validate_carrier_bindings(bug: &BugRecord, verdict: &ReplayVerdict) -> EvidenceResult<()> {
     ensure(
+        bug.process_instances == verdict.process_instances,
+        "replay verdict process owner scope mismatch",
+    )?;
+    chaoscontrol_replay_evidence_core::validate::validate_process_instances(&bug.process_instances)
+        .map_err(|error| EvidenceError::new(error.to_string()))?;
+    ensure(
         bug.fallback_scope == verdict.fallback_scope,
         "replay verdict fallback scope mismatch",
     )?;

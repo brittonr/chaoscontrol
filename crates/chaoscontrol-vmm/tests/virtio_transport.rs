@@ -411,3 +411,78 @@ fn snapshot_preserves_failed_post_effect_pending_completion_without_reexecution(
         .is_err()
     );
 }
+
+#[test]
+fn ready_snapshot_requires_accepted_features_but_preserves_failed_driver_state() {
+    use chaoscontrol_vmm::devices::entropy::DeterministicEntropy;
+    use chaoscontrol_vmm::devices::virtio_entropy::VirtioEntropy;
+    use chaoscontrol_vmm::devices::virtio_validation::VIRTIO_STATUS_FAILED;
+    use vm_memory::{Bytes, GuestAddress};
+
+    const ENTROPY_BYTES: usize = 64;
+    let mem = memory();
+    let mut transport = VirtioMmioDevice::new(
+        DEVICE_BASE,
+        DEVICE_IRQ,
+        Box::new(VirtioEntropy::new(DeterministicEntropy::new(42))),
+    );
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    let before = transport.snapshot().unwrap();
+    let mut memory_before = vec![0; MEMORY_BYTES];
+    mem.read_slice(&mut memory_before, GuestAddress(0)).unwrap();
+    for status in [0, 1, 3, 3 | VIRTIO_STATUS_FAILED] {
+        let mut invalid = before.clone();
+        invalid.status = status;
+        assert_eq!(
+            transport.restore_snapshot(&invalid, &mem),
+            Err(VirtioFailure::Transport(TransportViolation::ReadyState))
+        );
+        assert_eq!(transport.snapshot().unwrap(), before);
+        let mut memory_after = vec![0; MEMORY_BYTES];
+        mem.read_slice(&mut memory_after, GuestAddress(0)).unwrap();
+        assert_eq!(memory_after, memory_before);
+    }
+    let mut failed = before.clone();
+    failed.status |= VIRTIO_STATUS_FAILED;
+    transport.restore_snapshot(&failed, &mem).unwrap();
+    assert_eq!(transport.snapshot().unwrap(), failed);
+    write_descriptor(
+        &mem,
+        0,
+        VirtqDesc {
+            addr: DATA_ADDRESS,
+            len: ENTROPY_BYTES as u32,
+            flags: 2,
+            next: 0,
+        },
+    );
+    publish_head(&mem, 0, 1);
+    assert!(!transport.process_queues(&mem));
+    assert_eq!(used_index(&mem), 0);
+    assert_eq!(
+        transport
+            .backend()
+            .as_any()
+            .downcast_ref::<VirtioEntropy>()
+            .unwrap()
+            .entropy()
+            .bytes_generated(),
+        0
+    );
+    // A reset followed by valid negotiation, not clearing a failure in place,
+    // is the supported route back to real backend work.
+    register(&mut transport, &mem, VIRTIO_MMIO_STATUS, 0).unwrap();
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    assert!(notify(&mut transport, &mem, 0));
+    assert_eq!(used_index(&mem), 1);
+    let mut actual = [0; ENTROPY_BYTES];
+    let mut expected = [0; ENTROPY_BYTES];
+    mem.read_slice(&mut actual, GuestAddress(DATA_ADDRESS))
+        .unwrap();
+    DeterministicEntropy::new(42).fill_bytes(&mut expected);
+    assert_eq!(actual, expected);
+}

@@ -40,6 +40,7 @@ pub fn strict_projection(
             .and_then(|bytes| std::str::from_utf8(bytes).ok().map(str::to_string));
         details.push(AssertionDetail {
             id: record.compatibility_id.unwrap_or_default(),
+            process_instances: record.process_instances.clone(),
             identity: Some(AssertionIdentityDetail {
                 descriptor: admitted.descriptor.clone(),
                 fingerprint: admitted.fingerprint,

@@ -14,7 +14,8 @@ use crate::coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 use crate::frontier::FrontierEntry;
 use crate::input_tree;
 use crate::marker_branching::{
-    frontier_metadata, marker_score, observations as marker_observations, update_hit_counts,
+    frontier_metadata, frontier_observations as marker_observations, marker_score,
+    update_hit_counts,
 };
 use crate::mutator::{MutationConfig, ScheduleMutator};
 use crate::worker::{BranchWork, WorkerPool};
@@ -2112,9 +2113,23 @@ impl Explorer {
                             .to_string(),
                     });
                 }
-                let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule)?;
+                let mut dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule)?;
+                if !record.process_instances.is_empty() {
+                    let mut hasher = blake3::Hasher::new();
+                    hasher.update(b"chaoscontrol.process-scoped-bug.v1");
+                    hasher.update(&dedup_key.to_le_bytes());
+                    for process in &record.process_instances {
+                        hasher.update(&(process.len() as u64).to_le_bytes());
+                        hasher.update(process.as_bytes());
+                    }
+                    dedup_key = u64::from_le_bytes(
+                        hasher.finalize().as_bytes()[..8]
+                            .try_into()
+                            .expect("digest prefix"),
+                    );
+                }
 
-                // Skip if we've already seen this (assertion, fault_types) pair
+                // Do not conflate failures observed under different runtime owner scopes.
                 if self.seen_dedup_keys.contains(&dedup_key) {
                     debug!(
                         "Dedup: skipping duplicate bug (assertion={}, dedup_key={:#x})",
@@ -2129,6 +2144,7 @@ impl Explorer {
                     assertion_id: assertion_id as u64,
                     assertion_identity,
                     fallback_scope: record.fallback_scope.clone(),
+                    process_instances: record.process_instances.clone(),
                     marker_context: marker_context.cloned(),
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
@@ -2544,6 +2560,7 @@ impl Explorer {
             details.push(AssertionDetail {
                 id: record.compatibility_id.unwrap_or_default(),
                 identity,
+                process_instances: record.process_instances.clone(),
                 message: record.message.clone(),
                 kind: format!("{:?}", record.kind).to_lowercase(),
                 guest: record.guest.clone(),
@@ -3083,6 +3100,13 @@ pub struct AssertionDetail {
         deserialize_with = "crate::non_null_option::deserialize"
     )]
     pub identity: Option<AssertionIdentityDetail>,
+    /// Runtime owners observed for this assertion, not whole-guest coverage.
+    #[serde(
+        default,
+        deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances",
+        skip_serializing_if = "std::collections::BTreeSet::is_empty"
+    )]
+    pub process_instances: std::collections::BTreeSet<String>,
     /// Human-readable message.
     pub message: String,
     /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
@@ -3364,6 +3388,13 @@ mod tests {
     }
 
     fn failed_report(compatibility_id: Option<u32>) -> OracleReport {
+        failed_report_for_process(compatibility_id, None)
+    }
+
+    fn failed_report_for_process(
+        compatibility_id: Option<u32>,
+        process: Option<&str>,
+    ) -> OracleReport {
         let mut descriptor =
             crate::test_support::assertion_identity(u64::from(TEST_ALIAS)).descriptor;
         descriptor.compatibility_id = compatibility_id;
@@ -3384,8 +3415,14 @@ mod tests {
         let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
         oracle.activate_catalog(catalog).expect("catalog activates");
         oracle.begin_run();
+        let details = process.map(|process| {
+            serde_json::to_vec(&serde_json::json!({
+                "chaoscontrol_process_identity": process,
+            }))
+            .unwrap()
+        });
         oracle
-            .record_bound_event(&event, false, None)
+            .record_bound_event(&event, false, details.as_deref())
             .expect("failed event records");
         oracle.end_run();
         oracle.report()
@@ -3405,6 +3442,94 @@ mod tests {
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
         }
+    }
+
+    #[test]
+    fn process_scoped_failure_rejects_owner_loss_or_substitution_on_resume() {
+        let report = failed_report_for_process(None, Some("writer"));
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let bugs = explorer
+            .extract_bugs(
+                &branch_result(report.clone()),
+                &FaultSchedule::new(),
+                None,
+                0,
+                None,
+            )
+            .unwrap();
+        let mut retained = SerializableBug::from(&bugs[0]);
+        crate::checkpoint::validate_bug_set(std::slice::from_ref(&retained), Some(&report))
+            .unwrap();
+        for owners in [
+            Default::default(),
+            std::collections::BTreeSet::from(["checkpoint".to_string()]),
+        ] {
+            retained.process_instances = owners;
+            assert!(crate::checkpoint::validate_bug_set(
+                std::slice::from_ref(&retained),
+                Some(&report)
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn inherited_markers_do_not_create_new_branch_opportunities_or_exceed_run_bound() {
+        use chaoscontrol_protocol::branch_marker::{
+            BranchMarker, BRANCH_MARKER_EVENT, MAX_MARKERS_PER_RUN,
+        };
+        let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+        oracle.begin_run();
+        for index in 0..MAX_MARKERS_PER_RUN {
+            let marker = BranchMarker::new(
+                "fixture",
+                &format!("old-{index}"),
+                "guest-0",
+                serde_json::json!({}),
+                None,
+                None,
+            )
+            .unwrap();
+            oracle
+                .record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap())
+                .unwrap();
+        }
+        oracle.end_run();
+        oracle.begin_run();
+        oracle.end_run();
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let result = branch_result(oracle.report());
+        assert!(!explorer.should_retain_branch(&result, 0).unwrap());
+        assert_eq!(
+            crate::marker_branching::coverage_report(Vec::new(), &result.oracle_report)
+                .unwrap()
+                .reached
+                .len(),
+            MAX_MARKERS_PER_RUN
+        );
+        oracle.begin_run();
+        let marker = BranchMarker::new(
+            "fixture",
+            "new",
+            "guest-0",
+            serde_json::json!({}),
+            None,
+            None,
+        )
+        .unwrap();
+        let identity = marker.identity.clone();
+        oracle
+            .record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap())
+            .unwrap();
+        oracle.end_run();
+        let result = branch_result(oracle.report());
+        let proposals = explorer.entry_proposals(&result, 1).unwrap();
+        assert!(explorer.should_retain_branch(&result, 0).unwrap());
+        assert_eq!(proposals.len(), 1);
+        assert_eq!(
+            proposals[0].marker.as_ref().unwrap().marker_identity,
+            identity
+        );
     }
 
     #[test]

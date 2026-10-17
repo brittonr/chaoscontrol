@@ -36,6 +36,11 @@ struct ReviewAssertion {
         deserialize_with = "crate::non_null_option::deserialize"
     )]
     identity: Option<ReviewIdentity>,
+    #[serde(
+        default,
+        deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances"
+    )]
+    process_instances: BTreeSet<String>,
     message: String,
     kind: String,
     guest: String,
@@ -249,6 +254,14 @@ fn validate_strict_identity(assertion: &ReviewAssertion) -> EvidenceResult<&Revi
 }
 
 fn validate_common(assertion: &ReviewAssertion) -> EvidenceResult<()> {
+    chaoscontrol_replay_evidence_core::validate::validate_process_instances(
+        &assertion.process_instances,
+    )
+    .map_err(|error| EvidenceError::new(error.to_string()))?;
+    crate::ensure(
+        assertion.process_instances.is_empty() || assertion.identity.is_some(),
+        "process owner scope requires structured assertion identity",
+    )?;
     crate::assertion_summary_semantics::validate_common(
         crate::assertion_summary_semantics::AssertionSemantics {
             message: &assertion.message,

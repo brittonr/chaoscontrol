@@ -107,6 +107,13 @@ pub struct ReplayVerdict {
         skip_serializing_if = "Option::is_none"
     )]
     pub assertion_identity: Option<AssertionEvidenceIdentity>,
+    /// Exact runtime process scope; an empty set makes no process-owner claim.
+    #[serde(
+        default,
+        deserialize_with = "crate::validate::deserialize_process_instances",
+        skip_serializing_if = "std::collections::BTreeSet::is_empty"
+    )]
+    pub process_instances: std::collections::BTreeSet<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -172,6 +179,7 @@ impl ReplayVerdict {
             assertion_id: None,
             assertion_identity: None,
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             replay_parent_depth: None,
             schedule_variant: None,

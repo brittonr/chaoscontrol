@@ -1,4 +1,5 @@
 # Rust-derived bug report evidence shape. Legacy ID-only reports are diagnostic-only.
+let ProcessInstances = import "process-instances.ncl" in
 let NonEmptyString = std.contract.from_predicate (fun value =>
   std.is_string value && std.string.length value > 0
 ) in
@@ -24,6 +25,7 @@ let BugReportShape = {
   assertion_id | Number,
   assertion_identity | AssertionEvidenceIdentity | optional,
   fallback_scope | FallbackScope | optional,
+  process_instances | ProcessInstances | optional,
   marker_context | MarkerContext | optional,
   assertion_location | NonEmptyString,
   schedule | FaultSchedule,

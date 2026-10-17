@@ -16,6 +16,8 @@ pub struct BugReport {
     pub assertion_id: u64,
     /// Exact admitted assertion identity that failed.
     pub assertion_identity: AssertionEvidenceIdentity,
+    /// Runtime process instances observed for this assertion; never whole-guest evidence.
+    pub process_instances: std::collections::BTreeSet<String>,
     /// Exact process-local fallback binding, when the failure used the fallback sink.
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
     /// Marker instance of the snapshot selected as this branch's replay parent.
@@ -201,6 +203,7 @@ mod tests {
                 assertion_id: i as u64,
                 assertion_identity: crate::test_support::assertion_identity(i as u64),
                 fallback_scope: None,
+                process_instances: Default::default(),
                 marker_context: None,
                 assertion_location: format!("bug_{}", i),
                 schedule: FaultSchedule::new(),
@@ -342,6 +345,7 @@ mod tests {
             assertion_id: 100,
             assertion_identity: crate::test_support::assertion_identity(100),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "test.rs:123".to_string(),
             schedule: FaultSchedule::new(),

@@ -3020,6 +3020,45 @@ impl DeterministicVm {
             .memory
             .validate_for_guest_size(self.memory.size())
             .map_err(|message| VmError::Snapshot { message })?;
+        for (component, actual, expected) in [
+            (
+                "pic_master",
+                snapshot.pic_master.chip_id,
+                kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
+            ),
+            (
+                "pic_slave",
+                snapshot.pic_slave.chip_id,
+                kvm_bindings::KVM_IRQCHIP_PIC_SLAVE,
+            ),
+            (
+                "ioapic",
+                snapshot.ioapic.chip_id,
+                kvm_bindings::KVM_IRQCHIP_IOAPIC,
+            ),
+        ] {
+            if actual != expected {
+                return Err(VmError::Snapshot {
+                    message: format!(
+                        "snapshot {component} identity {actual} differs from required {expected}"
+                    ),
+                });
+            }
+        }
+        if snapshot.pit_snapshot.tsc_khz == 0
+            || snapshot.pit_snapshot.tsc_khz != self.virtual_tsc.tsc_khz()
+        {
+            return Err(VmError::Snapshot {
+                message: "snapshot PIT frequency differs from the admitted virtual TSC profile"
+                    .to_string(),
+            });
+        }
+        if snapshot.last_kvm_pit_mode > 7 && snapshot.last_kvm_pit_mode != u8::MAX {
+            return Err(VmError::Snapshot {
+                message: "snapshot PIT mirror mode is neither a hardware mode nor unsynchronized"
+                    .to_string(),
+            });
+        }
         if !serial_snapshot_fits(snapshot.serial_state.in_buffer.len(), SERIAL_FIFO_CAPACITY) {
             return Err(VmError::Snapshot {
                 message: "snapshot serial input exceeds the UART FIFO capacity".to_string(),

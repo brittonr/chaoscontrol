@@ -5,6 +5,11 @@
 //! and **guided randomness**.  The VMM collects these signals to drive fault
 //! injection and property checking across thousands of deterministic runs.
 //!
+//! The versioned surface/status inventory is maintained in
+//! `docs/references/sdk-antithesis-rust-parity.md`; comparison does not create
+//! an obligation to implement Antithesis-only surfaces.
+//! r[impl chaoscontrol.sdk_parity.mapping]
+//!
 //! # Quick start
 //!
 //! ```rust,ignore

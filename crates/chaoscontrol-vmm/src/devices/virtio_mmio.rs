@@ -714,6 +714,14 @@ impl VirtioMmioDevice {
             snapshot.driver_features,
         )
         .map_err(VirtioFailure::Transport)?;
+        // A failed device may retain a ready queue, but a queue cannot have
+        // become ready before features were accepted. Failure does not erase
+        // that lifecycle prerequisite from an exact snapshot.
+        if snapshot.queues.iter().any(|queue| queue.ready)
+            && snapshot.status & VIRTIO_STATUS_FEATURES_OK == 0
+        {
+            return Err(VirtioFailure::Transport(TransportViolation::ReadyState));
+        }
         for (queue_snapshot, queue) in snapshot.queues.iter().zip(&self.queues) {
             VirtQueue::restored(
                 queue_snapshot,

@@ -892,6 +892,13 @@ fn merge_assertion_detail(
         .checked_add(candidate.false_count)
         .ok_or("false count overflow")?;
     let mut merged = existing.clone();
+    merged
+        .process_instances
+        .extend(candidate.process_instances.iter().cloned());
+    chaoscontrol_replay_evidence_core::validate::validate_process_instances(
+        &merged.process_instances,
+    )
+    .map_err(|_| "invalid merged process owner scope")?;
     merged.hit_count = hit_count;
     merged.true_count = true_count;
     merged.false_count = false_count;
@@ -992,6 +999,7 @@ mod tests {
             assertion_id,
             assertion_identity: crate::test_support::assertion_identity(assertion_id),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: location.to_string(),
             schedule: FaultSchedule::new(),
@@ -1088,6 +1096,7 @@ mod tests {
                 catalog_token: detail_identity.catalog_tokens[0],
             },
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "src/main.rs:10".to_string(),
             schedule: FaultSchedule::new(),
@@ -1176,6 +1185,7 @@ mod tests {
 
     fn make_detail(id: u32, verdict: &str, hits: u64, t: u64, f: u64) -> AssertionDetail {
         AssertionDetail {
+            process_instances: Default::default(),
             id,
             identity: None,
             message: format!("assertion_{}", id),
@@ -1218,6 +1228,7 @@ mod tests {
         let canonical = descriptor.canonical_bytes().expect("canonical descriptor");
         let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
         AssertionDetail {
+            process_instances: Default::default(),
             id: TEST_COMPATIBILITY_ID,
             identity: Some(AssertionIdentityDetail {
                 descriptor,
@@ -1514,6 +1525,7 @@ mod tests {
                     assertion_id: 100,
                     assertion_identity: Some(crate::test_support::assertion_identity(100)),
                     fallback_scope: None,
+                    process_instances: Default::default(),
                     marker_context: None,
                     assertion_location: "test.rs:1".into(),
                     schedule: SerializableSchedule { faults: Vec::new() },

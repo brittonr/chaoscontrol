@@ -48,13 +48,16 @@ where
             "retained replay inputs exceed admitted bounds",
         ));
     }
-    let mut operations = BTreeSet::new();
+    let mut operations = BTreeMap::new();
+    let mut clients = BTreeSet::new();
     for (offset, command) in artifact.commands.iter().enumerate() {
         validate_identifier("operation_id", &command.operation_id)?;
         validate_identifier("client_id", &command.client_id)?;
         if command.command_index != offset as u64 + MIN_COMMAND_INDEX
             || command.bytes.len() as u64 > bounds.maximum_command_bytes
-            || !operations.insert(command.operation_id.as_str())
+            || operations
+                .insert(command.operation_id.as_str(), command)
+                .is_some()
             || command.command_ref
                 != domain_hash(
                     b"chaoscontrol.smr-chain.command-ref.v1\0",
@@ -66,8 +69,40 @@ where
                 "retained command identity, position or bytes differ",
             ));
         }
+        clients.insert(command.client_id.as_str());
+    }
+    if clients.len() as u64 > u64::from(bounds.maximum_clients) {
+        return Err(SmrError::new(
+            "replay-bound",
+            "retained commands exceed the admitted client bound",
+        ));
     }
     validate_semantic_run(plan, &artifact.expected)?;
+    for attempt in &artifact.expected.proposal_outcomes {
+        if !operations
+            .get(attempt.operation_id.as_str())
+            .is_some_and(|command| command.command_ref == attempt.command_ref)
+        {
+            return Err(SmrError::new(
+                "replay-command",
+                "retained proposal is not bound to the supplied command",
+            ));
+        }
+    }
+    for observation in &artifact.expected.observations {
+        if observation
+            .command_index
+            .checked_sub(MIN_COMMAND_INDEX)
+            .and_then(|index| usize::try_from(index).ok())
+            .and_then(|index| artifact.commands.get(index))
+            .is_none()
+        {
+            return Err(SmrError::new(
+                "replay-command",
+                "retained observation has no supplied command",
+            ));
+        }
+    }
     let actual = execute(&artifact.parent_state, &artifact.commands)?;
     validate_semantic_run(plan, &actual)?;
     compare_replay_bounded(&artifact.expected, &actual, bounds)
@@ -83,19 +118,20 @@ pub fn validate_semantic_run(plan: &SmrWorkloadPlan, run: &SemanticRun) -> SmrRe
             "semantic liveness differs from retained preconditions",
         ));
     }
-    let operations: BTreeSet<_> = run
+    let mut operations: BTreeSet<_> = run
         .proposal_outcomes
         .iter()
         .map(|attempt| attempt.operation_id.as_str())
         .collect();
-    if run
-        .operation_ids
-        .iter()
-        .any(|id| !operations.contains(id.as_str()))
+    if run.operation_ids.len() != operations.len()
+        || run
+            .operation_ids
+            .iter()
+            .any(|id| !operations.remove(id.as_str()))
     {
         return Err(SmrError::new(
             "replay-operation",
-            "semantic operation lacks a recorded proposal",
+            "semantic operation identities do not match the recorded proposals",
         ));
     }
     if run.safety_prefixes != history.safety_prefixes {

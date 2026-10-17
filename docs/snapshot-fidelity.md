@@ -164,3 +164,51 @@ nickel export --format json dogfood-results/production-readiness-extension-20261
 
 `observations.json` retains exact argv, environments, limits, reports, and source boundaries. `receipt-validation.json` binds the actual export and artifact identities. Ownership remains with `chaoscontrol-vmm` for runtime/evidence and Cairn CLI/core maintainers for producer admission. The final release/readiness task stays unchecked; all 35 corrective attempts are consumed. No lifecycle sync, archive, readiness promotion, host reconfiguration, or production-readiness claim follows.
 
+## Authorized continuation implementation
+
+The separate continuation ledger authorizes corrections through attempt 40;
+earlier ledgers, receipts, campaign cohorts and verdicts remain unchanged.
+The existing incremental-lineage repair and `raft_lineage_proof` are reused.
+
+Restore preflight now checks IRQ-chip component identities and the admitted
+PIT clock/profile before quiesce or memory replacement. Ready virtqueues require
+accepted features, while legitimate failed-driver snapshots remain representable.
+The actual KVM runtime suite exercises malformed-state isolation, complete
+backend continuation, concurrent host signals/CPU work, and a required
+`KVM_SET_PIT2` failure after guest-memory replacement. That last scenario repairs
+the fixture descriptor and still requires permanent non-runnable restore poison;
+an operational failure is not a guest panic. The focused eight-scenario suite,
+workspace all-target tests, denied-warning Clippy and formatting passed before
+the clean-source release run. These checks do not establish exhaustive raw
+architecture-value preflight, PMU continuation, or historical engine equivalence.
+
+Runtime assertion `process_instances` are preserved through bug extraction,
+deduplication, checkpoint/resume, summaries, replay and artifact admission.
+The observed set is bounded, unique and token-validated; owner removal and
+substitution reject. It does not attest the supervisor or establish whole-guest
+coverage. Fallback records retain their stronger independent admitted
+record/process/sink scope; application details cannot supply SDK owner authority.
+Nickel review contracts admit historical empty sets and the exact cardinality
+and token boundaries, and reject duplicate, malformed and oversized sets.
+
+Frontier proposals use only newly observed markers, not inherited cumulative
+history. Raft emits `raft/leader-elected` at its actual Candidate-to-Leader
+transition with real node/term position, without fabricating a state reference.
+Reproduction applies a retained schedule variant before counterfactual execution
+and still checks the independently observed policy. Source/regression checks do
+not prove marker-selected retained-parent replay or a nondefault-policy campaign;
+those runtime obligations remain separate until an actual consumer verdict exists.
+
+Retained SMR admission checks client bounds, complete operation inventory and
+proposal/command references before consumer effects. Process lifecycle receipts
+bind role and identity to the same admitted process. The registry requires all
+previously authored runtime ownership families, and its actual CLI rejects each
+newly enforced family's omission. These validations do not substitute for the
+standalone SMR replay shell, exact upstream kernel receipts, privileged eBPF
+scenario corpus, or immutable source/baseline/adaptive-parity evidence.
+
+Maintenance owner: `chaoscontrol-vmm` and each existing crate owner. Current
+consumers are restore/recovery, explorer resume/reproduction and evidence
+admission. Final clean-source Cargo, Nix, native, watchdog and seven-row matrix
+verdicts remain independent requirements; no production-readiness claim follows.
+

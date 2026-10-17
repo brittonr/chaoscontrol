@@ -1120,6 +1120,12 @@ fn registry_fixture() -> serde_json::Value {
         ("checkpoint-reference", "rust-derived"),
         ("snapshot-reference", "rust-derived"),
         ("replay-verdict", "rust-derived"),
+        ("portable-snapshot-descriptor", "rust-derived"),
+        ("campaign-progress", "rust-derived"),
+        ("simulator-runtime-records", "rust-derived"),
+        ("execution-traces", "rust-derived"),
+        ("fault-outcomes", "rust-derived"),
+        ("campaign-reports", "rust-derived"),
         ("raw-runtime-logs", "excluded"),
         ("secrets-and-crypto-internals", "excluded"),
     ].into_iter().map(|(id, ownership)| serde_json::json!({
@@ -1136,7 +1142,7 @@ fn registry_fixture() -> serde_json::Value {
 fn registry_rejects_runtime_facts_relabelled_as_authored_intent() {
     let registry = registry_fixture();
     chaoscontrol_evidence::validate_contract_registry(&registry).expect("valid ownership boundary");
-    for index in 4..10 {
+    for index in 4..16 {
         let mut mutated = registry.clone();
         mutated["families"][index]["ownership"] = "nickel-authored".into();
         let error = chaoscontrol_evidence::validate_contract_registry(&mutated)
@@ -1144,6 +1150,29 @@ fn registry_rejects_runtime_facts_relabelled_as_authored_intent() {
         assert!(error
             .message()
             .contains("runtime observations must remain Rust-derived or excluded"));
+    }
+}
+
+#[test]
+fn registry_rejects_missing_runtime_families() {
+    let registry = registry_fixture();
+    for family in [
+        "portable-snapshot-descriptor",
+        "campaign-progress",
+        "simulator-runtime-records",
+        "execution-traces",
+        "fault-outcomes",
+        "campaign-reports",
+    ] {
+        let mut missing = registry.clone();
+        missing["families"]
+            .as_array_mut()
+            .expect("families")
+            .retain(|entry| entry["id"] != family);
+        let error = chaoscontrol_evidence::validate_contract_registry(&missing)
+            .expect_err("runtime ownership registration cannot disappear");
+        assert!(error.message().contains("missing required family ids"));
+        assert!(error.message().contains(family));
     }
 }
 

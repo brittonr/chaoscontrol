@@ -1,5 +1,6 @@
 # Closed review contract for Rust-owned replay verdict artifacts.
 let MarkerContext = import "marker-evidence-context.ncl" in
+let ProcessInstances = import "process-instances.ncl" in
 let Primitives = import "profile-primitives.ncl" in
 let MaxScheduleStrategyBytes = 128 in
 let MaxNamespaceBytes = 128 in
@@ -173,6 +174,7 @@ let ReplayVerdictShape = {
   assertion_id | U32 | optional,
   assertion_identity | AssertionIdentity | optional,
   fallback_scope | FallbackScope | optional,
+  process_instances | ProcessInstances | optional,
   marker_context | MarkerContext | optional,
   replay_parent_depth | Number | optional,
   schedule_variant | ScheduleVariant | optional,

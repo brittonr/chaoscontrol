@@ -99,7 +99,10 @@ pub fn validate_reported_bug_identities(
         })?;
         let exact_matches = assertions
             .iter()
-            .filter(|detail| detail_matches_identity(detail, identity))
+            .filter(|detail| {
+                detail_matches_identity(detail, identity)
+                    && bug.process_instances.is_subset(&detail.process_instances)
+            })
             .count();
         if exact_matches != 1 {
             return Err(BugSetIdentityError {

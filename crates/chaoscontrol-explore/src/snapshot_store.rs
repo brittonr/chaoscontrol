@@ -638,6 +638,7 @@ mod tests {
             assertion_id: 42,
             assertion_identity: Some(crate::test_support::assertion_identity(42)),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "fixture assertion".to_string(),
             schedule: (&chaoscontrol_fault::schedule::FaultSchedule::new()).into(),

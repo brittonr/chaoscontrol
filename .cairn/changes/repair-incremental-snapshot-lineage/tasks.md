@@ -57,3 +57,13 @@ All seven current KVM matrix rows ran: five passed; `admitted-drift` and `fresh-
 
 The final release/readiness task remains unchecked. The 35-attempt ledger stays blocked; no additional implementation, lifecycle sync/archive, or production-readiness promotion is authorized by these observations. Later evidence/documentation commits are not represented as the tested implementation revision. Maintenance owner: `chaoscontrol-vmm`; producer admission remains with Cairn CLI/core maintainers.
 
+## Prospective continuation through attempt 40
+
+- [x] Record the user's explicit five-attempt continuation in `dogfood-results/production-readiness-continuation-20261017/attempts.ncl`; retain the original objective, previous ledgers, receipts, declared bounds and ownership restrictions unchanged.
+- [ ] Complete and exercise genuine remaining snapshot/SMP/virtio/runtime acceptance gaps; retain every strict memory, execution, assertion, fault and recovery comparison. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [ ] Complete and exercise the actual explorer, workload and evidence consumers needed for native requirement closure; unsupported whole requirements remain open, not annotation debt.
+- [ ] Diagnose and correct repository-owned Nix/release-wrapper faults, then require fresh Cargo, Nix, native and all-seven-row clean-source report verdicts. Keep unavailable Cairn producer support as an exact owner prerequisite.
+- [ ] Validate a separate BLAKE3-bound Nickel receipt, update only supported task state, commit verified changes and push main without force. Do not claim production readiness unless every original acceptance criterion passes.
+
+This section records prospective authorization and work, not completion evidence. Existing campaign/replay cohorts and historical release receipts are not relabeled as results of the continuation.
+

@@ -38,6 +38,7 @@ fn strict_detail() -> AssertionDetail {
     let canonical = descriptor.canonical_bytes().expect("canonical descriptor");
     let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
     AssertionDetail {
+        process_instances: Default::default(),
         id: COMPATIBILITY_ID,
         identity: Some(AssertionIdentityDetail {
             descriptor,

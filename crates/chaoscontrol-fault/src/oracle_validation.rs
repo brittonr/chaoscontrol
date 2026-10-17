@@ -144,7 +144,8 @@ pub(crate) fn validate_strict_records(
         if reject_vm_provenance && !record.vm_instances.is_empty() {
             return Err(OracleValidationError::VmProvenance);
         }
-        if record.process_instances.len() > crate::oracle::MAX_PROCESS_INSTANCES_PER_ASSERTION
+        if record.process_instances.len()
+            > chaoscontrol_protocol::process::MAX_PROCESS_INSTANCES_PER_ASSERTION
             || record
                 .process_instances
                 .iter()

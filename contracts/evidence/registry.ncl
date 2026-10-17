@@ -227,6 +227,7 @@ let Registry = {
         "crates/chaoscontrol-explore/src",
         "contracts/evidence/assertion-evidence-identity.ncl",
         "contracts/evidence/bug-report.ncl",
+        "contracts/evidence/process-instances.ncl",
         "contracts/evidence/marker-evidence-context.ncl",
       ],
       artifact_paths = [
@@ -258,6 +259,8 @@ let Registry = {
       source_paths = [
         "crates/chaoscontrol-explore/src",
         "crates/chaoscontrol-sdk/src",
+        "contracts/evidence/assertion-summary.ncl",
+        "contracts/evidence/process-instances.ncl",
       ],
       artifact_paths = [
         "dogfood-results/*/assertions.json",
@@ -364,6 +367,7 @@ let Registry = {
         "crates/chaoscontrol-replay-evidence-core/src/dto.rs",
         "crates/chaoscontrol-replay-evidence-core/src/validate.rs",
         "contracts/evidence/replay-verdict.ncl",
+        "contracts/evidence/process-instances.ncl",
         "contracts/evidence/marker-evidence-context.ncl",
         "contracts/evidence/profile-primitives.ncl",
       ],

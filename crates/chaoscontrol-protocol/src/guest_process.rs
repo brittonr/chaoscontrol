@@ -672,11 +672,11 @@ pub fn validate_receipt(
     {
         return Err(ReceiptError::SharedDirectoryIdentityMismatch);
     }
-    if receipt
-        .events
-        .iter()
-        .any(|event| !expected_processes.contains(&event.process_identity))
-    {
+    if receipt.events.iter().any(|event| {
+        !manifest.processes.iter().any(|process| {
+            process.identity == event.process_identity && process.spec.role == event.role
+        })
+    }) {
         return Err(ReceiptError::EventScopeMismatch);
     }
     if receipt.claim_scope != PROCESS_CLAIM_SCOPE {
@@ -770,6 +770,31 @@ mod tests {
         assert_eq!(first.next.processes[writer].status, ProcessStatus::Paused);
         let second = first.next.advance_tick().unwrap();
         assert_eq!(second.next.processes[writer].status, ProcessStatus::Running);
+    }
+
+    #[test]
+    fn lifecycle_receipt_rejects_another_admitted_roles_identity() {
+        let admitted = admit_manifest(&manifest()).unwrap();
+        let started = SupervisorState::new(&admitted).start_all().unwrap();
+        let mut receipt = make_receipt(&admitted, started.events);
+        validate_receipt(&admitted, &receipt).unwrap();
+        let original = receipt.events[0].clone();
+        let other = admitted
+            .processes
+            .iter()
+            .find(|process| process.identity != original.process_identity)
+            .unwrap();
+        receipt.events[0].role = other.spec.role.clone();
+        assert_eq!(
+            validate_receipt(&admitted, &receipt),
+            Err(ReceiptError::EventScopeMismatch)
+        );
+        receipt.events[0] = original;
+        receipt.events[0].process_identity = other.identity.clone();
+        assert_eq!(
+            validate_receipt(&admitted, &receipt),
+            Err(ReceiptError::EventScopeMismatch)
+        );
     }
 
     #[test]

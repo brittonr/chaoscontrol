@@ -5,18 +5,24 @@ use serde_json::Value;
 use crate::{EvidenceError, EvidenceResult};
 
 pub const ALLOWED_OWNERSHIP: [&str; 3] = ["excluded", "nickel-authored", "rust-derived"];
-pub const REQUIRED_CONTRACT_IDS: [&str; 12] = [
+pub const REQUIRED_CONTRACT_IDS: [&str; 18] = [
     "assertion-summary",
     "bug-report",
+    "campaign-progress",
+    "campaign-reports",
     "campaign-profile",
     "checkpoint-reference",
     "dogfood-receipt",
+    "execution-traces",
+    "fault-outcomes",
     "finite-fault-schedule-profile",
     "raw-runtime-logs",
+    "portable-snapshot-descriptor",
     "replay-verdict",
     "run-config",
     "secrets-and-crypto-internals",
     "simulator-profile",
+    "simulator-runtime-records",
     "snapshot-reference",
 ];
 

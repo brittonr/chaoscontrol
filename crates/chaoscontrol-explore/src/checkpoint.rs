@@ -687,6 +687,13 @@ pub struct SerializableBug {
         skip_serializing_if = "Option::is_none"
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    /// Runtime owner scope, separate from the stable assertion descriptor.
+    #[serde(
+        default,
+        deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances",
+        skip_serializing_if = "std::collections::BTreeSet::is_empty"
+    )]
+    pub process_instances: std::collections::BTreeSet<String>,
     /// Process-local fallback binding. Its presence is mandatory for fallback descriptors.
     #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
@@ -739,6 +746,10 @@ impl SerializableBug {
             self.assertion_identity.as_ref(),
         )?;
         crate::bug::identity::validate_fallback_scope(identity, self.fallback_scope.as_ref())?;
+        chaoscontrol_replay_evidence_core::validate::validate_process_instances(
+            &self.process_instances,
+        )
+        .map_err(|_| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
         if let Some(marker) = self.marker_context.as_ref() {
             marker
                 .validate()
@@ -777,7 +788,7 @@ pub fn validate_bug_set(
             bug_id: bug.bug_id,
             source,
         })?;
-        crate::bug::identity::resolve_restored_report(
+        let record = crate::bug::identity::resolve_restored_report(
             bug.assertion_id,
             bug.assertion_identity.as_ref(),
             report,
@@ -786,6 +797,14 @@ pub fn validate_bug_set(
             bug_id: bug.bug_id,
             source,
         })?;
+        if record.process_instances != bug.process_instances
+            || record.fallback_scope != bug.fallback_scope
+        {
+            return Err(BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source: crate::bug::identity::BugIdentityError::ReportMismatch,
+            });
+        }
     }
     Ok(())
 }
@@ -812,6 +831,7 @@ impl From<&BugReport> for SerializableBug {
             assertion_id: bug.assertion_id,
             assertion_identity: Some(bug.assertion_identity.clone()),
             fallback_scope: bug.fallback_scope.clone(),
+            process_instances: bug.process_instances.clone(),
             marker_context: bug.marker_context.clone(),
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
@@ -842,6 +862,7 @@ impl TryFrom<&SerializableBug> for BugReport {
             assertion_id: bug.assertion_id,
             assertion_identity,
             fallback_scope: bug.fallback_scope.clone(),
+            process_instances: bug.process_instances.clone(),
             marker_context: bug.marker_context.clone(),
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
@@ -1540,6 +1561,7 @@ mod tests {
                 assertion_id: 50,
                 assertion_identity: Some(crate::test_support::assertion_identity(50)),
                 fallback_scope: None,
+                process_instances: Default::default(),
                 marker_context: None,
                 assertion_location: "test.rs:1".into(),
                 schedule: SerializableSchedule { faults: Vec::new() },
@@ -1915,6 +1937,7 @@ mod tests {
             assertion_id,
             assertion_identity: Some(crate::test_support::assertion_identity(assertion_id)),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "test.rs:1".into(),
             schedule: SerializableSchedule { faults: Vec::new() },

@@ -2658,6 +2658,12 @@ fn cmd_reproduce(
             std::process::exit(EXIT_ERROR);
         }
     }
+    if let Some(variant) = serialized_bug.schedule_variant.as_ref() {
+        if let Err(error) = controller.apply_schedule_variant(variant) {
+            eprintln!("Error: recorded scheduling variant cannot be applied: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    }
     controller.reset_vm_statuses();
     if let Err(e) = controller.begin_counterfactual_fault_run(schedule) {
         eprintln!("Error: counterfactual fault run failed: {}", e);

@@ -290,6 +290,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-bug-report.ncl",
         "examples/bug-report-identity.ncl",
         "fixtures/valid/bug-report.marker-context.valid.ncl",
+        "fixtures/valid/process-instances.valid.ncl",
         "examples/raft-assertion-summary.ncl",
         "examples/assertion-summary-logical-keys.ncl",
         "examples/assertion-summary-no-alias.ncl",
@@ -370,6 +371,9 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/bug-report.fallback-scope-missing.invalid.ncl",
         "fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
         "fixtures/invalid/bug-report.process-scope-overclaim.invalid.ncl",
+        "fixtures/invalid/process-instances.duplicate.invalid.ncl",
+        "fixtures/invalid/process-instances.token.invalid.ncl",
+        "fixtures/invalid/process-instances.cardinality.invalid.ncl",
         "fixtures/invalid/run-profile.unknown-mode.invalid.ncl",
         "fixtures/invalid/run-profile.unknown-field.invalid.ncl",
         "fixtures/invalid/run-profile.zero-budget.invalid.ncl",
@@ -616,6 +620,7 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
             "bug_id",
             "assertion_id",
             "assertion_identity",
+            "process_instances",
             "assertion_location",
             "schedule",
             "tick",
@@ -688,6 +693,17 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
         false,
         "bug-report",
     )?;
+    if let Some(instances) = value.get("process_instances") {
+        let instances = chaoscontrol_replay_evidence_core::validate::deserialize_process_instances(
+            instances.clone(),
+        )?;
+        chaoscontrol_replay_evidence_core::validate::validate_process_instances(&instances)
+            .map_err(|error| EvidenceError::new(error.to_string()))?;
+        ensure(
+            instances.is_empty() || identity.is_some(),
+            "process owner scope requires assertion identity",
+        )?;
+    }
     if let Some(scope) = value.get("fallback_scope") {
         let scope: chaoscontrol_protocol::fallback::FallbackAssertionScope =
             serde_json::from_value(scope.clone())?;
@@ -802,6 +818,7 @@ pub fn validate_replay_verdict_with_options(
             "bug_id",
             "assertion_id",
             "assertion_identity",
+            "process_instances",
             "fallback_scope",
             "marker_context",
             "replay_parent_depth",

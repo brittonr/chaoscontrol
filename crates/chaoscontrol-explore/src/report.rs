@@ -115,6 +115,7 @@ pub fn format_report(report: &ExplorationReport) -> String {
             "Interleaving coverage:  no-bug output does not prove validated or exhaustive schedule coverage\n",
         );
     }
+    output.push_str("Process evidence:      declared, observed process scope only; no whole-guest coverage claim\n");
     append_policy_summary(
         &mut output,
         report.frontier_policy,
@@ -541,6 +542,18 @@ pub fn format_bug(bug: &BugReport) -> String {
 
     output.push_str(&format!("   Assertion ID: {}\n", bug.assertion_id));
     output.push_str(&format!("   Location:     {}\n", bug.assertion_location));
+    if !bug.process_instances.is_empty() {
+        output.push_str(&format!(
+            "   Process scope: {:?} (not whole-guest evidence)\n",
+            bug.process_instances
+        ));
+    }
+    if let Some(scope) = bug.fallback_scope.as_ref() {
+        output.push_str(&format!(
+            "   Fallback scope: {:?} (process-local evidence)\n",
+            scope.process
+        ));
+    }
     output.push_str(&format!("   Tick:         {}\n", bug.tick));
     output.push_str(&format!(
         "   Schedule:     {} faults\n",
@@ -610,6 +623,7 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
         report.total_branches
     ));
     output.push_str(&format!("Unique bugs found:      {}\n", report.bugs.len()));
+    output.push_str("Process evidence:      declared, observed process scope only; no whole-guest coverage claim\n");
     output.push_str(&format!(
         "Seeds with bugs:        {}/{}\n",
         report.seeds_with_bugs.len(),
@@ -838,6 +852,7 @@ mod tests {
             assertion_id,
             assertion_identity: crate::test_support::assertion_identity(assertion_id),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: location.to_string(),
             schedule: FaultSchedule::new(),
@@ -1007,6 +1022,7 @@ mod tests {
             assertion_id: 50,
             assertion_identity: crate::test_support::assertion_identity(50),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "bug.rs:1".to_string(),
             schedule,
@@ -1320,6 +1336,7 @@ mod tests {
 
         let details = vec![
             AssertionDetail {
+                process_instances: Default::default(),
                 id: 100,
                 identity: None,
                 message: "election safety".into(),
@@ -1333,6 +1350,7 @@ mod tests {
                 last_failure_details: None,
             },
             AssertionDetail {
+                process_instances: Default::default(),
                 id: 200,
                 identity: None,
                 message: "log matching".into(),
@@ -1346,6 +1364,7 @@ mod tests {
                 last_failure_details: Some(r#"{"node_id":2,"term":5,"commit_index":3}"#.into()),
             },
             AssertionDetail {
+                process_instances: Default::default(),
                 id: 300,
                 identity: None,
                 message: "value committed".into(),
@@ -1359,6 +1378,7 @@ mod tests {
                 last_failure_details: None,
             },
             AssertionDetail {
+                process_instances: Default::default(),
                 id: 400,
                 identity: None,
                 message: "split brain".into(),
@@ -1435,6 +1455,7 @@ mod tests {
         use crate::explorer::AssertionDetail;
 
         let detail = AssertionDetail {
+            process_instances: Default::default(),
             id: 42,
             identity: None,
             message: "safety property".into(),
@@ -1511,6 +1532,7 @@ mod tests {
             assertion_id: 50,
             assertion_identity: crate::test_support::assertion_identity(50),
             fallback_scope: None,
+            process_instances: Default::default(),
             marker_context: None,
             assertion_location: "bug.rs:1".to_string(),
             schedule,
@@ -1547,6 +1569,7 @@ mod tests {
                     assertion_id: 100,
                     assertion_identity: Some(crate::test_support::assertion_identity(100)),
                     fallback_scope: None,
+                    process_instances: Default::default(),
                     marker_context: None,
                     assertion_location: "safety.rs:10".into(),
                     schedule: SerializableSchedule { faults: Vec::new() },
@@ -1602,6 +1625,7 @@ mod tests {
             ],
             assertion_details: vec![
                 AssertionDetail {
+                    process_instances: Default::default(),
                     id: 100,
                     identity: None,
                     message: "leader completeness".into(),
@@ -1615,6 +1639,7 @@ mod tests {
                     last_failure_details: None,
                 },
                 AssertionDetail {
+                    process_instances: Default::default(),
                     id: 200,
                     identity: None,
                     message: "election safety".into(),

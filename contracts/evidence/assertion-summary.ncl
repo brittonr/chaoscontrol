@@ -1,4 +1,5 @@
 # Closed review contract for Rust-owned assertion summary evidence.
+let ProcessInstances = import "process-instances.ncl" in
 let MaxNamespaceBytes = 128 in
 let MaxKeyBytes = 256 in
 let MaxMessageBytes = 1024 in
@@ -186,6 +187,7 @@ let AssertionSemantics = std.contract.from_predicate (fun value =>
 let AssertionRecord = {
   id | U32,
   identity | Identity | optional,
+  process_instances | ProcessInstances | optional,
   message | BoundedString MaxMessageBytes,
   kind | AssertionKind,
   guest | BoundedString MaxGuestBytes,

@@ -1,0 +1,2 @@
+let Scope = import "../../process-instances.ncl" in
+["process-00", "process-01", "process-02", "process-03", "process-04", "process-05", "process-06", "process-07", "process-08", "process-09", "process-10", "process-11", "process-12", "process-13", "process-14", "process-15", "process-16", "process-17", "process-18", "process-19", "process-20", "process-21", "process-22", "process-23", "process-24", "process-25", "process-26", "process-27", "process-28", "process-29", "process-30", "process-31", "process-32"] | Scope

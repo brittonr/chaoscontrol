@@ -31,8 +31,6 @@ pub use chaoscontrol_protocol::identity::AssertionKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const MAX_PROCESS_INSTANCES_PER_ASSERTION: usize = 32;
-
 fn serialize_json_value<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -568,6 +566,12 @@ impl PropertyOracle {
             ));
         }
         let process_identity = details
+            // Fallback payload details are application data. Their owner is
+            // admitted from FallbackRecord.process through fallback_scope.
+            .filter(|_| {
+                admitted.descriptor.category
+                    != chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY
+            })
             .and_then(|value| serde_json::from_slice::<serde_json::Value>(value).ok())
             .and_then(|value| {
                 value
@@ -590,7 +594,8 @@ impl PropertyOracle {
         }
         if process_identity.as_ref().is_some_and(|identity| {
             !record.process_instances.contains(identity)
-                && record.process_instances.len() >= MAX_PROCESS_INSTANCES_PER_ASSERTION
+                && record.process_instances.len()
+                    >= chaoscontrol_protocol::process::MAX_PROCESS_INSTANCES_PER_ASSERTION
         }) {
             return self.reject_bound_event(CatalogConflict::CardinalityOverflow);
         }

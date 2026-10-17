@@ -473,6 +473,7 @@ mod tests {
                 assertion_id: ASSERTION_ALIAS,
                 assertion_identity: Some(identity),
                 fallback_scope: None,
+                process_instances: Default::default(),
                 marker_context: None,
                 assertion_location,
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },

@@ -1,0 +1,135 @@
+{
+  "schema": "chaoscontrol.authorized-cairn-receipt-validation.v1",
+  "validated": true,
+  "production_ready": false,
+  "outcome": "blocked",
+  "validation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel",
+      "export",
+      "--format",
+      "json",
+      "--output",
+      "dogfood-results/production-readiness-cairn-20261017/receipt.json",
+      "dogfood-results/production-readiness-cairn-20261017/receipt.ncl"
+    ],
+    "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel export --format json --output dogfood-results/production-readiness-cairn-20261017/receipt.json dogfood-results/production-readiness-cairn-20261017/receipt.ncl",
+    "timeout_seconds": 120,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-17T06:58:23.155512+00:00",
+    "finished": "2026-10-17T06:58:23.322318+00:00",
+    "elapsed_seconds": 0.1668178169929888,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/consumer-receipt-validation/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/consumer-receipt-validation/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "negative_control": {
+    "forced_false_readiness_promotion_rejected": true,
+    "expression": {
+      "path": "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/reject-false-readiness.ncl",
+      "digest": "blake3:1ce18fc44cd29f7e940def34470c0b7c2e61b27fa4cc8e6d3fd0f9e996012626",
+      "bytes": 277
+    },
+    "execution": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/reject-false-readiness.ncl"
+      ],
+      "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel export --format json /home/brittonr/git/OnixResearch/cairn/target/cc-producer26/reject-false-readiness.ncl",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-17T06:58:28.836605+00:00",
+      "finished": "2026-10-17T06:58:28.953719+00:00",
+      "elapsed_seconds": 0.11712120400625281,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/consumer-receipt-negative/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/consumer-receipt-negative/stderr.log",
+          "digest": "blake3:5d1338c9c15644644a57c9bdb9f7151b30afe6b4e49d8db63fa901fce56bbfbc",
+          "bytes": 569
+        }
+      ]
+    }
+  },
+  "artifacts": [
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-cairn-20261017/attempts.ncl",
+      "digest": "blake3:4668574eff6fe1a74e1aabafa77618b81cf654d57b092eced681b3974dfa6626",
+      "bytes": 10483
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-cairn-20261017/requirement-audit.json",
+      "digest": "blake3:dca0d0c070e98029ef6d6d35e3bc6ee212f825c047a8f14c3dec3a5883fa6a7b",
+      "bytes": 48389
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-cairn-20261017/observations.json",
+      "digest": "blake3:8942016785372c1e9252555500de7340c0f2e5127825419c2e7f73d63e67059c",
+      "bytes": 436719
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-cairn-20261017/receipt.ncl",
+      "digest": "blake3:96eed9bc8cad257abc1edffb90d4247d62384ed22c5e7be44570a512cb1ac462",
+      "bytes": 6866
+    },
+    {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-cairn-20261017/receipt.json",
+      "digest": "blake3:f2e88d3048541572b6aa778d15e6cc18912dbecc9f45c4b8a32786b726297922",
+      "bytes": 442066
+    }
+  ],
+  "prior_ledgers": [
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/attempts.ncl",
+      "expected_digest": "blake3:e55d81c659888d178061c0db9938d7a534307057dcbd6badd110ebd1c8b82bb6",
+      "actual": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-closure-20261015/attempts.ncl",
+        "digest": "blake3:e55d81c659888d178061c0db9938d7a534307057dcbd6badd110ebd1c8b82bb6",
+        "bytes": 11950
+      },
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-followup-20261016/attempts.ncl",
+      "expected_digest": "blake3:fe14ae8d3840a9508de02af640df20dfd2e97c54c1494e0e3e9dab50e22ee207",
+      "actual": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-followup-20261016/attempts.ncl",
+        "digest": "blake3:fe14ae8d3840a9508de02af640df20dfd2e97c54c1494e0e3e9dab50e22ee207",
+        "bytes": 11816
+      },
+      "unchanged": true
+    }
+  ],
+  "checked_carriers": 118,
+  "all_checked_carriers_present_and_matching": true,
+  "source_archive": {
+    "path": "/home/brittonr/git/OnixResearch/cairn/target/cc-producer26/source-35e6bd4.tar",
+    "digest": "blake3:71343f6dd2e4950ac517bedbb27876bb992487f6bdfc6e0a7c016022feb781a6",
+    "bytes": 14848000
+  },
+  "boundary": "Successful Nickel export validates the receipt contract, not production readiness. The forced-true negative control is rejected. No prior receipt/gate is promoted, and raw logs/VM artifacts remain local."
+}

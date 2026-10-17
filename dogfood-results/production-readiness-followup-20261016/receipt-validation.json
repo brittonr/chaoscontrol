@@ -1,0 +1,176 @@
+{
+  "schema": "chaoscontrol.production-readiness-followup-validation.v1",
+  "nickel_export": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel",
+      "export",
+      "--format",
+      "json",
+      "--output",
+      "dogfood-results/production-readiness-followup-20261016/receipt.json",
+      "dogfood-results/production-readiness-followup-20261016/receipt.ncl"
+    ],
+    "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-nickel/bin/nickel export --format json --output dogfood-results/production-readiness-followup-20261016/receipt.json dogfood-results/production-readiness-followup-20261016/receipt.ncl",
+    "timeout_seconds": 120,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-17T04:49:28.458523+00:00",
+    "finished": "2026-10-17T04:49:28.522274+00:00",
+    "elapsed_seconds": 0.06375654600560665,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-receipt-final-validation-command/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-receipt-final-validation-command/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "receipt_output": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-followup-20261016/receipt.json",
+    "digest": "blake3:8e3eb6510f03350d93e73b7c4390e52c0b477b42e334d5f6788a6584c835130a",
+    "bytes": 500955
+  },
+  "receipt_contract": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-followup-20261016/receipt.ncl",
+    "digest": "blake3:7e6dac1ad04481f544d0acef7cab357a59f608df754318163af9833071792252",
+    "bytes": 10322
+  },
+  "release_observations": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-followup-20261016/release-observations.json",
+    "digest": "blake3:c1ccf28ae185f36e3b100a403cea7c9ae921ef147fbabbc31da7da01f8d7263b",
+    "bytes": 394923
+  },
+  "identity_collection_command": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "python3",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/collect-followup-release.py",
+      "--root",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "--prefix",
+      "final25-clean",
+      "--source-archive",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/source-final25-c919a14.tar",
+      "--output",
+      "dogfood-results/production-readiness-followup-20261016/release-observations.json"
+    ],
+    "display_command": "python3 /tmp/chaoscontrol-production-readiness-closure-20261015/collect-followup-release.py --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --prefix final25-clean --source-archive /tmp/chaoscontrol-production-readiness-closure-20261015/source-final25-c919a14.tar --output dogfood-results/production-readiness-followup-20261016/release-observations.json",
+    "timeout_seconds": 300,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-17T04:49:27.298296+00:00",
+    "finished": "2026-10-17T04:49:28.364003+00:00",
+    "elapsed_seconds": 1.0657109930180013,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-evidence-collection-final-command/stdout.log",
+        "digest": "blake3:b826a1ecad09c16feda672a3f9bc73d3bc13ab21080ba1fb5fe1822252a02bfe",
+        "bytes": 755
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-evidence-collection-final-command/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "verified_manifest_entries": 388,
+  "historical_receipt_bytes_unchanged": true,
+  "production_ready": false,
+  "criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": true
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": false
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "receipt_authoring_correction": {
+    "initial_assertion": "deep_exploration_replay_satisfied must match the actual validated campaign and six accepted deep replays",
+    "observed": {
+      "deep_exploration_replay_satisfied": false,
+      "valid_campaign_output": true,
+      "campaign_exit_code": 1,
+      "retained_deep_findings": 6,
+      "accepted_replays": 6
+    },
+    "diagnosis": "The initial receipt draft incorrectly required exit zero for a completed intentionally planted-finding campaign and treated its numeric retained-finding count as an array. The explorer persists validated outputs and then returns exit one for nonempty findings.",
+    "source_contract": "crates/chaoscontrol-explore/src/bin/chaoscontrol-explore.rs:1229-1255,1285-1287",
+    "expected_campaign_exit_code": 1,
+    "rejected_draft": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-receipt-initial-rejected.json",
+      "digest": "blake3:5a4c466d25d313cb1358a8b2dd9738b64418b83954b115285d9df666d1e14744",
+      "bytes": 500957
+    },
+    "boundary": "Receipt authoring only. No runtime, campaign bound, finding, replay verdict, release-gate criterion or product source changes."
+  },
+  "later_evidence_only_validation": {
+    "command": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+        "validate",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--strict"
+      ],
+      "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn validate --root . --policy cairn-policy/generated/cairn-policy.json --strict",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-17T04:47:07.325773+00:00",
+      "finished": "2026-10-17T04:47:07.399435+00:00",
+      "elapsed_seconds": 0.07367206300841644,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-delivery-native-validation-command/stdout.log",
+          "digest": "blake3:4428e40e5c0498229be3586b553bbfdeb6c19db69ceb6722f6f242cd00fa8730",
+          "bytes": 66418
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-delivery-native-validation-command/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "report": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/final25-delivery-native-validation-command/stdout.log",
+      "digest": "blake3:4428e40e5c0498229be3586b553bbfdeb6c19db69ceb6722f6f242cd00fa8730",
+      "bytes": 66418
+    },
+    "valid": true,
+    "issues": 0,
+    "findings": 0,
+    "boundary": "Validation of later evidence/documentation changes is not a clean-source release verdict for the delivery commit."
+  },
+  "non_claim": "Schema/export success and identity checking do not pass blocked production gates or recover the exact missing historical initrd."
+}

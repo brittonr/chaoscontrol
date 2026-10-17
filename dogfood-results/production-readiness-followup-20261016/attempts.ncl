@@ -86,7 +86,7 @@ let Attempt = {
     {
       number = 25,
       correction = "Correct the local multi-hypervisor smoke gate's proof deadline and report-verdict composition for its unchanged Raft and Rust workload set. Retain the existing 900-second enclosing campaign bound and every declared guest/proof bound; successful scheduler exit alone must not pass a failed campaign report.",
-      status = 'planned,
+      status = 'blocked,
       evidence = [
         "The retained clean-source local-multi-hypervisor.json reports Raft completion=timed-out at the generic 30000-millisecond child deadline, while its declared proof phases admit 240/300/300 seconds.",
         "The same retained report has status=failed, with a separate Rust child exit 2. The smoke command returned success and the Nix check required only nonempty files; those outcomes are not passing product evidence.",
@@ -94,6 +94,11 @@ let Attempt = {
         "local-kvm25-observations.json records three passing report regressions, the actual release CLI build, and a real negative invocation returning smoke exit 1 with scheduler exit 0, disposition=succeeded and campaign status=failed.",
         "The initial throwaway negative caller used --scheduler instead of the supported --scheduler-receipt. Its raw exit 2 remains retained; only the corrected invocation was resumed, without rerunning the successful build or regressions.",
         "Only owned disposable debug intermediates were removed for measured /tmp pressure. Runtime binaries were first retained with exact BLAKE3 identities; fresh gate cache location changes no compiler/profile flags or product bounds.",
+        "Denied-warning package Clippy passed. The real default-workload diagnostic app build stopped before VM launch: Nix rejected changing source after its auto-GC wait; its exit-102 record is retained.",
+        "Exact clean 9078d39e8870ba141ff41f1f9f98ab6bb2d3bd9d passed all seven matrix rows and strict watchdog comparison. Those observations are not promoted to the later report-correction candidate.",
+        "Exact clean c919a1496963fd7db82b27cf6be6b9e9adc7c65e built the kernel, then initrd, Cargo, formatting, Nix checks and matrix commands hit operational bounds while blocked by Nix auto-GC. No watchdog proof or matrix receipt was emitted; native readiness still failed with 120 missing and zero dangling links.",
+        "A separate bounded read-only replay-wrapper lookup also timed out. The Nix store no longer registers a realized replay-readiness wrapper; no substitute executable or passing VM evidence was manufactured.",
+        "The report-gating implementation and negative execution are verified, but actual default-workload success and the required candidate-source release gates remain blocked. This consumes attempt 25; no further corrective implementation is authorized.",
       ],
     },
   ],

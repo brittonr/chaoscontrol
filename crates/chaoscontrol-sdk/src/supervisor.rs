@@ -12,6 +12,114 @@ pub const PROCESS_TRANSPORT_SLOT_ENV: &str = "CHAOSCONTROL_PROCESS_TRANSPORT_SLO
 pub const PROCESS_TRANSPORT_LOCK_ENV: &str = "CHAOSCONTROL_SDK_TRANSPORT_LOCK";
 pub const DEFAULT_PROCESS_TRANSPORT_LOCK: &str = "/run/chaoscontrol-sdk.transport.lock";
 
+pub use chaoscontrol_protocol::guest_process::MountedSharedStorage;
+
+/// Mount one tmpfs per admitted Memory directory, once, before children start.
+/// Never run mount effects on an ordinary host process. Block storage requires
+/// an explicit reviewed guest-device mapping, which this manifest does not carry.
+pub fn prepare_guest_shared_storage(
+    manifest: &AdmittedManifest,
+) -> Result<Vec<MountedSharedStorage>, RuntimeError> {
+    use chaoscontrol_protocol::guest_process::{shared_directory_identity, SharedDeviceKind};
+    if manifest.shared_directories.is_empty() {
+        return Ok(Vec::new());
+    }
+    if std::process::id() != 1 {
+        return Err(RuntimeError::GuestInitRequired);
+    }
+    for (index, directory) in manifest.shared_directories.iter().enumerate() {
+        if directory.device == SharedDeviceKind::Block {
+            return Err(RuntimeError::UnsupportedSharedDevice(directory.id.clone()));
+        }
+        let path = std::path::Path::new(&directory.path);
+        if directory.path == "/"
+            || ["/dev", "/proc", "/sys", "/run"]
+                .iter()
+                .any(|reserved| path.starts_with(reserved))
+        {
+            return Err(RuntimeError::Storage(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "shared mount overlaps a guest control filesystem",
+            )));
+        }
+        if manifest.shared_directories[..index].iter().any(|prior| {
+            path.starts_with(&prior.path) || std::path::Path::new(&prior.path).starts_with(path)
+        }) || manifest
+            .processes
+            .iter()
+            .any(|process| std::path::Path::new(&process.spec.executable).starts_with(path))
+        {
+            return Err(RuntimeError::Storage(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "shared mount overlaps another admitted root",
+            )));
+        }
+        if directory
+            .path
+            .split('/')
+            .skip(1)
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+        {
+            return Err(RuntimeError::Storage(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "shared mount path is not canonical",
+            )));
+        }
+    }
+    let mut observed = Vec::with_capacity(manifest.shared_directories.len());
+    for directory in &manifest.shared_directories {
+        std::fs::create_dir_all(&directory.path).map_err(RuntimeError::Storage)?;
+        if std::fs::canonicalize(&directory.path).map_err(RuntimeError::Storage)?
+            != std::path::Path::new(&directory.path)
+        {
+            return Err(RuntimeError::Storage(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "shared mount path aliases another directory",
+            )));
+        }
+        let target = std::ffi::CString::new(directory.path.as_bytes()).map_err(|error| {
+            RuntimeError::Storage(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+        })?;
+        let source = std::ffi::CString::new(format!("chaoscontrol-shared-{}", directory.id))
+            .map_err(|error| {
+                RuntimeError::Storage(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+            })?;
+        let result = unsafe {
+            libc::mount(
+                source.as_ptr(),
+                target.as_ptr(),
+                c"tmpfs".as_ptr(),
+                libc::MS_NODEV | libc::MS_NOSUID,
+                std::ptr::null(),
+            )
+        };
+        if result != 0 {
+            return Err(RuntimeError::Storage(std::io::Error::last_os_error()));
+        }
+        let mut filesystem = std::mem::MaybeUninit::<libc::statfs>::uninit();
+        if unsafe { libc::statfs(target.as_ptr(), filesystem.as_mut_ptr()) } != 0 {
+            return Err(RuntimeError::Storage(std::io::Error::last_os_error()));
+        }
+        let filesystem = unsafe { filesystem.assume_init() };
+        // musl exposes an unsigned word; GNU libc already uses the record's i64.
+        #[cfg(target_env = "musl")]
+        let filesystem_type = filesystem.f_type as i64;
+        #[cfg(not(target_env = "musl"))]
+        let filesystem_type = filesystem.f_type;
+        if filesystem_type != libc::TMPFS_MAGIC {
+            return Err(RuntimeError::Storage(std::io::Error::other(
+                "shared Memory mount is not tmpfs",
+            )));
+        }
+        observed.push(MountedSharedStorage {
+            directory_id: directory.id.clone(),
+            directory_identity: shared_directory_identity(directory),
+            filesystem_type,
+        });
+    }
+    Ok(observed)
+}
+
 #[derive(Debug)]
 pub enum RuntimeError {
     Spawn(std::io::Error),
@@ -19,6 +127,9 @@ pub enum RuntimeError {
     Wait(std::io::Error),
     UnknownProcess,
     Core(SupervisorError),
+    Storage(std::io::Error),
+    GuestInitRequired,
+    UnsupportedSharedDevice(String),
 }
 
 pub trait ProcessRuntime {
@@ -73,7 +184,19 @@ impl<R: ProcessRuntime> Supervisor<R> {
     }
 
     pub fn monitor(&mut self) -> Result<(), RuntimeError> {
-        let identities = self.state.processes.keys().cloned().collect::<Vec<_>>();
+        let identities = self
+            .state
+            .processes
+            .iter()
+            .filter(|(_, process)| {
+                matches!(
+                    process.status,
+                    chaoscontrol_protocol::guest_process::ProcessStatus::Running
+                        | chaoscontrol_protocol::guest_process::ProcessStatus::Paused
+                )
+            })
+            .map(|(identity, _)| identity.clone())
+            .collect::<Vec<_>>();
         for identity in identities {
             let Some(success) = self.runtime.exited(&identity)? else {
                 continue;

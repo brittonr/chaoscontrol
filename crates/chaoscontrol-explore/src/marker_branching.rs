@@ -10,7 +10,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const MARKER_NOVELTY_BONUS: f64 = 32.0;
 pub const MARKER_RARITY_NUMERATOR: f64 = 16.0;
-pub const MARKER_REPLAY_SCHEMA: &str = "chaoscontrol.marker-replay-binding.v1";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkerObservation {
@@ -18,16 +17,7 @@ pub struct MarkerObservation {
     pub marker: BranchMarker,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MarkerFrontierMetadata {
-    pub marker_identity: String,
-    pub owner: String,
-    pub state_ref: Option<String>,
-    pub logical_position_ref: Option<String>,
-    pub run_id: u32,
-    pub observed_tick: u64,
-}
+pub use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext as MarkerFrontierMetadata;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,22 +28,33 @@ pub struct MarkerCoverageReport {
     pub limit_events: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MarkerReplayBinding {
-    pub schema: String,
-    pub marker: MarkerFrontierMetadata,
-    pub parent_snapshot_ref: String,
-    pub replay_verdict: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MarkerBindingError {
-    EmptySnapshotRef,
     IdentityDrift,
     InvalidMarker,
-    InvalidSchema,
-    UnsupportedReplayVerdict,
+}
+
+/// Compare the retained marker to the independently restored parent, not to a
+/// second copy of the bug carrier. The tick denotes the observed parent state.
+pub fn validate_parent_context(
+    marker: &MarkerFrontierMetadata,
+    report: &OracleReport,
+    parent_tick: u64,
+) -> Result<(), MarkerBindingError> {
+    marker
+        .validate()
+        .map_err(|_| MarkerBindingError::InvalidMarker)?;
+    if marker.observed_tick != parent_tick {
+        return Err(MarkerBindingError::IdentityDrift);
+    }
+    if observations(report)?
+        .iter()
+        .any(|observation| frontier_metadata(observation, parent_tick) == *marker)
+    {
+        Ok(())
+    } else {
+        Err(MarkerBindingError::IdentityDrift)
+    }
 }
 
 pub fn observations(report: &OracleReport) -> Result<Vec<MarkerObservation>, MarkerBindingError> {
@@ -137,48 +138,6 @@ pub fn coverage_report(
     })
 }
 
-pub fn bind_replay(
-    marker: MarkerFrontierMetadata,
-    expected_marker_identity: &str,
-    parent_snapshot_ref: &str,
-    replay_verdict: &str,
-) -> Result<MarkerReplayBinding, MarkerBindingError> {
-    if marker.marker_identity != expected_marker_identity {
-        return Err(MarkerBindingError::IdentityDrift);
-    }
-    if parent_snapshot_ref.is_empty() {
-        return Err(MarkerBindingError::EmptySnapshotRef);
-    }
-    if !matches!(
-        replay_verdict,
-        "snapshot_backed_reproduced" | "snapshot_backed_not_reproduced"
-    ) {
-        return Err(MarkerBindingError::UnsupportedReplayVerdict);
-    }
-    Ok(MarkerReplayBinding {
-        schema: MARKER_REPLAY_SCHEMA.to_string(),
-        marker,
-        parent_snapshot_ref: parent_snapshot_ref.to_string(),
-        replay_verdict: replay_verdict.to_string(),
-    })
-}
-
-pub fn validate_replay_binding(binding: &MarkerReplayBinding) -> Result<(), MarkerBindingError> {
-    if binding.schema != MARKER_REPLAY_SCHEMA {
-        return Err(MarkerBindingError::InvalidSchema);
-    }
-    let rebound = bind_replay(
-        binding.marker.clone(),
-        &binding.marker.marker_identity,
-        &binding.parent_snapshot_ref,
-        &binding.replay_verdict,
-    )?;
-    if rebound != *binding {
-        return Err(MarkerBindingError::IdentityDrift);
-    }
-    Ok(())
-}
-
 pub fn update_hit_counts(counts: &mut BTreeMap<String, u32>, marker_identity: &str) -> u32 {
     let prior = counts.get(marker_identity).copied().unwrap_or(0);
     counts.insert(marker_identity.to_string(), prior.saturating_add(1));
@@ -222,20 +181,13 @@ mod tests {
     }
 
     #[test]
-    fn marker_observation_scores_and_binds_replay() {
+    fn marker_observation_scores_and_matches_restored_parent() {
         let report = report_with_marker();
         let observed = observations(&report).unwrap();
         assert_eq!(observed.len(), 1);
         let metadata = frontier_metadata(&observed[0], OBSERVED_TICK);
         assert!(marker_score(1.0, FIRST_PRIOR_HITS) > marker_score(1.0, REPEATED_PRIOR_HITS));
-        let binding = bind_replay(
-            metadata.clone(),
-            &metadata.marker_identity,
-            "snapshots/parent.cbor.zst",
-            "snapshot_backed_reproduced",
-        )
-        .unwrap();
-        validate_replay_binding(&binding).unwrap();
+        validate_parent_context(&metadata, &report, OBSERVED_TICK).unwrap();
     }
 
     #[test]
@@ -273,14 +225,10 @@ mod tests {
             coverage_report([observed_identity.clone(), missing.clone()], &report).unwrap();
         assert_eq!(coverage.reached, vec![observed_identity]);
         assert_eq!(coverage.gaps, vec![missing]);
-        let metadata = frontier_metadata(&observations(&report).unwrap()[0], OBSERVED_TICK);
+        let mut metadata = frontier_metadata(&observations(&report).unwrap()[0], OBSERVED_TICK);
+        metadata.marker_identity = format!("b3:{}", "c".repeat(TEST_DIGEST_HEX_BYTES));
         assert_eq!(
-            bind_replay(
-                metadata,
-                "b3:wrong",
-                "snapshots/parent.cbor.zst",
-                "snapshot_backed_reproduced",
-            ),
+            validate_parent_context(&metadata, &report, OBSERVED_TICK),
             Err(MarkerBindingError::IdentityDrift)
         );
     }

@@ -542,6 +542,7 @@ pub fn check_product_scope(root: impl AsRef<Path>, write: bool) -> EvidenceResul
 }
 
 fn load_and_check_registry_projection(root: &Path) -> EvidenceResult<ProductScopeRegistry> {
+    crate::profile_projection::admit_nickel_evaluator()?;
     let generated_path = root.join(PRODUCT_SCOPE_REGISTRY_JSON);
     let generated = crate::bounded_file::read_bounded_regular_file(
         &generated_path,

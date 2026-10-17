@@ -19,6 +19,7 @@ use support::{
 };
 
 const FAILED_PHASE_COUNT: usize = 3;
+const PRE_FAILURE_STATE_SCHEMA_VERSION: u32 = 2;
 
 // r[verify chaoscontrol.snapshot_descriptor.verification]
 #[test]
@@ -46,13 +47,16 @@ fn incomplete_or_duplicated_cohort_is_rejected() {
 #[test]
 fn stale_schema_and_unknown_profile_are_rejected() {
     let mut stale = monolithic_descriptor();
-    stale.state_schema_version = stale.state_schema_version.saturating_add(1);
-    assert_eq!(
-        validate_descriptor(&stale)
-            .expect_err("stale schema must fail")
-            .code(),
-        "state-schema-version"
-    );
+    let future_schema = stale.state_schema_version.saturating_add(1);
+    for state_schema_version in [PRE_FAILURE_STATE_SCHEMA_VERSION, future_schema] {
+        stale.state_schema_version = state_schema_version;
+        assert_eq!(
+            validate_descriptor(&stale)
+                .expect_err("unsupported state schema must fail")
+                .code(),
+            "state-schema-version"
+        );
+    }
 
     let mut unknown = monolithic_descriptor();
     unknown.completeness_profile = "portable-anywhere".to_string();

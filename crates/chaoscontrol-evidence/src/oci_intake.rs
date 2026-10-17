@@ -26,6 +26,7 @@ const MAX_ARCHIVE_ENTRIES: u64 = MAX_TREE_ENTRIES;
 const TREE_HASH_DOMAIN: &[u8] = b"chaoscontrol.oci-tree.v1\0";
 const FILE_HASH_BUFFER_BYTES: usize = 64 * 1024;
 
+const MAX_BUNDLE_RECORD_BYTES: u64 = MEBIBYTE;
 #[derive(Debug)]
 pub enum IntakeShellError {
     Plan(String),
@@ -64,6 +65,11 @@ pub fn materialize_bundle(
         std::fs::create_dir_all(&destination)?;
         materialize_service(service, &destination)?;
         let root_identity = observe_tree_identity(&destination)?;
+        if service.format == ImageFormat::Directory && root_identity != service.image_identity {
+            return Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch,
+            ));
+        }
         services.push(ServiceIntakeReceipt {
             role: service.role.clone(),
             image_identity: service.image_identity.clone(),
@@ -102,6 +108,76 @@ pub fn materialize_bundle(
     std::fs::rename(stage_path, output)?;
     sync_tree_root(parent)?;
     Ok(receipt)
+}
+
+/// Re-admit the authored topology and independently remeasure retained output.
+/// A structurally valid receipt alone cannot attest service-root bytes.
+pub fn verify_materialized_bundle(
+    topology: &OciTopology,
+    output: &Path,
+) -> Result<IntakeReceipt, IntakeShellError> {
+    let expected =
+        lower_topology(topology).map_err(|error| IntakeShellError::Plan(format!("{error:?}")))?;
+    let retained_plan: chaoscontrol_protocol::oci_intake::BundlePlan =
+        read_bundle_record(&output.join("bundle-plan.json"))?;
+    if retained_plan != expected {
+        return Err(IntakeShellError::Receipt(
+            IntakeReceiptError::BundleIdentityMismatch,
+        ));
+    }
+    let manifest: ProcessManifest = read_bundle_record(&output.join("process-manifest.json"))?;
+    let admitted = chaoscontrol_protocol::guest_process::admit_manifest(&manifest)
+        .map_err(|error| IntakeShellError::Plan(format!("retained process manifest: {error:?}")))?;
+    if admitted != expected.process_manifest {
+        return Err(IntakeShellError::Receipt(
+            IntakeReceiptError::ManifestIdentityMismatch,
+        ));
+    }
+    let receipt: IntakeReceipt = read_bundle_record(&output.join("receipt.json"))?;
+    validate_receipt(&expected, &receipt).map_err(IntakeShellError::Receipt)?;
+    for (service, retained) in expected.services.iter().zip(&receipt.services) {
+        let root = output.join("services").join(&service.role).join("root");
+        if !std::fs::symlink_metadata(&root)?.file_type().is_dir() {
+            return Err(IntakeShellError::UnsafePath);
+        }
+        let root_identity = observe_tree_identity(&root)?;
+        if root_identity != retained.root_identity {
+            return Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch,
+            ));
+        }
+        let source_matches = match service.format {
+            ImageFormat::Directory => root_identity == service.image_identity,
+            ImageFormat::TarArchive | ImageFormat::OciLayers => {
+                let reference = tempfile::tempdir()?;
+                materialize_service(service, reference.path())?;
+                root_identity == observe_tree_identity(reference.path())?
+            }
+        };
+        if !source_matches {
+            return Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch,
+            ));
+        }
+    }
+    Ok(receipt)
+}
+
+fn read_bundle_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, IntakeShellError> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_file() || metadata.len() > MAX_BUNDLE_RECORD_BYTES {
+        return Err(IntakeShellError::UnsafePath);
+    }
+    let file = File::open(path)?;
+    let mut bytes = Vec::new();
+    file.take(MAX_BUNDLE_RECORD_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_BUNDLE_RECORD_BYTES {
+        return Err(IntakeShellError::UnsafePath);
+    }
+    serde_json::from_slice(&bytes).map_err(|error| {
+        IntakeShellError::Plan(format!("invalid bundle record {}: {error}", path.display()))
+    })
 }
 
 fn materialize_service(
@@ -421,10 +497,17 @@ mod tests {
             path: "layer-0.tar".to_string(),
             identity: file_identity(&layer).unwrap(),
         };
-        let topology = OciTopology {
+        let mut topology = OciTopology {
             schema: OCI_TOPOLOGY_SCHEMA.to_string(),
             topology_id: "multi-image".to_string(),
-            shared_directories: Vec::new(),
+            capability_admits: vec![
+                chaoscontrol_protocol::oci_intake::IntakeCapability::SharedDirectories,
+            ],
+            shared_directories: vec![chaoscontrol_protocol::guest_process::SharedDirectorySpec {
+                id: "data".to_string(),
+                path: "/data".to_string(),
+                device: chaoscontrol_protocol::guest_process::SharedDeviceKind::Memory,
+            }],
             services: vec![
                 service(
                     "database",
@@ -450,6 +533,9 @@ mod tests {
                 ),
             ],
         };
+        for service in &mut topology.services {
+            service.shared_directories.push("data".to_string());
+        }
         let output = fixture.path().join("bundle");
         let receipt = materialize_bundle(&topology, &output).unwrap();
         assert_eq!(receipt.services.len(), 2);
@@ -461,6 +547,125 @@ mod tests {
             std::fs::read(output.join("services/sidecar/root/bin/sidecar")).unwrap(),
             b"sidecar"
         );
+        let retained_manifest: ProcessManifest =
+            read_bundle_record(&output.join("process-manifest.json")).unwrap();
+        assert_eq!(
+            retained_manifest
+                .processes
+                .iter()
+                .map(|process| process.shared_directories.clone())
+                .collect::<Vec<_>>(),
+            vec![vec!["data".to_string()], vec!["data".to_string()]]
+        );
+        assert_eq!(
+            retained_manifest.shared_directories,
+            topology.shared_directories
+        );
+        assert_eq!(
+            verify_materialized_bundle(&topology, &output).unwrap(),
+            receipt
+        );
+        let root_file = output.join("services/database/root/bin/database");
+        std::fs::write(&root_file, b"forged database").unwrap();
+        assert!(matches!(
+            verify_materialized_bundle(&topology, &output),
+            Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch
+            ))
+        ));
+        let mut forged_archive_receipt = receipt.clone();
+        forged_archive_receipt.services[0].root_identity =
+            observe_tree_identity(&output.join("services/database/root")).unwrap();
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&forged_archive_receipt).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            verify_materialized_bundle(&topology, &output),
+            Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch
+            ))
+        ));
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(&root_file, b"database").unwrap();
+        let mut forged_receipt = receipt.clone();
+        forged_receipt.services[0].root_identity = format!("b3:{}", "a".repeat(64));
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&forged_receipt).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            verify_materialized_bundle(&topology, &output),
+            Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch
+            ))
+        ));
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        let sidecar_root = output.join("services/sidecar/root");
+        std::fs::write(sidecar_root.join("bin/sidecar"), b"forged sidecar").unwrap();
+        let mut consistent_forgery = receipt.clone();
+        consistent_forgery.services[1].root_identity =
+            observe_tree_identity(&sidecar_root).unwrap();
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&consistent_forgery).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            verify_materialized_bundle(&topology, &output),
+            Err(IntakeShellError::Receipt(
+                IntakeReceiptError::RootIdentityMismatch
+            ))
+        ));
+        std::fs::write(sidecar_root.join("bin/sidecar"), b"sidecar").unwrap();
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        let mut forged_manifest = retained_manifest.clone();
+        forged_manifest.processes[0]
+            .environment
+            .insert("FORGED".to_string(), "yes".to_string());
+        std::fs::write(
+            output.join("process-manifest.json"),
+            serde_json::to_vec(&forged_manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            verify_materialized_bundle(&topology, &output),
+            Err(IntakeShellError::Receipt(
+                IntakeReceiptError::ManifestIdentityMismatch
+            ))
+        ));
+        std::fs::write(
+            output.join("process-manifest.json"),
+            serde_json::to_vec(&retained_manifest).unwrap(),
+        )
+        .unwrap();
+        forged_receipt = receipt.clone();
+        forged_receipt.claim_scope = "container-namespace-isolation".to_string();
+        std::fs::write(
+            output.join("receipt.json"),
+            serde_json::to_vec(&forged_receipt).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(
+            verify_materialized_bundle(&topology, &output),
+            Err(IntakeShellError::Receipt(
+                IntakeReceiptError::ClaimOverreach
+            ))
+        ));
     }
 
     #[test]
@@ -477,6 +682,7 @@ mod tests {
         let topology = OciTopology {
             schema: OCI_TOPOLOGY_SCHEMA.to_string(),
             topology_id: "negative".to_string(),
+            capability_admits: Vec::new(),
             shared_directories: Vec::new(),
             services: vec![service(
                 "service",

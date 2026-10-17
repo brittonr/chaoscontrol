@@ -29,6 +29,15 @@ pub struct SharedDirectorySpec {
     pub device: SharedDeviceKind,
 }
 
+/// Observation emitted only after the guest shell mounted and measured storage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MountedSharedStorage {
+    pub directory_id: String,
+    pub directory_identity: String,
+    pub filesystem_type: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RestartMode {

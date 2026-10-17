@@ -34,6 +34,10 @@ pub struct ReproduceVerdictInput<'a> {
     pub bug: &'a SerializableBug,
     pub snapshot: ReplaySnapshotValidation,
     pub admitted_report: Option<&'a chaoscontrol_fault::oracle::OracleReport>,
+    /// Result of comparing every live VM scheduler to the selected variant.
+    pub executed_schedule_matches: bool,
+    /// Independently restored parent observations, before the fault run starts.
+    pub replay_parent_context: Option<(&'a chaoscontrol_fault::oracle::OracleReport, u64)>,
     pub target_failed: bool,
     pub diagnostic: String,
 }
@@ -76,6 +80,8 @@ pub fn verdict_from_reproduce(
         bug,
         snapshot,
         admitted_report,
+        executed_schedule_matches,
+        replay_parent_context,
         target_failed,
         diagnostic,
     } = input;
@@ -94,6 +100,15 @@ pub fn verdict_from_reproduce(
         replay_class,
         ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced
     ) {
+        if !executed_schedule_matches {
+            return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
+        }
+        if let Some(marker) = bug.marker_context.as_ref() {
+            let (parent_report, tick) = replay_parent_context
+                .ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
+            crate::marker_branching::validate_parent_context(marker, parent_report, tick)
+                .map_err(|_| crate::bug::identity::BugIdentityError::ReportMismatch)?;
+        }
         let report =
             admitted_report.ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
         let record = crate::bug::identity::resolve_restored_report(
@@ -101,6 +116,9 @@ pub fn verdict_from_reproduce(
             Some(&assertion_identity),
             report,
         )?;
+        if record.fallback_scope != bug.fallback_scope {
+            return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
+        }
         let report_failed = record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
         if report_failed != target_failed {
             return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
@@ -146,6 +164,7 @@ pub fn verdict_from_reproduce(
         assertion_id: Some(bug.assertion_id),
         assertion_identity: Some(assertion_identity),
         fallback_scope: bug.fallback_scope.clone(),
+        marker_context: bug.marker_context.clone(),
         replay_parent_depth: Some(bug.replay_parent_depth),
         schedule_variant,
         snapshot,
@@ -276,6 +295,7 @@ mod tests {
             assertion_id: 1806003755,
             assertion_identity: Some(crate::test_support::assertion_identity(1806003755)),
             fallback_scope: None,
+            marker_context: None,
             assertion_location: "raft probe".to_string(),
             schedule: SerializableSchedule { faults: Vec::new() },
             tick: 123,
@@ -451,6 +471,8 @@ mod tests {
                     .expect("snapshot ref"),
             ),
             admitted_report: Some(&report),
+            executed_schedule_matches: true,
+            replay_parent_context: None,
             target_failed: true,
             diagnostic: "BUG REPRODUCED — assertion 1806003755 failed".to_string(),
         })
@@ -488,6 +510,8 @@ mod tests {
                     .expect("snapshot ref"),
             ),
             admitted_report: Some(&report),
+            executed_schedule_matches: true,
+            replay_parent_context: None,
             target_failed: true,
             diagnostic: "variant-bound replay".to_string(),
         })
@@ -523,6 +547,8 @@ mod tests {
             bug: &legacy,
             snapshot: ReplaySnapshotValidation::missing_ref("missing ref"),
             admitted_report: None,
+            executed_schedule_matches: false,
+            replay_parent_context: None,
             target_failed: false,
             diagnostic: "legacy bug".to_string(),
         });
@@ -547,6 +573,8 @@ mod tests {
                     .expect("snapshot ref"),
             ),
             admitted_report: Some(&report),
+            executed_schedule_matches: true,
+            replay_parent_context: None,
             target_failed: true,
             diagnostic: "forged command status".to_string(),
         });
@@ -574,12 +602,223 @@ mod tests {
                     .expect("snapshot ref"),
             ),
             admitted_report: Some(&report),
+            executed_schedule_matches: true,
+            replay_parent_context: None,
             target_failed: true,
             diagnostic: "forged failure".to_string(),
         });
 
         assert_eq!(
             result,
+            Err(crate::bug::identity::BugIdentityError::ReportMismatch)
+        );
+    }
+
+    fn reproduced_input<'a>(
+        bug: &'a SerializableBug,
+        report: &'a chaoscontrol_fault::oracle::OracleReport,
+    ) -> ReproduceVerdictInput<'a> {
+        ReproduceVerdictInput {
+            run_id: TEST_RUN_ID.to_string(),
+            command: "reproduce retained parent".to_string(),
+            exit_status: REPRODUCED_EXIT_STATUS,
+            bug_path: "bug_2.json".to_string(),
+            bug_artifact_hash: bug_hash(),
+            bug,
+            snapshot: ReplaySnapshotValidation::valid(
+                bug.replay_parent_snapshot_ref.clone().unwrap(),
+            ),
+            admitted_report: Some(report),
+            executed_schedule_matches: true,
+            replay_parent_context: None,
+            target_failed: true,
+            diagnostic: "retained parent reproduced".to_string(),
+        }
+    }
+
+    #[test]
+    fn production_verdict_rejects_live_scheduler_policy_drift() {
+        use chaoscontrol_vmm::scheduler::core::ProgressMode;
+        use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulerConfig, VcpuScheduler};
+        let mut bug = bug(2, true);
+        let variant = ScheduleVariant {
+            scheduler_seed: TEST_VARIANT_SEED,
+            strategy_override: None,
+            quantum_override: Some(TEST_QUANTUM_OVERRIDE),
+        };
+        let config = SchedulerConfig {
+            num_vcpus: 2,
+            ..SchedulerConfig::default()
+        };
+        let mut scheduler =
+            VcpuScheduler::try_new(&config, ProgressMode::ExactSingleStep, vec![true; 2]).unwrap();
+        scheduler.apply_variant(&variant).unwrap();
+        bug.schedule_variant = Some(variant.clone());
+        let report = report_for_bug(&bug, false);
+        let mut input = reproduced_input(&bug, &report);
+        input.executed_schedule_matches = scheduler.matches_variant(&variant);
+        assert_eq!(
+            verdict_from_reproduce(input)
+                .unwrap()
+                .schedule_variant
+                .as_ref()
+                .unwrap()
+                .scheduler_seed,
+            TEST_VARIANT_SEED
+        );
+        let changed = ScheduleVariant {
+            scheduler_seed: TEST_VARIANT_SEED.wrapping_add(1),
+            ..variant.clone()
+        };
+        scheduler.apply_variant(&changed).unwrap();
+        let mut input = reproduced_input(&bug, &report);
+        input.executed_schedule_matches = scheduler.matches_variant(&variant);
+        assert_eq!(
+            verdict_from_reproduce(input),
+            Err(crate::bug::identity::BugIdentityError::ReportMismatch)
+        );
+    }
+
+    #[test]
+    fn marker_verdict_requires_exact_restored_parent_instance() {
+        use chaoscontrol_protocol::branch_marker::{BranchMarker, BRANCH_MARKER_EVENT};
+        let marker = BranchMarker::new(
+            "raft",
+            "leader-elected",
+            "guest-0",
+            serde_json::json!({}),
+            Some(format!("b3:{}", "a".repeat(64))),
+            Some("term:3".to_string()),
+        )
+        .unwrap();
+        let mut parent_oracle = PropertyOracle::new();
+        parent_oracle.begin_run();
+        parent_oracle
+            .record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap())
+            .unwrap();
+        parent_oracle.end_run();
+        let parent_report = parent_oracle.report();
+        let parent_tick = 41;
+        let context = crate::marker_branching::frontier_metadata(
+            &crate::marker_branching::observations(&parent_report).unwrap()[0],
+            parent_tick,
+        );
+        let mut bug = bug(2, true);
+        bug.marker_context = Some(context.clone());
+        let report = report_for_bug(&bug, false);
+        let mut input = reproduced_input(&bug, &report);
+        input.replay_parent_context = Some((&parent_report, parent_tick));
+        assert_eq!(
+            verdict_from_reproduce(input).unwrap().marker_context,
+            Some(context.clone())
+        );
+        assert!(verdict_from_reproduce(reproduced_input(&bug, &report)).is_err());
+        for field in [
+            "marker_identity",
+            "owner",
+            "state_ref",
+            "logical_position_ref",
+            "run_id",
+            "observed_tick",
+        ] {
+            let mut drifted = context.clone();
+            match field {
+                "marker_identity" => drifted.marker_identity = format!("b3:{}", "b".repeat(64)),
+                "owner" => drifted.owner = "guest-1".to_string(),
+                "state_ref" => drifted.state_ref = Some(format!("b3:{}", "b".repeat(64))),
+                "logical_position_ref" => drifted.logical_position_ref = Some("term:4".to_string()),
+                "run_id" => drifted.run_id += 1,
+                "observed_tick" => drifted.observed_tick += 1,
+                _ => unreachable!(),
+            }
+            bug.marker_context = Some(drifted);
+            let mut input = reproduced_input(&bug, &report);
+            input.replay_parent_context = Some((&parent_report, parent_tick));
+            assert!(
+                verdict_from_reproduce(input).is_err(),
+                "accepted drift in {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn replay_compares_independently_valid_fallback_sink_order() {
+        use chaoscontrol_protocol::fallback::{
+            FallbackProcessIdentity, FallbackRecord, FallbackRecordType, FallbackSink,
+            FALLBACK_RECORD_SCHEMA_VERSION,
+        };
+        fn executed_report(reverse: bool) -> chaoscontrol_fault::oracle::OracleReport {
+            let base = crate::test_support::assertion_identity(41);
+            let mut builder = CatalogBuilder::begin(1).unwrap();
+            builder.insert(base.descriptor).unwrap();
+            let base_catalog = builder.complete(base.catalog_token).unwrap();
+            let assertion = FallbackRecord {
+                schema_version: FALLBACK_RECORD_SCHEMA_VERSION,
+                sequence: u64::from(reverse),
+                process: FallbackProcessIdentity {
+                    guest: "guest-a".to_string(),
+                    process: "wal-worker".to_string(),
+                },
+                namespace: "org.example.store".to_string(),
+                logical_key: "wal-safe".to_string(),
+                record_type: FallbackRecordType::Always,
+                condition: Some(false),
+                message: "WAL remains safe".to_string(),
+                details: serde_json::json!({}),
+            };
+            let lifecycle = FallbackRecord {
+                sequence: u64::from(!reverse),
+                logical_key: "wal-flushed".to_string(),
+                record_type: FallbackRecordType::Lifecycle,
+                condition: None,
+                ..assertion.clone()
+            };
+            let ordered = if reverse {
+                [lifecycle, assertion]
+            } else {
+                [assertion, lifecycle]
+            };
+            let mut sink = FallbackSink::new(2).unwrap();
+            for record in ordered {
+                sink.admit_line(&serde_json::to_string(&record).unwrap())
+                    .unwrap();
+            }
+            let evidence = sink.evidence().unwrap();
+            let mut oracle = PropertyOracle::new();
+            oracle
+                .activate_catalog_with_fallback(&base_catalog, &evidence)
+                .unwrap();
+            oracle.begin_run();
+            oracle.record_fallback_sink(&evidence).unwrap();
+            oracle.end_run();
+            let report = oracle.report();
+            chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(&report).unwrap();
+            report
+        }
+        let retained = executed_report(false);
+        let same_execution = executed_report(false);
+        let reordered_execution = executed_report(true);
+        let record = retained
+            .structured_assertions
+            .values()
+            .find(|record| record.fallback_scope.is_some())
+            .unwrap();
+        let facts =
+            chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(&retained).unwrap();
+        let mut bug = bug(2, true);
+        bug.assertion_id = 0;
+        bug.assertion_identity = Some(
+            chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                record.identity.as_ref().unwrap(),
+                facts.catalog_token,
+            )
+            .unwrap(),
+        );
+        bug.fallback_scope = record.fallback_scope.clone();
+        let verdict = verdict_from_reproduce(reproduced_input(&bug, &same_execution)).unwrap();
+        assert_eq!(verdict.fallback_scope, bug.fallback_scope);
+        assert_eq!(
+            verdict_from_reproduce(reproduced_input(&bug, &reordered_execution)),
             Err(crate::bug::identity::BugIdentityError::ReportMismatch)
         );
     }

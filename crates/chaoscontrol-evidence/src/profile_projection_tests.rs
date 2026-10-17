@@ -30,16 +30,19 @@ fn malformed_projection_is_rejected() {
 }
 
 // r[verify chaoscontrol.nickel_toolchain.cohort]
-// r[verify chaoscontrol.nickel_toolchain.boundary]
+// r[verify chaoscontrol.nickel_toolchain.compatibility]
 #[test]
-fn evaluator_planning_requires_the_exact_path_command_without_fallback() {
-    assert_eq!(
-        planned_nickel_command(true).expect("exact evaluator is available"),
-        vec!["nickel".to_string(), "export".to_string()]
-    );
-    assert!(planned_nickel_command(false).is_err());
-    assert_eq!(evaluator_version_args(&[]), vec!["--version".to_string()]);
-    assert!(NON_CLAIMS.contains(&"profile conformance is pre-run intent only"));
+fn evaluator_admission_rejects_unreviewed_cohorts() {
+    validate_evaluator_identity(EVALUATOR_IDENTITY).expect("reviewed evaluator");
+    for version in [
+        "nickel-lang-cli nickel 1.16.0 (rev 1320a98)",
+        "nickel-lang-cli nickel 1.17.0 (rev unknown)",
+        "nickel-lang-cli nickel latest (rev 1320a98)",
+        "nickel-lang-cli nickel 1.17.0 (rev 1320a98)\nextra output",
+        "",
+    ] {
+        assert!(validate_evaluator_identity(version).is_err(), "{version:?}");
+    }
 }
 
 #[test]

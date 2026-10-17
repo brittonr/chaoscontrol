@@ -97,8 +97,12 @@ pub fn describe_divergence(a: &TraceEvent, b: &TraceEvent) -> String {
             format!("Injected vector differs: A={}, B={}", v1, v2)
         }
         (
-            EventKind::KvmSetIrq { gsi: g1, level: l1 },
-            EventKind::KvmSetIrq { gsi: g2, level: l2 },
+            EventKind::KvmSetIrq {
+                gsi: g1, level: l1, ..
+            },
+            EventKind::KvmSetIrq {
+                gsi: g2, level: l2, ..
+            },
         ) => {
             if g1 != g2 {
                 format!("IRQ GSI differs: A={}, B={}", g1, g2)

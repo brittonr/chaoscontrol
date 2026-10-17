@@ -8,6 +8,8 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
+pub mod admission;
+pub mod rail;
 
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.spacewasm-mvp-differential-profile.v1";
 pub const REPORT_SCHEMA: &str = "chaoscontrol.spacewasm-mvp-differential-report.v1";
@@ -31,6 +33,8 @@ const STABLE_IDENTITY_INPUT_TERMINATOR: &[u8] = b"\n";
 const RAW_CAPTURE_PATH_SUFFIXES: [&str; 3] = ["stdout.txt", "stderr.txt", "run-record.json"];
 const RAW_CAPTURE_PATH_PREFIX: &str = "runs/";
 const RAW_CAPTURE_ROLES: [&str; 3] = ["raw-capture", "run-archive", "run-record"];
+// The owned resume probe cannot enforce a larger allocator ceiling.
+const MAXIMUM_INTERPRETER_ALLOCATION_BYTES: u64 = 16_777_216;
 
 /// One producer test suite whose stable report and receipt the bundle must carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,12 +95,17 @@ const REQUIRED_CORPUS_CLASSES: [&str; 8] = [
     "streaming-valid",
     "trap-unreachable",
 ];
-const REQUIRED_OBSERVATION_FIELDS: [&str; 5] = [
+const REQUIRED_OBSERVATION_FIELDS: [&str; 10] = [
     "outcome",
     "resource-class",
     "return-values",
     "state-identity-blake3",
     "trap-class",
+    "validation-class",
+    "link-class",
+    "preserves-output",
+    "hostcall-transcript",
+    "final-memory-blake3",
 ];
 const REQUIRED_EXPORT: &str = "run";
 const REQUIRED_MEMORY_GROW_POLICY: &str = "not-admitted";
@@ -123,6 +132,8 @@ pub struct DifferentialProfile {
     pub spacewasm_revision: String,
     pub spacewasm_runner_blake3: String,
     pub wasmtime_version: String,
+    pub wasm_tools_version: String,
+    pub retention: String,
     pub bundle_manifest_blake3: String,
     pub bundle_identity_blake3: String,
     pub generator_id: String,
@@ -158,6 +169,11 @@ pub struct ModuleAbiProfile {
 pub struct RuntimeProfile {
     pub spacewasm_resume_segment_fuel: u64,
     pub maximum_resume_segments: usize,
+    pub spacewasm_code_pages: usize,
+    pub spacewasm_control_frames: usize,
+    pub spacewasm_stack_words: usize,
+    pub spacewasm_initialization_fuel: u64,
+    pub spacewasm_run_fuel: u64,
     pub wasmtime_proposals: String,
     pub host_authority: String,
 }
@@ -175,6 +191,16 @@ pub struct DifferentialBounds {
     pub wasmtime_fuel: u64,
     pub maximum_generated_instruction_pairs: usize,
     pub maximum_shrink_attempts: usize,
+    pub maximum_functions: usize,
+    pub maximum_types: usize,
+    pub maximum_exports: usize,
+    pub maximum_globals: usize,
+    pub maximum_interpreter_allocation_bytes: u64,
+    pub maximum_hostcall_bytes: u64,
+    pub maximum_chunks: usize,
+    pub maximum_concurrent_cases: usize,
+    pub maximum_samples: usize,
+    pub maximum_retained_artifacts: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -287,6 +313,28 @@ pub enum OutcomeClass {
     EngineError,
 }
 
+/// Canonical semantic surfaces. Empty transcripts/output and absent memory are
+/// justified only by per-binary admission to the hostless void-export profile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationSurfaces {
+    pub validation_class: String,
+    pub link_class: String,
+    pub preserves_output: Vec<String>,
+    pub hostcall_transcript: Vec<String>,
+    pub final_memory_blake3: Option<String>,
+}
+
+fn hostless_surfaces(validation: &str, link: &str) -> ObservationSurfaces {
+    ObservationSurfaces {
+        validation_class: validation.into(),
+        link_class: link.into(),
+        preserves_output: vec![],
+        hostcall_transcript: vec![],
+        final_memory_blake3: None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NormalizedObservation {
@@ -296,6 +344,9 @@ pub struct NormalizedObservation {
     pub trap_class: Option<String>,
     pub state_identity_blake3: Option<String>,
     pub resource_class: Option<String>,
+    pub surfaces: ObservationSurfaces,
+    /// Retained for diagnostics, deliberately excluded from semantic equality.
+    pub raw_counters: std::collections::BTreeMap<String, u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -305,6 +356,7 @@ pub struct CaseComparison {
     pub case_kind: CaseKind,
     pub module_blake3: String,
     pub spacewasm: NormalizedObservation,
+    pub raw_observation_refs: Vec<String>,
     pub wasmtime: NormalizedObservation,
     pub verdict: ComparisonVerdict,
     pub first_difference: Option<FirstDifference>,
@@ -330,6 +382,7 @@ pub struct FirstDifference {
 #[serde(deny_unknown_fields)]
 pub struct MinimizationEvidence {
     pub predicate_field: String,
+    pub accepted_steps: Vec<rail::ShrinkStep>,
     pub attempts: usize,
     pub original_module_blake3: String,
     pub minimized_module_blake3: String,
@@ -349,16 +402,18 @@ pub struct DifferentialReport {
     pub seed: u64,
     pub comparisons: Vec<CaseComparison>,
     pub mismatch_count: usize,
+    pub evidence: Vec<rail::DiagnosticEvidence>,
     pub verdict: String,
     pub non_claims: Vec<String>,
     pub report_identity_blake3: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolObservation {
     pub success: bool,
     pub timed_out: bool,
     pub stderr: String,
+    pub stdout: String,
 }
 
 pub fn validate_profile(profile: &DifferentialProfile) -> Result<(), String> {
@@ -384,6 +439,16 @@ pub fn validate_profile(profile: &DifferentialProfile) -> Result<(), String> {
         BLAKE3_HEX_LENGTH,
     )?;
     validate_bounded_text("wasmtime_version", &profile.wasmtime_version)?;
+    validate_bounded_text("wasm_tools_version", &profile.wasm_tools_version)?;
+    if profile.wasm_tools_version != "wasm-tools 1.245.0"
+        || profile.wasmtime_version != "wasmtime 41.0.3"
+        || profile.generator_id != "chaoscontrol-mvp-instruction-v1"
+    {
+        return Err("runtime, tool or generator cohort drift".into());
+    }
+    if profile.retention != "all-cases-and-raw-observations" {
+        return Err("retention policy drift".into());
+    }
     validate_hex(
         "bundle_manifest_blake3",
         &profile.bundle_manifest_blake3,
@@ -444,6 +509,9 @@ pub fn validate_profile(profile: &DifferentialProfile) -> Result<(), String> {
     if total_cases > profile.bounds.maximum_cases {
         return Err(format!("case count {total_cases} exceeds maximum_cases"));
     }
+    if total_cases > profile.bounds.maximum_samples {
+        return Err("sample count exceeds maximum_samples".into());
+    }
     validate_bounds(&profile.bounds)
 }
 
@@ -467,6 +535,16 @@ fn validate_module_abi(abi: &ModuleAbiProfile) -> Result<(), String> {
 }
 
 fn validate_runtime(runtime: &RuntimeProfile) -> Result<(), String> {
+    if runtime.spacewasm_code_pages != 64
+        || runtime.spacewasm_control_frames != 64
+        || runtime.spacewasm_stack_words != 1024
+        || runtime.spacewasm_initialization_fuel != 1024
+        || runtime.spacewasm_run_fuel != 4096
+        || runtime.spacewasm_resume_segment_fuel != 1
+        || runtime.maximum_resume_segments != 4096
+    {
+        return Err("SpaceWasm probe resource configuration drift".into());
+    }
     if runtime.spacewasm_resume_segment_fuel == 0 || runtime.maximum_resume_segments == 0 {
         return Err(String::from("resume bounds must be positive"));
     }
@@ -512,9 +590,48 @@ fn validate_bounds(bounds: &DifferentialBounds) -> Result<(), String> {
         bounds.wasmtime_fuel,
         bounds.maximum_generated_instruction_pairs as u64,
         bounds.maximum_shrink_attempts as u64,
+        bounds.maximum_functions as u64,
+        bounds.maximum_types as u64,
+        bounds.maximum_exports as u64,
+        bounds.maximum_globals as u64,
+        bounds.maximum_interpreter_allocation_bytes,
+        bounds.maximum_hostcall_bytes,
+        bounds.maximum_chunks as u64,
+        bounds.maximum_concurrent_cases as u64,
+        bounds.maximum_samples as u64,
+        bounds.maximum_retained_artifacts as u64,
     ];
     if positive.contains(&0) {
         return Err(String::from("all differential bounds must be positive"));
+    }
+    let capped = [
+        (bounds.maximum_cases as u64, 1024),
+        (bounds.maximum_input_bytes, 16777216),
+        (bounds.maximum_bundle_members as u64, 4096),
+        (bounds.maximum_bundle_member_bytes, 1073741824),
+        (bounds.maximum_bundle_total_bytes, 4294967296),
+        (bounds.maximum_process_milliseconds, 300000),
+        (bounds.maximum_output_bytes, 16777216),
+        (bounds.wasmtime_fuel, 1000000000),
+        (bounds.maximum_generated_instruction_pairs as u64, 4096),
+        (bounds.maximum_shrink_attempts as u64, 4096),
+        (bounds.maximum_functions as u64, 65536),
+        (bounds.maximum_types as u64, 65536),
+        (bounds.maximum_exports as u64, 65536),
+        (
+            bounds.maximum_interpreter_allocation_bytes,
+            MAXIMUM_INTERPRETER_ALLOCATION_BYTES,
+        ),
+        (bounds.maximum_hostcall_bytes, 16777216),
+        (bounds.maximum_concurrent_cases as u64, 64),
+        (bounds.maximum_samples as u64, 1024),
+        (bounds.maximum_retained_artifacts as u64, 65536),
+    ];
+    if capped.iter().any(|(actual, maximum)| actual > maximum) {
+        return Err("differential bound exceeds supported capacity".into());
+    }
+    if bounds.maximum_globals > 64 || bounds.maximum_chunks > 4096 {
+        return Err("interpreter structural bound exceeds admitted runtime capacity".into());
     }
     if bounds.maximum_bundle_member_bytes > bounds.maximum_bundle_total_bytes {
         return Err(String::from(
@@ -610,6 +727,68 @@ pub fn validate_bundle_manifest(
                 ));
             }
         }
+    }
+    let has_license = manifest.members.iter().any(|member| {
+        member.role.contains("license")
+            || member.path.rsplit('/').next().is_some_and(|name| {
+                name == "LICENSE" || name.starts_with("LICENSE.") || name == "COPYING"
+            })
+    });
+    if !has_license {
+        return Err("Mantle bundle is missing required license member".into());
+    }
+    let mut edges = BTreeSet::new();
+    let mut incident = BTreeSet::new();
+    let mut indegree = std::collections::BTreeMap::new();
+    for path in &paths {
+        indegree.insert(*path, 0usize);
+    }
+    for edge in &manifest.parent_edges {
+        validate_identifier("parent edge relation", &edge.relation)?;
+        if edge.parent_path == edge.child_path
+            || !paths.contains(edge.parent_path.as_str())
+            || !paths.contains(edge.child_path.as_str())
+            || !edges.insert((
+                edge.parent_path.as_str(),
+                edge.child_path.as_str(),
+                edge.relation.as_str(),
+            ))
+        {
+            return Err("Mantle bundle parent edge is dangling, self-linked or duplicated".into());
+        }
+        incident.insert(edge.parent_path.as_str());
+        incident.insert(edge.child_path.as_str());
+        *indegree
+            .get_mut(edge.child_path.as_str())
+            .expect("validated child") += 1;
+    }
+    if manifest
+        .members
+        .iter()
+        .any(|member| !incident.contains(member.path.as_str()))
+    {
+        return Err("Mantle bundle parent graph omits a required member".into());
+    }
+    let mut ready: Vec<_> = indegree
+        .iter()
+        .filter_map(|(path, degree)| (*degree == 0).then_some(*path))
+        .collect();
+    let mut visited = 0usize;
+    while let Some(path) = ready.pop() {
+        visited += 1;
+        for (_, child, _) in edges
+            .range((path, "", "")..)
+            .take_while(|(parent, _, _)| *parent == path)
+        {
+            let degree = indegree.get_mut(*child).expect("validated child");
+            *degree -= 1;
+            if *degree == 0 {
+                ready.push(*child);
+            }
+        }
+    }
+    if visited != paths.len() {
+        return Err("Mantle bundle parent graph contains a cycle".into());
     }
     Ok(())
 }
@@ -905,6 +1084,8 @@ pub fn normalize_tool(
             trap_class: None,
             state_identity_blake3: None,
             resource_class: Some(String::from("wall-time")),
+            surfaces: hostless_surfaces("unknown", "unknown"),
+            raw_counters: Default::default(),
         };
     }
     if raw.success {
@@ -949,6 +1130,7 @@ pub fn compare_case(
         verdict,
         first_difference,
         minimization: None,
+        raw_observation_refs: Vec::new(),
     })
 }
 
@@ -996,12 +1178,75 @@ pub fn encode_hex(bytes: &[u8]) -> String {
 }
 
 pub fn finalize_report(mut report: DifferentialReport) -> Result<DifferentialReport, String> {
+    if report.schema != REPORT_SCHEMA {
+        return Err("report schema drift".into());
+    }
+    validate_exact_set(
+        "report non_claims",
+        &report.non_claims,
+        &REQUIRED_NON_CLAIMS,
+    )?;
+    report.evidence.clear();
+    for comparison in &report.comparisons {
+        if comparison.raw_observation_refs.len() != 2 {
+            return Err("report must retain both actual raw runtime observations".into());
+        }
+        let record = rail::DiagnosticEvidence {
+            class: if [&comparison.spacewasm, &comparison.wasmtime]
+                .iter()
+                .any(|observation| observation.outcome == OutcomeClass::EngineError)
+            {
+                rail::EvidenceClass::HarnessError
+            } else if [&comparison.spacewasm, &comparison.wasmtime]
+                .iter()
+                .any(|observation| {
+                    matches!(
+                        observation.outcome,
+                        OutcomeClass::TimedOut | OutcomeClass::ResourceExhausted
+                    )
+                })
+            {
+                rail::EvidenceClass::BoundSkip
+            } else if comparison.verdict == ComparisonVerdict::Match {
+                rail::EvidenceClass::RuntimeMatch
+            } else {
+                rail::EvidenceClass::RuntimeDivergence
+            },
+            profile_identity: report.profile_identity_blake3.clone(),
+            case_blake3: comparison.module_blake3.clone(),
+            raw_observation_refs: comparison.raw_observation_refs.clone(),
+            role: "host-side-diagnostic".into(),
+            non_claims: report.non_claims.clone(),
+        };
+        record.validate()?;
+        report.evidence.push(record);
+    }
+    for comparison in &report.comparisons {
+        let recomputed = compare_case(
+            comparison.case_id.clone(),
+            comparison.case_kind,
+            comparison.module_blake3.clone(),
+            comparison.spacewasm.clone(),
+            comparison.wasmtime.clone(),
+        )?;
+        if recomputed.verdict != comparison.verdict
+            || recomputed.first_difference != comparison.first_difference
+        {
+            return Err("report comparison verdict drift".into());
+        }
+    }
     report.mismatch_count = report
         .comparisons
         .iter()
         .filter(|comparison| comparison.verdict == ComparisonVerdict::Mismatch)
         .count();
-    report.verdict = if report.mismatch_count == 0 {
+    report.verdict = if report
+        .evidence
+        .iter()
+        .any(|record| record.class == rail::EvidenceClass::HarnessError)
+    {
+        String::from("harness-error")
+    } else if report.mismatch_count == 0 {
         String::from("match")
     } else {
         String::from("mismatch")
@@ -1048,6 +1293,7 @@ struct CanonicalOutcome {
     return_values: Vec<String>,
     trap_class: Option<String>,
     resource_class: Option<String>,
+    surfaces: ObservationSurfaces,
 }
 
 /// Admits one complete differential case from the module identity.
@@ -1093,6 +1339,7 @@ pub fn admit_diff_observation(
         return_values: observation.return_values.clone(),
         trap_class: observation.trap_class.clone(),
         resource_class: observation.resource_class.clone(),
+        surfaces: observation.surfaces.clone(),
     };
     let value_bytes = serde_json::to_vec(&canonical)
         .map_err(|error| format!("serialize canonical outcome: {error}"))?;
@@ -1235,6 +1482,13 @@ fn first_difference(
             wasmtime: format!("{:?}", wasmtime.resource_class),
         });
     }
+    if spacewasm.surfaces != wasmtime.surfaces {
+        return Some(FirstDifference {
+            field: "observation-surfaces".into(),
+            spacewasm: format!("{:?}", spacewasm.surfaces),
+            wasmtime: format!("{:?}", wasmtime.surfaces),
+        });
+    }
     None
 }
 
@@ -1246,6 +1500,8 @@ fn completed(engine: &str) -> NormalizedObservation {
         trap_class: None,
         state_identity_blake3: None,
         resource_class: None,
+        surfaces: hostless_surfaces("accepted", "linked"),
+        raw_counters: Default::default(),
     }
 }
 
@@ -1257,6 +1513,8 @@ fn rejected(engine: &str, _engine_class: &str) -> NormalizedObservation {
         trap_class: None,
         state_identity_blake3: None,
         resource_class: None,
+        surfaces: hostless_surfaces("rejected", "not-reached"),
+        raw_counters: Default::default(),
     }
 }
 
@@ -1268,6 +1526,8 @@ fn trapped(engine: &str, class: &str) -> NormalizedObservation {
         trap_class: Some(class.to_owned()),
         state_identity_blake3: None,
         resource_class: None,
+        surfaces: hostless_surfaces("accepted", "linked"),
+        raw_counters: Default::default(),
     }
 }
 
@@ -1279,6 +1539,8 @@ fn exhausted(engine: &str, class: &str) -> NormalizedObservation {
         trap_class: None,
         state_identity_blake3: None,
         resource_class: Some(class.to_owned()),
+        surfaces: hostless_surfaces("accepted", "linked"),
+        raw_counters: Default::default(),
     }
 }
 
@@ -1290,6 +1552,8 @@ fn engine_error(engine: &str, class: &str) -> NormalizedObservation {
         trap_class: Some(class.to_owned()),
         state_identity_blake3: None,
         resource_class: None,
+        surfaces: hostless_surfaces("unknown", "unknown"),
+        raw_counters: Default::default(),
     }
 }
 
@@ -1372,7 +1636,7 @@ mod tests {
     const MAX_GENERATED_MODULE_BYTES: usize = 256;
     const PROPERTY_CASE_INDEX_BOUND: usize = 1_000;
 
-    fn profile() -> DifferentialProfile {
+    pub(super) fn profile() -> DifferentialProfile {
         DifferentialProfile {
             schema: String::from(PROFILE_SCHEMA),
             profile_id: String::from("spacewasm-mvp-differential-v1"),
@@ -1381,6 +1645,8 @@ mod tests {
             spacewasm_revision: String::from(SPACEWASM_REVISION),
             spacewasm_runner_blake3: String::from(RUNNER_DIGEST),
             wasmtime_version: String::from("wasmtime 41.0.3"),
+            wasm_tools_version: String::from("wasm-tools 1.245.0"),
+            retention: String::from("all-cases-and-raw-observations"),
             bundle_manifest_blake3: String::from(MANIFEST_DIGEST),
             bundle_identity_blake3: String::from(BUNDLE_IDENTITY),
             generator_id: String::from("chaoscontrol-mvp-instruction-v1"),
@@ -1402,6 +1668,11 @@ mod tests {
             runtime: RuntimeProfile {
                 spacewasm_resume_segment_fuel: 1,
                 maximum_resume_segments: 4_096,
+                spacewasm_code_pages: 64,
+                spacewasm_control_frames: 64,
+                spacewasm_stack_words: 1024,
+                spacewasm_initialization_fuel: 1024,
+                spacewasm_run_fuel: 4096,
                 wasmtime_proposals: String::from(REQUIRED_WASMTIME_PROPOSALS),
                 host_authority: String::from(REQUIRED_HOST_AUTHORITY),
             },
@@ -1428,9 +1699,28 @@ mod tests {
                 wasmtime_fuel: 1_024,
                 maximum_generated_instruction_pairs: MAX_INSTRUCTION_PAIRS,
                 maximum_shrink_attempts: MAX_INSTRUCTION_PAIRS,
+                maximum_functions: 1024,
+                maximum_types: 1024,
+                maximum_exports: 1024,
+                maximum_globals: 64,
+                maximum_interpreter_allocation_bytes: 16777216,
+                maximum_hostcall_bytes: 1048576,
+                maximum_chunks: 4096,
+                maximum_concurrent_cases: 1,
+                maximum_samples: 1024,
+                maximum_retained_artifacts: 4096,
             },
             non_claims: REQUIRED_NON_CLAIMS.into_iter().map(String::from).collect(),
         }
+    }
+
+    #[test]
+    fn interpreter_allocation_limit_must_fit_the_executed_probe() {
+        let mut profile = profile();
+        profile.bounds.maximum_interpreter_allocation_bytes = MAXIMUM_INTERPRETER_ALLOCATION_BYTES;
+        assert!(validate_profile(&profile).is_ok());
+        profile.bounds.maximum_interpreter_allocation_bytes += 1;
+        assert!(validate_profile(&profile).is_err());
     }
 
     #[test]
@@ -1622,6 +1912,7 @@ mod tests {
             ),
             member("profile/profile.json", "profile-export", MANIFEST_DIGEST),
             member("source/spacewasm.tar.gz", "source-archive", MANIFEST_DIGEST),
+            member("licenses/LICENSE", "license", MANIFEST_DIGEST),
         ];
         members.extend(evidence.iter().map(|(path, bytes)| BundleMember {
             path: String::from(*path),
@@ -1629,13 +1920,23 @@ mod tests {
             digest_blake3: blake3::hash(bytes).to_hex().to_string(),
             size_bytes: u64::try_from(bytes.len()).expect("fixture size"),
         }));
+        // Synthetic graph exercises consumer graph admission, not producer provenance.
+        let parent_edges = members
+            .iter()
+            .filter(|member| member.path != "source/spacewasm.tar.gz")
+            .map(|member| ParentEdge {
+                parent_path: "source/spacewasm.tar.gz".into(),
+                child_path: member.path.clone(),
+                relation: "derived-from".into(),
+            })
+            .collect();
         BundleManifest {
             schema: String::from(MANTLE_MANIFEST_SCHEMA),
             profile_id: String::from("nasa-spacewasm-e24cf093-reference-v1"),
             profile_identity_blake3: String::from(MANIFEST_DIGEST),
             cohort_identity_blake3: String::from(MANIFEST_DIGEST),
             members,
-            parent_edges: Vec::new(),
+            parent_edges,
             non_claims: Vec::new(),
             bundle_identity_blake3: String::from(BUNDLE_IDENTITY),
         }
@@ -1656,6 +1957,46 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn materialization_rejects_missing_license_and_invalid_parent_graphs() {
+        let profile = profile();
+        let admitted = manifest(&stable_evidence());
+        let mut no_license = admitted.clone();
+        no_license.members.retain(|member| member.role != "license");
+        no_license
+            .parent_edges
+            .retain(|edge| edge.child_path != "licenses/LICENSE");
+        assert!(validate_bundle_manifest(&profile, &no_license)
+            .unwrap_err()
+            .contains("license"));
+        let mut dangling = admitted.clone();
+        dangling.parent_edges[0].parent_path = "absent/source".into();
+        assert!(validate_bundle_manifest(&profile, &dangling)
+            .unwrap_err()
+            .contains("dangling"));
+        let mut omitted = admitted.clone();
+        omitted.parent_edges.clear();
+        assert!(validate_bundle_manifest(&profile, &omitted)
+            .unwrap_err()
+            .contains("omits"));
+        let mut cycle = admitted.clone();
+        cycle.parent_edges.push(ParentEdge {
+            parent_path: admitted.parent_edges[0].child_path.clone(),
+            child_path: "source/spacewasm.tar.gz".into(),
+            relation: "cycle".into(),
+        });
+        assert!(validate_bundle_manifest(&profile, &cycle)
+            .unwrap_err()
+            .contains("cycle"));
+        let mut duplicate = admitted;
+        duplicate
+            .parent_edges
+            .push(duplicate.parent_edges[0].clone());
+        assert!(validate_bundle_manifest(&profile, &duplicate)
+            .unwrap_err()
+            .contains("duplicated"));
     }
 
     #[test]
@@ -1917,6 +2258,7 @@ mod tests {
                 success: false,
                 timed_out: true,
                 stderr: String::new(),
+                stdout: String::new(),
             },
         );
         let exhausted = normalize_tool(
@@ -1926,6 +2268,7 @@ mod tests {
                 success: false,
                 timed_out: false,
                 stderr: String::from("all fuel consumed"),
+                stdout: String::new(),
             },
         );
         assert_eq!(timeout.outcome, OutcomeClass::TimedOut);

@@ -21,7 +21,7 @@ The VMM remains the owner of snapshot capture and restore effects.
 
 The public descriptor version is `1`.
 The supported completeness profile is `exact-x86-kvm-v1`.
-The supported VMM state schema is `2`.
+The supported VMM state schema is `3`; it is distinct from the public descriptor version and payload codec.
 The current payload codec is `simulation-snapshot-cbor-zstd-v2`.
 
 A reader must reject unknown descriptor versions, profiles, state schemas, architectures, algorithms, and codecs.

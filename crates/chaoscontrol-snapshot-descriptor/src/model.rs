@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub const DESCRIPTOR_SCHEMA: &str = "chaoscontrol-snapshot-descriptor-v1";
 pub const DESCRIPTOR_VERSION: u32 = 1;
 pub const EXACT_SNAPSHOT_PROFILE: &str = "exact-x86-kvm-v1";
-pub const EXACT_STATE_SCHEMA_VERSION: u32 = 2;
+pub const EXACT_STATE_SCHEMA_VERSION: u32 = 3;
 pub const EXACT_ARCHITECTURE: &str = "x86_64";
 pub const CURRENT_PAYLOAD_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
 pub const CHUNK_MANIFEST_CODEC: &str = "snapshot-chunk-manifest-v1";

@@ -134,6 +134,7 @@ fn validate_nickel_contract(
     contract_root: &Path,
     fixture: &snapshot_core::SnapshotDescriptor,
 ) -> EvidenceResult<()> {
+    crate::profile_projection::admit_nickel_evaluator()?;
     let nickel = nickel_command()?;
     let output = Command::new(&nickel[0])
         .args(&nickel[1..])

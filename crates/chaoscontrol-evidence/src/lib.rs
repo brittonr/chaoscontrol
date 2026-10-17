@@ -2602,6 +2602,12 @@ pub struct BugRecord {
         deserialize_with = "non_null_option::deserialize"
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    #[serde(default)]
+    pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
+    #[serde(default)]
+    pub marker_context: Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext>,
+    #[serde(default)]
+    pub schedule_variant: Option<chaoscontrol_sim_core::scheduler::ScheduleVariant>,
     pub assertion_location: Option<String>,
     pub tick: Option<u64>,
     pub replay_parent_depth: u64,
@@ -2626,6 +2632,12 @@ pub struct ReplayVerdict {
         deserialize_with = "non_null_option::deserialize"
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker_context: Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_variant: Option<chaoscontrol_replay_evidence_core::dto::ReplayScheduleVariant>,
     pub replay_parent_depth: u64,
     pub snapshot: SnapshotVerdict,
     pub artifact_hashes: Vec<ArtifactHash>,

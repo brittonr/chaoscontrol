@@ -24,6 +24,15 @@ pub enum ImageFormat {
     TarArchive,
 }
 
+/// Only guest-bundle features have admission authority here. These are not
+/// Linux capabilities and never authorize a container runtime or host access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IntakeCapability {
+    SharedDirectories,
+    InstrumentedTransport,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LayerDescriptor {
@@ -59,6 +68,7 @@ pub struct ImageService {
 pub struct OciTopology {
     pub schema: String,
     pub topology_id: String,
+    pub capability_admits: Vec<IntakeCapability>,
     pub shared_directories: Vec<SharedDirectorySpec>,
     pub services: Vec<ImageService>,
 }
@@ -80,6 +90,7 @@ pub struct BundlePlan {
     pub schema: String,
     pub topology_id: String,
     pub bundle_identity: String,
+    pub capability_admits: Vec<IntakeCapability>,
     pub process_manifest: AdmittedManifest,
     pub services: Vec<ServiceBundlePlan>,
 }
@@ -99,6 +110,9 @@ pub enum IntakePlanError {
     LayersNotAllowed,
     MissingLayers,
     Manifest(crate::guest_process::ManifestError),
+    CapabilityNotAdmitted,
+    DuplicateCapability,
+    ConflictingRoot,
 }
 
 pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanError> {
@@ -108,6 +122,37 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
     validate_token(&topology.topology_id).map_err(|()| IntakePlanError::InvalidTopologyId)?;
     if topology.services.is_empty() || topology.services.len() > MAX_SERVICES {
         return Err(IntakePlanError::ServiceLimit);
+    }
+    if topology.shared_directories.len() > crate::guest_process::MAX_SHARED_DIRECTORIES {
+        return Err(IntakePlanError::Manifest(
+            crate::guest_process::ManifestError::SharedDirectoryLimit,
+        ));
+    }
+    let mut shared_directories_admitted = false;
+    let mut instrumented_transport_admitted = false;
+    for capability in &topology.capability_admits {
+        let admitted = match capability {
+            IntakeCapability::SharedDirectories => &mut shared_directories_admitted,
+            IntakeCapability::InstrumentedTransport => &mut instrumented_transport_admitted,
+        };
+        if *admitted {
+            return Err(IntakePlanError::DuplicateCapability);
+        }
+        *admitted = true;
+    }
+    if (!topology.shared_directories.is_empty() && !shared_directories_admitted)
+        || (topology.services.iter().any(|service| service.instrumented)
+            && !instrumented_transport_admitted)
+    {
+        return Err(IntakePlanError::CapabilityNotAdmitted);
+    }
+    for (index, directory) in topology.shared_directories.iter().enumerate() {
+        if topology.shared_directories[..index]
+            .iter()
+            .any(|prior| paths_overlap(&prior.path, &directory.path))
+        {
+            return Err(IntakePlanError::ConflictingRoot);
+        }
     }
     let mut roles = BTreeSet::new();
     let mut process_specs = Vec::with_capacity(topology.services.len());
@@ -152,6 +197,13 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
             }
         }
         let root_path = format!("/services/{}/root", service.role);
+        if topology
+            .shared_directories
+            .iter()
+            .any(|directory| paths_overlap(&directory.path, &root_path))
+        {
+            return Err(IntakePlanError::ConflictingRoot);
+        }
         let executable = format!("{root_path}/{}", service.entrypoint);
         process_specs.push(ProcessSpec {
             role: service.role.clone(),
@@ -183,6 +235,7 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
         schema: OCI_BUNDLE_PLAN_SCHEMA.to_string(),
         topology_id: topology.topology_id.clone(),
         bundle_identity: String::new(),
+        capability_admits: topology.capability_admits.clone(),
         process_manifest: manifest,
         services: service_plans,
     };
@@ -245,6 +298,18 @@ fn validate_b3(value: &str) -> Result<(), ()> {
     }
 }
 
+fn paths_overlap(left: &str, right: &str) -> bool {
+    let left = left.trim_end_matches('/');
+    let right = right.trim_end_matches('/');
+    left == right
+        || left
+            .strip_prefix(right)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+        || right
+            .strip_prefix(left)
+            .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
 fn validate_absolute_path(value: &str) -> Result<(), ()> {
     if value.is_empty()
         || value.len() > MAX_SOURCE_PATH_BYTES
@@ -299,6 +364,7 @@ pub enum IntakeReceiptError {
     ImageIdentityMismatch,
     LayerIdentityMismatch,
     InvalidRootIdentity,
+    RootIdentityMismatch,
     ClaimOverreach,
 }
 
@@ -363,6 +429,7 @@ mod tests {
         OciTopology {
             schema: OCI_TOPOLOGY_SCHEMA.to_string(),
             topology_id: "database-stack".to_string(),
+            capability_admits: vec![IntakeCapability::SharedDirectories],
             shared_directories: vec![SharedDirectorySpec {
                 id: "data".to_string(),
                 path: "/data".to_string(),
@@ -447,5 +514,46 @@ mod tests {
             validate_receipt(&plan, &receipt),
             Err(IntakeReceiptError::ImageIdentityMismatch)
         );
+    }
+
+    #[test]
+    fn topology_requires_explicit_capabilities_and_rejects_overlapping_roots() {
+        let mut candidate = topology();
+        let admitted = lower_topology(&candidate).unwrap();
+        candidate.capability_admits.clear();
+        assert_eq!(
+            lower_topology(&candidate),
+            Err(IntakePlanError::CapabilityNotAdmitted)
+        );
+        candidate.capability_admits = vec![IntakeCapability::SharedDirectories];
+        candidate.services[0].instrumented = true;
+        candidate.services[0].transport_slot = Some(0);
+        assert_eq!(
+            lower_topology(&candidate),
+            Err(IntakePlanError::CapabilityNotAdmitted)
+        );
+        candidate
+            .capability_admits
+            .push(IntakeCapability::InstrumentedTransport);
+        let instrumented = lower_topology(&candidate).unwrap();
+        assert_ne!(instrumented.bundle_identity, admitted.bundle_identity);
+        candidate.shared_directories[0].path = "/services/database/root".to_string();
+        assert_eq!(
+            lower_topology(&candidate),
+            Err(IntakePlanError::ConflictingRoot)
+        );
+        candidate.shared_directories[0].path = "/data".to_string();
+        candidate.shared_directories.push(SharedDirectorySpec {
+            id: "nested".to_string(),
+            path: "/data/nested".to_string(),
+            device: SharedDeviceKind::Memory,
+        });
+        assert_eq!(
+            lower_topology(&candidate),
+            Err(IntakePlanError::ConflictingRoot)
+        );
+        let mut wire = serde_json::to_value(topology()).unwrap();
+        wire["capability_admits"] = serde_json::json!(["container_namespace"]);
+        assert!(serde_json::from_value::<OciTopology>(wire).is_err());
     }
 }

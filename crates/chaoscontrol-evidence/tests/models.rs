@@ -1108,28 +1108,145 @@ fn validates_evidence_contract_fixtures_in_rust() {
     check_evidence_contract_fixtures("../..").expect("evidence contract fixtures validate");
 }
 
-#[test]
-fn validates_contract_registry_model_in_rust() {
-    let input = r#"{
-      "schema_version": "1",
-      "policy": "fixtures cover every required shape",
-      "families": [
-        {"id":"run-config","ownership":"nickel-authored","owner":"evidence","source_paths":["contracts/run-config.ncl"],"artifact_paths":["dogfood-results/run-config.json"],"validation_commands":["check run-config"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"dogfood-receipt","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/receipt.json"],"validation_commands":["check receipt"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"bug-report","ownership":"nickel-authored","owner":"evidence","source_paths":["contracts/bug.ncl"],"artifact_paths":["dogfood-results/bug.json"],"validation_commands":["check bug"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"assertion-summary","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/assertions.json"],"validation_commands":["check assertions"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"checkpoint-reference","ownership":"nickel-authored","owner":"evidence","source_paths":["contracts/checkpoint.ncl"],"artifact_paths":["dogfood-results/checkpoint.json"],"validation_commands":["check checkpoint"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"snapshot-reference","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/snapshot.json"],"validation_commands":["check snapshot"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"replay-verdict","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/replay-verdict.json"],"validation_commands":["check verdict"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
-        {"id":"raw-runtime-logs","ownership":"excluded","owner":"evidence","source_paths":["runtime/logs"],"artifact_paths":[],"validation_commands":["check excluded"],"fixture_coverage":["fixture"],"freshness":"excluded","rationale":"not durable"},
-        {"id":"secrets-and-crypto-internals","ownership":"excluded","owner":"security","source_paths":["secrets"],"artifact_paths":[],"validation_commands":["check excluded"],"fixture_coverage":["fixture"],"freshness":"excluded","rationale":"not durable"}
-      ]
-    }"#;
+fn registry_fixture() -> serde_json::Value {
+    let families = [
+        ("run-config", "nickel-authored"),
+        ("simulator-profile", "nickel-authored"),
+        ("campaign-profile", "nickel-authored"),
+        ("finite-fault-schedule-profile", "nickel-authored"),
+        ("dogfood-receipt", "rust-derived"),
+        ("bug-report", "rust-derived"),
+        ("assertion-summary", "rust-derived"),
+        ("checkpoint-reference", "rust-derived"),
+        ("snapshot-reference", "rust-derived"),
+        ("replay-verdict", "rust-derived"),
+        ("raw-runtime-logs", "excluded"),
+        ("secrets-and-crypto-internals", "excluded"),
+    ].into_iter().map(|(id, ownership)| serde_json::json!({
+        "id": id, "ownership": ownership, "owner": "fixture",
+        "source_paths": ["contracts/evidence/profile-primitives.ncl", "fixture.ncl"],
+        "artifact_paths": [], "validation_commands": ["check fixture"],
+        "fixture_coverage": ["fixture"], "freshness": "committed", "rationale": "boundary fixture",
+    })).collect::<Vec<_>>();
+    serde_json::json!({"schema_version":"1", "policy":"configuration intent is not a runtime observation", "families":families})
+}
 
-    let line = validate_contract_registry_json(input).expect("registry validates");
-    assert_eq!(
-        line,
-        "contract registry ok: 9 families, ownership=excluded,nickel-authored,rust-derived"
+// r[verify chaoscontrol.simulator_campaign_profiles.ownership_registry]
+#[test]
+fn registry_rejects_runtime_facts_relabelled_as_authored_intent() {
+    let registry = registry_fixture();
+    chaoscontrol_evidence::validate_contract_registry(&registry).expect("valid ownership boundary");
+    for index in 4..10 {
+        let mut mutated = registry.clone();
+        mutated["families"][index]["ownership"] = "nickel-authored".into();
+        let error = chaoscontrol_evidence::validate_contract_registry(&mutated)
+            .expect_err("runtime facts cannot become authored intent");
+        assert!(error
+            .message()
+            .contains("runtime observations must remain Rust-derived or excluded"));
+    }
+}
+
+#[test]
+fn registry_rejects_ambiguous_profiles_and_duplicate_families() {
+    let registry = registry_fixture();
+    for index in 0..4 {
+        let mut mutated = registry.clone();
+        mutated["families"][index]["ownership"] = "rust-derived".into();
+        assert!(chaoscontrol_evidence::validate_contract_registry(&mutated)
+            .expect_err("profile ownership")
+            .message()
+            .contains("profile intent must be nickel-authored"));
+        mutated = registry.clone();
+        mutated["families"][index]["source_paths"] = serde_json::json!(["private-primitives.ncl"]);
+        assert!(chaoscontrol_evidence::validate_contract_registry(&mutated)
+            .expect_err("shared primitives")
+            .message()
+            .contains("shared primitive contract"));
+    }
+    let mut duplicate = registry.clone();
+    duplicate["families"]
+        .as_array_mut()
+        .expect("families")
+        .push(registry["families"][0].clone());
+    assert!(
+        chaoscontrol_evidence::validate_contract_registry(&duplicate)
+            .expect_err("duplicate identity")
+            .message()
+            .contains("id is duplicated")
+    );
+}
+
+#[test]
+fn bug_marker_context_requires_an_existing_parent_and_nonfuture_observation() {
+    use chaoscontrol_evidence::evidence_contracts::validate_bug_report;
+    let mut bug: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/evidence/fixtures/valid/bug-report.identity.valid.json"
+    ))
+    .expect("strict identity fixture");
+    let context = serde_json::json!({
+        "marker_identity": format!("b3:{}", "a".repeat(64)), "owner": "guest",
+        "state_ref": null, "logical_position_ref": "term:1", "run_id": 0, "observed_tick": 1,
+    });
+    bug["marker_context"] = context;
+    assert!(
+        validate_bug_report(&bug).is_err(),
+        "shallow evidence has no retained marker parent"
+    );
+    bug["replay_parent_depth"] = 1.into();
+    bug["replay_parent_snapshot_ref"] = serde_json::json!({
+        "store": "file-content-addressed", "digest": format!("sha256:{}", "b".repeat(64)),
+        "codec": "simulation-snapshot-cbor-zstd-v2", "schema_version": 2,
+        "path": format!("snapshots/{}.snapshot.bin", "b".repeat(64)),
+    });
+    validate_bug_report(&bug).expect("bound nonfuture marker context");
+    let admitted = bug.clone();
+    bug["marker_context"]["observed_tick"] = 2.into();
+    assert!(validate_bug_report(&bug)
+        .expect_err("future observation")
+        .message()
+        .contains("observation follows finding"));
+    bug = admitted.clone();
+    bug["marker_context"]["marker_identity"] = "invalid".into();
+    assert!(
+        validate_bug_report(&bug).is_err(),
+        "marker identity is validated, not just forwarded"
+    );
+    bug = admitted.clone();
+    bug["marker_context"]["extra_authority"] = true.into();
+    assert!(
+        validate_bug_report(&bug).is_err(),
+        "context vocabulary is closed"
+    );
+    bug = admitted;
+    bug["marker_context"] = serde_json::Value::Null;
+    assert!(
+        validate_bug_report(&bug).is_err(),
+        "explicit null is not optional evidence"
+    );
+}
+
+#[test]
+fn bug_fallback_scope_cannot_relabel_an_sdk_assertion_as_another_process() {
+    use chaoscontrol_evidence::evidence_contracts::validate_bug_report;
+    let mut bug: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/evidence/fixtures/valid/bug-report.identity.valid.json"
+    ))
+    .expect("strict identity fixture");
+    validate_bug_report(&bug).expect("ordinary SDK assertion");
+    bug["fallback_scope"] = serde_json::json!({
+        "process": {"guest":"guest", "process":"wal"}, "record_sequence":0,
+        "record_blake3":"a".repeat(64), "sink_blake3":"b".repeat(64),
+        "assertion_fingerprint":bug["assertion_identity"]["fingerprint"],
+    });
+    assert!(
+        validate_bug_report(&bug).is_err(),
+        "a matching fingerprint cannot grant a process scope"
+    );
+    bug["fallback_scope"] = serde_json::Value::Null;
+    assert!(
+        validate_bug_report(&bug).is_err(),
+        "explicit null scope is not admitted"
     );
 }
 

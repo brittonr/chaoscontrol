@@ -381,6 +381,14 @@ impl fmt::Display for ScheduleError {
 
 impl std::error::Error for ScheduleError {}
 
+pub(super) fn policy_rng_seed(seed: u64) -> [u8; 32] {
+    let mut rng_seed = [0u8; 32];
+    let derived_seed = seed.wrapping_add(SCHEDULER_SEED_DOMAIN);
+    let seed_bytes = derived_seed.to_le_bytes();
+    rng_seed[..seed_bytes.len()].copy_from_slice(&seed_bytes);
+    rng_seed
+}
+
 impl ScheduleState {
     /// Build validated initial state with all configured vCPUs runnable.
     pub fn new(
@@ -407,10 +415,7 @@ impl ScheduleState {
                 reason: "initial state requires one runnable vCPU",
             },
         )?;
-        let mut rng_seed = [0u8; 32];
-        let derived_seed = config.seed.wrapping_add(SCHEDULER_SEED_DOMAIN);
-        let seed_bytes = derived_seed.to_le_bytes();
-        rng_seed[..seed_bytes.len()].copy_from_slice(&seed_bytes);
+        let rng_seed = policy_rng_seed(config.seed);
 
         let state = Self {
             schema_version: SCHEDULE_STATE_SCHEMA_VERSION,

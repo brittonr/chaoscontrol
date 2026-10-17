@@ -109,6 +109,8 @@ pub struct ReplayVerdict {
     pub assertion_identity: Option<AssertionEvidenceIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marker_context: Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_parent_depth: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -170,6 +172,7 @@ impl ReplayVerdict {
             assertion_id: None,
             assertion_identity: None,
             fallback_scope: None,
+            marker_context: None,
             replay_parent_depth: None,
             schedule_variant: None,
             snapshot: ReplaySnapshotValidation::not_required(),

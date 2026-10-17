@@ -1,5 +1,5 @@
 let Topology = import "../../topology.ncl" in
 let fixture = import "../valid/multi-service.json" in
-(fixture & {
-  services = std.array.map (fun service => service & { role = "database" }) fixture.services,
-}) | Topology
+(std.record.update "services" (std.array.map (fun service =>
+  std.record.update "role" "database" service
+) fixture.services) fixture) | Topology

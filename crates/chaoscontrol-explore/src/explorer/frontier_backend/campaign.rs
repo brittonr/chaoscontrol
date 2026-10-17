@@ -74,6 +74,7 @@ pub(super) struct CampaignEntry {
     pub(super) depth: u32,
     /// Parent fault schedule.
     pub(super) schedule: FaultSchedule,
+    pub(super) marker: Option<crate::marker_branching::MarkerFrontierMetadata>,
 }
 
 /// How a resumed checkpoint's journal binding compares with the recovered journal.
@@ -370,6 +371,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
                     times_selected: 0,
                     depth: proposal.depth,
                     schedule: proposal.schedule.clone(),
+                    marker: proposal.proposal.marker.clone(),
                 },
             ));
             records.push(encode(

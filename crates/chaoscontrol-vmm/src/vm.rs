@@ -119,7 +119,7 @@ use snafu::{ResultExt, Snafu};
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
-use vm_memory::{Address, Bytes, GuestAddress, GuestMemoryMmap};
+use vm_memory::{Address, Bytes, GuestAddress};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Constants
@@ -571,6 +571,12 @@ pub enum VmError {
     #[snafu(display("Snapshot error: {message}"))]
     Snapshot { message: String },
 
+    #[snafu(display("Snapshot restore failed during {phase:?}; VM is non-runnable: {detail}"))]
+    SnapshotRestoreFailed {
+        phase: SnapshotRestorePhase,
+        detail: String,
+    },
+
     #[snafu(display("Disk image error: {message}"))]
     DiskImage { message: String },
 
@@ -583,6 +589,18 @@ pub enum VmError {
 
     #[snafu(display("Failed to get dirty page log"))]
     GetDirtyLog { source: kvm_ioctls::Error },
+}
+
+/// Dependency order of exact restore effects. Preflight is deliberately not an effect phase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnapshotRestorePhase {
+    Quiesce,
+    MemoryTracking,
+    MemoryAndKernelState,
+    Determinism,
+    Scheduler,
+    Virtio,
+    Serial,
 }
 
 const VIRTIO_IRQ_LEVELS: [bool; 2] = [true, false];
@@ -710,6 +728,8 @@ impl io::Write for CapturingWriter {
 pub struct DeterministicVm {
     #[allow(dead_code)]
     kvm: Kvm,
+    /// Immutable capability facts admitted before activation, never queried during preflight.
+    snapshot_msr_indices: Vec<u32>,
     vm: VmFd,
     vcpus: Vec<VcpuFd>,
     /// Index of the currently active vCPU (0 = BSP).
@@ -920,6 +940,20 @@ impl DeterministicVm {
                 }
             })?;
         let kvm = Kvm::new().context(KvmCreateSnafu)?;
+        let mut snapshot_msr_indices = kvm
+            .get_msr_index_list()
+            .map_err(|error| VmError::Snapshot {
+                message: format!("cannot retain the KVM MSR capability inventory: {error}"),
+            })?
+            .as_slice()
+            .to_vec();
+        snapshot_msr_indices.sort_unstable();
+        snapshot_msr_indices.dedup();
+        if snapshot_msr_indices.is_empty() {
+            return Err(VmError::Snapshot {
+                message: "KVM returned an empty MSR capability inventory".to_string(),
+            });
+        }
         let vm = kvm.create_vm().context(VmCreateSnafu)?;
 
         // Create guest memory
@@ -1216,6 +1250,7 @@ impl DeterministicVm {
 
         Ok(Self {
             kvm,
+            snapshot_msr_indices,
             vm,
             vcpus,
             active_vcpu,
@@ -2333,6 +2368,14 @@ impl DeterministicVm {
         None
     }
 
+    pub(crate) fn write_execution_registers(
+        &mut self,
+        registers: &kvm_regs,
+    ) -> Result<(), VmError> {
+        self.ensure_schedule_execution_healthy()?;
+        self.vcpus[0].set_regs(registers).context(SetRegistersSnafu)
+    }
+
     // ─── Public API: interrupt injection ─────────────────────────────
 
     /// Inject a hardware interrupt (IRQ) into the VM.
@@ -2414,21 +2457,7 @@ impl DeterministicVm {
         let vcpu_count = u32::try_from(self.vcpus.len()).map_err(|_| VmError::Snapshot {
             message: "vCPU count exceeds snapshot schema width".to_string(),
         })?;
-        let mut msr_indices = self
-            .kvm
-            .get_msr_index_list()
-            .map_err(|error| VmError::Snapshot {
-                message: format!("cannot read the KVM MSR capability inventory: {error}"),
-            })?
-            .as_slice()
-            .to_vec();
-        msr_indices.sort_unstable();
-        msr_indices.dedup();
-        if msr_indices.is_empty() {
-            return Err(VmError::Snapshot {
-                message: "KVM returned an empty MSR capability inventory".to_string(),
-            });
-        }
+        let msr_indices = self.snapshot_msr_indices.clone();
         let mut virtio_devices = Vec::with_capacity(self.virtio_devices.len());
         let mut identities = std::collections::BTreeSet::new();
         for device in &self.virtio_devices {
@@ -2552,7 +2581,6 @@ impl DeterministicVm {
     fn validate_virtio_snapshot(
         &self,
         snapshot: &crate::snapshot::VmSnapshot,
-        snapshot_memory: &GuestMemoryMmap,
     ) -> Result<(), VmError> {
         use crate::snapshot::VirtioBackendSnapshot;
 
@@ -2565,7 +2593,19 @@ impl DeterministicVm {
                     })?;
             let device = &self.virtio_devices[index];
             device
-                .validate_snapshot(&device_snapshot.transport, snapshot_memory)
+                .validate_snapshot_facts(
+                    &device_snapshot.transport,
+                    &[crate::devices::virtio_validation::MemoryRegion {
+                        start: 0,
+                        length: snapshot.memory.memory_size() as u64,
+                    }],
+                    |address| {
+                        snapshot
+                            .memory
+                            .read_u16(address)
+                            .ok_or(crate::devices::virtio_types::VirtioFailure::GuestMemoryRead)
+                    },
+                )
                 .map_err(|failure| VmError::Snapshot {
                     message: format!("invalid virtio transport snapshot: {failure:?}"),
                 })?;
@@ -3015,18 +3055,7 @@ impl DeterministicVm {
                 message: "snapshot virtio identities do not match VM topology".to_string(),
             });
         }
-        let snapshot_memory_bytes = snapshot.memory.materialize();
-        let snapshot_memory =
-            GuestMemoryMmap::from_ranges(&[(GuestAddress(0), snapshot_memory_bytes.len())])
-                .map_err(|error| VmError::Snapshot {
-                    message: format!("cannot allocate snapshot preflight memory: {error}"),
-                })?;
-        snapshot_memory
-            .write_slice(&snapshot_memory_bytes, GuestAddress(0))
-            .map_err(|error| VmError::Snapshot {
-                message: format!("cannot populate snapshot preflight memory: {error}"),
-            })?;
-        self.validate_virtio_snapshot(snapshot, &snapshot_memory)?;
+        self.validate_virtio_snapshot(snapshot)?;
         self.scheduler
             .validate_snapshot(&snapshot.scheduler_snapshot)?;
         if !hlt_snapshot_is_valid(
@@ -3052,17 +3081,29 @@ impl DeterministicVm {
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         self.validate_fault_engine_snapshot(snapshot)?;
-        match self.restore_validated(snapshot) {
+        let mut phase = SnapshotRestorePhase::Quiesce;
+        match self.restore_validated(snapshot, &mut phase) {
             Ok(()) => Ok(()),
-            Err(error) => Err(self.latch_schedule_execution_poison(
-                SchedulePoisonStage::SnapshotRestore,
-                error.to_string(),
-            )),
+            Err(error) => {
+                self.latch_schedule_execution_poison(
+                    SchedulePoisonStage::SnapshotRestore,
+                    error.to_string(),
+                );
+                Err(VmError::SnapshotRestoreFailed {
+                    phase,
+                    detail: error.to_string(),
+                })
+            }
         }
     }
 
-    fn restore_validated(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
+    fn restore_validated(
+        &mut self,
+        snapshot: &crate::snapshot::VmSnapshot,
+        phase: &mut SnapshotRestorePhase,
+    ) -> Result<(), VmError> {
         self.complete_pending_kvm_exits_for_snapshot()?;
+        *phase = SnapshotRestorePhase::MemoryTracking;
         let overlay_pages = match &snapshot.memory {
             crate::snapshot::SnapshotMemory::Overlay { dirty_pages, base } => Some(
                 crate::vm_core::overlay_page_bitmap(
@@ -3078,6 +3119,7 @@ impl DeterministicVm {
         };
         // Drain guest writes before the full host-side memory replacement.
         let _ = self.read_guest_dirty_bitmap()?;
+        *phase = SnapshotRestorePhase::MemoryAndKernelState;
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| {
@@ -3087,6 +3129,7 @@ impl DeterministicVm {
                 .build()
             })?;
 
+        *phase = SnapshotRestorePhase::Determinism;
         // Restore deterministic entropy PRNG state
         self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
 
@@ -3123,6 +3166,7 @@ impl DeterministicVm {
         // Restore coverage flag
         self.coverage_active = snapshot.coverage_active;
 
+        *phase = SnapshotRestorePhase::Scheduler;
         // Restore one exact scheduler state after all admission checks.
         let previous_active_vcpu = self.active_vcpu;
         self.disable_singlestep(previous_active_vcpu)?;
@@ -3131,8 +3175,10 @@ impl DeterministicVm {
         self.active_vcpu = self.scheduler.active();
         self.configure_progress_source_for_current_turn()?;
 
+        *phase = SnapshotRestorePhase::Virtio;
         self.restore_virtio_snapshot(snapshot)?;
 
+        *phase = SnapshotRestorePhase::Serial;
         // The captured IRQ chips already contain the UART's delivered edge.
         let serial_trigger = SerialTrigger::default();
         self.serial_writer = CapturingWriter::new();
@@ -3195,12 +3241,19 @@ impl DeterministicVm {
                 message: "incremental restore base size differs from guest memory".to_string(),
             });
         }
-        match self.restore_incremental_validated(snapshot, base) {
+        let mut phase = SnapshotRestorePhase::Quiesce;
+        match self.restore_incremental_validated(snapshot, base, &mut phase) {
             Ok(()) => Ok(()),
-            Err(error) => Err(self.latch_schedule_execution_poison(
-                SchedulePoisonStage::SnapshotRestore,
-                error.to_string(),
-            )),
+            Err(error) => {
+                self.latch_schedule_execution_poison(
+                    SchedulePoisonStage::SnapshotRestore,
+                    error.to_string(),
+                );
+                Err(VmError::SnapshotRestoreFailed {
+                    phase,
+                    detail: error.to_string(),
+                })
+            }
         }
     }
 
@@ -3208,10 +3261,12 @@ impl DeterministicVm {
         &mut self,
         snapshot: &crate::snapshot::VmSnapshot,
         base: &[u8],
+        phase: &mut SnapshotRestorePhase,
     ) -> Result<(), VmError> {
         use crate::snapshot::SnapshotMemory;
 
         self.complete_pending_kvm_exits_for_snapshot()?;
+        *phase = SnapshotRestorePhase::MemoryTracking;
         self.reconcile_incremental_base(base)?;
 
         let dirty_bitmap = self.read_guest_dirty_bitmap()?;
@@ -3230,6 +3285,7 @@ impl DeterministicVm {
         .map_err(|error| VmError::Snapshot {
             message: format!("incremental restore page plan: {error:?}"),
         })?;
+        *phase = SnapshotRestorePhase::MemoryAndKernelState;
         SnapshotMemory::revert_pages_from_base(
             base,
             crate::vm_core::dirty_page_indices(&page_plan.revert),
@@ -3258,6 +3314,7 @@ impl DeterministicVm {
                 .build()
             })?;
 
+        *phase = SnapshotRestorePhase::Determinism;
         // Step 4: Restore VMM-side state (same as full restore).
         self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
         self.virtual_tsc.set(snapshot.virtual_tsc);
@@ -3284,6 +3341,7 @@ impl DeterministicVm {
                 .build()
             })?;
         self.coverage_active = snapshot.coverage_active;
+        *phase = SnapshotRestorePhase::Scheduler;
         let previous_active_vcpu = self.active_vcpu;
         self.disable_singlestep(previous_active_vcpu)?;
         self.scheduler.restore(&snapshot.scheduler_snapshot)?;
@@ -3291,8 +3349,10 @@ impl DeterministicVm {
         self.active_vcpu = self.scheduler.active();
         self.configure_progress_source_for_current_turn()?;
 
+        *phase = SnapshotRestorePhase::Virtio;
         self.restore_virtio_snapshot(snapshot)?;
 
+        *phase = SnapshotRestorePhase::Serial;
         let serial_trigger = SerialTrigger::default();
         self.serial_writer = CapturingWriter::new();
         self.serial = vm_superio::Serial::from_state(
@@ -4913,6 +4973,10 @@ mod incremental_lineage;
 #[cfg(test)]
 #[path = "vm/configuration.rs"]
 mod configuration;
+
+#[cfg(test)]
+#[path = "vm/runtime_readiness.rs"]
+mod runtime_readiness;
 
 #[cfg(test)]
 mod tests {

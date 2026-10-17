@@ -10,18 +10,15 @@ fn usage() -> &'static str {
 
 fn main() -> ExitCode {
     let root = parse_root();
+    if let Err(error) = chaoscontrol_evidence::profile_projection::admit_nickel_evaluator() {
+        eprintln!("error: {error}");
+        return ExitCode::FAILURE;
+    }
     let registry = root.join("contracts/evidence/registry.ncl");
 
-    let command = match nickel_export_command(&registry) {
-        Some(command) => command,
-        None => {
-            eprintln!("error: neither `nickel` nor `nix` is available for registry validation");
-            return ExitCode::from(127);
-        }
-    };
-
-    let output = match Command::new(&command[0])
-        .args(&command[1..])
+    let output = match Command::new("nickel")
+        .arg("export")
+        .arg(&registry)
         .current_dir(&root)
         .output()
     {
@@ -68,22 +65,4 @@ fn parse_root() -> PathBuf {
         }
     }
     root
-}
-
-// r[impl chaoscontrol.nickel_toolchain.cohort]
-fn nickel_export_command(registry: &Path) -> Option<Vec<String>> {
-    which("nickel").map(|_| {
-        vec![
-            "nickel".to_string(),
-            "export".to_string(),
-            registry.display().to_string(),
-        ]
-    })
-}
-
-fn which(program: &str) -> Option<PathBuf> {
-    let path = env::var_os("PATH")?;
-    env::split_paths(&path)
-        .map(|dir| dir.join(program))
-        .find(|candidate| candidate.is_file())
 }

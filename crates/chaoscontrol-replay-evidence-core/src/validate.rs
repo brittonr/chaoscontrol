@@ -414,6 +414,24 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
         validate_schedule_variant(variant)?;
     }
     validate_fallback_scope(verdict)?;
+    if let Some(marker) = verdict.marker_context.as_ref() {
+        marker.validate().map_err(|error| {
+            ValidationError::new(format!(
+                "replay-verdict.marker_context: invalid marker: {error:?}"
+            ))
+        })?;
+        if verdict.replay_parent_depth.is_none_or(|depth| depth == 0) {
+            return Err(ValidationError::new(
+                "replay-verdict.marker_context: requires parent depth",
+            ));
+        }
+        let reference = verdict.snapshot.reference.as_ref().ok_or_else(|| {
+            ValidationError::new(
+                "replay-verdict.marker_context: requires parent snapshot reference",
+            )
+        })?;
+        validate_snapshot_ref_shape(reference)?;
+    }
 
     match verdict.replay_class {
         ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced => {
@@ -498,6 +516,7 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
                 || verdict.replay_parent_depth.is_some()
                 || verdict.schedule_variant.is_some()
                 || verdict.fallback_scope.is_some()
+                || verdict.marker_context.is_some()
             {
                 return Err(ValidationError::new(
                     "replay-verdict: no_bug_found verdicts carry no bug context",

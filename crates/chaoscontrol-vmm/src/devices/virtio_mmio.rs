@@ -1,6 +1,7 @@
 //! Virtio 1.2 MMIO transport with validated split-ring queue state.
 
 use super::virtio_chain::{plan_descriptor_chain, DescriptorChainPlan, VirtqDesc};
+use super::virtio_status::{queue_processing_allowed, validate_queue_activation};
 use super::virtio_types::{
     LastRequestLiveOutcome, PendingCompletionLiveState, QueueLiveState, QueueViolation,
     TransportViolation, UsedWriteFailurePoint, ValidatedQueueLiveConfig, VirtioFailure,
@@ -10,8 +11,7 @@ use super::virtio_validation::{
     available_element_address, descriptor_address, used_element_address, validate_available_delta,
     validate_queue_config, validate_queue_size, validate_restored_status,
     validate_status_transition, MemoryRegion, RawQueueConfig, ValidatedQueueConfig,
-    VIRTIO_F_VERSION_1, VIRTIO_STATUS_DEVICE_NEEDS_RESET, VIRTIO_STATUS_DRIVER_OK,
-    VIRTIO_STATUS_FEATURES_OK,
+    VIRTIO_F_VERSION_1, VIRTIO_STATUS_DEVICE_NEEDS_RESET, VIRTIO_STATUS_FEATURES_OK,
 };
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap, GuestMemoryRegion};
 
@@ -68,12 +68,26 @@ pub struct PlannedAvail {
     pub chain: DescriptorChainPlan,
 }
 
+fn required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    serde::Deserialize::deserialize(deserializer)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VirtQueueSnapshot {
     pub raw: RawQueueConfig,
     pub ready: bool,
     pub last_avail_idx: u16,
     pub next_used_idx: u16,
+    #[serde(deserialize_with = "required_option")]
+    pub failure: Option<VirtioFailure>,
+    #[serde(deserialize_with = "required_option")]
+    pub pending_completion: Option<PendingCompletionLiveState>,
+    #[serde(deserialize_with = "required_option")]
+    pub last_request_outcome: Option<LastRequestLiveOutcome>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -88,6 +102,8 @@ pub struct VirtioMmioSnapshot {
     pub interrupt_status: u32,
     pub config_generation: u32,
     pub queue_sel: u32,
+    #[serde(deserialize_with = "required_option")]
+    pub failure: Option<VirtioFailure>,
     pub queues: Vec<VirtQueueSnapshot>,
 }
 
@@ -199,6 +215,10 @@ impl VirtQueue {
     }
 
     pub fn plan_next(&self, mem: &GuestMemoryMmap) -> Result<Option<PlannedAvail>, VirtioFailure> {
+        // A staged request must be completed or reset, never run through the backend twice.
+        if self.pending_completion.is_some() {
+            return Err(VirtioFailure::CompletionState);
+        }
         let config = self.config()?;
         let queue_size = config.size();
         let available_index_address = config
@@ -352,10 +372,7 @@ impl VirtQueue {
     }
 
     pub fn snapshot(&self) -> Result<VirtQueueSnapshot, VirtioFailure> {
-        if self.failure.is_some()
-            || self.pending_completion.is_some()
-            || self.used_write_failure.is_some()
-        {
+        if self.used_write_failure.is_some() {
             return Err(VirtioFailure::CompletionState);
         }
         Ok(VirtQueueSnapshot {
@@ -363,6 +380,9 @@ impl VirtQueue {
             ready: self.ready,
             last_avail_idx: self.last_avail_idx,
             next_used_idx: self.next_used_idx,
+            failure: self.failure.clone(),
+            pending_completion: self.pending_completion,
+            last_request_outcome: self.last_request_outcome.clone(),
         })
     }
 
@@ -371,8 +391,17 @@ impl VirtQueue {
         max_size: u16,
         limits: VirtioLimits,
         regions: &[MemoryRegion],
-        mem: &GuestMemoryMmap,
+        read_index: &impl Fn(u64) -> Result<u16, VirtioFailure>,
     ) -> Result<Self, VirtioFailure> {
+        if let Some(pending) = snapshot.pending_completion {
+            if !snapshot.ready
+                || u32::from(pending.head_index) >= snapshot.raw.size
+                || u64::from(pending.written_length) > limits.max_aggregate_bytes
+                || (pending.backend_started && !pending.effects_started)
+            {
+                return Err(VirtioFailure::CompletionState);
+            }
+        }
         let validated = if snapshot.ready {
             let config = validate_queue_config(snapshot.raw, max_size, regions, limits)
                 .map_err(VirtioFailure::Queue)?;
@@ -381,9 +410,7 @@ impl VirtQueue {
                 .start()
                 .checked_add(AVAILABLE_INDEX_OFFSET)
                 .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
-            let available_index: u16 = mem
-                .read_obj(GuestAddress(available_index_address))
-                .map_err(|_| VirtioFailure::GuestMemoryRead)?;
+            let available_index = read_index(available_index_address)?;
             validate_available_delta(snapshot.last_avail_idx, available_index, config.size())
                 .map_err(VirtioFailure::Queue)?;
             let used_index_address = config
@@ -391,9 +418,7 @@ impl VirtQueue {
                 .start()
                 .checked_add(USED_INDEX_OFFSET)
                 .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
-            let used_index: u16 = mem
-                .read_obj(GuestAddress(used_index_address))
-                .map_err(|_| VirtioFailure::GuestMemoryRead)?;
+            let used_index = read_index(used_index_address)?;
             if used_index != snapshot.next_used_idx {
                 return Err(VirtioFailure::Queue(
                     QueueViolation::SnapshotUsedIndexMismatch {
@@ -426,9 +451,9 @@ impl VirtQueue {
             ready: snapshot.ready,
             last_avail_idx: snapshot.last_avail_idx,
             next_used_idx: snapshot.next_used_idx,
-            failure: None,
-            pending_completion: None,
-            last_request_outcome: None,
+            failure: snapshot.failure.clone(),
+            pending_completion: snapshot.pending_completion,
+            last_request_outcome: snapshot.last_request_outcome.clone(),
             used_write_failure: None,
         })
     }
@@ -606,9 +631,6 @@ impl VirtioMmioDevice {
     }
 
     pub fn snapshot(&self) -> Result<VirtioMmioSnapshot, VirtioFailure> {
-        if self.failure.is_some() {
-            return Err(VirtioFailure::CompletionState);
-        }
         let queues = self
             .queues
             .iter()
@@ -625,6 +647,7 @@ impl VirtioMmioDevice {
             interrupt_status: self.interrupt_status,
             config_generation: self.config_generation,
             queue_sel: self.queue_sel,
+            failure: self.failure.clone(),
             queues,
         })
     }
@@ -634,6 +657,28 @@ impl VirtioMmioDevice {
         snapshot: &VirtioMmioSnapshot,
         mem: &GuestMemoryMmap,
     ) -> Result<(), VirtioFailure> {
+        let (regions, count) = guest_memory_regions(mem)?;
+        self.validate_snapshot_facts(snapshot, &regions[..count], |address| {
+            mem.read_obj(GuestAddress(address))
+                .map_err(|_| VirtioFailure::GuestMemoryRead)
+        })
+    }
+
+    /// Validate normalized destination facts and retained ring bytes without memory I/O.
+    pub fn validate_snapshot_facts(
+        &self,
+        snapshot: &VirtioMmioSnapshot,
+        regions: &[MemoryRegion],
+        read_index: impl Fn(u64) -> Result<u16, VirtioFailure>,
+    ) -> Result<(), VirtioFailure> {
+        if snapshot.interrupt_status & !VIRTIO_MMIO_INT_VRING != 0
+            || (snapshot.failure.is_some()
+                != (snapshot.status & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0))
+            || (snapshot.queues.iter().any(|queue| queue.failure.is_some())
+                && snapshot.failure.is_none())
+        {
+            return Err(VirtioFailure::CompletionState);
+        }
         if snapshot.base_addr != self.base_addr
             || snapshot.irq != self.irq
             || snapshot.device_id != self.backend.device_id()
@@ -669,14 +714,13 @@ impl VirtioMmioDevice {
             snapshot.driver_features,
         )
         .map_err(VirtioFailure::Transport)?;
-        let (regions, count) = guest_memory_regions(mem)?;
         for (queue_snapshot, queue) in snapshot.queues.iter().zip(&self.queues) {
             VirtQueue::restored(
                 queue_snapshot,
                 queue.max_size,
                 queue.limits,
-                &regions[..count],
-                mem,
+                regions,
+                &read_index,
             )?;
         }
         Ok(())
@@ -699,7 +743,10 @@ impl VirtioMmioDevice {
                     queue.max_size,
                     queue.limits,
                     &regions[..count],
-                    mem,
+                    &|address| {
+                        mem.read_obj(GuestAddress(address))
+                            .map_err(|_| VirtioFailure::GuestMemoryRead)
+                    },
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -711,7 +758,7 @@ impl VirtioMmioDevice {
         self.config_generation = snapshot.config_generation;
         self.queue_sel = snapshot.queue_sel;
         self.queues = restored_queues;
-        self.failure = None;
+        self.failure = snapshot.failure.clone();
         Ok(())
     }
 
@@ -796,10 +843,10 @@ impl VirtioMmioDevice {
     }
 
     pub fn process_queue(&mut self, queue_index: usize, mem: &GuestMemoryMmap) -> bool {
-        if self.status & VIRTIO_STATUS_DRIVER_OK == 0
-            || self.status & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0
-            || queue_index >= self.queues.len()
-            || !self.queues[queue_index].is_ready()
+        if !self
+            .queues
+            .get(queue_index)
+            .is_some_and(|queue| queue_processing_allowed(self.status, queue.is_ready()))
         {
             return false;
         }
@@ -901,14 +948,7 @@ impl VirtioMmioDevice {
         value: u32,
         mem: &GuestMemoryMmap,
     ) -> Result<(), VirtioFailure> {
-        if value != 1 {
-            return Err(VirtioFailure::Transport(TransportViolation::ReadyValue {
-                value,
-            }));
-        }
-        if self.status & VIRTIO_STATUS_FEATURES_OK == 0 {
-            return Err(VirtioFailure::Transport(TransportViolation::ReadyState));
-        }
+        validate_queue_activation(self.status, value).map_err(VirtioFailure::Transport)?;
         self.selected_queue_mut()?.activate(mem)
     }
 
@@ -962,7 +1002,7 @@ impl VirtioMmioDevice {
                 available: self.queues.len(),
             },
         ))?;
-        if self.status & VIRTIO_STATUS_DRIVER_OK == 0 || !queue.is_ready() {
+        if !queue_processing_allowed(self.status, queue.is_ready()) {
             return Err(VirtioFailure::Transport(
                 TransportViolation::NotifyQueueNotReady { selected },
             ));

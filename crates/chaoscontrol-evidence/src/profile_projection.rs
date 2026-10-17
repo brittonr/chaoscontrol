@@ -43,7 +43,7 @@ pub struct BoundIdentity {
 
 pub fn check_profile_projections(root: &Path, write: bool) -> EvidenceResult<()> {
     let command = nickel_command()?;
-    validate_evaluator(&command)?;
+    admit_nickel_evaluator()?;
     for spec in SPECS {
         let projection = evaluate_profile(root, &command, spec.source.path)?;
         let output_bytes = canonical_pretty_json(&projection)?;
@@ -138,15 +138,17 @@ fn evaluate_profile(root: &Path, command: &[String], source: &str) -> EvidenceRe
     Ok(text.into_bytes())
 }
 
-fn validate_evaluator(command: &[String]) -> EvidenceResult<()> {
+/// Reject absent or unreviewed evaluators before exporting authored configuration.
+// r[impl chaoscontrol.nickel_toolchain.cohort]
+pub fn admit_nickel_evaluator() -> EvidenceResult<()> {
     let output = tempfile::NamedTempFile::new().map_err(|error| {
         EvidenceError::new(format!("evaluator output reservation failed: {error}"))
     })?;
     let stdout = output
         .reopen()
         .map_err(|error| EvidenceError::new(format!("evaluator output reopen failed: {error}")))?;
-    let status = Command::new(&command[0])
-        .args(evaluator_version_args(command))
+    let status = Command::new("nickel")
+        .arg("--version")
         .stdout(Stdio::from(stdout))
         .status()
         .map_err(|error| EvidenceError::new(format!("Nickel version check failed: {error}")))?;
@@ -156,17 +158,17 @@ fn validate_evaluator(command: &[String]) -> EvidenceResult<()> {
         ));
     }
     let version = crate::bounded_file::read_bounded_regular_file(output.path(), MAX_PROFILE_BYTES)?;
-    if version.trim() != EVALUATOR_IDENTITY {
+    validate_evaluator_identity(version.trim())
+}
+
+fn validate_evaluator_identity(version: &str) -> EvidenceResult<()> {
+    if version != EVALUATOR_IDENTITY {
         return Err(EvidenceError::new(format!(
             "Nickel evaluator identity drift: {:?}",
-            version.trim()
+            version
         )));
     }
     Ok(())
-}
-
-fn evaluator_version_args(_command: &[String]) -> Vec<String> {
-    vec!["--version".to_string()]
 }
 
 // r[impl chaoscontrol.nickel_toolchain.cohort]

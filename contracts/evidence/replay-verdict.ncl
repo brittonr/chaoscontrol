@@ -1,4 +1,7 @@
 # Closed review contract for Rust-owned replay verdict artifacts.
+let MarkerContext = import "marker-evidence-context.ncl" in
+let Primitives = import "profile-primitives.ncl" in
+let MaxScheduleStrategyBytes = 128 in
 let MaxNamespaceBytes = 128 in
 let MaxKeyBytes = 256 in
 let MaxMessageBytes = 1024 in
@@ -145,6 +148,16 @@ let ArtifactHash = {
   path | NonEmptyString,
   sha256 | Sha256,
 } in
+let ScheduleVariant = {
+  scheduler_seed | Primitives.u64,
+  strategy | std.contract.from_predicate (fun value =>
+    std.is_string value
+    && std.string.length value > 0
+    && std.string.length value <= MaxScheduleStrategyBytes
+  ),
+  quantum_override | Primitives.positive_u64 | optional,
+  policy_blake3 | Fingerprint,
+} in
 let ReplayVerdictShape = {
   schema_version | ExactVersion,
   run_id | NonEmptyString,
@@ -160,7 +173,9 @@ let ReplayVerdictShape = {
   assertion_id | U32 | optional,
   assertion_identity | AssertionIdentity | optional,
   fallback_scope | FallbackScope | optional,
+  marker_context | MarkerContext | optional,
   replay_parent_depth | Number | optional,
+  schedule_variant | ScheduleVariant | optional,
   snapshot = {
     status | SnapshotStatus,
     present | Bool,
@@ -205,6 +220,10 @@ let FallbackBinding = fun value =>
     && value.fallback_scope.assertion_fingerprint == value.assertion_identity.fingerprint
   else
     !has_scope
+in
+let MarkerBinding = fun value =>
+  if !std.record.has_field "marker_context" value then true
+  else HasCompleteBugBinding value && value.replay_parent_depth > 0
 in
 let SnapshotBinding = fun value =>
   let has_reference = std.record.has_field "reference" value.snapshot in
@@ -274,6 +293,7 @@ std.contract.custom (fun label value =>
     'Ok checked =>
       if ReplayBinding checked
         && FallbackBinding checked
+        && MarkerBinding checked
         && SnapshotBinding checked
         && ReplaySemantics checked
       then 'Ok checked

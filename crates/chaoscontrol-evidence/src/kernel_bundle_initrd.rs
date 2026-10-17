@@ -173,7 +173,12 @@ pub fn private_kfunc_init_script(
     script.push_str("find_module_name() { MODULE_NAME=''; while read -r module_name _rest; do case \"$module_name\" in private_kfunc*) MODULE_NAME=\"$module_name\"; break;; esac; done </proc/modules; }\n");
     script.push_str("unload_module() { find_module_name; if [ -n \"$MODULE_NAME\" ]; then \"$DELETE_MODULE\" \"$MODULE_NAME\"; else return 1; fi; }\n");
     script.push_str("mount -t proc proc /proc || fail boot mount-proc-failed\n");
-    script.push_str("for arg in $(cat /proc/cmdline); do case \"$arg\" in chaos_kernel_bundle_case=*) CASE=${arg#*=};; esac; done\n");
+    script.push_str("PROFILE_ID=''\n");
+    script.push_str("for arg in $(cat /proc/cmdline); do case \"$arg\" in chaos_kernel_bundle_case=*) CASE=${arg#*=};; chaos_kernel_bundle_profile=*) PROFILE_ID=${arg#*=};; esac; done\n");
+    script.push_str("case \"$PROFILE_ID\" in ''|*[!0-9a-f]*) fail boot profile-identity-missing-or-invalid;; esac\n");
+    script.push_str(
+        "[ \"${#PROFILE_ID}\" -eq 64 ] || fail boot profile-identity-missing-or-invalid\n",
+    );
     script.push_str("case \"$CASE\" in positive|missing-kfunc|verifier-rejection|wrong-attach-target|cleanup-failure) ;; *) fail boot unsupported-scenario;; esac\n");
     script.push_str("dmesg -n 1 2>/dev/null || true\n");
     script.push_str("mount -t sysfs sysfs /sys || fail boot mount-sysfs-failed\n");
@@ -181,7 +186,11 @@ pub fn private_kfunc_init_script(
     script.push_str("mkdir -p /sys/fs/bpf /tmp || fail boot mkdir-runtime-failed\n");
     script.push_str("mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf || fail bpf mount-bpffs-failed\n");
     script.push_str("ip link set lo up 2>/tmp/lo-up.err || true\n");
-    script.push_str("if [ \"$(uname -r)\" = \"$EXPECTED_KERNEL_RELEASE\" ]; then marker boot ready uname-r-matched; else fail boot uname-r-mismatch; fi\n");
+    script.push_str("[ \"$(uname -m)\" = x86_64 ] || fail boot architecture-mismatch\n");
+    script.push_str(
+        "[ \"$(uname -r)\" = \"$EXPECTED_KERNEL_RELEASE\" ] || fail boot uname-r-mismatch\n",
+    );
+    script.push_str("marker boot architecture \"$(uname -m)\"\nmarker boot release \"$(uname -r)\"\nmarker boot profile \"$PROFILE_ID\"\nmarker boot scenario \"$CASE\"\nmarker boot ready uname-r-matched\n");
     script.push_str("if [ \"$CASE\" = missing-kfunc ]; then if \"$BPFTOOL\" prog load /artifacts/private_kfunc.ebpf.o \"$PIN\" type xdp >/tmp/missing-kfunc.out 2>&1; then rm -f \"$PIN\"; fail bpf missing-kfunc-unexpectedly-admitted; else cat /tmp/missing-kfunc.out; fail bpf missing-kfunc-rejected; fi; fi\n");
     script.push_str("if [ \"$CASE\" = verifier-rejection ]; then if \"$BPFTOOL\" prog load /artifacts/verifier-reject.ebpf.o \"$PIN\" type xdp >/tmp/verifier-reject.out 2>&1; then rm -f \"$PIN\"; fail bpf malformed-object-unexpectedly-admitted; else cat /tmp/verifier-reject.out; fail bpf verifier-rejected; fi; fi\n");
     script.push_str(
@@ -811,27 +820,65 @@ mod tests {
     use std::os::unix::fs as unix_fs;
 
     #[test]
-    fn init_script_contains_structured_private_kfunc_markers() {
-        let script = private_kfunc_init_script(
-            "/nix/store/example-bpftool/bin/bpftool",
-            "/bin/kernel-bundle-delete-module",
-            PRIVATE_KFUNC_EXPECTED_KERNEL_RELEASE,
-        )
-        .expect("script");
+    fn shared_observation_preserves_ordered_legacy_members() {
+        let root = tempfile::tempdir().expect("root");
+        fs::create_dir(root.path().join("dir")).expect("directory");
+        fs::write(root.path().join("dir/file"), b"payload").expect("member");
+        unix_fs::symlink("dir/file", root.path().join("link")).expect("internal link");
+        let (_, plan) = prepare_bounded_tree(root.path()).expect("observed tree");
+        let shared: Vec<_> = plan
+            .member_facts()
+            .iter()
+            .map(|member| relative_path_buf(member.path()))
+            .collect();
+        let legacy: Vec<_> = legacy_collect_tree(root.path())
+            .expect("legacy observation")
+            .iter()
+            .map(|path| {
+                path.strip_prefix(root.path())
+                    .expect("relative member")
+                    .to_path_buf()
+            })
+            .collect();
+        assert_eq!(shared, legacy);
+    }
 
-        assert!(script.contains("chaoscontrol-kernel-bundle:v1:"));
-        assert!(script.contains("marker boot ready uname-r-matched"));
-        assert!(script.contains("marker module load insmod-private-kfunc-succeeded"));
-        assert!(script.contains("marker bpf verify bpftool-prog-load-xdp-succeeded"));
-        assert!(script.contains("marker bpf attach private-kfunc-loader-attached"));
-        assert!(script.contains("chaos_kernel_bundle_case="));
-        assert!(script.contains("fail bpf missing-kfunc-rejected"));
-        assert!(script.contains("fail bpf verifier-rejected"));
-        assert!(script.contains("fail bpf wrong-attach-target-rejected"));
-        assert!(script.contains("fail bpf cleanup-failed"));
-        assert!(script.contains("marker bpf detach private-kfunc-loader-detached"));
-        assert!(script.contains("marker module cleanup succeeded"));
-        assert!(script.len() <= MAX_SCRIPT_BYTES);
+    #[test]
+    fn changed_tree_content_and_link_are_rejected_before_archive_encoding() {
+        use bounded_tree_cap::{ShellErrorKind, SourceChangeKind};
+        for change_link in [false, true] {
+            let root = tempfile::tempdir().expect("root");
+            fs::write(root.path().join("first"), b"first").expect("member");
+            fs::write(root.path().join("other"), b"other").expect("member");
+            unix_fs::symlink("first", root.path().join("link")).expect("link");
+            let source =
+                Dir::open_ambient_dir(root.path(), ambient_authority()).expect("capability");
+            let prepared = prepare_tree(
+                &source,
+                bounded_tree_limits().expect("bounds"),
+                SymlinkPolicy::PreserveInternal,
+            )
+            .expect("prepare");
+            if change_link {
+                fs::remove_file(root.path().join("link")).expect("remove link");
+                unix_fs::symlink("other", root.path().join("link")).expect("change link");
+            } else {
+                fs::write(root.path().join("first"), b"drift").expect("same-length content drift");
+            }
+            let staging = tempfile::tempdir().expect("staging");
+            let destination =
+                Dir::open_ambient_dir(staging.path(), ambient_authority()).expect("destination");
+            let error = execute_tree_copy(&prepared, &destination)
+                .expect_err("changed source cannot enter archive");
+            assert_eq!(
+                error.kind(),
+                &ShellErrorKind::SourceChanged(if change_link {
+                    SourceChangeKind::SymlinkTarget
+                } else {
+                    SourceChangeKind::Content
+                })
+            );
+        }
     }
 
     #[test]

@@ -11,7 +11,6 @@ let MaximumOutputBytes = 16777216 in
 let MaximumFuel = 1000000000 in
 let MaximumGeneratedInstructionPairs = 4096 in
 let MaximumShrinkAttempts = 4096 in
-let MaximumResumeSegments = 4096 in
 let GitRevision = std.contract.from_predicate (fun value =>
   std.is_string value && std.string.is_match "^[0-9a-f]{40}$" value
 ) in
@@ -43,6 +42,11 @@ let ExactObservationFields = std.contract.from_predicate (fun value =>
     "return-values",
     "state-identity-blake3",
     "trap-class",
+    "validation-class",
+    "link-class",
+    "preserves-output",
+    "hostcall-transcript",
+    "final-memory-blake3",
   ]
 ) in
 let RequiredNonClaims = std.contract.from_predicate (fun value =>
@@ -66,6 +70,16 @@ let Bounds = {
   wasmtime_fuel | P.bounded_positive MaximumFuel,
   maximum_generated_instruction_pairs | P.bounded_positive MaximumGeneratedInstructionPairs,
   maximum_shrink_attempts | P.bounded_positive MaximumShrinkAttempts,
+  maximum_functions | P.bounded_positive 65536,
+  maximum_types | P.bounded_positive 65536,
+  maximum_exports | P.bounded_positive 65536,
+  maximum_globals | P.bounded_positive 64,
+  maximum_interpreter_allocation_bytes | P.bounded_positive 16777216,
+  maximum_hostcall_bytes | P.bounded_positive MaximumOutputBytes,
+  maximum_chunks | P.bounded_positive 4096,
+  maximum_concurrent_cases | P.bounded_positive 64,
+  maximum_samples | P.bounded_positive MaximumCases,
+  maximum_retained_artifacts | P.bounded_positive 65536,
 } in
 let ModuleAbi = {
   required_export | P.exact_string "run",
@@ -79,8 +93,13 @@ let ModuleAbi = {
   memory_grow | P.exact_string "not-admitted",
 } in
 let Runtime = {
-  spacewasm_resume_segment_fuel | P.bounded_positive MaximumFuel,
-  maximum_resume_segments | P.bounded_positive MaximumResumeSegments,
+  spacewasm_resume_segment_fuel | P.exact_value 1,
+  maximum_resume_segments | P.exact_value 4096,
+  spacewasm_code_pages | P.exact_value 64,
+  spacewasm_control_frames | P.exact_value 64,
+  spacewasm_stack_words | P.exact_value 1024,
+  spacewasm_initialization_fuel | P.exact_value 1024,
+  spacewasm_run_fuel | P.exact_value 4096,
   wasmtime_proposals | P.exact_string "all-proposals-disabled",
   host_authority | P.exact_string "none",
 } in
@@ -92,9 +111,11 @@ let Shape = {
   spacewasm_revision | GitRevision,
   spacewasm_runner_blake3 | Blake3Hex,
   wasmtime_version | P.exact_string "wasmtime 41.0.3",
+  wasm_tools_version | P.exact_string "wasm-tools 1.245.0",
+  retention | P.exact_string "all-cases-and-raw-observations",
   bundle_manifest_blake3 | Blake3Hex,
   bundle_identity_blake3 | Blake3Hex,
-  generator_id | P.identifier,
+  generator_id | P.exact_string "chaoscontrol-mvp-instruction-v1",
   seed | P.u64,
   generated_valid_cases | P.positive_u64,
   generated_malformed_cases | P.positive_u64,
@@ -114,6 +135,7 @@ let Coherent = fun value =>
   + FixedCases
   <= value.bounds.maximum_cases
   && value.bounds.maximum_bundle_member_bytes <= value.bounds.maximum_bundle_total_bytes
+  && value.generated_valid_cases + value.generated_malformed_cases + FixedCases <= value.bounds.maximum_samples
 in
 std.contract.custom (fun label value =>
   std.contract.check Shape label value

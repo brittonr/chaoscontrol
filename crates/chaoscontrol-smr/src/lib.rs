@@ -8,7 +8,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+pub mod control;
 pub mod phenomena;
+pub mod retained;
 
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.smr-workload-profile.v1";
 pub const RECEIPT_SCHEMA: &str = "chaoscontrol.smr-workload-receipt.v1";
@@ -364,6 +366,8 @@ pub enum ProposalOutcome {
 #[serde(deny_unknown_fields)]
 pub struct ProposalAttempt {
     pub event_sequence: u64,
+    /// Client-assigned logical request key, unchanged across transport retries.
+    pub logical_operation_id: String,
     pub operation_id: String,
     pub attempt: u32,
     pub command_ref: String,
@@ -382,8 +386,35 @@ pub fn validate_proposal_attempts(
     }
     let mut last_sequence = None;
     let mut operations: BTreeMap<&str, (&str, u32, ProposalOutcome)> = BTreeMap::new();
+    let mut logical_operations = BTreeMap::new();
+    let mut operation_logicals = BTreeMap::new();
     for attempt in attempts {
         validate_identifier("operation_id", &attempt.operation_id)?;
+        validate_identifier("logical_operation_id", &attempt.logical_operation_id)?;
+        if logical_operations
+            .insert(
+                attempt.logical_operation_id.as_str(),
+                attempt.operation_id.as_str(),
+            )
+            .is_some_and(|prior| prior != attempt.operation_id)
+        {
+            return Err(SmrError::new(
+                "proposal-identity",
+                "a logical retry changed operation identity",
+            ));
+        }
+        if operation_logicals
+            .insert(
+                attempt.operation_id.as_str(),
+                attempt.logical_operation_id.as_str(),
+            )
+            .is_some_and(|prior| prior != attempt.logical_operation_id)
+        {
+            return Err(SmrError::new(
+                "proposal-identity",
+                "an operation identity was reused for another logical request",
+            ));
+        }
         validate_digest_ref("command_ref", &attempt.command_ref)?;
         if last_sequence.is_some_and(|prior| attempt.event_sequence <= prior) {
             return Err(SmrError::new(
@@ -878,6 +909,9 @@ pub struct FaultCampaignProfile {
     pub maximum_actions: u64,
     pub virtual_duration: u64,
     pub terminal_rule: String,
+    pub activation_start: u64,
+    pub activation_end: u64,
+    pub expected_observability: String,
 }
 
 pub fn validate_fault_campaign(
@@ -886,6 +920,15 @@ pub fn validate_fault_campaign(
 ) -> SmrResult<()> {
     validate_identifier("campaign_id", &campaign.campaign_id)?;
     validate_identifier("terminal_rule", &campaign.terminal_rule)?;
+    if campaign.activation_start >= campaign.activation_end
+        || campaign.activation_end > campaign.virtual_duration
+        || campaign.expected_observability != "applied-and-observed"
+    {
+        return Err(SmrError::new(
+            "fault-activation",
+            "fault activation or expected observability is not admitted",
+        ));
+    }
     if !campaign.includes_no_fault_control {
         return Err(SmrError::new(
             "fault-control",
@@ -1186,6 +1229,7 @@ pub struct SemanticRun {
     pub proposal_outcomes: Vec<ProposalAttempt>,
     pub observations: Vec<ChainObservation>,
     pub safety_prefixes: Vec<SafetyVerdict>,
+    pub stabilization_facts: Option<StabilizationFacts>,
     pub liveness: LivenessReport,
     pub terminal_status: TerminalStatus,
 }
@@ -1197,6 +1241,10 @@ pub struct ReplayComparison {
     pub first_mismatch: Option<String>,
 }
 
+/// Identity of the full ordered observations, not merely a lossy summary.
+pub fn observations_ref(observations: &[ChainObservation]) -> SmrResult<String> {
+    canonical_value_ref(b"chaoscontrol.smr-chain.observations.v1\0", &observations)
+}
 pub fn history_report_ref(report: &HistoryReport) -> SmrResult<String> {
     canonical_value_ref(HISTORY_REPORT_DOMAIN, report)
 }
@@ -1215,24 +1263,33 @@ fn canonical_value_ref<T: Serialize>(domain: &[u8], value: &T) -> SmrResult<Stri
     Ok(domain_hash(domain, &[&canonical]))
 }
 
+fn validate_replay_event_bound(
+    name: &str,
+    run: &SemanticRun,
+    bounds: &WorkloadBounds,
+) -> SmrResult<()> {
+    let event_count = run
+        .operation_ids
+        .len()
+        .saturating_add(run.proposal_outcomes.len())
+        .saturating_add(run.observations.len())
+        .saturating_add(run.safety_prefixes.len());
+    if u64::try_from(event_count).unwrap_or(u64::MAX) > bounds.maximum_replay_events {
+        return Err(SmrError::new(
+            "replay-bound",
+            format!("{name} semantic replay exceeds maximum_replay_events"),
+        ));
+    }
+    Ok(())
+}
+
 pub fn compare_replay_bounded(
     expected: &SemanticRun,
     actual: &SemanticRun,
     bounds: &WorkloadBounds,
 ) -> SmrResult<ReplayComparison> {
     for (name, run) in [("expected", expected), ("actual", actual)] {
-        let event_count = run
-            .operation_ids
-            .len()
-            .saturating_add(run.proposal_outcomes.len())
-            .saturating_add(run.observations.len())
-            .saturating_add(run.safety_prefixes.len());
-        if u64::try_from(event_count).unwrap_or(u64::MAX) > bounds.maximum_replay_events {
-            return Err(SmrError::new(
-                "replay-bound",
-                format!("{name} semantic replay exceeds maximum_replay_events"),
-            ));
-        }
+        validate_replay_event_bound(name, run, bounds)?;
     }
     Ok(compare_replay(expected, actual))
 }
@@ -1251,6 +1308,10 @@ pub fn compare_replay(expected: &SemanticRun, actual: &SemanticRun) -> ReplayCom
         (
             "safety-prefixes",
             expected.safety_prefixes == actual.safety_prefixes,
+        ),
+        (
+            "liveness-preconditions",
+            expected.stabilization_facts == actual.stabilization_facts,
         ),
         ("liveness", expected.liveness == actual.liveness),
         (
@@ -1396,8 +1457,12 @@ pub struct SmrEvidenceReceipt {
     pub dropped_observations: u64,
     pub seed: u64,
     pub swarm: SwarmSelection,
+    pub campaign: FaultCampaignProfile,
+    pub no_fault_control: control::ControlExecution,
     pub fault_outcomes: Vec<FaultOutcome>,
     pub history: HistoryReport,
+    pub observations: Vec<ChainObservation>,
+    pub observations_ref: String,
     pub stabilization_facts: Option<StabilizationFacts>,
     pub liveness: LivenessReport,
     pub bounds: WorkloadBounds,
@@ -1433,6 +1498,28 @@ pub fn validate_evidence_receipt(
         validate_digest_ref(name, reference)?;
     }
     validate_fault_outcomes(&receipt.fault_outcomes, &receipt.bounds)?;
+    if receipt.swarm != select_swarm(&receipt.campaign, receipt.seed) {
+        return Err(SmrError::new(
+            "evidence-swarm",
+            "seed or choices differ from admitted campaign",
+        ));
+    }
+    control::validate_control(
+        plan,
+        &receipt.campaign,
+        receipt.seed,
+        &receipt.build_ref,
+        &receipt.no_fault_control,
+    )?;
+    if receipt.observation_mode != plan.profile.observation_mode
+        || receipt.observations_ref != observations_ref(&receipt.observations)?
+        || validate_history(plan, &receipt.observations)? != receipt.history
+    {
+        return Err(SmrError::new(
+            "evidence-observations",
+            "raw observation sequence or summary differs from retained evidence",
+        ));
+    }
     if receipt.history_ref != history_report_ref(&receipt.history)? {
         return Err(SmrError::new(
             "evidence-history-drift",
@@ -1638,6 +1725,210 @@ mod tests {
                 virtual_progress_horizon: LIVENESS_HORIZON,
             },
         }
+    }
+
+    fn campaign_fixture() -> FaultCampaignProfile {
+        FaultCampaignProfile {
+            campaign_id: "receipt-campaign".into(),
+            includes_no_fault_control: true,
+            classes: vec![WeightedFaultClass {
+                class: FaultClass::Network,
+                weight: 1,
+            }],
+            optional_features: vec![],
+            command_count: 2,
+            client_count: 1,
+            client_concurrency: 1,
+            maximum_concurrent_faults: 1,
+            maximum_actions: 1,
+            virtual_duration: VIRTUAL_PROGRESS,
+            terminal_rule: "bounded-completion".into(),
+            activation_start: 0,
+            activation_end: VIRTUAL_PROGRESS,
+            expected_observability: "applied-and-observed".into(),
+        }
+    }
+
+    fn execute_fixture(
+        plan: &SmrWorkloadPlan,
+        parent: &[u8],
+        commands: &[GeneratedCommand],
+    ) -> SmrResult<SemanticRun> {
+        let mut state = parent.to_vec();
+        let mut prior = plan.genesis_digest.clone();
+        let mut run = SemanticRun {
+            operation_ids: vec![],
+            proposal_outcomes: vec![],
+            observations: vec![],
+            safety_prefixes: vec![],
+            stabilization_facts: None,
+            liveness: evaluate_liveness(plan, None)?,
+            terminal_status: TerminalStatus::Completed,
+        };
+        for command in commands {
+            state.extend_from_slice(&command.bytes);
+            let digest = chain_transition(
+                &plan.profile_ref,
+                command.command_index,
+                &prior,
+                &command.bytes,
+            )?;
+            run.operation_ids.push(command.operation_id.clone());
+            run.proposal_outcomes.push(ProposalAttempt {
+                event_sequence: command.command_index,
+                logical_operation_id: command.operation_id.clone(),
+                operation_id: command.operation_id.clone(),
+                attempt: 0,
+                command_ref: command.command_ref.clone(),
+                outcome: ProposalOutcome::Acknowledged,
+            });
+            run.observations.push(ChainObservation {
+                event_sequence: command.command_index,
+                profile_ref: plan.profile_ref.clone(),
+                replica_id: REPLICA_A.into(),
+                command_index: command.command_index,
+                prior_digest: prior,
+                digest: digest.clone(),
+                application_state_ref: domain_hash(b"fixture-state", &[&state]),
+            });
+            prior = digest;
+            run.safety_prefixes
+                .push(validate_history(plan, &run.observations)?.verdict);
+        }
+        Ok(run)
+    }
+
+    fn control_fixture(
+        plan: &SmrWorkloadPlan,
+        campaign: &FaultCampaignProfile,
+    ) -> control::ControlExecution {
+        let generated = plan_campaign(plan, campaign, SEED).unwrap();
+        let run = execute_fixture(plan, b"retained-initial-state", &generated.commands).unwrap();
+        control::ControlExecution {
+            control_id: NO_FAULT_CONTROL_ID.into(),
+            profile_ref: plan.profile_ref.clone(),
+            build_ref: digest(b"build"),
+            seed: SEED,
+            commands_ref: control::campaign_commands_ref(&generated.commands).unwrap(),
+            run_ref: control::semantic_run_ref(&run).unwrap(),
+            run,
+            fault_outcomes: vec![],
+        }
+    }
+
+    #[test]
+    fn retained_replay_event_overflow_is_rejected_before_consumer_effects() {
+        let mut bounded_profile = profile(ObservationMode::Lossless);
+        bounded_profile.bounds.maximum_replay_events = 1;
+        let plan = admit_profile(&bounded_profile).unwrap();
+        let generated = plan_campaign(&plan, &campaign_fixture(), SEED).unwrap();
+        let parent = b"retained-initial-state".to_vec();
+        let expected = execute_fixture(&plan, &parent, &generated.commands).unwrap();
+        let artifact = retained::RetainedReplay {
+            profile_ref: plan.profile_ref.clone(),
+            parent_state_ref: retained::parent_state_ref(&parent),
+            parent_state: parent,
+            commands: generated.commands,
+            expected,
+        };
+        let mut executed = false;
+        let result = retained::replay_retained(&plan, &artifact, |_, _| {
+            executed = true;
+            Ok(artifact.expected.clone())
+        });
+        assert_eq!(result.unwrap_err().class, "replay-bound");
+        assert!(
+            !executed,
+            "inadmissible retained input reached the consumer"
+        );
+    }
+
+    #[test]
+    fn retained_parent_replay_observer_bypass_and_control_binding() {
+        let plan = admit_profile(&profile(ObservationMode::Lossless)).unwrap();
+        let campaign = campaign_fixture();
+        let generated = plan_campaign(&plan, &campaign, SEED).unwrap();
+        let parent = b"retained-initial-state".to_vec();
+        let expected = execute_fixture(&plan, &parent, &generated.commands).unwrap();
+        let mut expected_state = parent.clone();
+        for command in &generated.commands {
+            expected_state.extend_from_slice(&command.bytes);
+        }
+        assert_eq!(
+            expected.observations.last().unwrap().application_state_ref,
+            domain_hash(b"fixture-state", &[&expected_state])
+        );
+        let mut acknowledgement_lost = expected.clone();
+        acknowledgement_lost.proposal_outcomes[0].outcome = ProposalOutcome::Indefinite;
+        retained::validate_semantic_run(&plan, &acknowledgement_lost).unwrap();
+        assert_eq!(acknowledgement_lost.observations[0].command_index, 1);
+        let mut artifact = retained::RetainedReplay {
+            profile_ref: plan.profile_ref.clone(),
+            parent_state_ref: retained::parent_state_ref(&parent),
+            parent_state: parent,
+            commands: generated.commands,
+            expected,
+        };
+        let comparison = retained::replay_retained(&plan, &artifact, |parent, commands| {
+            execute_fixture(&plan, parent, commands)
+        })
+        .unwrap();
+        assert!(comparison.accepted);
+        artifact.parent_state.push(0);
+        assert_eq!(
+            retained::replay_retained(&plan, &artifact, |_, _| panic!(
+                "invalid parent must not execute"
+            ))
+            .unwrap_err()
+            .class,
+            "replay-parent"
+        );
+        let mut fabricated = artifact.expected.observations.clone();
+        fabricated[0].application_state_ref = digest(b"fabricated-but-well-framed");
+        assert_eq!(
+            retained::validate_observer_readback(
+                &plan,
+                &fabricated,
+                &artifact.expected.observations
+            )
+            .unwrap_err()
+            .class,
+            "observer-path"
+        );
+        let mut changed = artifact.expected.clone();
+        changed.observations[0].digest = digest(b"different-observation");
+        assert_eq!(
+            compare_replay(&artifact.expected, &changed)
+                .first_mismatch
+                .as_deref(),
+            Some("observations")
+        );
+        changed = artifact.expected.clone();
+        changed.stabilization_facts = Some(StabilizationFacts {
+            profile_id: LIVENESS_ID.into(),
+            quorum_available: false,
+            lifecycle_ready: false,
+            disruptive_faults_active: true,
+            virtual_progress_start: 0,
+            virtual_progress_end: 1,
+            committed_before: 0,
+            committed_after: 0,
+        });
+        assert_eq!(
+            compare_replay(&artifact.expected, &changed)
+                .first_mismatch
+                .as_deref(),
+            Some("liveness-preconditions")
+        );
+        let mut control = control_fixture(&plan, &campaign);
+        control::validate_control(&plan, &campaign, SEED, &digest(b"build"), &control).unwrap();
+        control.seed += 1;
+        assert_eq!(
+            control::validate_control(&plan, &campaign, SEED, &digest(b"build"), &control)
+                .unwrap_err()
+                .class,
+            "fault-control-binding"
+        );
     }
 
     fn observations(plan: &SmrWorkloadPlan) -> Vec<ChainObservation> {
@@ -1855,6 +2146,7 @@ mod tests {
         let attempts = vec![
             ProposalAttempt {
                 event_sequence: FIRST_SEQUENCE,
+                logical_operation_id: OPERATION_ID.to_string(),
                 operation_id: OPERATION_ID.to_string(),
                 attempt: FIRST_ATTEMPT,
                 command_ref: command_ref.clone(),
@@ -1862,6 +2154,7 @@ mod tests {
             },
             ProposalAttempt {
                 event_sequence: SECOND_SEQUENCE,
+                logical_operation_id: OPERATION_ID.to_string(),
                 operation_id: OPERATION_ID.to_string(),
                 attempt: SECOND_ATTEMPT,
                 command_ref,
@@ -1869,6 +2162,15 @@ mod tests {
             },
         ];
         validate_proposal_attempts(&attempts, &plan.profile.bounds).expect("stable retry");
+        let mut changed_id = attempts.clone();
+        changed_id[1].operation_id = "replacement-id".to_string();
+        changed_id[1].attempt = 0;
+        assert_eq!(
+            validate_proposal_attempts(&changed_id, &plan.profile.bounds)
+                .unwrap_err()
+                .class,
+            "proposal-identity"
+        );
         let mut terminal_retry = attempts.clone();
         terminal_retry[0].outcome = ProposalOutcome::Acknowledged;
         assert_eq!(
@@ -1954,6 +2256,9 @@ mod tests {
         let campaign = FaultCampaignProfile {
             campaign_id: "campaign-a".to_string(),
             includes_no_fault_control: true,
+            activation_start: 0,
+            activation_end: VIRTUAL_PROGRESS,
+            expected_observability: "applied-and-observed".to_string(),
             classes: vec![
                 WeightedFaultClass {
                     class: FaultClass::Network,
@@ -2035,6 +2340,7 @@ mod tests {
             proposal_outcomes: Vec::new(),
             observations: Vec::new(),
             safety_prefixes: vec![SafetyVerdict::Pass],
+            stabilization_facts: None,
             liveness,
             terminal_status: TerminalStatus::Completed,
         };
@@ -2080,14 +2386,9 @@ mod tests {
     fn evidence_rejects_missing_non_claim_and_selected_only_promotion() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let history = validate_history(&plan, &observations(&plan)).expect("history");
-        let swarm = SwarmSelection {
-            seed: SEED,
-            selected_features: Vec::new(),
-            selected_fault_classes: Vec::new(),
-            unexplored_features: Vec::new(),
-            unexplored_fault_classes: Vec::new(),
-            weights: Vec::new(),
-        };
+        let campaign = campaign_fixture();
+        let swarm = select_swarm(&campaign, SEED);
+        let no_fault_control = control_fixture(&plan, &campaign);
         let replay = ReplayComparison {
             accepted: true,
             first_mismatch: None,
@@ -2107,6 +2408,8 @@ mod tests {
             dropped_observations: 0,
             seed: SEED,
             swarm,
+            campaign,
+            no_fault_control,
             fault_outcomes: vec![FaultOutcome {
                 action_id: "fault-selected".to_string(),
                 class: FaultClass::Network,
@@ -2114,6 +2417,8 @@ mod tests {
                 effect_record_ref: None,
             }],
             history,
+            observations: observations(&plan),
+            observations_ref: observations_ref(&observations(&plan)).expect("observation identity"),
             stabilization_facts: None,
             liveness: LivenessReport {
                 verdict: LivenessVerdict::NotEvaluated,
@@ -2129,6 +2434,14 @@ mod tests {
                 .collect(),
         };
         validate_evidence_receipt(&receipt, &plan).expect("bounded evidence");
+        let mut substituted = receipt.clone();
+        substituted.observations[0].application_state_ref = digest(b"substituted-state");
+        assert_eq!(
+            validate_evidence_receipt(&substituted, &plan)
+                .unwrap_err()
+                .class,
+            "evidence-observations"
+        );
         let mut missing_build = receipt.clone();
         missing_build.build_ref.clear();
         assert_eq!(

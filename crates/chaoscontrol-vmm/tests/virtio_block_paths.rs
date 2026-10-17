@@ -172,6 +172,44 @@ fn wrong_direction_retains_typed_outcome_then_allows_valid_request() {
 }
 
 #[test]
+fn read_only_status_rejects_without_any_guest_or_disk_write() {
+    let mem = memory();
+    let mut device = block_device(VirtioBlock::new(DeterministicBlock::new(DISK_BYTES)));
+    configure(&mut device, &mem);
+    write_request(&mem, 0, 0);
+    write_descriptor(
+        &mem,
+        2,
+        VirtqDesc {
+            addr: STATUS_ADDRESS,
+            len: 1,
+            flags: 0,
+            next: 0,
+        },
+    );
+    mem.write_obj(0xa5u8, GuestAddress(STATUS_ADDRESS)).unwrap();
+    let mut before = vec![0; MEMORY_BYTES];
+    mem.read_slice(&mut before, GuestAddress(0)).unwrap();
+    assert!(!notify(&mut device, &mem, 0));
+    let mut after = vec![0; MEMORY_BYTES];
+    mem.read_slice(&mut after, GuestAddress(0)).unwrap();
+    assert_eq!(
+        after, before,
+        "no unsafe error completion through read-only status"
+    );
+    assert_eq!(block_backend(&device).disk().stats().writes, 0);
+    assert_eq!(used_index(&mem), 0);
+    assert_eq!(device.live_state().queues[0].last_avail_idx, 0);
+    assert!(!device.interrupt_pending());
+    assert_eq!(
+        device.live_state().failure,
+        Some(VirtioFailure::Request(
+            chaoscontrol_vmm::devices::virtio_types::RequestViolation::StatusDirection,
+        ))
+    );
+}
+
+#[test]
 fn ioerr_outcome_survives_used_ring_publication_failure() {
     let mem = memory();
     let mut device = block_device(VirtioBlock::new(DeterministicBlock::new(DISK_BYTES)));

@@ -12,6 +12,9 @@ const SUPERVISOR_POLL_MILLIS: u64 = 1;
 const FIXTURE_WORKER_MODE: &str = "--fixture-worker";
 const FIXTURE_SHARED_FILE_NAME: &str = "cooperating-state";
 const DEFAULT_FIXTURE_DATA_DIRECTORY: &str = "/data";
+const FIXTURE_COMMIT_MARKER: &str = ".writer-committed-once";
+const FIXTURE_EXIT_MARKER: &str = ".writer-exit-once";
+const FIXTURE_EXIT_STATUS: i32 = 23;
 
 fn main() {
     let result = if std::env::args().nth(1).as_deref() == Some(FIXTURE_WORKER_MODE) {
@@ -32,9 +35,30 @@ fn run_fixture_worker() -> Result<(), String> {
     let data_directory =
         std::env::var("DATA_DIR").unwrap_or_else(|_| DEFAULT_FIXTURE_DATA_DIRECTORY.to_string());
     let shared_file = Path::new(&data_directory).join(FIXTURE_SHARED_FILE_NAME);
+    let commit_marker = Path::new(&data_directory).join(FIXTURE_COMMIT_MARKER);
+    let mut exit_after_ready = false;
     match role.as_str() {
         "writer" => {
             std::fs::write(&shared_file, b"committed\n").map_err(|error| error.to_string())?;
+            if std::env::var("CHAOSCONTROL_FIXTURE_LOSE_SHARED_STATE").as_deref() == Ok("1") {
+                std::fs::remove_file(&shared_file).map_err(|error| error.to_string())?;
+            }
+            std::fs::write(&commit_marker, b"writer committed\n")
+                .map_err(|error| error.to_string())?;
+            if std::env::var("CHAOSCONTROL_FIXTURE_WRITER_EXIT_ONCE").as_deref() == Ok("1") {
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(Path::new(&data_directory).join(FIXTURE_EXIT_MARKER))
+                {
+                    Ok(marker) => {
+                        marker.sync_all().map_err(|error| error.to_string())?;
+                        exit_after_ready = true;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
             cc_assert_reachable_stable!(
                 "org.onixresearch.chaoscontrol.multiprocess",
                 "writer-shared-state",
@@ -44,16 +68,16 @@ fn run_fixture_worker() -> Result<(), String> {
             );
         }
         "checkpoint" => {
-            while !shared_file.is_file() {
+            while !commit_marker.is_file() {
                 std::thread::yield_now();
             }
-            let state = std::fs::read(&shared_file).map_err(|error| error.to_string())?;
+            let state = std::fs::read(&shared_file);
             cc_assert_always_stable!(
                 "org.onixresearch.chaoscontrol.multiprocess",
                 "checkpoint-observes-state",
                 "checkpoint",
                 "multiprocess",
-                state == b"committed\n",
+                state.as_deref().is_ok_and(|bytes| bytes == b"committed\n"),
                 "checkpoint observed the writer state",
             );
         }
@@ -63,6 +87,9 @@ fn run_fixture_worker() -> Result<(), String> {
         "multiprocess_fixture_ready",
         &serde_json::json!({"role": role, "claim_scope": "declared-processes-only"}),
     );
+    if exit_after_ready {
+        std::process::exit(FIXTURE_EXIT_STATUS);
+    }
     loop {
         unsafe { libc::pause() };
     }
@@ -85,16 +112,21 @@ fn run() -> Result<(), String> {
     let admitted = admit_manifest(&manifest).map_err(|error| format!("{error:?}"))?;
     let process_count = admitted.processes.len();
     let manifest_identity = admitted.manifest_identity.clone();
+    let shared_storage = chaoscontrol_sdk::supervisor::prepare_guest_shared_storage(&admitted)
+        .map_err(|error| format!("shared storage admission: {error:?}"))?;
 
     guest_init();
     let mut supervisor = Supervisor::new(admitted, StdProcessRuntime::default());
     supervisor.start().map_err(|error| format!("{error:?}"))?;
     emit_events(supervisor.drain_events());
-    setup_complete(&serde_json::json!({
+    let setup_details = serde_json::json!({
         "manifest_identity": manifest_identity,
         "declared_process_count": process_count,
         "claim_scope": "declared-processes-only",
-    }));
+        "shared_storage": shared_storage,
+    });
+    send_event("guest_supervisor_setup", &setup_details);
+    setup_complete(&setup_details);
 
     loop {
         if let Some(command) = chaoscontrol_sdk::process::poll_fault()? {

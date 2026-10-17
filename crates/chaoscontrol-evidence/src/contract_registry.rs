@@ -5,17 +5,42 @@ use serde_json::Value;
 use crate::{EvidenceError, EvidenceResult};
 
 pub const ALLOWED_OWNERSHIP: [&str; 3] = ["excluded", "nickel-authored", "rust-derived"];
-pub const REQUIRED_CONTRACT_IDS: [&str; 9] = [
+pub const REQUIRED_CONTRACT_IDS: [&str; 12] = [
     "assertion-summary",
     "bug-report",
+    "campaign-profile",
     "checkpoint-reference",
     "dogfood-receipt",
+    "finite-fault-schedule-profile",
     "raw-runtime-logs",
     "replay-verdict",
     "run-config",
     "secrets-and-crypto-internals",
+    "simulator-profile",
     "snapshot-reference",
 ];
+
+const AUTHORED_PROFILES: [&str; 4] = [
+    "run-config",
+    "simulator-profile",
+    "campaign-profile",
+    "finite-fault-schedule-profile",
+];
+const RUNTIME_FAMILIES: [&str; 12] = [
+    "bug-report",
+    "assertion-summary",
+    "checkpoint-reference",
+    "snapshot-reference",
+    "portable-snapshot-descriptor",
+    "replay-verdict",
+    "campaign-progress",
+    "simulator-runtime-records",
+    "execution-traces",
+    "fault-outcomes",
+    "campaign-reports",
+    "dogfood-receipt",
+];
+const SHARED_PRIMITIVES: &str = "contracts/evidence/profile-primitives.ncl";
 
 pub fn validate_contract_registry_json(text: &str) -> EvidenceResult<String> {
     let registry: Value = serde_json::from_str(text)?;
@@ -63,7 +88,37 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
         let entry_id = entry.get("id").and_then(Value::as_str);
         let ownership = entry.get("ownership").and_then(Value::as_str);
         if let Some(entry_id) = entry_id {
-            ids.insert(entry_id.to_string());
+            require(
+                ids.insert(entry_id.to_string()),
+                format!("{prefix}.id is duplicated: {entry_id}"),
+                &mut errors,
+            );
+            if AUTHORED_PROFILES.contains(&entry_id) {
+                require(
+                    ownership == Some("nickel-authored"),
+                    format!("{prefix}: profile intent must be nickel-authored"),
+                    &mut errors,
+                );
+                require(
+                    entry
+                        .get("source_paths")
+                        .and_then(Value::as_array)
+                        .is_some_and(|paths| {
+                            paths
+                                .iter()
+                                .any(|path| path.as_str() == Some(SHARED_PRIMITIVES))
+                        }),
+                    format!("{prefix}: profile must declare the shared primitive contract"),
+                    &mut errors,
+                );
+            }
+            if RUNTIME_FAMILIES.contains(&entry_id) {
+                require(
+                    ownership == Some("rust-derived") || ownership == Some("excluded"),
+                    format!("{prefix}: runtime observations must remain Rust-derived or excluded"),
+                    &mut errors,
+                );
+            }
         }
         if let Some(ownership) = ownership {
             ownerships.insert(ownership.to_string());
@@ -93,6 +148,19 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
         require(
             non_empty_strings(entry.get("source_paths")),
             format!("{prefix}.source_paths must be non-empty strings"),
+            &mut errors,
+        );
+        require(
+            entry
+                .get("source_paths")
+                .and_then(Value::as_array)
+                .is_some_and(|values| {
+                    values
+                        .iter()
+                        .enumerate()
+                        .all(|(index, path)| !values[..index].contains(path))
+                }),
+            format!("{prefix}.source_paths must not contain duplicates"),
             &mut errors,
         );
         require(

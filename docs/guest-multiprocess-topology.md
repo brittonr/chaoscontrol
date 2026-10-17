@@ -27,6 +27,19 @@ The Nix package `guest-supervisor` builds a static PID-1 binary. The
 `initrd-multiprocess` package contains the supervisor, two fixture services, the
 manifest, and one shared memory-backed `/data` directory.
 
+The supervisor prepares memory-backed directories before starting children and
+mounts them as tmpfs only when it is guest PID 1. It measures the filesystem type
+and emits the directory identity and measured type in the retained
+`guest_supervisor_setup.shared_storage` event. A host process cannot request this
+mount operation. Block-backed shared directories remain rejected until there is
+an explicit reviewed guest-device mapping.
+
+When Linux forwards unrecognized boot parameters to init, supply
+`init=/init /etc/chaoscontrol/process-manifest.json` after the clock parameters.
+Linux's `init=` resets earlier init arguments; the absolute manifest path is
+then the supervisor's first argument. This does not change the selected clock
+policy, execution bounds, or manifest admission checks.
+
 Restart replaces process-resident state. It does not replace a declared shared
 directory or its admitted device identity. ChaosControl does not model
 filesystem semantics.

@@ -48,9 +48,14 @@ owning guest, tick, state ref, logical-position ref, and replay-parent ref.
 
 ## Evidence and replay
 
-`validate_replay_binding(...)` checks marker identity, owner, state ref,
-logical-position ref, replay-parent identity, and snapshot identity. Any drift
-fails closed.
+`validate_parent_context(...)` compares the retained marker with the restored
+parent's oracle report and observation tick. `verdict_from_reproduce(...)`
+requires the live controller to match the recorded schedule variant before it
+can classify a snapshot-backed reproduction. The public artifact join,
+`validate_snapshot_backed_replay_artifact(...)`, independently checks the bug,
+verdict, parent snapshot reference, artifact hashes, and exact marker context.
+Missing context, a future observation, changed schedule, or a changed parent
+fails closed; metadata agreement alone never supplies a replay verdict.
 
 The explorer writes `branch-marker-coverage.json` with the other exploration
 outputs. It lists declared marker identities, reached identities, coverage

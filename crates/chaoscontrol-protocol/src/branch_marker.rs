@@ -45,6 +45,30 @@ pub struct BranchMarker {
     pub logical_position_ref: Option<String>,
 }
 
+/// Exact marker instance retained with a branch parent. The owning artifact
+/// supplies and validates its snapshot reference; this value never grants replay.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarkerEvidenceContext {
+    pub marker_identity: String,
+    pub owner: String,
+    pub state_ref: Option<String>,
+    pub logical_position_ref: Option<String>,
+    pub run_id: u32,
+    pub observed_tick: u64,
+}
+
+impl MarkerEvidenceContext {
+    pub fn validate(&self) -> Result<(), BranchMarkerError> {
+        if !valid_b3(&self.marker_identity) {
+            return Err(BranchMarkerError::IdentityMismatch);
+        }
+        validate_text(&self.owner)?;
+        validate_optional_ref(self.state_ref.as_deref(), true)?;
+        validate_optional_ref(self.logical_position_ref.as_deref(), false)
+    }
+}
+
 // Missing references carry no snapshot or logical-position claim.
 fn absent_marker_reference() -> Option<String> {
     None

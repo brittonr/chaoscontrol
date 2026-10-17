@@ -255,6 +255,8 @@ pub(crate) struct SelectedEntry {
     pub(crate) schedule: FaultSchedule,
     /// Parent product depth.
     pub(crate) depth: u32,
+    /// Exact marker instance that created the parent candidate.
+    pub(crate) marker: Option<MarkerFrontierMetadata>,
     /// Whether the epsilon draw explored.
     pub(crate) explored: bool,
 }

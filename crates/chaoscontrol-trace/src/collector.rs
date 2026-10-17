@@ -105,7 +105,7 @@ impl WorkerResult {
                 accounting_snapshot: CleanupStepStatus::NotAttempted,
                 detach: CleanupStepStatus::NotAttempted,
                 unpin: CleanupStepStatus::NotRequired,
-                cleanup: CleanupStepStatus::Succeeded,
+                cleanup: CleanupStepStatus::NotAttempted,
             },
             error: Some(error.into()),
         }
@@ -313,6 +313,50 @@ pub fn observe_runtime_cohort(profile: &AdmittedCaptureProfile) -> Result<Runtim
     })
 }
 
+// Read only this admitted target's bounded task set. Never change host affinity.
+fn validate_process_affinity(tgid: u32, expected: &[u32]) -> Result<()> {
+    if expected.is_empty() {
+        return Ok(());
+    }
+    let mut count = 0_u32;
+    for task in std::fs::read_dir(format!("/proc/{tgid}/task")).context("read target tasks")? {
+        count = count
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("target task count overflow"))?;
+        if count > crate::evidence::SUPPORTED_MAXIMUM_PRODUCERS {
+            return Err(anyhow!("target task set exceeds affinity admission bound"));
+        }
+        let tid: libc::pid_t = task?
+            .file_name()
+            .to_str()
+            .ok_or_else(|| anyhow!("non-UTF8 target task"))?
+            .parse()?;
+        let mut affinity = MaybeUninit::<libc::cpu_set_t>::zeroed();
+        if unsafe {
+            libc::sched_getaffinity(
+                tid,
+                std::mem::size_of::<libc::cpu_set_t>(),
+                affinity.as_mut_ptr(),
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error()).context("observe target task affinity");
+        }
+        let affinity = unsafe { affinity.assume_init() };
+        for cpu in 0..libc::CPU_SETSIZE as usize {
+            if unsafe { libc::CPU_ISSET(cpu, &affinity) } && !expected.contains(&(cpu as u32)) {
+                return Err(anyhow!(
+                    "target task affinity escapes admitted producer CPUs"
+                ));
+            }
+        }
+    }
+    if count == 0 {
+        return Err(anyhow!("target has no admitted tasks"));
+    }
+    Ok(())
+}
+
 /// Collects KVM tracepoint events for one TGID.
 ///
 /// The BPF skeleton and callbacks never outlive their worker thread. `stop()`
@@ -392,6 +436,7 @@ impl TraceCollector {
     }
 
     pub fn for_admitted_profile(profile: AdmittedCaptureProfile) -> Result<Self> {
+        crate::evidence::validate_admitted_profile(&profile)?;
         let compiled_build =
             BuildIdentity::compiled(profile.profile.build.compiled_layouts.clone());
         if compiled_build != profile.profile.build {
@@ -427,6 +472,10 @@ impl TraceCollector {
         let start_target = target_handle.observe();
         validate_target_observation(target_handle.expected(), &start_target)
             .context("admit stable evidence target")?;
+        validate_process_affinity(
+            profile.profile.target.tgid,
+            &profile.profile.topology.affinity_cpus,
+        )?;
         let mut collector = Self::with_bounds(
             profile.profile.target.tgid,
             CollectorBounds {
@@ -480,6 +529,9 @@ impl TraceCollector {
             self.end_target = None;
         }
 
+        if let Some(profile) = &self.admitted_profile {
+            validate_process_affinity(self.target_pid, &profile.profile.topology.affinity_cpus)?;
+        }
         self.stop_requested.store(false, Ordering::Release);
         self.reset_capture_state()?;
         self.producer_accounting = ProducerAccounting {
@@ -629,6 +681,18 @@ impl TraceCollector {
     fn observe_end_target(&mut self) {
         if let Some(handle) = &self.target_handle {
             self.end_target = Some(handle.observe());
+            if let Some(profile) = &self.admitted_profile {
+                if let Err(error) = validate_process_affinity(
+                    self.target_pid,
+                    &profile.profile.topology.affinity_cpus,
+                ) {
+                    self.worker_error = Some(format!("producer affinity drift: {error:#}"));
+                    self.runtime_admission = Some(RuntimeAdmission {
+                        status: AdmissionStatus::Blocked,
+                        blockers: vec!["producer affinity escaped admitted topology".to_string()],
+                    });
+                }
+            }
         }
     }
 
@@ -758,6 +822,33 @@ fn run_attached_worker(
         CleanupStepStatus::Failed
     };
 
+    // Detach is a fallible operation, not an inferred consequence of Drop.
+    let mut detached = true;
+    for link in [
+        &skel.links.trace_kvm_exit,
+        &skel.links.trace_kvm_entry,
+        &skel.links.trace_kvm_pio,
+        &skel.links.trace_kvm_mmio,
+        &skel.links.trace_kvm_msr,
+        &skel.links.trace_kvm_inj_virq,
+        &skel.links.trace_kvm_pic_set_irq,
+        &skel.links.trace_kvm_set_irq,
+        &skel.links.trace_kvm_page_fault,
+        &skel.links.trace_kvm_cr,
+        &skel.links.trace_kvm_cpuid,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if link.detach().is_err() {
+            detached = false;
+        }
+    }
+    cleanup.detach = if detached {
+        CleanupStepStatus::Succeeded
+    } else {
+        CleanupStepStatus::Failed
+    };
     if let Ok(mut capture) = state.lock() {
         capture.userspace.final_drain_attempted = true;
     }
@@ -781,8 +872,8 @@ fn run_attached_worker(
 
     drop(ring_buffer);
     drop(skel);
-    cleanup.detach = CleanupStepStatus::Succeeded;
-    cleanup.cleanup = CleanupStepStatus::Succeeded;
+    // Owned unpinned objects have been released; a detach failure remains fatal.
+    cleanup.cleanup = cleanup.detach;
 
     Ok(WorkerResult {
         producer,
@@ -859,7 +950,7 @@ fn increment_raw_error(accounting: &mut UserspaceAccounting, error: &RawRecordEr
         RawRecordError::Size | RawRecordError::RecordSize => &mut accounting.malformed_size,
         RawRecordError::Version => &mut accounting.wrong_version,
         RawRecordError::UnknownDiscriminant => &mut accounting.unknown_discriminant,
-        RawRecordError::Target => &mut accounting.parse_failed,
+        RawRecordError::Target | RawRecordError::Payload => &mut accounting.parse_failed,
         RawRecordError::EventBound => &mut accounting.over_bound_drops,
     };
     *counter = counter.saturating_add(1);

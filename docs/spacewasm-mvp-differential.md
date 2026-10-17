@@ -49,6 +49,31 @@ The pure core normalizes these facts:
 
 The initial hostless corpus has no return values or observable guest state. The report records `null` state identity instead of inventing a state claim. A mismatch records the first differing normalized field and retains both engine observations. Generated mismatches use bounded typed shrinking. The report retains the minimized bytes, identities, attempt count, and preserved first-difference predicate.
 
+The authored bounds also cap functions, types, exports, globals, interpreter
+allocation, hostcall bytes, chunks, retained artifacts, samples and concurrency.
+Pure module admission validates the exact profile before execution; it does
+not expand the admitted ABI or add post-MVP authority.
+
+The supported interpreter-allocation ceiling is 16 MiB, matching the owned
+resume probe. The exact Mantle runner subprocess receives a Linux `RLIMIT_DATA`
+cap before execution; this includes host allocator overhead, so it is stricter
+than an interpreter-only heap cap. Failure to install the cap denies launch;
+unsupported hosts do not run uncapped. The resume probe receives the authored
+limit explicitly, and its emitted limit must match the profile. An exhausted
+runner is a failed diagnostic execution, not a guest safety finding.
+
+Each retained `CaseManifest` binds its profile, generator inputs, module bytes,
+admission class and chunk schedules. The standalone verifier is:
+
+```text
+cargo run -p chaoscontrol-wasm-differential --example mvp_corpus_replay -- PROFILE CASE_MANIFEST MODULE
+```
+
+This command checks retained-corpus regeneration, not VM replay. The Nix resume
+consumer requires `chaoscontrol.spacewasm-resume-probe.v2`; a successful process
+exit or a previous probe schema cannot substitute for its nested comparison
+verdicts and exact cohort identities.
+
 ## Run the rail
 
 Use the Nix check for the exact producer and reference-engine cohort:

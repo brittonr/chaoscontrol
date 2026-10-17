@@ -9,6 +9,7 @@ let AbsolutePath = std.contract.from_predicate (fun value =>
   && std.string.length value <= 1024
   && std.string.is_match "^/" value
   && !(std.string.is_match "(^|/)\\.\\.($|/)" value)
+  && !(std.string.is_match "[[:cntrl:]]" value)
 ) in
 let RelativePath = std.contract.from_predicate (fun value =>
   std.is_string value
@@ -16,6 +17,7 @@ let RelativePath = std.contract.from_predicate (fun value =>
   && std.string.length value <= 1024
   && !(std.string.is_match "^/" value)
   && !(std.string.is_match "(^|/)\\.\\.?($|/)" value)
+  && !(std.string.is_match "//|/$|[[:cntrl:]]" value)
 ) in
 let BoundedText = std.contract.from_predicate (fun value =>
   std.is_string value
@@ -29,6 +31,7 @@ let Environment = std.contract.from_predicate (fun value =>
     std.string.is_match "^[A-Z_][A-Z0-9_]*$" entry.field
     && std.is_string entry.value
     && std.string.length entry.value <= 256
+    && !(std.string.is_match "[[:cntrl:]]" entry.value)
   )
 ) in
 let Layer = {
@@ -36,7 +39,7 @@ let Layer = {
   identity | B3,
 } in
 let Source = {
-  format | P.non_empty_string,
+  format | P.closed_enum ["oci_layers", "directory", "tar_archive"],
   path | AbsolutePath,
   image_identity | B3,
   layers | Array Layer,
@@ -64,6 +67,7 @@ let SharedDirectory = {
 let Shape = {
   schema | P.exact_string "chaoscontrol.oci-topology.v1",
   topology_id | P.identifier,
+  capability_admits | Array (P.closed_enum ["shared_directories", "instrumented_transport"]),
   shared_directories | Array SharedDirectory,
   services | Array Service,
 } in
@@ -73,8 +77,20 @@ let Coherent = fun value =>
   && std.array.length value.shared_directories <= 16
   && P.unique_by (fun service => service.role) value.services
   && P.unique_by (fun directory => directory.id) value.shared_directories
+  && P.unique_by (fun capability => capability) value.capability_admits
+  && (std.array.length value.shared_directories == 0
+    || std.array.any (fun capability => capability == "shared_directories") value.capability_admits)
+  && P.unique_by (fun service =>
+    if service.transport_slot == null then "none:%{service.role}"
+    else "slot:%{std.to_string service.transport_slot}"
+  ) value.services
+  && (!std.array.any (fun service => service.instrumented) value.services
+    || std.array.any (fun capability => capability == "instrumented_transport") value.capability_admits)
   && std.array.all (fun service =>
     std.array.length service.source.layers <= 64
+    && (service.transport_slot == null || service.transport_slot <= 65535)
+    && ((service.source.format == "oci_layers" && std.array.length service.source.layers > 0)
+      || (service.source.format != "oci_layers" && std.array.length service.source.layers == 0))
     && std.array.length service.arguments <= 64
     && P.unique_by (fun layer => layer.path) service.source.layers
     && std.array.all (fun directory_id =>

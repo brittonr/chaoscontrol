@@ -884,7 +884,7 @@ impl Explorer {
         initial_schedule: FaultSchedule,
     ) -> Result<(), ExploreError> {
         let proposals = match initial_result.snapshot {
-            Some(_) => self.entry_proposals(&initial_result, 0),
+            Some(_) => self.entry_proposals(&initial_result, 0)?,
             None => Vec::new(),
         };
         let trace_proposals = frontier_backend::trace::trace_proposals(&proposals);
@@ -1028,16 +1028,23 @@ impl Explorer {
     ///
     /// Scores against the current global coverage and advances marker hit
     /// counts, so it runs at branch time, exactly where the legacy loop pushed.
-    fn entry_proposals(&mut self, result: &BranchResult, depth: u32) -> Vec<EntryProposal> {
+    fn entry_proposals(
+        &mut self,
+        result: &BranchResult,
+        depth: u32,
+    ) -> Result<Vec<EntryProposal>, ExploreError> {
         let base_score = self.score_branch(result, depth);
-        let markers = marker_observations(&result.oracle_report).unwrap_or_default();
+        let markers =
+            marker_observations(&result.oracle_report).map_err(|error| ExploreError::Config {
+                message: format!("invalid branch marker: {error:?}"),
+            })?;
         if markers.is_empty() {
-            return vec![EntryProposal {
+            return Ok(vec![EntryProposal {
                 score: base_score,
                 marker: None,
-            }];
+            }]);
         }
-        markers
+        Ok(markers
             .into_iter()
             .map(|observation| {
                 let prior_hits =
@@ -1047,7 +1054,19 @@ impl Explorer {
                     marker: Some(frontier_metadata(&observation, result.total_ticks)),
                 }
             })
-            .collect()
+            .collect())
+    }
+
+    fn should_retain_branch(
+        &self,
+        result: &BranchResult,
+        new_edges: usize,
+    ) -> Result<bool, ExploreError> {
+        let markers =
+            marker_observations(&result.oracle_report).map_err(|error| ExploreError::Config {
+                message: format!("invalid branch marker: {error:?}"),
+            })?;
+        Ok(new_edges > 0 || !markers.is_empty())
     }
 
     /// Product facts of one executed branch; retains it when it has new edges
@@ -1070,7 +1089,7 @@ impl Explorer {
         let retained = match enriched {
             Some((result, schedule, depth)) => match result.snapshot.clone() {
                 Some(snapshot) => {
-                    let proposals = self.entry_proposals(result, depth);
+                    let proposals = self.entry_proposals(result, depth)?;
                     Some(RetainedBranch {
                         snapshot,
                         coverage: result.coverage.clone(),
@@ -1223,8 +1242,15 @@ impl Explorer {
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
-            let branch_bugs =
-                self.extract_bugs(&result, &schedule, snapshot.as_ref(), parent_depth)?;
+            let branch_bugs = self.extract_bugs(
+                &result,
+                &schedule,
+                snapshot.as_ref(),
+                parent_depth,
+                authorized
+                    .selected()
+                    .and_then(|entry| entry.marker.as_ref()),
+            )?;
             bugs_found =
                 bugs_found
                     .checked_add(branch_bugs.len())
@@ -1235,7 +1261,7 @@ impl Explorer {
                 warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
             }
 
-            let outcome = if new_edges > 0 {
+            let outcome = if self.should_retain_branch(&result, new_edges)? {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
@@ -1361,6 +1387,9 @@ impl Explorer {
             &base_schedule,
             snapshot.as_ref(),
             parent_depth,
+            authorized
+                .selected()
+                .and_then(|entry| entry.marker.as_ref()),
         )?;
         bugs_found =
             bugs_found
@@ -1504,8 +1533,15 @@ impl Explorer {
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
-            let branch_bugs =
-                self.extract_bugs(&result, &base_schedule, snapshot.as_ref(), parent_depth)?;
+            let branch_bugs = self.extract_bugs(
+                &result,
+                &base_schedule,
+                snapshot.as_ref(),
+                parent_depth,
+                authorized
+                    .selected()
+                    .and_then(|entry| entry.marker.as_ref()),
+            )?;
             bugs_found =
                 bugs_found
                     .checked_add(branch_bugs.len())
@@ -1520,7 +1556,7 @@ impl Explorer {
                 );
             }
 
-            let outcome = if new_edges > 0 {
+            let outcome = if self.should_retain_branch(&result, new_edges)? {
                 debug!("Input tree branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
@@ -2007,6 +2043,7 @@ impl Explorer {
         schedule: &FaultSchedule,
         replay_snapshot: Option<&SimulationSnapshot>,
         parent_depth: u32,
+        marker_context: Option<&crate::marker_branching::MarkerFrontierMetadata>,
     ) -> Result<Vec<BugReport>, ExploreError> {
         let replay_parent_depth = if replay_snapshot.is_some() {
             parent_depth
@@ -2017,6 +2054,16 @@ impl Explorer {
         } else {
             0
         };
+        if let Some(marker) = marker_context {
+            marker.validate().map_err(|error| ExploreError::Config {
+                message: format!("invalid parent marker: {error:?}"),
+            })?;
+            if replay_snapshot.is_none_or(|snapshot| snapshot.tick != marker.observed_tick) {
+                return Err(ExploreError::Config {
+                    message: "parent marker tick differs from its snapshot".to_string(),
+                });
+            }
+        }
         let mut bugs = Vec::new();
         let has_failed_assertion =
             result
@@ -2082,6 +2129,7 @@ impl Explorer {
                     assertion_id: assertion_id as u64,
                     assertion_identity,
                     fallback_scope: record.fallback_scope.clone(),
+                    marker_context: marker_context.cloned(),
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: replay_snapshot.cloned(),
@@ -3382,7 +3430,9 @@ mod tests {
         oracle.end_run();
 
         let mut explorer = Explorer::new(ExplorerConfig::default());
-        let proposals = explorer.entry_proposals(&branch_result(oracle.report()), 0);
+        let proposals = explorer
+            .entry_proposals(&branch_result(oracle.report()), 0)
+            .unwrap();
 
         assert_eq!(proposals.len(), 1);
         let metadata = proposals[0].marker.as_ref().unwrap();
@@ -3392,11 +3442,169 @@ mod tests {
     }
 
     #[test]
+    fn marker_only_branches_remain_selectable_after_marker_budget_exhaustion() {
+        use chaoscontrol_protocol::branch_marker::{
+            BranchMarker, BRANCH_MARKER_EVENT, MAX_MARKERS_PER_RUN,
+        };
+        for policy in [FrontierPolicy::Campaign, FrontierPolicy::LegacyDiagnostic] {
+            let output = tempfile::tempdir().unwrap();
+            let mut explorer = Explorer::new(ExplorerConfig {
+                frontier_policy: policy,
+                output_dir: Some(output.path().display().to_string()),
+                max_frontier: 1,
+                branch_factor: 1,
+                max_rounds: 2,
+                ..ExplorerConfig::default()
+            });
+            explorer.open_frontier(output.path()).unwrap();
+            let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
+            let parent = SimulationSnapshot {
+                tick: TEST_MARKER_TICK,
+                vm_snapshots: Vec::new(),
+                network_state: chaoscontrol_vmm::controller::NetworkFabric::new(
+                    1,
+                    TEST_VARIANT_SEED,
+                ),
+                fault_engine_snapshot: engine.snapshot(),
+                vcpu_stall_until: Vec::new(),
+                clock_freeze: Vec::new(),
+                clock_jitter_bound: Vec::new(),
+                memory_pressure: Vec::new(),
+                process_fault_attempt: Vec::new(),
+                pending_process_observations: Default::default(),
+                fault_operation_sequence: 0,
+            };
+            let mut root = branch_result(OracleReport::empty());
+            root.snapshot = Some(parent.clone());
+            explorer
+                .admit_frontier_root(root, FaultSchedule::new())
+                .unwrap();
+            let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+            oracle.begin_run();
+            for index in 0..=MAX_MARKERS_PER_RUN {
+                let marker = BranchMarker::new(
+                    "fixture",
+                    &format!("rare-{index}"),
+                    "guest-0",
+                    serde_json::json!({}),
+                    None,
+                    None,
+                )
+                .unwrap();
+                let recorded =
+                    oracle.record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap());
+                if index == MAX_MARKERS_PER_RUN {
+                    assert_eq!(
+                        recorded,
+                        Err(chaoscontrol_protocol::admission::CatalogConflict::MarkerLimitExceeded)
+                    );
+                } else {
+                    recorded.expect("marker within the admitted run budget");
+                }
+            }
+            oracle.end_run();
+            let mut result = branch_result(oracle.report());
+            result.snapshot = Some(parent);
+            let coverage =
+                crate::marker_branching::coverage_report(Vec::new(), &result.oracle_report)
+                    .unwrap();
+            assert_eq!(coverage.limit_events, 1);
+            assert_eq!(coverage.reached.len(), MAX_MARKERS_PER_RUN);
+            assert!(explorer.should_retain_branch(&result, 0).unwrap());
+            let plan = match explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .begin_round(
+                    &mut explorer.rng,
+                    RoundContext {
+                        round: 0,
+                        mode: RoundMode::FaultSchedule,
+                    },
+                )
+                .unwrap()
+            {
+                RoundBegin::Planned(plan) => plan,
+                RoundBegin::Stop(stop) => panic!("unexpected stop {stop:?}"),
+            };
+            let authorized = match explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .authorize(plan)
+                .unwrap()
+            {
+                Authorization::Execute(round) => round,
+                Authorization::Skipped(_) => panic!("parent disappeared"),
+            };
+            let schedule = FaultSchedule::new();
+            let outcome = explorer
+                .branch_outcome(
+                    BranchSlot::Variant(0),
+                    0,
+                    &[],
+                    Some((&result, &schedule, 1)),
+                    true,
+                )
+                .unwrap();
+            explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .finish_round(
+                    *authorized,
+                    &RoundObservation {
+                        branches: vec![outcome],
+                    },
+                )
+                .unwrap();
+            assert_eq!(explorer.frontier.len(), 1);
+            let plan = match explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .begin_round(
+                    &mut explorer.rng,
+                    RoundContext {
+                        round: 1,
+                        mode: RoundMode::FaultSchedule,
+                    },
+                )
+                .unwrap()
+            {
+                RoundBegin::Planned(plan) => plan,
+                RoundBegin::Stop(stop) => panic!("marker parent unavailable: {stop:?}"),
+            };
+            let selected = match explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .authorize(plan)
+                .unwrap()
+            {
+                Authorization::Execute(round) => round,
+                Authorization::Skipped(_) => panic!("marker parent disappeared"),
+            };
+            let marker = selected
+                .selected()
+                .unwrap()
+                .marker
+                .as_ref()
+                .expect("marker-only parent survives bounded pruning");
+            marker.validate().unwrap();
+            assert_eq!(marker.observed_tick, TEST_MARKER_TICK);
+            assert!(!explorer
+                .should_retain_branch(&branch_result(OracleReport::empty()), 0)
+                .unwrap());
+        }
+    }
+
+    #[test]
     fn bug_extraction_accepts_exact_identity_without_compatibility_alias() {
         let mut explorer = Explorer::new(ExplorerConfig::default());
         let result = branch_result(failed_report(None));
         let bugs = explorer
-            .extract_bugs(&result, &FaultSchedule::new(), None, 0)
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0, None)
             .expect("exact failed assertion extracts");
 
         assert_eq!(bugs.len(), 1);
@@ -3435,7 +3643,7 @@ mod tests {
         let result = branch_result(report);
 
         assert!(explorer
-            .extract_bugs(&result, &FaultSchedule::new(), None, 0)
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0, None)
             .is_err());
         assert!(explorer.seen_dedup_keys.is_empty());
     }

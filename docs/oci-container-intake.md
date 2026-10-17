@@ -12,6 +12,11 @@ settings, and shared directory membership. The pure Rust lowerer repeats all
 bounds and emits the admitted process manifest from the guest multiprocess
 contract.
 
+`capability_admits` explicitly lists `shared_directories` and/or
+`instrumented_transport` when requested by the topology. Missing admits,
+duplicate admits, unsupported capabilities, and overlapping service/shared
+roots reject before lowering. These admits do not grant host authority.
+
 Supported source formats are:
 
 - `oci_layers`: a directory plus an ordered list of tar layers.
@@ -56,6 +61,25 @@ Run intake with:
 ```text
 oci-intake --topology topology.json --output guest-bundle
 ```
+
+Export only the admitted process manifest, without reading image roots:
+
+```text
+oci-intake --topology topology.json --manifest-output process-manifest.json
+```
+
+The manifest output uses no-replace creation. Recheck a retained materialized
+bundle with `oci-intake --topology topology.json --verify-bundle guest-bundle`.
+That path compares the retained plan, manifest and receipt and remeasures every
+service root. Directory roots must also match the independently admitted image
+identity. Archive and layer roots are compared with a bounded reconstruction
+from their verified source bytes, so those original sources must remain
+available. Changing both a root and its receipt cannot reauthorize the bytes.
+Receipt structure alone cannot establish retained root provenance.
+Exactly one output/verification mode is permitted.
+
+`contracts/oci-intake/export-manifest.ncl` supplies the deterministic Nickel
+lowering into the same process-manifest contract.
 
 ## Claim boundary
 

@@ -34,7 +34,7 @@ let Registry = {
 {
   schema_version = "1",
 
-  policy = "Nickel owns bounded human-authored run, simulator, campaign, finite-schedule, typed operator-command, KVM release-matrix, and receipt-review inputs. Rust owns config construction, external-input revalidation, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
+  policy = "Nickel owns bounded human-authored run, simulator, campaign, finite-schedule, typed operator-command and KVM release-matrix inputs and review-facing contracts. Rust owns config construction, external-input revalidation, progress, traces, checkpoints, outcomes, reports, runtime receipts, execution, and replay. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
 
   families = [
     {
@@ -185,11 +185,12 @@ let Registry = {
     },
     {
       id = "dogfood-receipt",
-      ownership = "nickel-authored",
-      owner = "contracts/evidence/dogfood-receipt.ncl",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-evidence receipt materialization",
       source_paths = [
         "contracts/evidence/registry.ncl",
         "contracts/evidence/dogfood-receipt.ncl",
+        "crates/chaoscontrol-evidence/src",
       ],
       artifact_paths = [
         "dogfood-results/*/receipt.md",
@@ -226,6 +227,7 @@ let Registry = {
         "crates/chaoscontrol-explore/src",
         "contracts/evidence/assertion-evidence-identity.ncl",
         "contracts/evidence/bug-report.ncl",
+        "contracts/evidence/marker-evidence-context.ncl",
       ],
       artifact_paths = [
         "dogfood-results/*/bug_*.json",
@@ -238,6 +240,10 @@ let Registry = {
       fixture_coverage = [
         "dogfood-results/raft-20260506-095025/bug_0.json",
         "contracts/evidence/fixtures/valid/bug-report.identity.valid.json",
+        "contracts/evidence/fixtures/valid/bug-report.marker-context.valid.ncl",
+        "contracts/evidence/fixtures/invalid/bug-report.marker-future.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/bug-report.marker-without-parent.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/bug-report.marker-unknown-field.invalid.ncl",
         "contracts/evidence/fixtures/invalid/bug-report.alias-substitution.invalid.ncl",
         "contracts/evidence/fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
         "contracts/evidence/fixtures/invalid/receipt.missing-deterministic-context.invalid.json",
@@ -355,7 +361,11 @@ let Registry = {
       owner = "chaoscontrol-explore replay_verdict",
       source_paths = [
         "crates/chaoscontrol-explore/src/replay_verdict.rs",
+        "crates/chaoscontrol-replay-evidence-core/src/dto.rs",
+        "crates/chaoscontrol-replay-evidence-core/src/validate.rs",
         "contracts/evidence/replay-verdict.ncl",
+        "contracts/evidence/marker-evidence-context.ncl",
+        "contracts/evidence/profile-primitives.ncl",
       ],
       artifact_paths = [
         "dogfood-results/*/replay-verdict.json",
@@ -372,6 +382,7 @@ let Registry = {
         "contracts/evidence/fixtures/invalid/replay-verdict.snapshot-not-reproduced.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.schema-v1-accepted.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.frontier-trace-promotion.invalid.json",
+        "crates/chaoscontrol-evidence/tests/replay_verdict_artifact.rs",
       ],
       freshness = "Rust replay verdict code is the semantic source of truth; Nickel/checkers validate public verdict shape and accepted-proof gates.",
       rationale = "Verdicts classify replay attempts without scraping raw logs, separating accepted snapshot-backed proof from schedule-only gaps and invalid evidence.",

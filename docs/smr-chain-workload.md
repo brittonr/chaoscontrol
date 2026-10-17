@@ -61,6 +61,15 @@ A selected fault is not an effect. An effect claim needs both `applied` and `obs
 
 Semantic replay compares operation identities, proposal outcomes, observations, safety prefixes, liveness facts, and the terminal result. The first mismatch denies replay acceptance.
 
+`retained::replay_retained` binds retained parent bytes, the admitted profile,
+ordered commands, their identities and the aggregate semantic replay-event
+bound before invoking the consumer callback. It recomputes semantic
+safety/liveness facts from the returned observations before comparison, reusing
+the history validator's complete prefix report rather than validating every
+prefix again. The shell must actually restore and execute that consumer;
+an expected-record echo is not execution evidence. These application-parent
+records are not a VMM snapshot-backed bug verdict.
+
 Bounded reduction can remove commands, clients, fault actions, and schedule actions. It keeps a candidate only when the supplied pure predicate preserves the same failure class. A reached attempt bound reports `bound-reached`; it does not claim a minimum reproducer.
 
 ## Evidence limits

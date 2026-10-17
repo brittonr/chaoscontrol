@@ -23,7 +23,8 @@ pub fn validate_restored_status(
     offered_features: u64,
     driver_features: u64,
 ) -> Result<(), TransportViolation> {
-    let status_without_failure = status & !VIRTIO_STATUS_FAILED;
+    let status_without_failure =
+        status & !(VIRTIO_STATUS_FAILED | VIRTIO_STATUS_DEVICE_NEEDS_RESET);
     let legal_status = matches!(
         status_without_failure,
         0 | VIRTIO_STATUS_ACKNOWLEDGE
@@ -31,16 +32,32 @@ pub fn validate_restored_status(
             | STATUS_FEATURES_ACCEPTED
             | STATUS_DRIVER_ACTIVE
     );
-    if status & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0
-        || status & !DRIVER_STATUS_BITS != 0
-        || !legal_status
-    {
+    if status & !(DRIVER_STATUS_BITS | VIRTIO_STATUS_DEVICE_NEEDS_RESET) != 0 || !legal_status {
         return Err(TransportViolation::StatusTransition {
             current: 0,
             next: status,
         });
     }
     validate_accepted_features(status, offered_features, driver_features)
+}
+
+/// Pure lifecycle eligibility, shared by MMIO notification and polling paths.
+pub fn queue_processing_allowed(status: u32, queue_ready: bool) -> bool {
+    status & VIRTIO_STATUS_DRIVER_OK != 0
+        && status & (VIRTIO_STATUS_DEVICE_NEEDS_RESET | VIRTIO_STATUS_FAILED) == 0
+        && queue_ready
+}
+
+pub fn validate_queue_activation(status: u32, value: u32) -> Result<(), TransportViolation> {
+    if value != 1 {
+        return Err(TransportViolation::ReadyValue { value });
+    }
+    if status & VIRTIO_STATUS_FEATURES_OK == 0
+        || status & (VIRTIO_STATUS_DEVICE_NEEDS_RESET | VIRTIO_STATUS_FAILED) != 0
+    {
+        return Err(TransportViolation::ReadyState);
+    }
+    Ok(())
 }
 
 pub fn validate_status_transition(

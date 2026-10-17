@@ -186,35 +186,53 @@ impl fmt::Display for BoundaryError {
 
 impl std::error::Error for BoundaryError {}
 
+/// Admit command shape and ordering before the shell can perform any effect.
+pub fn admit_command(
+    state: BoundaryState,
+    command: &ExecutionCommand,
+) -> Result<(), BoundaryError> {
+    if state.vm_count == 0 {
+        return Err(BoundaryError::NoVirtualMachines);
+    }
+    validate_sequence("command.sequence", state.next_sequence, command.sequence())?;
+    state
+        .next_sequence
+        .checked_add(1)
+        .ok_or(BoundaryError::SequenceExhausted)?;
+    validate_command(&state, command)
+}
+
 /// Validate one command/observation pair without changing external state.
 pub fn validate_exchange(
     state: BoundaryState,
     command: ExecutionCommand,
     observation: ExitObservation,
 ) -> Result<ValidatedExchange, BoundaryError> {
-    if state.vm_count == 0 {
-        return Err(BoundaryError::NoVirtualMachines);
-    }
-    validate_sequence("command.sequence", state.next_sequence, command.sequence())?;
+    let next_state = validate_exchange_facts(state, &command, &observation)?;
+    Ok(ValidatedExchange {
+        next_state,
+        command,
+        observation,
+    })
+}
+
+/// Validate borrowed DTO facts without copying their potentially large payloads.
+pub fn validate_exchange_facts(
+    state: BoundaryState,
+    command: &ExecutionCommand,
+    observation: &ExitObservation,
+) -> Result<BoundaryState, BoundaryError> {
+    admit_command(state, command)?;
     validate_sequence(
         "observation.sequence",
         state.next_sequence,
         observation.sequence(),
     )?;
-    validate_command(&state, &command)?;
-    validate_observation_shape(&state, &observation)?;
-    validate_pair(&command, &observation)?;
-    let next_sequence = state
-        .next_sequence
-        .checked_add(1)
-        .ok_or(BoundaryError::SequenceExhausted)?;
-    Ok(ValidatedExchange {
-        next_state: BoundaryState {
-            next_sequence,
-            vm_count: state.vm_count,
-        },
-        command,
-        observation,
+    validate_observation_shape(&state, observation)?;
+    validate_pair(command, observation)?;
+    Ok(BoundaryState {
+        next_sequence: state.next_sequence + 1,
+        vm_count: state.vm_count,
     })
 }
 

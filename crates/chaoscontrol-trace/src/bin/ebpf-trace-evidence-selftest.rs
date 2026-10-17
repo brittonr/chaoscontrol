@@ -3,21 +3,15 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use chaoscontrol_trace::collector::{CollectorBounds, EvidenceTargetConfig, TraceCollector};
+use chaoscontrol_trace::collector::TraceCollector;
 use chaoscontrol_trace::evidence::{
-    parse_tracepoint_layout, privileged_preflight, reconcile_accounting, source_conformance_guard,
-    AdmissionStatus, CaptureBounds, CompletenessStatus, PrivilegedPrerequisites,
-    COMPILED_RING_BUFFER_BYTES,
+    admit_capture_profile, parse_tracepoint_layout, privileged_preflight, reconcile_accounting,
+    source_conformance_guard, AdmissionStatus, AdmittedCaptureProfile, BuildIdentity,
+    CaptureProfile, CompletenessStatus, PrivilegedPrerequisites,
 };
 use clap::Parser;
 
 const SMOKE_DURATION: Duration = Duration::from_millis(250);
-const SMOKE_MAXIMUM_EVENTS: u64 = 4_096;
-const SMOKE_MAXIMUM_POLLS: u64 = 4_096;
-const SMOKE_MAXIMUM_ARTIFACT_BYTES: u64 = 4 * 1_024 * 1_024;
-const SMOKE_AGGREGATE_WINDOW: u64 = 256;
-const SMOKE_VMM_PROFILE_REF: &str =
-    "blake3:0000000000000000000000000000000000000000000000000000000000000000";
 const TRACEFS_ROOT: &str = "/sys/kernel/tracing/events/kvm";
 const BTF_PATH: &str = "/sys/kernel/btf/vmlinux";
 const KVM_PATH: &str = "/dev/kvm";
@@ -42,6 +36,10 @@ struct Args {
     #[arg(long)]
     privileged_smoke_pid: Option<u32>,
 
+    /// Exact capture profile; mandatory for privileged capture, never synthesized.
+    #[arg(long)]
+    capture_profile: Option<PathBuf>,
+
     /// Fail instead of reporting unsupported when privileged prerequisites are absent.
     #[arg(long)]
     require_privileged: bool,
@@ -60,7 +58,20 @@ fn run(args: Args) -> Result<()> {
         println!("ebpf trace evidence fixtures ok; privileged smoke not requested");
         return Ok(());
     };
-    let preflight = observe_privileged_preflight();
+    let profile_path = args.capture_profile.as_ref().ok_or_else(|| {
+        anyhow!("privileged capture requires --capture-profile with the exact admitted cohort")
+    })?;
+    let profile_file = std::fs::File::open(profile_path).context("open exact capture profile")?;
+    if profile_file.metadata()?.len() > 1_048_576 {
+        return Err(anyhow!("capture profile exceeds its byte bound"));
+    }
+    let profile: CaptureProfile =
+        serde_json::from_reader(profile_file).context("parse exact capture profile")?;
+    let profile = admit_capture_profile(&profile)?;
+    if profile.profile.target.tgid != pid {
+        return Err(anyhow!("requested TGID differs from capture profile"));
+    }
+    let preflight = observe_privileged_preflight(&profile);
     if preflight.status != AdmissionStatus::Accepted {
         println!(
             "ebpf privileged smoke unsupported: missing={:?}; remediation={:?}",
@@ -74,7 +85,7 @@ fn run(args: Args) -> Result<()> {
         }
         return Ok(());
     }
-    run_privileged_smoke(pid)
+    run_privileged_smoke(profile)
 }
 
 fn run_static_fixture_checks() -> Result<()> {
@@ -98,7 +109,9 @@ fn run_static_fixture_checks() -> Result<()> {
     Ok(())
 }
 
-fn observe_privileged_preflight() -> chaoscontrol_trace::evidence::PrivilegedPreflight {
+fn observe_privileged_preflight(
+    profile: &AdmittedCaptureProfile,
+) -> chaoscontrol_trace::evidence::PrivilegedPreflight {
     let tracepoints = REQUIRED_TRACEPOINTS
         .iter()
         .all(|name| tracepoint_format_path(name).is_file());
@@ -107,11 +120,13 @@ fn observe_privileged_preflight() -> chaoscontrol_trace::evidence::PrivilegedPre
         kvm: Path::new(KVM_PATH).exists(),
         btf: Path::new(BTF_PATH).is_file(),
         tracepoints,
-        pinned_loader: true,
+        pinned_loader: BuildIdentity::compiled(profile.profile.build.compiled_layouts.clone())
+            == profile.profile.build
+            && !profile.profile.build.fallback_types_used,
     })
 }
 
-fn run_privileged_smoke(pid: u32) -> Result<()> {
+fn run_privileged_smoke(profile: AdmittedCaptureProfile) -> Result<()> {
     for tracepoint in REQUIRED_TRACEPOINTS {
         let path = tracepoint_format_path(tracepoint);
         let format = std::fs::read_to_string(&path)
@@ -119,36 +134,20 @@ fn run_privileged_smoke(pid: u32) -> Result<()> {
         parse_tracepoint_layout(&format!("kvm:{tracepoint}"), &format)?;
     }
 
-    let mut collector = TraceCollector::with_evidence_target(
-        pid,
-        CollectorBounds {
-            maximum_events: SMOKE_MAXIMUM_EVENTS,
-            maximum_polls: SMOKE_MAXIMUM_POLLS,
-        },
-        EvidenceTargetConfig {
-            run_id: "ebpf-attachment-smoke".to_string(),
-            vmm_profile_ref: SMOKE_VMM_PROFILE_REF.to_string(),
-        },
-    )
-    .context("open stable evidence target")?;
+    let pid = profile.profile.target.tgid;
+    let bounds = profile.profile.bounds.clone();
+    let mut collector = TraceCollector::for_admitted_profile(profile)
+        .context("admit exact runtime, loader, stable target, and producer affinity")?;
     collector.start().context("start privileged collector")?;
     thread::sleep(SMOKE_DURATION);
     collector.stop().context("stop privileged collector")?;
 
-    let bounds = CaptureBounds {
-        maximum_ring_bytes: COMPILED_RING_BUFFER_BYTES,
-        maximum_queue_events: SMOKE_MAXIMUM_EVENTS,
-        maximum_polls: SMOKE_MAXIMUM_POLLS,
-        maximum_events: SMOKE_MAXIMUM_EVENTS,
-        maximum_artifact_bytes: SMOKE_MAXIMUM_ARTIFACT_BYTES,
-        aggregate_window_events: SMOKE_AGGREGATE_WINDOW,
-    };
     let accounting = reconcile_accounting(
         &collector.producer_accounting(),
         &collector.userspace_accounting(),
         &bounds,
     )?;
-    if accounting.status != CompletenessStatus::Complete {
+    if accounting.status != CompletenessStatus::Complete || accounting.accepted_records == 0 {
         return Err(anyhow!(
             "privileged smoke produced incomplete accounting: {:?}",
             accounting.blockers

@@ -14,7 +14,7 @@ use crate::controller_core::{
 };
 use crate::scheduler::core::ScheduleTrace;
 use crate::scheduler::ScheduleVariant;
-use crate::sim_adapter::KvmVcpuExecutor;
+use crate::sim_adapter::KvmExecutor;
 use crate::snapshot::VmSnapshot;
 use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::faults::Fault;
@@ -38,7 +38,7 @@ pub use chaoscontrol_sim_core::network::{
 };
 use chaoscontrol_sim_core::{
     complete_round, plan_round, simulation_config_identity, CommandExecutor, CoreVmStatus,
-    ExitObservation, RoundInput, RoundObservation, SimulationCoreSnapshot,
+    ExecutionCommand, ExitObservation, RoundInput, RoundObservation, SimulationCoreSnapshot,
     CORE_SNAPSHOT_SCHEMA_VERSION,
 };
 use log::{debug, info, warn};
@@ -316,6 +316,181 @@ impl SimulationController {
     /// Return the permanent failed-round latch for diagnostics.
     pub fn round_poison(&self) -> Option<&ControllerRoundPoison> {
         self.round_poison.as_ref()
+    }
+
+    pub(crate) fn poison_execution_exchange(&mut self, detail: String) -> VmError {
+        let error = VmError::Snapshot {
+            message: format!("execution exchange: {detail}"),
+        };
+        self.latch_round_failure_at(next_operation(self.tick), self.tick, &error);
+        self.controller_round_poison_error()
+            .expect("latched execution failure")
+    }
+
+    /// All boundary effects are admitted before mutation and use the same owners
+    /// as ordinary rounds. A failed effect cannot leave the controller runnable.
+    pub(crate) fn execute_core_command(
+        &mut self,
+        command: &ExecutionCommand,
+    ) -> Result<(ExitObservation, Option<SimulationSnapshot>), VmError> {
+        self.ensure_round_can_start()?;
+        let starting_tick = self.tick;
+        let mut mutation_started = false;
+        let result = (|| {
+            let sequence = command.sequence();
+            let observation = match command {
+                ExecutionCommand::RunVcpu {
+                    vm_index,
+                    vcpu_index,
+                    exit_budget,
+                    ..
+                } => {
+                    if *vcpu_index != 0 || self.vms[*vm_index].status != VmStatus::Running {
+                        return Err(VmError::Snapshot {
+                            message: "RunVcpu requires a running VM and aggregate vCPU index 0"
+                                .to_string(),
+                        });
+                    }
+                    mutation_started = true;
+                    let (exits, halted) = self.vms[*vm_index].vm.run_bounded(*exit_budget)?;
+                    ExitObservation::VcpuCompleted {
+                        sequence,
+                        vm_index: *vm_index,
+                        exits,
+                        halted,
+                    }
+                }
+                ExecutionCommand::WriteRegisters {
+                    vm_index,
+                    register_bytes,
+                    ..
+                } => {
+                    let registers = crate::snapshot::decode_execution_registers(register_bytes)
+                        .map_err(|message| VmError::Snapshot { message })?;
+                    mutation_started = true;
+                    self.vms[*vm_index]
+                        .vm
+                        .write_execution_registers(&registers)?;
+                    ExitObservation::RegistersWritten {
+                        sequence,
+                        vm_index: *vm_index,
+                    }
+                }
+                ExecutionCommand::DeliverInterrupt {
+                    vm_index, vector, ..
+                } => {
+                    // This x86 in-kernel IRQ-chip profile interprets the DTO's
+                    // interrupt number as a GSI, not a userspace LAPIC vector.
+                    if *vector > chaoscontrol_fault::outcomes::MAX_STANDARD_IRQ_LINE {
+                        return Err(VmError::Snapshot {
+                            message: "command.vector exceeds x86 GSI profile".to_string(),
+                        });
+                    }
+                    mutation_started = true;
+                    self.vms[*vm_index].vm.inject_interrupt(*vector)?;
+                    ExitObservation::InterruptDelivered {
+                        sequence,
+                        vm_index: *vm_index,
+                        vector: *vector,
+                    }
+                }
+                ExecutionCommand::DeliverNetwork {
+                    from_vm,
+                    to_vm,
+                    packet,
+                    ..
+                } => {
+                    if self.vms[*to_vm].vm.net_mac().is_none() {
+                        return Err(VmError::Snapshot {
+                            message: "command.to_vm has no network backend".to_string(),
+                        });
+                    }
+                    if packet.len() as u64
+                        > crate::devices::virtio_types::DEFAULT_MAX_NET_FRAME_BYTES
+                    {
+                        return Err(VmError::Snapshot {
+                            message: "command.packet exceeds network frame policy".to_string(),
+                        });
+                    }
+                    mutation_started = true;
+                    self.vms[*to_vm].vm.inject_net_rx(packet.clone());
+                    ExitObservation::NetworkDelivered {
+                        sequence,
+                        from_vm: *from_vm,
+                        to_vm: *to_vm,
+                        bytes: packet.len(),
+                    }
+                }
+                ExecutionCommand::ApplyFault {
+                    target_vm,
+                    fault_ref,
+                    ..
+                } => {
+                    let identity =
+                        blake3::Hash::from_hex(fault_ref).map_err(|_| VmError::Snapshot {
+                            message:
+                                "command.fault_ref must name a selected fault attempt identity"
+                                    .to_string(),
+                        })?;
+                    let attempt_id = FaultAttemptId(*identity.as_bytes());
+                    let state = self
+                        .fault_engine
+                        .fault_outcomes()
+                        .attempts
+                        .get(&attempt_id)
+                        .ok_or_else(|| VmError::Snapshot {
+                            message: "command.fault_ref is not selected".to_string(),
+                        })?;
+                    if state.stage != FaultAuthoritativeStage::Selected
+                        || state.attempt.fault.target() != Some(*target_vm)
+                    {
+                        return Err(VmError::Snapshot {
+                            message: "command.fault_ref stage or target_vm mismatch".to_string(),
+                        });
+                    }
+                    let attempt = state.attempt.clone();
+                    mutation_started = true;
+                    self.handle_fault_attempt(&attempt)?;
+                    let applied = &self.fault_engine.fault_outcomes().attempts[&attempt_id];
+                    if !matches!(
+                        applied.stage,
+                        FaultAuthoritativeStage::Applied | FaultAuthoritativeStage::Observed
+                    ) {
+                        return Err(VmError::Snapshot {
+                            message: format!(
+                                "command.fault_ref did not apply: {:?}",
+                                applied.stage
+                            ),
+                        });
+                    }
+                    ExitObservation::FaultApplied {
+                        sequence,
+                        target_vm: *target_vm,
+                        fault_ref: fault_ref.clone(),
+                    }
+                }
+                ExecutionCommand::CaptureSnapshot {
+                    snapshot_sequence, ..
+                } => {
+                    mutation_started = true;
+                    let snapshot = self.snapshot_all()?;
+                    return Ok((
+                        ExitObservation::SnapshotCaptured {
+                            sequence,
+                            snapshot_sequence: *snapshot_sequence,
+                        },
+                        Some(snapshot),
+                    ));
+                }
+            };
+            Ok((observation, None))
+        })();
+        self.finish_round_mutation(
+            next_operation(starting_tick),
+            starting_tick,
+            mutation_started,
+            result,
+        )
     }
 
     /// Create a new simulation with N VMs.
@@ -684,7 +859,7 @@ impl SimulationController {
                                 ),
                             })?;
                         let observation = {
-                            let mut executor = KvmVcpuExecutor::new(i, &mut self.vms[i].vm);
+                            let mut executor = KvmExecutor::new(self, command.sequence());
                             executor.execute(command)?
                         };
                         let ExitObservation::VcpuCompleted { exits, halted, .. } = observation
@@ -2696,6 +2871,18 @@ impl SimulationController {
         Ok(())
     }
 
+    /// Compare retained variant evidence to each currently executing VM policy.
+    pub fn matches_schedule_variant(&self, variant: &ScheduleVariant) -> Result<bool, VmError> {
+        self.ensure_controller_healthy()?;
+        Ok(self.vms.iter().enumerate().all(|(index, slot)| {
+            slot.vm.scheduler().matches_variant(&ScheduleVariant {
+                scheduler_seed: variant.scheduler_seed.wrapping_add(index as u64),
+                strategy_override: variant.strategy_override,
+                quantum_override: variant.quantum_override,
+            })
+        }))
+    }
+
     /// Collect the schedule fingerprint from all VMs.
     ///
     /// Returns a combined fingerprint by XOR-ing each VM's per-vCPU
@@ -2966,6 +3153,175 @@ mod tests {
         };
         controller.fault_engine.begin_run();
         controller
+    }
+
+    #[test]
+    fn executor_contract_applies_real_register_irq_network_fault_snapshot_and_run_effects() {
+        use crate::snapshot::{SnapshotMemory, VirtioBackendSnapshot};
+        const CODE_ADDRESS: usize = 0x200;
+        const CODE: [u8; 5] = [0x40, 0xe6, 0x10, 0xeb, 0xfb]; // inc ax; out 0x10, al; jmp 0x200
+        const IRQ_MASK: u8 = 1 << 4;
+        let mut controller = adapter_test_controller();
+        controller.init_thread_timers().unwrap();
+        let mut initial = controller.vms[0].vm.snapshot().unwrap();
+        initial.vcpu_snapshots[0].sregs.cs.base = 0;
+        initial.vcpu_snapshots[0].sregs.cs.selector = 0;
+        let SnapshotMemory::Full(memory) = &mut initial.memory else {
+            unreachable!()
+        };
+        // An in-kernel LAPIC can consume HLT without a userspace exit. Use the
+        // guest's output instruction as the deterministic one-exit completion.
+        memory[CODE_ADDRESS..CODE_ADDRESS + CODE.len()].copy_from_slice(&CODE);
+        // SAFETY: snapshot capture selects the PIC member for pic_master.
+        assert_eq!(unsafe { initial.pic_master.chip.pic.irr } & IRQ_MASK, 0);
+        controller.vms[0].vm.restore(&initial).unwrap();
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                0,
+                Fault::NetworkLatency {
+                    target: 0,
+                    latency_ns: chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK,
+                },
+            )
+            .build();
+        controller.fault_engine.set_schedule(schedule).unwrap();
+        controller.fault_engine.force_setup_complete();
+        let attempt = controller
+            .fault_engine
+            .poll_fault_attempts(0)
+            .unwrap()
+            .remove(0);
+        let registers = kvm_bindings::kvm_regs {
+            rip: CODE_ADDRESS as u64,
+            rax: 41,
+            rflags: 2,
+            ..Default::default()
+        };
+        // SAFETY: kvm_regs contains only initialized integer fields.
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                (&registers as *const kvm_bindings::kvm_regs).cast::<u8>(),
+                std::mem::size_of_val(&registers),
+            )
+        }
+        .to_vec();
+        let mut executor = KvmExecutor::new(&mut controller, 0);
+        let commands = [
+            ExecutionCommand::WriteRegisters {
+                sequence: 0,
+                vm_index: 0,
+                register_bytes: bytes,
+            },
+            ExecutionCommand::DeliverInterrupt {
+                sequence: 1,
+                vm_index: 0,
+                vector: 4,
+            },
+            ExecutionCommand::DeliverNetwork {
+                sequence: 2,
+                from_vm: 0,
+                to_vm: 0,
+                packet: vec![0x5a, 0xa5],
+            },
+            ExecutionCommand::ApplyFault {
+                sequence: 3,
+                target_vm: 0,
+                fault_ref: attempt.id.to_string(),
+            },
+            ExecutionCommand::RunVcpu {
+                sequence: 4,
+                vm_index: 0,
+                vcpu_index: 0,
+                exit_budget: 1,
+            },
+            ExecutionCommand::CaptureSnapshot {
+                sequence: 5,
+                snapshot_sequence: 7,
+            },
+        ];
+        for command in &commands {
+            let observation = executor.execute(command).unwrap();
+            if matches!(command, ExecutionCommand::RunVcpu { .. }) {
+                assert_eq!(
+                    observation,
+                    ExitObservation::VcpuCompleted {
+                        sequence: 4,
+                        vm_index: 0,
+                        exits: 1,
+                        halted: false,
+                    }
+                );
+            }
+        }
+        let (identity, captured) = executor.take_snapshot().unwrap();
+        assert_eq!(identity, 7);
+        assert_eq!(captured.vm_snapshots[0].0.vcpu_snapshots[0].regs.rax, 42);
+        assert_eq!(
+            captured.vm_snapshots[0].0.vcpu_snapshots[0].regs.rip,
+            (CODE_ADDRESS + 3) as u64
+        );
+        assert_eq!(captured.vm_snapshots[0].0.exit_count, 1);
+        assert_eq!(captured.vm_snapshots[0].0.io_exit_count, 1);
+        // RFLAGS.IF is clear, so the delivered edge remains pending in the
+        // actual KVM PIC rather than requiring an unrelated guest IRQ handler.
+        // SAFETY: snapshot capture selects the PIC member for pic_master.
+        assert_eq!(
+            unsafe { captured.vm_snapshots[0].0.pic_master.chip.pic.irr } & IRQ_MASK,
+            IRQ_MASK
+        );
+        let backend = captured.vm_snapshots[0]
+            .0
+            .virtio_snapshots
+            .iter()
+            .find_map(|device| {
+                if let VirtioBackendSnapshot::Net(net) = &device.backend {
+                    Some(net)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            crate::devices::net::DeterministicNet::restore(backend).pop_rx(),
+            Some(vec![0x5a, 0xa5])
+        );
+        // Re-entry must not replay an already accepted command, even when its effect is harmless.
+        assert!(executor
+            .execute(&commands[1])
+            .unwrap_err()
+            .to_string()
+            .contains("command.sequence"));
+        assert_eq!(executor.state().next_sequence, 6);
+        drop(executor);
+        assert_eq!(controller.network.latency[0], 1);
+        assert_eq!(controller.fault_outcomes().counters.applied, 1);
+        assert!(controller.round_poison().is_none());
+    }
+
+    #[test]
+    fn executor_rejects_malformed_payload_and_unknown_fault_before_mutation() {
+        let mut controller = adapter_test_controller();
+        let mut executor = KvmExecutor::new(&mut controller, 0);
+        let error = executor
+            .execute(&ExecutionCommand::WriteRegisters {
+                sequence: 0,
+                vm_index: 0,
+                register_bytes: vec![0; 1],
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("command.register_bytes"));
+        let error = executor
+            .execute(&ExecutionCommand::ApplyFault {
+                sequence: 0,
+                target_vm: 0,
+                fault_ref: "00".repeat(32),
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("fault_ref"));
+        assert_eq!(executor.state().next_sequence, 0);
+        drop(executor);
+        assert!(controller.round_poison().is_none());
+        assert_eq!(controller.fault_outcomes().counters.applied, 0);
     }
 
     fn deterministic_smp_test_controller() -> SimulationController {

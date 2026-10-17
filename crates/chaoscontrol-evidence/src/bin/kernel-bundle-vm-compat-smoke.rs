@@ -270,7 +270,10 @@ fn execute_kvm_run(
     }
     let config = VmConfig {
         memory_size: memory_mib.saturating_mul(BYTES_PER_MIB),
-        extra_cmdline: Some(format!("chaos_kernel_bundle_case={}", scenario.as_str())),
+        extra_cmdline: Some(format!(
+            "chaos_kernel_bundle_case={} chaos_kernel_bundle_profile={profile_id}",
+            scenario.as_str()
+        )),
         ..VmConfig::default()
     };
     let mut vm = match DeterministicVm::new(config) {

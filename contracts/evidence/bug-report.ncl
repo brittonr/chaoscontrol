@@ -18,11 +18,13 @@ let FallbackScope = {
   assertion_fingerprint | Fingerprint,
 } in
 let AssertionEvidenceIdentity = import "assertion-evidence-identity.ncl" in
+let MarkerContext = import "marker-evidence-context.ncl" in
 let BugReportShape = {
   bug_id | Number,
   assertion_id | Number,
   assertion_identity | AssertionEvidenceIdentity | optional,
   fallback_scope | FallbackScope | optional,
+  marker_context | MarkerContext | optional,
   assertion_location | NonEmptyString,
   schedule | FaultSchedule,
   tick | Number,
@@ -50,11 +52,17 @@ let FallbackBinding = fun value =>
   else
     !has_scope
 in
+let MarkerBinding = fun value =>
+  if !std.record.has_field "marker_context" value then true
+  else value.replay_parent_depth > 0
+    && value.replay_parent_snapshot_ref != null
+    && value.marker_context.observed_tick <= value.tick
+in
 std.contract.custom (fun label value =>
   std.contract.check BugReportShape label value
   |> match {
     'Ok checked =>
-      if AliasBinding checked && FallbackBinding checked
+      if AliasBinding checked && FallbackBinding checked && MarkerBinding checked
       then 'Ok checked
       else 'Error {},
     'Error error => 'Error error,

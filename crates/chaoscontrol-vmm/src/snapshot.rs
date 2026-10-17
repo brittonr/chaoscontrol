@@ -146,6 +146,23 @@ impl SnapshotMemory {
         }
     }
 
+    /// Read retained bytes without materializing an image or touching guest memory.
+    /// Overlay reads may cross page boundaries; dirty bytes take precedence over base bytes.
+    pub fn read_u16(&self, address: u64) -> Option<u16> {
+        let start = usize::try_from(address).ok()?;
+        let end = start.checked_add(std::mem::size_of::<u16>())?;
+        if end > self.memory_size() {
+            return None;
+        }
+        let byte = |offset: usize| match self {
+            Self::Full(data) => data[offset],
+            Self::Overlay { base, dirty_pages } => dirty_pages
+                .get(&(offset / PAGE_SIZE))
+                .map_or(base[offset], |page| page[offset % PAGE_SIZE]),
+        };
+        Some(u16::from_le_bytes([byte(start), byte(start + 1)]))
+    }
+
     /// Materialize the snapshot into a contiguous byte vector.
     ///
     /// For `Full`, returns a clone. For `Overlay`, applies dirty pages
@@ -268,7 +285,7 @@ impl SnapshotMemory {
     }
 }
 
-pub const SNAPSHOT_STATE_SCHEMA_VERSION: u32 = 2;
+pub const SNAPSHOT_STATE_SCHEMA_VERSION: u32 = 3;
 pub const SNAPSHOT_PROFILE_EXACT_X86_KVM_V1: &str = "exact-x86-kvm-v1";
 
 const VIRTIO_NET_DEVICE_ID: u32 = 1;
@@ -488,6 +505,11 @@ pub struct VcpuSnapshot {
     /// Critical for SMP: without this, KVM doesn't know whether an AP
     /// should be running or waiting for SIPI after restore.
     pub mp_state: kvm_mp_state,
+}
+
+/// The x86 shell's register command payload is exactly one native KVM register image.
+pub(crate) fn decode_execution_registers(bytes: &[u8]) -> Result<kvm_regs, String> {
+    pod_from_bytes(bytes, "command.register_bytes")
 }
 
 fn pod_to_bytes<T>(value: &T) -> Vec<u8> {
@@ -846,6 +868,96 @@ impl VcpuSnapshot {
     pub fn validate(&self) -> Result<(), SnapshotError> {
         let _: kvm_xsave =
             pod_from_bytes(&self.xsave, "xsave").map_err(|_| XsaveImageSnafu.build())?;
+        // x86 MP states: runnable, uninitialized, INIT received, halted,
+        // SIPI received, and AP reset hold. Other architectures' states are invalid.
+        if !matches!(self.mp_state.mp_state, 0..=4 | 9) {
+            return ArchitectureFieldSnafu { field: "mp_state" }.fail();
+        }
+        for segment in [
+            &self.sregs.cs,
+            &self.sregs.ds,
+            &self.sregs.es,
+            &self.sregs.fs,
+            &self.sregs.gs,
+            &self.sregs.ss,
+            &self.sregs.tr,
+            &self.sregs.ldt,
+        ] {
+            if segment.type_ > 15
+                || segment.dpl > 3
+                || [
+                    segment.present,
+                    segment.db,
+                    segment.s,
+                    segment.l,
+                    segment.g,
+                    segment.avl,
+                    segment.unusable,
+                ]
+                .iter()
+                .any(|value| *value > 1)
+            {
+                return ArchitectureFieldSnafu {
+                    field: "sregs.segment",
+                }
+                .fail();
+            }
+        }
+        if self.xcrs.nr_xcrs as usize > self.xcrs.xcrs.len() || self.xcrs.flags != 0 {
+            return ArchitectureFieldSnafu {
+                field: "xcrs.inventory",
+            }
+            .fail();
+        }
+        let mut previous_xcr = None;
+        for xcr in &self.xcrs.xcrs[..self.xcrs.nr_xcrs as usize] {
+            if xcr.xcr != 0
+                || xcr.reserved != 0
+                || previous_xcr == Some(xcr.xcr)
+                || xcr.value & 1 == 0
+                || (xcr.value & 4 != 0 && xcr.value & 2 == 0)
+            {
+                return ArchitectureFieldSnafu { field: "xcrs.xcr0" }.fail();
+            }
+            previous_xcr = Some(xcr.xcr);
+        }
+        // ABI validity bits: NMI pending, SIPI vector, interrupt shadow,
+        // SMM, exception payload, and triple fault. No unknown flag is admitted.
+        const EVENT_VALID_FLAGS: u32 = kvm_bindings::KVM_VCPUEVENT_VALID_NMI_PENDING
+            | kvm_bindings::KVM_VCPUEVENT_VALID_SIPI_VECTOR
+            | kvm_bindings::KVM_VCPUEVENT_VALID_SHADOW
+            | kvm_bindings::KVM_VCPUEVENT_VALID_SMM
+            | kvm_bindings::KVM_VCPUEVENT_VALID_PAYLOAD
+            | kvm_bindings::KVM_VCPUEVENT_VALID_TRIPLE_FAULT;
+        let events = &self.events;
+        if [
+            events.exception.injected,
+            events.exception.has_error_code,
+            events.exception.pending,
+            events.interrupt.injected,
+            events.interrupt.soft,
+            events.nmi.injected,
+            events.nmi.pending,
+            events.nmi.masked,
+            events.smi.smm,
+            events.smi.pending,
+            events.smi.smm_inside_nmi,
+            events.smi.latched_init,
+            events.exception_has_payload,
+            events.triple_fault.pending,
+        ]
+        .iter()
+        .any(|value| *value > 1)
+            || events.exception.nr > 31
+            || events.interrupt.shadow & !3 != 0
+            || events.sipi_vector > 255
+            || events.flags & !EVENT_VALID_FLAGS != 0
+        {
+            return ArchitectureFieldSnafu {
+                field: "vcpu_events",
+            }
+            .fail();
+        }
         if self.msrs.is_empty()
             || self
                 .msrs
@@ -1190,6 +1302,8 @@ pub enum SnapshotError {
     MsrBuffer,
     #[snafu(display("Required MSR inventory is incomplete or reordered"))]
     MsrInventory,
+    #[snafu(display("Invalid architecture field: {field}"))]
+    ArchitectureField { field: &'static str },
     #[snafu(display("Required MSR {phase} count mismatch: expected {expected}, got {actual}"))]
     MsrCount {
         phase: &'static str,
@@ -1542,12 +1656,78 @@ mod tests {
 
     #[test]
     fn vcpu_snapshot_serialization_round_trips_and_rejects_truncation() {
-        let snapshot = complete_vcpu_snapshot();
+        let mut snapshot = complete_vcpu_snapshot();
+        snapshot.regs.rax = 42;
+        snapshot.regs.rip = 0x200;
+        snapshot.regs.rflags = 2;
+        snapshot.sregs.cs.base = 0x1000;
+        snapshot.sregs.cs.limit = 0xffff;
+        snapshot.sregs.cs.present = 1;
+        snapshot.fpu.mxcsr = 0x1f80;
+        snapshot.fpu.xmm[3] = [0xa5; 16];
+        snapshot.debug_regs.dr7 = 0x400;
+        snapshot.lapic.regs[0x80] = 0x10;
+        snapshot.xcrs.nr_xcrs = 1;
+        snapshot.xcrs.xcrs[0].value = 3;
+        snapshot.xsave[512] = 3;
+        snapshot.events.flags = kvm_bindings::KVM_VCPUEVENT_VALID_NMI_PENDING;
+        snapshot.events.nmi.pending = 1;
+        snapshot.msrs[0].data = 42;
+        snapshot.mp_state.mp_state = kvm_bindings::KVM_MP_STATE_HALTED;
+        snapshot.validate().unwrap();
         let mut encoded = serde_json::to_vec(&snapshot).unwrap();
         let decoded: VcpuSnapshot = serde_json::from_slice(&encoded).unwrap();
-        assert_eq!(decoded.msrs, snapshot.msrs);
+        assert_eq!(
+            serde_json::to_value(&decoded).unwrap(),
+            serde_json::to_value(&snapshot).unwrap()
+        );
         encoded.pop();
         assert!(serde_json::from_slice::<VcpuSnapshot>(&encoded).is_err());
+    }
+
+    #[test]
+    fn architecture_enum_range_inventory_rejects_invalid_facts() {
+        let cases: &[fn(&mut VcpuSnapshot)] = &[
+            |state| state.mp_state.mp_state = u32::MAX,
+            |state| state.sregs.cs.type_ = 16,
+            |state| state.sregs.ds.dpl = 4,
+            |state| state.sregs.ss.present = 2,
+            |state| state.xcrs.nr_xcrs = 17,
+            |state| state.xcrs.flags = 1,
+            |state| {
+                state.xcrs.nr_xcrs = 1;
+                state.xcrs.xcrs[0].xcr = 1;
+            },
+            |state| {
+                state.xcrs.nr_xcrs = 1;
+                state.xcrs.xcrs[0].value = 5;
+            },
+            |state| state.events.flags = 1 << 31,
+            |state| state.events.nmi.pending = 2,
+            |state| state.events.exception.nr = 32,
+            |state| state.events.interrupt.shadow = 4,
+            |state| state.events.sipi_vector = 256,
+            |state| state.events.triple_fault.pending = 2,
+        ];
+        for mutate in cases {
+            let mut state = complete_vcpu_snapshot();
+            mutate(&mut state);
+            assert!(matches!(
+                state.validate(),
+                Err(SnapshotError::ArchitectureField { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn retained_snapshot_reads_cross_dirty_page_boundaries_without_materialization() {
+        let base = Arc::new(vec![0x11; PAGE_SIZE * 2]);
+        let mut dirty_pages = BTreeMap::new();
+        dirty_pages.insert(1, Box::new([0x22; PAGE_SIZE]));
+        let memory = SnapshotMemory::Overlay { base, dirty_pages };
+        assert_eq!(memory.read_u16((PAGE_SIZE - 1) as u64), Some(0x2211));
+        assert_eq!(memory.read_u16((PAGE_SIZE * 2 - 1) as u64), None);
+        assert_eq!(memory.read_u16(u64::MAX), None);
     }
 
     #[test]

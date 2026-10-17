@@ -125,6 +125,63 @@ fn entropy_allocation_failure_preserves_prng_and_queue() {
 }
 
 #[test]
+fn invalid_or_excessive_writable_entropy_range_preserves_exact_retry_stream() {
+    let excessive = u32::try_from(VirtioLimits::default().max_entropy_transfer_bytes + 1).unwrap();
+    for (address, length) in [
+        (MEMORY_BYTES as u64, ENTROPY_BYTES),
+        (DATA_ADDRESS, excessive),
+    ] {
+        let mem = memory();
+        let mut initial = DeterministicEntropy::new(TEST_SEED);
+        initial.fill_bytes(&mut [0u8; 13]); // Nonzero, non-block-aligned pre-request state.
+        let mut expected_stream = [0u8; ENTROPY_BYTES as usize];
+        initial.clone().fill_bytes(&mut expected_stream);
+        let mut device = VirtioMmioDevice::new(
+            DEVICE_BASE,
+            DEVICE_IRQ,
+            Box::new(VirtioEntropy::new(initial)),
+        );
+        configure(&mut device, &mem, 0);
+        write_descriptor(
+            &mem,
+            0,
+            VirtqDesc {
+                addr: address,
+                len: length,
+                flags: VIRTQ_DESC_F_WRITE,
+                next: 0,
+            },
+        );
+        publish_head(&mem, 0, FIRST_AVAILABLE_INDEX);
+        assert!(!notify(&mut device, &mem, 0));
+        assert!(matches!(
+            device.live_state().failure,
+            Some(VirtioFailure::Descriptor(_) | VirtioFailure::Request(_))
+        ));
+        assert_eq!(used_index(&mem), 0);
+        assert_eq!(device.live_state().queues[0].last_avail_idx, 0);
+        assert!(!device.interrupt_pending());
+        register(
+            &mut device,
+            &mem,
+            chaoscontrol_vmm::devices::virtio_mmio::VIRTIO_MMIO_STATUS,
+            0,
+        )
+        .unwrap();
+        configure(&mut device, &mem, 0);
+        entropy_descriptor(&mem, VIRTQ_DESC_F_WRITE);
+        assert!(notify(&mut device, &mem, 0));
+        let mut actual_stream = [0u8; ENTROPY_BYTES as usize];
+        mem.read_slice(&mut actual_stream, GuestAddress(DATA_ADDRESS))
+            .unwrap();
+        assert_eq!(
+            actual_stream, expected_stream,
+            "invalid request cannot consume entropy"
+        );
+    }
+}
+
+#[test]
 fn valid_net_tx_excludes_virtio_header_and_commits_once() {
     let mem = memory();
     let net = VirtioNet::new(DeterministicNet::new(TEST_MAC));

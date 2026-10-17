@@ -34,13 +34,11 @@ const REQUIRED_NON_CLAIMS: &[&str] = &[
     "not eBPF safety proof",
     "not build correctness proof",
     "not physical readiness",
+    "not snapshot replay",
+    "not Onix lifecycle replay",
+    "not security proof",
+    "not release eligibility",
 ];
-#[cfg(test)]
-const EXPECTED_PRIVATE_KFUNC_PROFILE_ID: &str =
-    "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589";
-#[cfg(test)]
-const EXPECTED_PRIVATE_KFUNC_RECEIPT_ID: &str =
-    "fb37d05d6ee328b05d8f1bdc80ae0d622dcdef590f0dbf7e2721bb3993e76119";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct KernelBundleSmokeProfile {
@@ -225,6 +223,9 @@ pub struct KernelBundleKvmRailReceipt {
     pub campaign_id: String,
     pub status: String,
     pub profile_identity_blake3: String,
+    pub onix: OnixKernelBundleRefs,
+    pub mantle: MantleMaterializationRefs,
+    pub upstream_runner: SmokeRunnerEvidence,
     pub runner: String,
     pub execution_mode: String,
     pub scenario: KernelBundleKvmScenario,
@@ -236,6 +237,8 @@ pub struct KernelBundleKvmRailReceipt {
     pub loader_available: bool,
     pub negative_fixture_matched: bool,
     pub failure_class: Option<String>,
+    pub max_exits: u64,
+    pub exits_executed: u64,
     pub terminal_classes: BTreeMap<String, String>,
     pub observations: Vec<SmokeObservation>,
     pub issues: Vec<String>,
@@ -365,14 +368,47 @@ pub fn kernel_bundle_kvm_rail_receipt(
     run: &KernelBundleKvmRun,
 ) -> EvidenceResult<KernelBundleKvmRailReceipt> {
     validate_kernel_bundle_smoke_profile(profile)?;
+    if !safe_evidence_token(&run.runner)
+        || !safe_evidence_token(&run.execution_mode)
+        || !lower_hex(&run.profile_identity_blake3)
+        || [
+            &run.expected_kernel_image_blake3,
+            &run.expected_initrd_image_blake3,
+            &run.kernel_image_blake3,
+            &run.initrd_image_blake3,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|digest| !lower_hex(digest))
+        || run.observations.iter().any(|observation| {
+            !safe_evidence_token(&observation.case_id)
+                || !safe_evidence_token(&observation.class)
+                || !safe_evidence_token(&observation.detail)
+        })
+    {
+        return Err(EvidenceError::new(
+            "kernel evidence contains non-public or unbounded tokens",
+        ));
+    }
+    let failure_class = run.failure_class.as_ref().map(|failure| {
+        failure
+            .split(':')
+            .next()
+            .expect("split yields a field")
+            .to_string()
+    });
+    if failure_class
+        .as_ref()
+        .is_some_and(|class| !safe_evidence_token(class))
+    {
+        return Err(EvidenceError::new(
+            "kernel failure class is not a bounded public token",
+        ));
+    }
     let profile_identity_blake3 = kernel_bundle_smoke_profile_identity(profile)?;
     let mut issues = kvm_run_issues(profile, run, &profile_identity_blake3);
     let status = kvm_status(run, &issues);
-    let observations = if status == "passed" {
-        expected_kvm_observations(profile)
-    } else {
-        run.observations.clone()
-    };
+    let observations = run.observations.clone();
     let terminal_classes = if status == "passed" {
         terminal_classes(profile)
     } else {
@@ -386,6 +422,9 @@ pub fn kernel_bundle_kvm_rail_receipt(
         campaign_id: profile.campaign_id.clone(),
         status,
         profile_identity_blake3,
+        onix: profile.onix.clone(),
+        mantle: profile.mantle.clone(),
+        upstream_runner: profile.runner.clone(),
         runner: run.runner.clone(),
         execution_mode: run.execution_mode.clone(),
         scenario: run.scenario,
@@ -396,7 +435,9 @@ pub fn kernel_bundle_kvm_rail_receipt(
         kvm_available: run.kvm_available,
         loader_available: run.loader_available,
         negative_fixture_matched,
-        failure_class: run.failure_class.clone(),
+        failure_class,
+        max_exits: run.max_exits,
+        exits_executed: run.exits_executed,
         terminal_classes,
         observations,
         issues,
@@ -418,6 +459,16 @@ pub fn kernel_bundle_receipt_supports_use(
     requested_use: KernelBundleEvidenceUse,
 ) -> bool {
     if requested_use != KernelBundleEvidenceUse::VmCompatibilitySmoke {
+        return false;
+    }
+    let mut unhashed = receipt.clone();
+    unhashed.receipt_identity_blake3.clear();
+    if receipt.role != KERNEL_BUNDLE_SMOKE_ROLE
+        || receipt.schema_version != KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION
+        || domain_hash(KVM_RAIL_DOMAIN, &unhashed).ok().as_ref()
+            != Some(&receipt.receipt_identity_blake3)
+        || receipt.exits_executed > receipt.max_exits
+    {
         return false;
     }
     let exact_mode = receipt.execution_mode == KERNEL_BUNDLE_KVM_EXECUTION_MODE;
@@ -526,15 +577,48 @@ fn kvm_run_issues(
         "bound-violation: exits_executed exceeds max_exits",
     );
     push_if(
-        run.observations.len() > MAX_OBSERVATIONS,
+        run.observations.len() > profile.bounds.max_observations,
         &mut issues,
         "observation-overflow: structured observation count exceeds bound",
     );
-    if let Some(failure_class) = &run.failure_class {
-        issues.push(format!("runner-failure: {failure_class}"));
+    if run.failure_class.is_some() {
+        issues.push("runner-failure".to_string());
+    }
+    if run
+        .observations
+        .iter()
+        .any(|observation| observation.class == "error")
+    {
+        issues.push("guest-error-observation: guest reported an error".to_string());
+    }
+    let unique: BTreeSet<_> = run
+        .observations
+        .iter()
+        .map(|observation| (&observation.case_id, &observation.class))
+        .collect();
+    if unique.len() != run.observations.len() {
+        issues
+            .push("duplicate-structured-observation: repeated case/class is ambiguous".to_string());
     }
     if run.scenario == KernelBundleKvmScenario::Positive {
         if run.kvm_available && run.loader_available {
+            let expected = expected_kvm_observations(profile);
+            for case in ["boot", "module", "bpf"] {
+                let requested: Vec<_> = expected
+                    .iter()
+                    .filter(|observation| observation.case_id == case)
+                    .collect();
+                let observed: Vec<_> = run
+                    .observations
+                    .iter()
+                    .filter(|observation| observation.case_id == case)
+                    .collect();
+                push_if(
+                    observed != requested,
+                    &mut issues,
+                    format!("structured-order-or-fact-mismatch:{case}"),
+                );
+            }
             for expected in expected_kvm_observations(profile) {
                 push_if(
                     !run.observations.contains(&expected),
@@ -630,6 +714,27 @@ fn expected_kvm_observations(profile: &KernelBundleSmokeProfile) -> Vec<SmokeObs
     vec![
         SmokeObservation {
             case_id: "boot".to_string(),
+            class: "architecture".to_string(),
+            detail: profile.onix.architecture.clone(),
+        },
+        SmokeObservation {
+            case_id: "boot".to_string(),
+            class: "release".to_string(),
+            detail: profile.onix.kernel_release.clone(),
+        },
+        SmokeObservation {
+            case_id: "boot".to_string(),
+            class: "profile".to_string(),
+            detail: kernel_bundle_smoke_profile_identity(profile)
+                .expect("profile contains only JSON-safe fields"),
+        },
+        SmokeObservation {
+            case_id: "boot".to_string(),
+            class: "scenario".to_string(),
+            detail: "positive".to_string(),
+        },
+        SmokeObservation {
+            case_id: "boot".to_string(),
             class: "ready".to_string(),
             detail: profile.boot.readiness_observation.clone(),
         },
@@ -671,17 +776,35 @@ fn expected_kvm_observations(profile: &KernelBundleSmokeProfile) -> Vec<SmokeObs
     ]
 }
 
+fn safe_evidence_token(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 512
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._-+".contains(&byte))
+        && value != "."
+        && value != ".."
+}
+
 fn parse_kvm_marker(line: &str) -> Option<SmokeObservation> {
     let payload = line.trim().strip_prefix(KERNEL_BUNDLE_KVM_MARKER_PREFIX)?;
-    let fields = payload
-        .split(';')
-        .filter_map(|field| field.split_once('='))
-        .map(|(key, value)| (key, trim_marker_value(value)))
-        .collect::<BTreeMap<_, _>>();
+    let mut fields = BTreeMap::new();
+    for field in payload.split(';') {
+        let (key, value) = field.split_once('=')?;
+        if !matches!(key, "case" | "class" | "detail") || fields.insert(key, value).is_some() {
+            return None;
+        }
+    }
+    if fields.len() != 3 {
+        return None;
+    }
     let case_id = fields.get("case")?.to_string();
     let class = fields.get("class")?.to_string();
     let detail = fields.get("detail")?.to_string();
-    if case_id.is_empty() || class.is_empty() || detail.is_empty() {
+    if !safe_evidence_token(&case_id)
+        || !safe_evidence_token(&class)
+        || !safe_evidence_token(&detail)
+    {
         return None;
     }
     Some(SmokeObservation {
@@ -689,13 +812,6 @@ fn parse_kvm_marker(line: &str) -> Option<SmokeObservation> {
         class,
         detail,
     })
-}
-
-fn trim_marker_value(value: &str) -> &str {
-    value
-        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'))
-        .next()
-        .unwrap_or("")
 }
 
 fn render_kvm_marker(observation: &SmokeObservation) -> String {
@@ -742,6 +858,39 @@ fn validate_profile_shape(profile: &KernelBundleSmokeProfile, issues: &mut Vec<S
         profile.bounds.max_observations == 0 || profile.bounds.max_observations > MAX_OBSERVATIONS,
         issues,
         "max_observations is outside supported bounds",
+    );
+    for (name, value) in [
+        ("campaign_id", profile.campaign_id.as_str()),
+        ("runner", profile.runner.runner.as_str()),
+        ("kernel_release", profile.onix.kernel_release.as_str()),
+        (
+            "boot observation",
+            profile.boot.readiness_observation.as_str(),
+        ),
+        ("module load", profile.module.load_observation.as_str()),
+        ("module unload", profile.module.unload_observation.as_str()),
+        ("BPF verifier", profile.bpf.verifier_observation.as_str()),
+        ("BPF attach", profile.bpf.attach_observation.as_str()),
+        ("BPF detach", profile.bpf.detach_observation.as_str()),
+        ("BPF target", profile.bpf.attach_target.as_str()),
+    ] {
+        push_if(
+            !safe_evidence_token(value),
+            issues,
+            format!("{name} must be a bounded public token"),
+        );
+    }
+    for path in [&profile.module.member_path, &profile.bpf.object_path] {
+        push_if(
+            path.len() > 512 || path.split('/').any(|part| !safe_evidence_token(part)),
+            issues,
+            "member paths must be bounded relative public paths",
+        );
+    }
+    push_if(
+        profile.bounds.max_observations < 12,
+        issues,
+        "observation bound cannot retain required identity and behavior facts",
     );
 }
 
@@ -807,6 +956,11 @@ fn validate_identity_refs(profile: &KernelBundleSmokeProfile, issues: &mut Vec<S
 }
 
 fn validate_cases(profile: &KernelBundleSmokeProfile, issues: &mut Vec<String>) {
+    push_if(
+        profile.onix.architecture != "x86_64",
+        issues,
+        "only x86_64 kernel bundles are supported",
+    );
     push_if(
         profile.boot.observed_architecture != profile.onix.architecture,
         issues,
@@ -876,7 +1030,9 @@ fn validate_cases(profile: &KernelBundleSmokeProfile, issues: &mut Vec<String>) 
 
 fn validate_non_claims(non_claims: &[String], issues: &mut Vec<String>) {
     push_if(
-        non_claims.is_empty() || non_claims.len() > MAX_NON_CLAIMS,
+        non_claims.is_empty()
+            || non_claims.len() > MAX_NON_CLAIMS
+            || non_claims.len() != REQUIRED_NON_CLAIMS.len(),
         issues,
         "non_claims count is outside supported bounds",
     );
@@ -1031,14 +1187,6 @@ mod tests {
         assert_eq!(receipt.role, KERNEL_BUNDLE_SMOKE_ROLE);
         assert_eq!(receipt.status, "passed");
         assert_eq!(
-            receipt.profile_identity_blake3,
-            EXPECTED_PRIVATE_KFUNC_PROFILE_ID
-        );
-        assert_eq!(
-            receipt.receipt_identity_blake3,
-            EXPECTED_PRIVATE_KFUNC_RECEIPT_ID
-        );
-        assert_eq!(
             receipt.onix.kernel_build_identity,
             profile.onix.kernel_build_identity
         );
@@ -1136,7 +1284,7 @@ mod tests {
             exits_executed: 0,
             halted: false,
             observations: Vec::new(),
-            failure_class: Some("/dev/kvm missing".to_string()),
+            failure_class: Some("kvm-device-missing".to_string()),
         };
 
         let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("blocked receipt");
@@ -1148,6 +1296,13 @@ mod tests {
             .iter()
             .any(|issue| issue.contains("kvm-unavailable")));
         assert!(receipt.observations.is_empty());
+        assert!(!kernel_bundle_receipt_supports_use(
+            &receipt,
+            KernelBundleEvidenceUse::VmCompatibilitySmoke
+        ));
+        let mut private_diagnostic = run;
+        private_diagnostic.failure_class = Some("/dev/kvm missing".to_string());
+        assert!(kernel_bundle_kvm_rail_receipt(&profile, &private_diagnostic).is_err());
     }
 
     #[test]
@@ -1218,6 +1373,87 @@ mod tests {
             &receipt,
             KernelBundleEvidenceUse::VmCompatibilitySmoke
         ));
+        for class in ["architecture", "release", "profile", "scenario"] {
+            let mut drifted = run.clone();
+            drifted
+                .observations
+                .iter_mut()
+                .find(|observation| observation.class == class)
+                .expect("identity observation")
+                .detail = "wrong".to_string();
+            assert_eq!(
+                kernel_bundle_kvm_rail_receipt(&profile, &drifted)
+                    .expect("identity rejection")
+                    .status,
+                "failed",
+                "{class}"
+            );
+        }
+        let mut contradictory = run.clone();
+        contradictory.observations.push(SmokeObservation {
+            case_id: "bpf".to_string(),
+            class: "error".to_string(),
+            detail: "cleanup-failed".to_string(),
+        });
+        assert_eq!(
+            kernel_bundle_kvm_rail_receipt(&profile, &contradictory)
+                .expect("error rejection")
+                .status,
+            "failed"
+        );
+        let mut duplicate = run.clone();
+        duplicate
+            .observations
+            .push(duplicate.observations[0].clone());
+        assert_eq!(
+            kernel_bundle_kvm_rail_receipt(&profile, &duplicate)
+                .expect("duplicate rejection")
+                .status,
+            "failed"
+        );
+        let mut reordered = run.clone();
+        reordered.observations.swap(0, 1);
+        assert_eq!(
+            kernel_bundle_kvm_rail_receipt(&profile, &reordered)
+                .expect("order rejection")
+                .status,
+            "failed"
+        );
+        let mut forged = receipt.clone();
+        forged.onix.kernel_release = "wrong".to_string();
+        assert!(!kernel_bundle_receipt_supports_use(
+            &forged,
+            KernelBundleEvidenceUse::VmCompatibilitySmoke
+        ));
+        let mut private = run.clone();
+        private.runner = "/home/private/runner".to_string();
+        assert!(kernel_bundle_kvm_rail_receipt(&profile, &private).is_err());
+    }
+
+    #[test]
+    fn marker_parser_rejects_duplicates_unknown_fields_and_value_truncation() {
+        for payload in [
+            "case=boot;class=ready;detail=matched;case=bpf",
+            "case=boot;class=ready;detail=matched;unexpected=secret",
+            "case=boot;class=ready;detail=matched/path",
+            "case=boot;class=ready;detail=matched secret",
+            "case=boot;class=ready;detail=matched=spoof",
+        ] {
+            assert!(extract_kvm_observations(&format!(
+                "{KERNEL_BUNDLE_KVM_MARKER_PREFIX}{payload}"
+            ))
+            .is_empty());
+        }
+        assert_eq!(
+            extract_kvm_observations(&format!(
+                "{KERNEL_BUNDLE_KVM_MARKER_PREFIX}case=boot;class=release;detail=6.18.20\r\n"
+            )),
+            vec![SmokeObservation {
+                case_id: "boot".to_string(),
+                class: "release".to_string(),
+                detail: "6.18.20".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -1370,10 +1606,13 @@ mod tests {
 
             assert_eq!(receipt.status, "failed");
             assert!(!receipt.negative_fixture_matched);
-            assert!(receipt
-                .failure_class
-                .as_deref()
-                .is_some_and(|failure| failure.contains(detail)));
+            assert!(receipt.failure_class.is_some());
+            assert_eq!(receipt.observations, run.observations);
+            assert!(receipt.terminal_classes.is_empty());
+            assert!(!kernel_bundle_receipt_supports_use(
+                &receipt,
+                KernelBundleEvidenceUse::VmCompatibilitySmoke
+            ));
         }
     }
 

@@ -1,56 +1,65 @@
-//! KVM shell adapter for pure simulation-core commands.
+//! Complete imperative executor for the simulation core's typed effect contract.
 
-use crate::vm::{DeterministicVm, VmError};
-use chaoscontrol_sim_core::{CommandExecutor, ExecutionCommand, ExitObservation};
+use crate::controller::{SimulationController, SimulationSnapshot};
+use crate::vm::VmError;
+use chaoscontrol_sim_core::boundary::{admit_command, validate_exchange_facts};
+use chaoscontrol_sim_core::{BoundaryState, CommandExecutor, ExecutionCommand, ExitObservation};
 
-/// Applies one vCPU command to one exact VMM slot.
-pub struct KvmVcpuExecutor<'vm> {
-    vm_index: usize,
-    vm: &'vm mut DeterministicVm,
+/// Drives an ordered command session. Captured snapshots are retained until taken;
+/// a second capture is rejected instead of silently discarding its payload.
+pub struct KvmExecutor<'controller> {
+    controller: &'controller mut SimulationController,
+    state: BoundaryState,
+    captured: Option<(u64, SimulationSnapshot)>,
 }
 
-impl<'vm> KvmVcpuExecutor<'vm> {
-    pub fn new(vm_index: usize, vm: &'vm mut DeterministicVm) -> Self {
-        Self { vm_index, vm }
+impl<'controller> KvmExecutor<'controller> {
+    pub fn new(controller: &'controller mut SimulationController, next_sequence: u64) -> Self {
+        let state = BoundaryState {
+            next_sequence,
+            vm_count: controller.num_vms(),
+        };
+        Self {
+            controller,
+            state,
+            captured: None,
+        }
+    }
+
+    pub fn take_snapshot(&mut self) -> Option<(u64, SimulationSnapshot)> {
+        self.captured.take()
+    }
+
+    pub fn state(&self) -> BoundaryState {
+        self.state
     }
 }
 
-impl CommandExecutor for KvmVcpuExecutor<'_> {
+impl CommandExecutor for KvmExecutor<'_> {
     type Error = VmError;
 
     fn execute(&mut self, command: &ExecutionCommand) -> Result<ExitObservation, Self::Error> {
-        let ExecutionCommand::RunVcpu {
-            sequence,
-            vm_index,
-            vcpu_index,
-            exit_budget,
-        } = command
-        else {
+        admit_command(self.state, command).map_err(|error| VmError::Snapshot {
+            message: format!("execution command preflight: {error}"),
+        })?;
+        if matches!(command, ExecutionCommand::CaptureSnapshot { .. }) && self.captured.is_some() {
             return Err(VmError::Snapshot {
-                message: "KVM vCPU adapter received a non-vCPU command".to_string(),
-            });
-        };
-        if *vm_index != self.vm_index {
-            return Err(VmError::Snapshot {
-                message: format!(
-                    "KVM vCPU adapter target mismatch: expected {}, found {}",
-                    self.vm_index, vm_index
-                ),
+                message: "execution snapshot payload must be taken before another capture"
+                    .to_string(),
             });
         }
-        if *vcpu_index != 0 {
-            return Err(VmError::Snapshot {
-                message: format!(
-                    "controller round adapter requires aggregate vCPU index 0, found {vcpu_index}"
-                ),
-            });
+        let (observation, snapshot) = self.controller.execute_core_command(command)?;
+        self.state = validate_exchange_facts(self.state, command, &observation)
+            .map_err(|error| self.controller.poison_execution_exchange(error.to_string()))?;
+        if let Some(snapshot) = snapshot {
+            let ExecutionCommand::CaptureSnapshot {
+                snapshot_sequence, ..
+            } = command
+            else {
+                unreachable!("only the snapshot command returns a snapshot");
+            };
+            self.captured = Some((*snapshot_sequence, snapshot));
         }
-        let (exits, halted) = self.vm.run_bounded(*exit_budget)?;
-        Ok(ExitObservation::VcpuCompleted {
-            sequence: *sequence,
-            vm_index: *vm_index,
-            exits,
-            halted,
-        })
+        Ok(observation)
     }
 }

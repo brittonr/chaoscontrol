@@ -277,8 +277,9 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
 
 pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
+    crate::profile_projection::admit_nickel_evaluator()?;
     let command = nickel_command().ok_or_else(|| {
-        EvidenceError::new("neither nickel nor nix is available for Nickel export checks")
+        EvidenceError::new("the exact Nickel evaluator is unavailable for export checks")
     })?;
     for rel in [
         "examples/raft-run-config.ncl",
@@ -288,6 +289,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-dogfood-receipt.ncl",
         "examples/raft-bug-report.ncl",
         "examples/bug-report-identity.ncl",
+        "fixtures/valid/bug-report.marker-context.valid.ncl",
         "examples/raft-assertion-summary.ncl",
         "examples/assertion-summary-logical-keys.ncl",
         "examples/assertion-summary-no-alias.ncl",
@@ -295,6 +297,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-replay-verdict.ncl",
         "examples/raft-smr-workload-profile.ncl",
         "examples/kvm-ebpf-trace-capture-profile.ncl",
+        "examples/kernel-bundle-smoke-profile.ncl",
         "examples/spacewasm-mvp-differential-profile.ncl",
         "examples/wasm-component-exploration-profile.ncl",
         "examples/typed-operator-command.ncl",
@@ -384,7 +387,15 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/campaign-profile.invalid-workers.invalid.ncl",
         "fixtures/invalid/campaign-profile.implicit-metrics.invalid.ncl",
         "fixtures/invalid/smr-workload-profile.unbounded.invalid.ncl",
+        "fixtures/invalid/bug-report.marker-future.invalid.ncl",
+        "fixtures/invalid/bug-report.marker-without-parent.invalid.ncl",
+        "fixtures/invalid/bug-report.marker-unknown-field.invalid.ncl",
         "fixtures/invalid/ebpf-trace-capture-profile.multi-producer-exact.invalid.ncl",
+        "fixtures/invalid/kernel-bundle-smoke-profile.unbounded.invalid.ncl",
+        "fixtures/invalid/kernel-bundle-smoke-profile.role-confusion.invalid.ncl",
+        "fixtures/invalid/kernel-bundle-smoke-profile.overclaim.invalid.ncl",
+        "fixtures/invalid/kernel-bundle-smoke-profile.target-mismatch.invalid.ncl",
+        "fixtures/invalid/kernel-bundle-smoke-profile.cleanup.invalid.ncl",
         "fixtures/invalid/spacewasm-mvp-differential-profile.post-mvp.invalid.ncl",
         "fixtures/invalid/wasm-component-exploration-profile.cohort-drift.invalid.ncl",
         "fixtures/invalid/wasm-component-exploration-profile.bound-inversion.invalid.ncl",
@@ -614,6 +625,8 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
             "schedule_variant",
             "scenario_config",
             "scenario_summary",
+            "fallback_scope",
+            "marker_context",
         ],
         "bug-report",
     )?;
@@ -668,13 +681,44 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
         .get("assertion_id")
         .and_then(Value::as_u64)
         .ok_or_else(|| EvidenceError::new("bug-report.assertion_id: expected unsigned integer"))?;
-    crate::assertion_evidence_carrier::optional_identity(
+    let identity = crate::assertion_evidence_carrier::optional_identity(
         value,
         "assertion_identity",
         assertion_id,
         false,
         "bug-report",
     )?;
+    if let Some(scope) = value.get("fallback_scope") {
+        let scope: chaoscontrol_protocol::fallback::FallbackAssertionScope =
+            serde_json::from_value(scope.clone())?;
+        let identity = identity.as_ref().ok_or_else(|| {
+            EvidenceError::new("bug-report.fallback_scope: assertion identity is required")
+        })?;
+        scope
+            .validate_against(identity)
+            .map_err(|error| EvidenceError::new(format!("bug-report.fallback_scope: {error:?}")))?;
+    }
+    if let Some(context) = value.get("marker_context") {
+        let context: chaoscontrol_protocol::branch_marker::MarkerEvidenceContext =
+            serde_json::from_value(context.clone())?;
+        context
+            .validate()
+            .map_err(|error| EvidenceError::new(format!("bug-report.marker_context: {error:?}")))?;
+        ensure(
+            value
+                .get("replay_parent_depth")
+                .and_then(Value::as_u64)
+                .is_some_and(|depth| depth > 0),
+            "bug-report.marker_context: retained replay parent is required",
+        )?;
+        ensure(
+            value
+                .get("tick")
+                .and_then(Value::as_u64)
+                .is_some_and(|tick| context.observed_tick <= tick),
+            "bug-report.marker_context: observation follows finding",
+        )?;
+    }
     Ok(())
 }
 
@@ -758,7 +802,10 @@ pub fn validate_replay_verdict_with_options(
             "bug_id",
             "assertion_id",
             "assertion_identity",
+            "fallback_scope",
+            "marker_context",
             "replay_parent_depth",
+            "schedule_variant",
             "snapshot",
             "artifact_hashes",
         ],
@@ -774,6 +821,11 @@ pub fn validate_replay_verdict_with_options(
             LEGACY_REPLAY_VERDICT_SCHEMA_VERSION | crate::REPLAY_VERDICT_SCHEMA_VERSION
         ),
         format!("replay-verdict.schema_version: unsupported version {schema_version}"),
+    )?;
+    ensure(
+        value.get("schedule_variant").is_none()
+            || schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION,
+        "replay-verdict.schedule_variant: requires the current schema version",
     )?;
     require_str(value.get("run_id"), "replay-verdict.run_id")?;
     let replay_class = require_str(value.get("replay_class"), "replay-verdict.replay_class")?;

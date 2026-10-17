@@ -40,7 +40,7 @@ impl Default for VirtioLimits {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TransportViolation {
     MmioWidth { actual: usize },
     MmioAddress { address: u64 },
@@ -57,7 +57,7 @@ pub enum TransportViolation {
     NotifyQueueNotReady { selected: u32 },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum QueueViolation {
     ZeroSize,
     SizeWidth { value: u32 },
@@ -75,7 +75,7 @@ pub enum QueueViolation {
     NotValidated,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DescriptorViolation {
     HeadIndex { index: u16, capacity: u16 },
     NextIndex { index: u16, capacity: u16 },
@@ -88,7 +88,7 @@ pub enum DescriptorViolation {
     AggregateLimit { length: u64, maximum: u64 },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RequestViolation {
     DescriptorShape,
     HeaderDirection,
@@ -107,7 +107,7 @@ pub enum RequestViolation {
     NetCapacity { available: u64, required: u64 },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ResourceViolation {
     ScratchLimit { requested: usize, maximum: usize },
     ScratchExhausted,
@@ -119,7 +119,7 @@ pub enum ResourceViolation {
     RetainedByteLimit { requested: u64, maximum: u64 },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VirtioFailure {
     Transport(TransportViolation),
     Queue(QueueViolation),
@@ -141,7 +141,7 @@ pub enum UsedWriteFailurePoint {
     BeforeIndex,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LastRequestLiveOutcome {
     Completed {
         head_index: u16,
@@ -162,7 +162,7 @@ pub struct ValidatedQueueLiveConfig {
     pub device_address: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PendingCompletionLiveState {
     pub head_index: u16,
     pub written_length: u32,

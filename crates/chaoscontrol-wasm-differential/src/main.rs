@@ -6,13 +6,16 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
 
 use chaoscontrol_wasm_differential::{
-    compare_case, encode_hex, finalize_report, generate_mvp_module, generated_shrink_candidates,
-    malformed_magic, normalize_spacewasm, normalize_tool, profile_identity,
-    same_mismatch_predicate, validate_bundle_manifest, validate_manifest_digest,
-    validate_producer_revision, validate_profile, validate_stable_evidence, BundleManifest,
-    CaseComparison, CaseKind, ComparisonVerdict, DifferentialProfile, DifferentialReport,
-    MantleRunnerReport, MinimizationEvidence, ToolObservation, REPORT_SCHEMA,
-    STABLE_EVIDENCE_SUITES,
+    admission::{admit_module, AdmissionClass},
+    rail::{admit_retention, CaseManifest},
+};
+use chaoscontrol_wasm_differential::{
+    compare_case, encode_hex, finalize_report, generated_shrink_candidates, malformed_magic,
+    normalize_spacewasm, normalize_tool, profile_identity, same_mismatch_predicate,
+    validate_bundle_manifest, validate_manifest_digest, validate_producer_revision,
+    validate_profile, validate_stable_evidence, BundleManifest, CaseComparison, CaseKind,
+    ComparisonVerdict, DifferentialProfile, DifferentialReport, MantleRunnerReport,
+    MinimizationEvidence, ToolObservation, REPORT_SCHEMA, STABLE_EVIDENCE_SUITES,
 };
 use tempfile::TempDir;
 use thiserror::Error;
@@ -107,6 +110,7 @@ struct GeneratedCase<'a> {
     fixture_file_name: &'static str,
     kind: CaseKind,
     mutation: GeneratedMutation,
+    artifacts: &'a Path,
     module: &'a [u8],
 }
 
@@ -204,6 +208,7 @@ fn run() -> Result<(), Error> {
         wasmtime_version,
         seed: profile.seed,
         comparisons,
+        evidence: Vec::new(),
         mismatch_count: 0,
         verdict: String::new(),
         non_claims: profile.non_claims.clone(),
@@ -218,7 +223,7 @@ fn run() -> Result<(), Error> {
         report.mismatch_count,
         report.report_identity_blake3
     );
-    if report.mismatch_count == 0 {
+    if report.verdict == "match" {
         Ok(())
     } else {
         Err(Error::Invalid(format!(
@@ -330,13 +335,37 @@ fn execute_corpus(
     artifacts: &Path,
 ) -> Result<Vec<CaseComparison>, Error> {
     let fixture_root = bundle.join(FIXTURE_DIRECTORY);
+    // Admit every selected binary before invoking either runtime shell.
+    for case in FIXED_CASES {
+        let bytes = read_bounded(
+            &fixture_root.join(case.file_name),
+            profile.bounds.maximum_input_bytes,
+        )?;
+        admit_case_bytes(profile, &bytes, case.kind)?;
+    }
+    let retained_cases =
+        FIXED_CASES.len() + profile.generated_valid_cases + profile.generated_malformed_cases;
+    let per_case = profile
+        .bounds
+        .maximum_shrink_attempts
+        .checked_mul(4)
+        .and_then(|work| work.checked_add(4))
+        .ok_or_else(|| Error::Invalid("retention work overflow".into()))?;
+    admit_retention(
+        profile,
+        0,
+        retained_cases
+            .checked_mul(per_case)
+            .ok_or_else(|| Error::Invalid("retention count overflow".into()))?,
+    )
+    .map_err(|class| Error::Invalid(format!("{class:?}: corpus retention exceeds profile")))?;
     let base_report = run_spacewasm(profile, bundle, &fixture_root)?;
     if base_report.source_revision != profile.spacewasm_revision {
         return Err(Error::Invalid(String::from(
             "SpaceWasm runner source revision drift",
         )));
     }
-    let mut comparisons = Vec::with_capacity(profile.bounds.maximum_cases);
+    let mut comparisons = Vec::with_capacity(retained_cases);
     for case in FIXED_CASES {
         let module_path = fixture_root.join(case.file_name);
         let module_digest = hash_file(&module_path, profile.bounds.maximum_input_bytes)?;
@@ -348,7 +377,7 @@ fn execute_corpus(
         };
         let raw = run_wasmtime(profile, wasmtime, &module_path, fuel)?;
         let wasmtime_observation = normalize_tool(WASMTIME_ENGINE, case.kind, &raw);
-        let comparison = compare_case(
+        let mut comparison = compare_case(
             String::from(case.case_id),
             case.kind,
             module_digest,
@@ -356,6 +385,10 @@ fn execute_corpus(
             wasmtime_observation,
         )
         .map_err(Error::Invalid)?;
+        comparison.raw_observation_refs = vec![
+            retain_raw(artifacts, &base_report)?,
+            retain_raw(artifacts, &raw)?,
+        ];
         comparisons.push(comparison);
     }
 
@@ -375,13 +408,17 @@ fn execute_corpus(
     }
 
     for index in 0..profile.generated_valid_cases {
-        let module = generate_mvp_module(
-            profile.seed,
-            index,
-            profile.bounds.maximum_generated_instruction_pairs,
-        );
+        let (case_manifest, module) =
+            CaseManifest::generate(profile, index, CaseKind::Execute).map_err(Error::Invalid)?;
+        case_manifest
+            .verify(profile, &module)
+            .map_err(Error::Invalid)?;
         let case_id = format!("generated-valid-{index:04}");
         write_generated_module(artifacts, &case_id, &module)?;
+        write_new_json(
+            &artifacts.join(format!("{case_id}.manifest.json")),
+            &case_manifest,
+        )?;
         let case = GeneratedCase {
             case_id: &case_id,
             case_index: index,
@@ -390,6 +427,7 @@ fn execute_corpus(
             kind: CaseKind::Execute,
             mutation: GeneratedMutation::None,
             module: &module,
+            artifacts,
         };
         let comparison = run_generated_case(profile, bundle, wasmtime, &fixture_root, &case)?;
         comparisons.push(minimize_generated_mismatch(
@@ -402,14 +440,17 @@ fn execute_corpus(
         )?);
     }
     for index in 0..profile.generated_malformed_cases {
-        let generated = generate_mvp_module(
-            profile.seed,
-            index,
-            profile.bounds.maximum_generated_instruction_pairs,
-        );
-        let module = malformed_magic(&generated);
+        let (case_manifest, module) =
+            CaseManifest::generate(profile, index, CaseKind::Reject).map_err(Error::Invalid)?;
+        case_manifest
+            .verify(profile, &module)
+            .map_err(Error::Invalid)?;
         let case_id = format!("generated-malformed-{index:04}");
         write_generated_module(artifacts, &case_id, &module)?;
+        write_new_json(
+            &artifacts.join(format!("{case_id}.manifest.json")),
+            &case_manifest,
+        )?;
         let case = GeneratedCase {
             case_id: &case_id,
             case_index: index,
@@ -418,6 +459,7 @@ fn execute_corpus(
             kind: CaseKind::Reject,
             mutation: GeneratedMutation::MalformedMagic,
             module: &module,
+            artifacts,
         };
         let comparison = run_generated_case(profile, bundle, wasmtime, &fixture_root, &case)?;
         comparisons.push(minimize_generated_mismatch(
@@ -437,6 +479,21 @@ fn execute_corpus(
     Ok(comparisons)
 }
 
+fn admit_case_bytes(
+    profile: &DifferentialProfile,
+    bytes: &[u8],
+    kind: CaseKind,
+) -> Result<(), Error> {
+    match (kind, admit_module(profile, bytes)) {
+        (CaseKind::Execute, Ok(_)) => Ok(()),
+        (CaseKind::Reject, Err(denial)) if denial.class == AdmissionClass::Malformed => Ok(()),
+        (_, Err(denial)) => Err(Error::Invalid(format!("module admission: {denial:?}"))),
+        (CaseKind::Reject, Ok(_)) => Err(Error::Invalid(
+            "negative corpus module unexpectedly admitted".into(),
+        )),
+    }
+}
+
 fn run_generated_case(
     profile: &DifferentialProfile,
     bundle: &Path,
@@ -444,6 +501,7 @@ fn run_generated_case(
     fixture_root: &Path,
     case: &GeneratedCase<'_>,
 ) -> Result<CaseComparison, Error> {
+    admit_case_bytes(profile, case.module, case.kind)?;
     if case.module.len() as u64 > profile.bounds.maximum_input_bytes {
         return Err(Error::Invalid(format!(
             "generated module exceeds input bound: {}",
@@ -468,14 +526,40 @@ fn run_generated_case(
         profile.bounds.wasmtime_fuel,
     )?;
     let wasmtime_observation = normalize_tool(WASMTIME_ENGINE, case.kind, &raw);
-    compare_case(
+    let mut comparison = compare_case(
         String::from(case.case_id),
         case.kind,
         blake3::hash(case.module).to_hex().to_string(),
         spacewasm,
         wasmtime_observation,
     )
-    .map_err(Error::Invalid)
+    .map_err(Error::Invalid)?;
+    comparison.raw_observation_refs = vec![
+        retain_raw(case.artifacts, &report)?,
+        retain_raw(case.artifacts, &raw)?,
+    ];
+    Ok(comparison)
+}
+
+fn retain_raw(directory: &Path, value: &impl serde::Serialize) -> Result<String, Error> {
+    let bytes = serde_json::to_vec(value).map_err(|source| Error::Json {
+        path: directory.to_path_buf(),
+        source,
+    })?;
+    let digest = blake3::hash(&bytes).to_hex().to_string();
+    let path = directory.join(format!("raw-{digest}.json"));
+    match OpenOptions::new().write(true).create_new(true).open(&path) {
+        Ok(mut file) => file
+            .write_all(&bytes)
+            .map_err(|source| io_error(&path, source))?,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            if read_bounded(&path, bytes.len() as u64)? != bytes {
+                return Err(Error::Invalid("raw content-address collision".into()));
+            }
+        }
+        Err(source) => return Err(io_error(&path, source)),
+    }
+    Ok(digest)
 }
 
 fn minimize_generated_mismatch(
@@ -493,6 +577,7 @@ fn minimize_generated_mismatch(
     let mut minimized_module = original_case.module.to_vec();
     let mut minimized_comparison = original_comparison;
     let mut attempts = 0_usize;
+    let mut accepted_steps = Vec::new();
     let candidates = generated_shrink_candidates(
         profile.seed,
         original_case.case_index,
@@ -515,14 +600,41 @@ fn minimize_generated_mismatch(
             kind: original_case.kind,
             mutation: original_case.mutation,
             module: &candidate_module,
+            artifacts: original_case.artifacts,
         };
         let candidate_comparison =
             run_generated_case(profile, bundle, wasmtime, fixture_root, &candidate_case)?;
+        let replayed =
+            run_generated_case(profile, bundle, wasmtime, fixture_root, &candidate_case)?;
         if candidate_module.len() < minimized_module.len()
             && same_mismatch_predicate(&minimized_comparison, &candidate_comparison)
+            && same_mismatch_predicate(&candidate_comparison, &replayed)
         {
-            minimized_module = candidate_module;
-            minimized_comparison = candidate_comparison;
+            let predicate = |comparison: &CaseComparison| {
+                chaoscontrol_wasm_differential::rail::FailurePredicate {
+                    profile_identity: profile_identity(profile).expect("admitted profile identity"),
+                    spacewasm_runtime: profile.spacewasm_runner_blake3.clone(),
+                    wasmtime_runtime: profile.wasmtime_version.clone(),
+                    boundary: comparison.case_kind,
+                    class: chaoscontrol_wasm_differential::rail::EvidenceClass::RuntimeDivergence,
+                    first_difference: comparison
+                        .first_difference
+                        .clone()
+                        .expect("mismatch difference"),
+                }
+            };
+            if let Ok(step) = chaoscontrol_wasm_differential::rail::admit_shrink(
+                profile,
+                &minimized_module,
+                &candidate_module,
+                &predicate(&minimized_comparison),
+                &predicate(&candidate_comparison),
+                &predicate(&replayed),
+            ) {
+                accepted_steps.push(step);
+                minimized_module = candidate_module;
+                minimized_comparison = candidate_comparison;
+            }
         }
     }
     let predicate_field = minimized_comparison
@@ -533,6 +645,7 @@ fn minimize_generated_mismatch(
         .clone();
     minimized_comparison.minimization = Some(MinimizationEvidence {
         predicate_field,
+        accepted_steps,
         attempts,
         original_module_blake3: original_digest,
         minimized_module_blake3: blake3::hash(&minimized_module).to_hex().to_string(),
@@ -571,6 +684,7 @@ fn run_spacewasm(
         &runner_path,
         &[fixture_root.as_os_str(), report_path.as_os_str()],
         profile,
+        Some(profile.bounds.maximum_interpreter_allocation_bytes),
     )?;
     if result.timed_out || !result.status.success() {
         return Err(Error::Invalid(format!(
@@ -599,16 +713,22 @@ fn run_wasmtime(
         std::ffi::OsStr::new("run"),
         module.as_os_str(),
     ];
-    let result = run_command(wasmtime, &arguments, profile)?;
+    let result = run_command(wasmtime, &arguments, profile, None)?;
     Ok(ToolObservation {
         success: result.status.success(),
         timed_out: result.timed_out,
         stderr: result.stderr,
+        stdout: result.stdout,
     })
 }
 
 fn read_wasmtime_version(profile: &DifferentialProfile, wasmtime: &Path) -> Result<String, Error> {
-    let result = run_command(wasmtime, &[std::ffi::OsStr::new("--version")], profile)?;
+    let result = run_command(
+        wasmtime,
+        &[std::ffi::OsStr::new("--version")],
+        profile,
+        None,
+    )?;
     if result.timed_out || !result.status.success() {
         return Err(Error::Invalid(String::from(
             "Wasmtime version command failed",
@@ -627,6 +747,7 @@ fn run_command(
     program: &Path,
     arguments: &[&std::ffi::OsStr],
     profile: &DifferentialProfile,
+    maximum_data_bytes: Option<u64>,
 ) -> Result<CommandResult, Error> {
     ensure_regular_file(program)?;
     let temporary = TempDir::new()
@@ -642,6 +763,33 @@ fn run_command(
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
+    if let Some(maximum_data_bytes) = maximum_data_bytes {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::process::CommandExt;
+            let limit = libc::rlimit {
+                rlim_cur: maximum_data_bytes as libc::rlim_t,
+                rlim_max: maximum_data_bytes as libc::rlim_t,
+            };
+            // The pinned runner allocates through the system allocator. On Linux,
+            // RLIMIT_DATA also bounds anonymous mmap allocations. Including host
+            // overhead makes this stricter than the interpreter-only ceiling.
+            // Only this async-signal-safe syscall runs between fork and exec.
+            unsafe {
+                command.pre_exec(move || {
+                    if libc::setrlimit(libc::RLIMIT_DATA, &limit) == 0 {
+                        Ok(())
+                    } else {
+                        Err(std::io::Error::last_os_error())
+                    }
+                });
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        return Err(Error::Invalid(format!(
+            "interpreter data limit {maximum_data_bytes} is unsupported on this platform"
+        )));
+    }
     let mut child = command.spawn().map_err(|source| Error::Process {
         program: program.to_path_buf(),
         source,

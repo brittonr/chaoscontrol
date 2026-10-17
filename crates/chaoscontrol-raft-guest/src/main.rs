@@ -271,11 +271,8 @@ impl RaftSmrRuntime {
     fn check(&mut self, nodes: &[Node]) -> SmrCheckSummary {
         let mut adapter_errors = Vec::new();
         for (node, adapter) in nodes.iter().zip(self.adapters.iter_mut()) {
-            let committed = node.committed_application_values();
-            if committed.len() >= adapter.observations().len() {
-                if let Err(error) = adapter.observe_committed_values(&committed) {
-                    adapter_errors.push(format!("replica={} {error}", node.id));
-                }
+            if let Err(error) = adapter.observe_consumer(node) {
+                adapter_errors.push(format!("replica={} {error}", node.id));
             }
         }
         let observation_count = self

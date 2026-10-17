@@ -222,6 +222,19 @@ impl VcpuScheduler {
         self.journal.reset(snapshot.state.clone())
     }
 
+    /// Check an externally recorded variant against the policy actually executing.
+    /// Unspecified overrides preserve the restored policy, rather than imposing defaults.
+    pub fn matches_variant(&self, variant: &ScheduleVariant) -> bool {
+        let state = self.state();
+        state.rng_seed == core::policy_rng_seed(variant.scheduler_seed)
+            && variant
+                .quantum_override
+                .is_none_or(|quantum| state.quantum == quantum)
+            && variant
+                .strategy_override
+                .is_none_or(|strategy| state.strategy == strategy)
+    }
+
     /// Apply an explicit seeded policy variant through the pure core.
     pub fn apply_variant(&mut self, variant: &ScheduleVariant) -> Result<(), ScheduleError> {
         let state = self.state();
@@ -490,5 +503,40 @@ mod tests {
             exact.validate_snapshot(&pmu.snapshot()),
             Err(ScheduleError::InvalidConfiguration { .. })
         ));
+    }
+
+    #[test]
+    fn live_variant_check_detects_restored_seed_strategy_and_quantum_drift() {
+        let mut running = scheduler();
+        let original = running.snapshot();
+        let variant = ScheduleVariant {
+            scheduler_seed: 173,
+            strategy_override: Some(SchedulingStrategy::Randomized {
+                min_quantum: 2,
+                max_quantum: 7,
+            }),
+            quantum_override: Some(8),
+        };
+        running.apply_variant(&variant).unwrap();
+        assert!(running.matches_variant(&variant));
+        assert!(!running.matches_variant(&ScheduleVariant {
+            scheduler_seed: 174,
+            ..variant.clone()
+        }));
+        assert!(!running.matches_variant(&ScheduleVariant {
+            strategy_override: Some(SchedulingStrategy::RoundRobin),
+            ..variant.clone()
+        }));
+        assert!(!running.matches_variant(&ScheduleVariant {
+            quantum_override: Some(9),
+            ..variant.clone()
+        }));
+        assert!(running.matches_variant(&ScheduleVariant {
+            strategy_override: None,
+            quantum_override: None,
+            ..variant.clone()
+        }));
+        running.restore(&original).unwrap();
+        assert!(!running.matches_variant(&variant));
     }
 }

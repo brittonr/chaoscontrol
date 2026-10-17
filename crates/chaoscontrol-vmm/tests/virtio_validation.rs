@@ -205,6 +205,37 @@ fn cycles_bad_indices_and_flags_are_typed() {
 }
 
 #[test]
+fn descriptor_head_count_and_unknown_non_indirect_flags_are_bounded() {
+    let mut descriptors = valid_descriptors();
+    assert_eq!(
+        plan_descriptor_chain(&descriptors, 3, 3, &memory(), VirtioLimits::default()),
+        Err(DescriptorViolation::HeadIndex {
+            index: 3,
+            capacity: 3
+        }),
+    );
+    let limits = VirtioLimits {
+        max_chain_descriptors: 2,
+        ..VirtioLimits::default()
+    };
+    assert_eq!(
+        plan_descriptor_chain(&descriptors, 0, 3, &memory(), limits),
+        Err(DescriptorViolation::CountLimit {
+            count: 3,
+            maximum: 2
+        }),
+    );
+    const UNKNOWN_FLAG: u16 = 1 << 15;
+    descriptors[1].flags |= UNKNOWN_FLAG;
+    assert_eq!(
+        plan_descriptor_chain(&descriptors, 0, 3, &memory(), VirtioLimits::default()),
+        Err(DescriptorViolation::UnsupportedFlags {
+            flags: descriptors[1].flags
+        }),
+    );
+}
+
+#[test]
 fn descriptor_ranges_and_aggregate_budget_are_typed() {
     let mut descriptors = valid_descriptors();
     descriptors[1].addr = u64::MAX;

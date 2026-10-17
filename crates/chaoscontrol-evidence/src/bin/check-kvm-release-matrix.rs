@@ -266,6 +266,8 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
 }
 
 fn check_projection(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
+    chaoscontrol_evidence::profile_projection::admit_nickel_evaluator()
+        .map_err(|error| error.to_string())?;
     let output = nickel_export(root, Path::new(DEFAULT_MATRIX_SOURCE), true)?;
     let exported = serde_json::from_slice::<KvmReleaseMatrix>(&output)
         .map_err(|error| format!("Nickel matrix projection is invalid JSON: {error}"))?;

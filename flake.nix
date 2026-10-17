@@ -1976,7 +1976,8 @@
                   ' "$out/report.json" > /dev/null
                   spacewasm-resume-probe \
                     "$out/modules/generated-valid-0000.wasm" \
-                    "$out/resume-report.raw.json"
+                    "$out/resume-report.raw.json" \
+                    --maximum-allocation-bytes "$(jq -r .bounds.maximum_interpreter_allocation_bytes "$out/profile.json")"
                   moduleDigest="$(b3sum --no-names "$out/modules/generated-valid-0000.wasm")"
                   probeDigest="$(b3sum --no-names ${spacewasmResumeProbe}/bin/spacewasm-resume-probe)"
                   profileIdentity="$(jq -r .profile_identity_blake3 "$out/report.json")"
@@ -1997,15 +1998,23 @@
                     }' \
                     "$out/resume-report.raw.json" > "$out/resume-report.json"
                   jq -e --slurpfile profile "$out/profile.json" '
-                    .source_revision == $profile[0].spacewasm_revision
+                    .schema == "chaoscontrol.spacewasm-resume-probe.v2"
+                    and .verdict == "resume-match"
+                    and .source_revision == $profile[0].spacewasm_revision
                     and .segment_fuel == $profile[0].runtime.spacewasm_resume_segment_fuel
                     and .maximum_segments == $profile[0].runtime.maximum_resume_segments
-                    and .segments > 1
-                    and .segments <= .maximum_segments
-                    and .stream_chunk_bytes == 1
-                    and .uninterrupted == "finished"
-                    and .segmented == "finished"
-                    and .streaming == "finished"
+                    and .maximum_allocation_bytes == $profile[0].bounds.maximum_interpreter_allocation_bytes
+                    and .schedule.inputs.kind == "one-byte"
+                    and .observations.segmented.raw.segments > 1
+                    and .observations.segmented.raw.segments <= .maximum_segments
+                    and .comparisons.resume_first_difference == null
+                    and .comparisons.streaming_first_difference == null
+                    and .comparisons.streaming_resume_first_difference == null
+                    and ([.observations[] |
+                      .normalized_terminal.outcome == "finished"
+                      and .raw.return_buffer_contract_ok
+                      and .raw.allocation_live_after_drop_bytes == 0
+                    ] | all)
                   ' "$out/resume-report.json" > /dev/null
                   rm "$out/resume-report.raw.json"
                 '';

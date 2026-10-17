@@ -284,9 +284,8 @@ impl FallbackSink {
                 FallbackErrorKind::LineTooLong,
             ));
         }
-        let record = serde_json::from_str::<FallbackRecord>(line).map_err(|_| {
-            FallbackError::new(record_index, None, FallbackErrorKind::MalformedJson)
-        })?;
+        let record = serde_json::from_str::<FallbackRecord>(line)
+            .map_err(|_| malformed_record_diagnostic(record_index, line))?;
         record
             .validate_at(record_index)
             .map_err(|kind| FallbackError::new(record_index, Some(record.process.clone()), kind))?;
@@ -321,6 +320,31 @@ impl FallbackSink {
             sink_blake3,
         })
     }
+}
+
+fn malformed_record_diagnostic(record_index: u64, line: &str) -> FallbackError {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return FallbackError::new(record_index, None, FallbackErrorKind::MalformedJson);
+    };
+    let process = value.get("process").and_then(|process| {
+        serde_json::from_value::<FallbackProcessIdentity>(process.clone()).ok()
+    });
+    let missing = [
+        "schema_version",
+        "sequence",
+        "process",
+        "namespace",
+        "logical_key",
+        "record_type",
+        "message",
+    ]
+    .into_iter()
+    .find(|field| value.get(*field).is_none());
+    let kind = missing.map_or(
+        FallbackErrorKind::MalformedJson,
+        FallbackErrorKind::MissingField,
+    );
+    FallbackError::new(record_index, process, kind)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -380,6 +404,7 @@ pub enum FallbackErrorKind {
     MalformedDetails,
     MalformedJson,
     MissingCondition,
+    MissingField(&'static str),
     ProcessScopeMismatch,
     RecordCountOverflow,
     SinkOverflowed,
@@ -726,8 +751,29 @@ mod tests {
         let error = sink
             .admit_line(&missing_process.to_string())
             .expect_err("missing process");
-        assert_eq!(error.kind, FallbackErrorKind::MalformedJson);
-        assert_eq!(error.process, None);
+        assert_eq!(error.record_index, 0);
+        assert_eq!(error.kind, FallbackErrorKind::MissingField("process"));
+        assert!(error.to_string().contains("process <missing>"));
+    }
+
+    #[test]
+    fn malformed_record_retains_declared_process_and_sink_prefix() {
+        let mut sink = FallbackSink::new(SINK_LIMIT).expect("sink");
+        let first = record(0, "wal", true);
+        sink.admit_line(&serde_json::to_string(&first).unwrap())
+            .unwrap();
+        let mut missing_namespace = serde_json::to_value(record(1, "worker", true)).unwrap();
+        missing_namespace
+            .as_object_mut()
+            .unwrap()
+            .remove("namespace");
+        let error = sink.admit_line(&missing_namespace.to_string()).unwrap_err();
+        assert_eq!(error.record_index, 1);
+        assert_eq!(error.process, Some(record(1, "worker", true).process));
+        assert_eq!(error.kind, FallbackErrorKind::MissingField("namespace"));
+        let retained = sink.evidence().unwrap();
+        assert_eq!(retained.records, vec![first]);
+        validate_fallback_sink_evidence(&retained).unwrap();
     }
 
     #[test]

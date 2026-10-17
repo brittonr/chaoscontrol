@@ -18,6 +18,8 @@ pub struct BugReport {
     pub assertion_identity: AssertionEvidenceIdentity,
     /// Exact process-local fallback binding, when the failure used the fallback sink.
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
+    /// Marker instance of the snapshot selected as this branch's replay parent.
+    pub marker_context: Option<crate::marker_branching::MarkerFrontierMetadata>,
     /// The assertion location/message.
     pub assertion_location: String,
     /// The fault schedule that triggered it.
@@ -199,6 +201,7 @@ mod tests {
                 assertion_id: i as u64,
                 assertion_identity: crate::test_support::assertion_identity(i as u64),
                 fallback_scope: None,
+                marker_context: None,
                 assertion_location: format!("bug_{}", i),
                 schedule: FaultSchedule::new(),
                 snapshot: None,
@@ -339,6 +342,7 @@ mod tests {
             assertion_id: 100,
             assertion_identity: crate::test_support::assertion_identity(100),
             fallback_scope: None,
+            marker_context: None,
             assertion_location: "test.rs:123".to_string(),
             schedule: FaultSchedule::new(),
             snapshot: None,

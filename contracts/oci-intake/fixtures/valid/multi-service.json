@@ -1,6 +1,7 @@
 {
   "schema": "chaoscontrol.oci-topology.v1",
   "topology_id": "database-stack",
+  "capability_admits": ["shared_directories"],
   "shared_directories": [
     {
       "id": "data",
@@ -14,7 +15,7 @@
       "source": {
         "format": "oci_layers",
         "path": "/fixtures/database-image",
-        "image_identity": "b3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "image_identity": "b3:e97e5bcb4016c555081b749dccdf26d0a0ee5b5f622e4c738ccf9851e7da0cbc",
         "layers": [
           {
             "path": "layer-0.tar",

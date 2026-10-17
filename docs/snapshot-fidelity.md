@@ -1,7 +1,7 @@
 # Snapshot fidelity and compatibility
 
 ChaosControl snapshots use the `exact-x86-kvm-v1` completeness profile.
-The current state schema version is `2`.
+The current VMM state schema version is `3`. The outer persisted codec and replay-reference schema remain version `2`; they are separate compatibility boundaries.
 
 ## Exact state boundary
 
@@ -23,7 +23,9 @@ Host handles are not in the deterministic state boundary. These handles include 
 
 Before capture, the VMM completes pending KVM userspace exits with `immediate_exit` set. This step completes prior I/O or MMIO emulation without running another guest instruction.
 
-Capture fails if a device operation is in progress, a device is failed, schedule evidence is pending, the VM is poisoned, or a backend has no exact snapshot adapter. Capture also fails if KVM cannot return every required vCPU state group.
+Capture rejects unserializable completion faults, pending schedule evidence, poisoned VMs, unsupported backend adapters, and failures to collect required vCPU state. Defined transport failures, pending completion state, and the last request outcome are serialized. Restoring a failed post-effect request must not repeat its backend effect.
+
+Runtime regressions compare the same meaningful guest-exit horizon under real host signals; an unrelated no-progress `EINTR` does not consume that horizon. The backend round-trip scenario compares actual guest continuation, registers, schedule, and virtual time rather than temporal equality of raw hardware `IA32_TSC` samples. Those samples advance with the host clock even at a quiescent guest boundary. Complete snapshot serialization still round-trips the captured MSR inventory without field loss. This is not proof of deterministic direct guest access to the hardware TSC.
 
 ## Incremental lineage
 
@@ -31,7 +33,7 @@ An incremental image is a complete overlay relative to its retained base, not ju
 
 `DeterministicVm::get_dirty_bitmap` requires mutable access because observing the KVM dirty log consumes it. The VM retains those observed pages for later incremental capture and restore. Full restore of an overlay installs its base as well as its dirty pages. A later change of incremental base reconciles the current memory against that base before using the page set.
 
-Page-set planning is pure and bounded by guest memory size. Invalid bitmap shapes and page indices reject before page access. Tracking is conservative: a page can remain tracked after its bytes return to the base value. The persisted snapshot codec and schema remain unchanged.
+Page-set planning is pure and bounded by guest memory size. Invalid bitmap shapes and page indices reject before page access. Tracking is conservative: a page can remain tracked after its bytes return to the base value. The lineage repair does not change the outer persisted codec or replay-reference schema.
 
 ### Repeatable lineage validation
 
@@ -63,7 +65,7 @@ A preflight failure does not change VM state. A failure after restore starts per
 
 ## Compatibility policy
 
-Schema `2` restores only into the same exact profile and matching VM topology. The snapshot records the sorted `KVM_GET_MSR_INDEX_LIST` inventory. The restore host must expose that same inventory and support all required KVM state operations.
+Schema `3` restores only into the same exact profile and matching VM topology. It requires explicit transport/queue failure, pending completion, and last-request fields. State-schema `2` is not silently upgraded or filled with defaults. The snapshot records the sorted `KVM_GET_MSR_INDEX_LIST` inventory; the restore host must expose that same inventory and support all required KVM state operations.
 
 Legacy snapshots that omit XSAVE, vCPU events, required MSRs, metadata, or the complete inventory are incompatible. Decode or preflight rejects them. ChaosControl does not silently fill missing execution state with defaults.
 

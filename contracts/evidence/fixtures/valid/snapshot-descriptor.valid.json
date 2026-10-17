@@ -2,7 +2,7 @@
   "schema": "chaoscontrol-snapshot-descriptor-v1",
   "descriptor_version": 1,
   "completeness_profile": "exact-x86-kvm-v1",
-  "state_schema_version": 2,
+  "state_schema_version": 3,
   "architecture": "x86_64",
   "runtime": {
     "runtime_build": {

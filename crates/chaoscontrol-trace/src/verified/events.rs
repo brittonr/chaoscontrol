@@ -182,7 +182,7 @@ pub fn parse_event_kind(event_type: u32, arg0: u64, arg1: u64, arg2: u64, arg3: 
             val: arg3 as u32,
         },
         Some(EventType::KvmMmio) => EventKind::KvmMmio {
-            direction: if arg0 == 0 {
+            direction: if arg0 == 1 {
                 IoDirection::Read
             } else {
                 IoDirection::Write
@@ -215,6 +215,7 @@ pub fn parse_event_kind(event_type: u32, arg0: u64, arg1: u64, arg2: u64, arg3: 
         Some(EventType::KvmSetIrq) => EventKind::KvmSetIrq {
             gsi: arg0 as u32,
             level: arg1 as i32,
+            irq_source_id: arg2 as u32,
         },
         Some(EventType::KvmPageFault) => EventKind::KvmPageFault {
             vcpu_id: arg0 as u32,
@@ -368,9 +369,17 @@ pub fn event_kind_eq(a: &EventKind, b: &EventKind) -> bool {
         ) => c1 == c2 && p1 == p2,
 
         (
-            EventKind::KvmSetIrq { gsi: g1, level: l1 },
-            EventKind::KvmSetIrq { gsi: g2, level: l2 },
-        ) => g1 == g2 && l1 == l2,
+            EventKind::KvmSetIrq {
+                gsi: g1,
+                level: l1,
+                irq_source_id: s1,
+            },
+            EventKind::KvmSetIrq {
+                gsi: g2,
+                level: l2,
+                irq_source_id: s2,
+            },
+        ) => g1 == g2 && l1 == l2 && s1 == s2,
 
         (
             EventKind::KvmPageFault {
@@ -731,7 +740,11 @@ mod tests {
                 imr: 0,
                 coalesced: false,
             },
-            EventKind::KvmSetIrq { gsi: 4, level: 1 },
+            EventKind::KvmSetIrq {
+                gsi: 4,
+                level: 1,
+                irq_source_id: 0,
+            },
             EventKind::KvmPageFault {
                 vcpu_id: 0,
                 guest_rip: 0x1000,

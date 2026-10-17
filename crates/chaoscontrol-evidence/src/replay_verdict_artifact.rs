@@ -70,6 +70,7 @@ pub fn validate_snapshot_backed_replay_artifact(
         bug.replay_parent_snapshot_ref.as_ref() == Some(&verdict.snapshot.reference),
         "replay verdict snapshot reference mismatch",
     )?;
+    validate_carrier_bindings(&bug, &verdict)?;
 
     Ok(ReplayVerdictArtifactSummary {
         run_id: verdict.run_id,
@@ -77,4 +78,55 @@ pub fn validate_snapshot_backed_replay_artifact(
         assertion_id: verdict.assertion_id,
         replay_parent_depth: verdict.replay_parent_depth,
     })
+}
+
+fn validate_carrier_bindings(bug: &BugRecord, verdict: &ReplayVerdict) -> EvidenceResult<()> {
+    ensure(
+        bug.fallback_scope == verdict.fallback_scope,
+        "replay verdict fallback scope mismatch",
+    )?;
+    if let Some(scope) = bug.fallback_scope.as_ref() {
+        scope
+            .validate_against(bug.require_assertion_identity()?)
+            .map_err(|error| EvidenceError::new(format!("invalid fallback scope: {error:?}")))?;
+    }
+    ensure(
+        bug.marker_context == verdict.marker_context,
+        "replay verdict marker context mismatch",
+    )?;
+    if let Some(marker) = bug.marker_context.as_ref() {
+        marker
+            .validate()
+            .map_err(|error| EvidenceError::new(format!("invalid marker context: {error:?}")))?;
+        ensure(
+            bug.replay_parent_depth > 0 && bug.replay_parent_snapshot_ref.is_some(),
+            "marker context requires a retained parent snapshot",
+        )?;
+        ensure(
+            bug.tick.is_some_and(|tick| marker.observed_tick <= tick),
+            "marker context tick exceeds bug tick",
+        )?;
+    }
+    let expected = bug
+        .schedule_variant
+        .as_ref()
+        .map(|variant| -> EvidenceResult<_> {
+            let bytes = serde_json::to_vec(variant)
+                .map_err(|error| EvidenceError::new(error.to_string()))?;
+            let strategy = serde_json::to_string(&variant.strategy_override)
+                .map_err(|error| EvidenceError::new(error.to_string()))?;
+            Ok(
+                chaoscontrol_replay_evidence_core::dto::ReplayScheduleVariant {
+                    scheduler_seed: variant.scheduler_seed,
+                    strategy,
+                    quantum_override: variant.quantum_override,
+                    policy_blake3: blake3::hash(&bytes).to_hex().to_string(),
+                },
+            )
+        })
+        .transpose()?;
+    ensure(
+        expected == verdict.schedule_variant,
+        "replay verdict schedule policy mismatch",
+    )
 }

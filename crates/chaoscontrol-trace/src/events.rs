@@ -175,6 +175,7 @@ pub enum EventKind {
     KvmSetIrq {
         gsi: u32,
         level: i32,
+        irq_source_id: u32,
     },
     KvmPageFault {
         vcpu_id: u32,
@@ -342,8 +343,16 @@ impl fmt::Display for TraceEvent {
             EventKind::KvmPicIrq { chip, pin, .. } => {
                 write!(f, "PIC   chip={} pin={}", chip, pin)
             }
-            EventKind::KvmSetIrq { gsi, level } => {
-                write!(f, "IRQ   gsi={} level={}", gsi, level)
+            EventKind::KvmSetIrq {
+                gsi,
+                level,
+                irq_source_id,
+            } => {
+                write!(
+                    f,
+                    "IRQ   gsi={} level={} source={}",
+                    gsi, level, irq_source_id
+                )
             }
             EventKind::KvmPageFault {
                 fault_address,

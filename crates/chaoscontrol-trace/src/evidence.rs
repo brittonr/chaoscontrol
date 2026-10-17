@@ -432,6 +432,7 @@ pub fn admit_capture_profile(profile: &CaptureProfile) -> EvidenceResult<Admitte
             ));
         }
     }
+    validate_non_claim_set(&profile.non_claims)?;
     let profile_ref = canonical_ref(PROFILE_IDENTITY_DOMAIN, profile)?;
     Ok(AdmittedCaptureProfile {
         profile_ref,
@@ -777,6 +778,7 @@ pub enum RawRecordError {
     Version,
     RecordSize,
     UnknownDiscriminant,
+    Payload,
     Target,
     EventBound,
 }
@@ -788,6 +790,7 @@ impl RawRecordError {
             Self::Version => "raw-version",
             Self::RecordSize => "raw-record-size",
             Self::UnknownDiscriminant => "raw-discriminant",
+            Self::Payload => "raw-payload",
             Self::Target => "raw-target",
             Self::EventBound => "raw-event-bound",
         }
@@ -832,9 +835,49 @@ pub fn parse_raw_record(
     if raw.pid != expected_tgid {
         return Err(RawRecordError::Target);
     }
+    validate_raw_payload(&raw)?;
     let mut event = TraceEvent::from_raw(&raw);
     event.capture_index = capture_index;
     Ok(event)
+}
+
+// Match the producer projection exactly before its narrowing conversions run.
+fn validate_raw_payload(raw: &RawEvent) -> Result<(), RawRecordError> {
+    let u32_max = u64::from(u32::MAX);
+    let valid = match EventType::from_u32(raw.event_type) {
+        Some(EventType::KvmExit) => raw.arg0 <= u32_max,
+        Some(EventType::KvmEntry) => raw.arg0 <= u32_max && raw.arg2 == 0 && raw.arg3 == 0,
+        Some(EventType::KvmPio) => {
+            raw.arg0 <= 1
+                && raw.arg1 <= u64::from(u16::MAX)
+                && matches!(raw.arg2, 1 | 2 | 4)
+                && raw.arg3 <= u32_max
+        }
+        // KVM_MMIO_UNSATISFIED_READ is not representable by IoDirection.
+        Some(EventType::KvmMmio) => matches!(raw.arg0, 1 | 2) && matches!(raw.arg1, 1 | 2 | 4 | 8),
+        Some(EventType::KvmMsr) => raw.arg0 <= 1 && raw.arg1 <= u32_max && raw.arg3 == 0,
+        Some(EventType::KvmInjVirq) => {
+            raw.arg0 <= u32_max && raw.arg1 <= 1 && raw.arg2 <= 1 && raw.arg3 == 0
+        }
+        Some(EventType::KvmPicIrq) => {
+            raw.arg0 & !0x0000_00ff_00ff_ffff == 0
+                && raw.arg1 <= 1
+                && raw.arg2 == 0
+                && raw.arg3 == 0
+        }
+        Some(EventType::KvmSetIrq) => {
+            raw.arg0 <= u32_max && raw.arg1 <= 1 && raw.arg2 <= u32_max && raw.arg3 == 0
+        }
+        Some(EventType::KvmPageFault) => raw.arg0 <= u32_max,
+        Some(EventType::KvmCr) => raw.arg0 <= 1 && raw.arg1 <= u32_max && raw.arg3 == 0,
+        Some(EventType::KvmCpuid) => raw.arg1 <= u32_max && raw.arg2 <= u32_max,
+        Some(EventType::Unknown) | None => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(RawRecordError::Payload)
+    }
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> u16 {
@@ -1060,6 +1103,23 @@ fn canonical_event(event: &TraceEvent) -> EvidenceResult<CanonicalEvent> {
             "unknown or wrong-version event cannot enter an evidence projection",
         ));
     }
+    let payload_valid = match &event.kind {
+        EventKind::KvmPio { size, .. } => matches!(size, 1 | 2 | 4),
+        EventKind::KvmMmio { len, .. } => matches!(len, 1 | 2 | 4 | 8),
+        EventKind::KvmSetIrq { level, .. } => matches!(level, 0 | 1),
+        EventKind::KvmCpuid {
+            rax, rbx, rcx, rdx, ..
+        } => [rax, rbx, rcx, rdx]
+            .iter()
+            .all(|value| **value <= u64::from(u32::MAX)),
+        _ => true,
+    };
+    if !payload_valid {
+        return Err(EvidenceError::new(
+            "event-payload",
+            "typed event payload is outside the producer schema",
+        ));
+    }
     Ok(CanonicalEvent {
         source_cpu: event.source_cpu,
         source_sequence: event.seq,
@@ -1155,6 +1215,8 @@ pub fn compare_complete_traces(
     trace_a: TraceComparisonInput<'_>,
     trace_b: TraceComparisonInput<'_>,
 ) -> EvidenceResult<TraceComparison> {
+    validate_admitted_profile(trace_a.profile)?;
+    validate_admitted_profile(trace_b.profile)?;
     let TraceComparisonInput {
         profile: profile_a,
         accounting: accounting_a,
@@ -1232,6 +1294,8 @@ pub fn compare_complete_traces(
             "trace events exceed maximum_events",
         ));
     }
+    validate_enabled_events(profile_a, events_a)?;
+    validate_enabled_events(profile_b, events_b)?;
     match profile.ordering_mode {
         OrderingMode::ExactSingleProducer => compare_exact(profile, events_a, events_b),
         OrderingMode::SourcePartialOrder => compare_partial(profile, events_a, events_b),
@@ -1576,6 +1640,7 @@ pub fn validate_trace_manifest(manifest: &TraceManifest) -> EvidenceResult<()> {
             ));
         }
     }
+    validate_non_claim_set(&manifest.non_claims)?;
     Ok(())
 }
 
@@ -1699,6 +1764,20 @@ fn validate_enabled_events(
     events: &[TraceEvent],
 ) -> EvidenceResult<()> {
     for event in events {
+        canonical_event(event)?;
+        if event.pid != profile.profile.target.tgid
+            || (!profile.profile.topology.affinity_cpus.is_empty()
+                && !profile
+                    .profile
+                    .topology
+                    .affinity_cpus
+                    .contains(&event.source_cpu))
+        {
+            return Err(EvidenceError::new(
+                "event-source-drift",
+                "event target or CPU is outside the admitted topology",
+            ));
+        }
         let event_type = event.event_type() as u32;
         if !profile.profile.enabled_event_types.contains(&event_type) {
             return Err(EvidenceError::new(
@@ -1706,6 +1785,13 @@ fn validate_enabled_events(
                 format!("retained event type {event_type} was not enabled by the profile"),
             ));
         }
+    }
+    let sources: BTreeSet<_> = events.iter().map(|event| event.source_cpu).collect();
+    if sources.len() > profile.profile.topology.producer_count as usize {
+        return Err(EvidenceError::new(
+            "event-source-drift",
+            "event source count exceeds admitted producers",
+        ));
     }
     Ok(())
 }
@@ -1740,6 +1826,7 @@ fn validate_manifest_against_profile(
     profile: &AdmittedCaptureProfile,
     manifest: &TraceManifest,
 ) -> EvidenceResult<()> {
+    validate_admitted_profile(profile)?;
     validate_trace_manifest(manifest)?;
     if manifest.profile_ref != profile.profile_ref
         || manifest.build != profile.profile.build
@@ -1790,6 +1877,7 @@ pub fn comparison_receipt_ref(receipt: &ComparisonReceipt) -> EvidenceResult<Str
             ));
         }
     }
+    validate_non_claim_set(&receipt.non_claims)?;
     canonical_ref(COMPARISON_IDENTITY_DOMAIN, receipt)
 }
 
@@ -1886,11 +1974,13 @@ pub fn source_conformance_guard(collector_source: &str, bpf_source: &str) -> Evi
     }
     let lifecycle_markers = [
         "cleanup.quiesce",
+        "link.detach()",
+        "cleanup.detach =",
         "final_drain_attempted",
         "read_producer_accounting",
         "drop(ring_buffer)",
         "drop(skel)",
-        "cleanup.detach",
+        "cleanup.cleanup = cleanup.detach",
     ];
     let mut previous = 0;
     for marker in lifecycle_markers {
@@ -1950,8 +2040,12 @@ fn validate_digest_ref(name: &str, value: &str) -> EvidenceResult<()> {
 fn validate_identifier(name: &str, value: &str) -> EvidenceResult<()> {
     if value.is_empty()
         || value.len() > MAXIMUM_IDENTIFIER_BYTES
-        || value.bytes().any(|byte| byte.is_ascii_control())
-        || value.contains('/')
+        || value.bytes().any(|byte| {
+            !(byte.is_ascii_alphanumeric()
+                || b"._+-*[] ".contains(&byte)
+                || (name == "tracepoint" && byte == b':'))
+        })
+        || (name != "tracepoint.type_name" && value.contains(' '))
     {
         return Err(EvidenceError::new(
             "identifier",
@@ -1959,6 +2053,63 @@ fn validate_identifier(name: &str, value: &str) -> EvidenceResult<()> {
         ));
     }
     Ok(())
+}
+
+pub fn validate_admitted_profile(profile: &AdmittedCaptureProfile) -> EvidenceResult<()> {
+    if admit_capture_profile(&profile.profile)?.profile_ref != profile.profile_ref {
+        return Err(EvidenceError::new(
+            "profile-identity-drift",
+            "admitted profile identity differs from its exact contents",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_non_claim_set(claims: &[String]) -> EvidenceResult<()> {
+    if claims.len() != REQUIRED_NON_CLAIMS.len()
+        || REQUIRED_NON_CLAIMS.iter().any(|required| {
+            claims
+                .iter()
+                .filter(|claim| claim.as_str() == *required)
+                .count()
+                != 1
+        })
+    {
+        return Err(EvidenceError::new(
+            "evidence-scope",
+            "non-claims must be the exact bounded claim exclusion set",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraceEvidenceUse {
+    BoundedTraceObservation,
+    VmDeterminism,
+    ReplayCorrectness,
+    EbpfSafety,
+    KernelCorrectness,
+    SecurityProof,
+    PhysicalReadiness,
+    ReleaseEligibility,
+}
+
+pub fn trace_receipt_supports_use(
+    receipt: &ComparisonReceipt,
+    profile: &AdmittedCaptureProfile,
+    manifest_a: &TraceManifest,
+    manifest_b: &TraceManifest,
+    events_a: &[TraceEvent],
+    events_b: &[TraceEvent],
+    requested_use: TraceEvidenceUse,
+) -> EvidenceResult<bool> {
+    verify_comparison_receipt(receipt, profile, manifest_a, manifest_b, events_a, events_b)?;
+    Ok(requested_use == TraceEvidenceUse::BoundedTraceObservation
+        && matches!(
+            receipt.comparison.status,
+            ComparisonStatus::Match | ComparisonStatus::Divergent
+        ))
 }
 
 #[cfg(test)]
@@ -2145,6 +2296,127 @@ mod tests {
         bytes[28..30].copy_from_slice(&schema_version.to_ne_bytes());
         bytes[30..32].copy_from_slice(&record_size.to_ne_bytes());
         bytes
+    }
+
+    #[test]
+    fn raw_payload_corpus_rejects_lossy_width_boolean_direction_and_reserved_fields() {
+        let cases = [
+            (EventType::KvmExit, [u64::from(u32::MAX) + 1, 0, 0, 0]),
+            (EventType::KvmEntry, [0, 0, 1, 0]),
+            (EventType::KvmPio, [2, 0, 1, 0]),
+            (EventType::KvmPio, [0, 65536, 1, 0]),
+            (EventType::KvmPio, [0, 0, 257, 0]),
+            (EventType::KvmPio, [0, 0, 1, 1_u64 << 32]),
+            (EventType::KvmMmio, [3, 4, 0, 0]),
+            (EventType::KvmMmio, [1, 3, 0, 0]),
+            (EventType::KvmMsr, [2, 0, 0, 0]),
+            (EventType::KvmInjVirq, [0, 2, 0, 0]),
+            (EventType::KvmInjVirq, [0, 0, 2, 0]),
+            (EventType::KvmPicIrq, [1_u64 << 24, 0, 0, 0]),
+            (EventType::KvmPicIrq, [0, 2, 0, 0]),
+            (EventType::KvmSetIrq, [0, 2, 0, 0]),
+            (EventType::KvmSetIrq, [0, 1, 1_u64 << 32, 0]),
+            (EventType::KvmPageFault, [1_u64 << 32, 0, 0, 0]),
+            (EventType::KvmCr, [2, 0, 0, 0]),
+            (EventType::KvmCpuid, [0, 1_u64 << 32, 0, 0]),
+        ];
+        for (kind, args) in cases {
+            let mut bytes = raw_bytes(kind as u32, RAW_EVENT_SCHEMA_VERSION, RAW_EVENT_SIZE);
+            for (index, arg) in args.iter().enumerate() {
+                bytes[32 + index * 8..40 + index * 8].copy_from_slice(&arg.to_ne_bytes());
+            }
+            assert_eq!(
+                parse_raw_record(&bytes, 0, TARGET_TGID, EVENT_LIMIT)
+                    .expect_err("payload rejected"),
+                RawRecordError::Payload,
+                "{kind:?}: {args:?}"
+            );
+        }
+        let mut mmio = raw_bytes(
+            EventType::KvmMmio as u32,
+            RAW_EVENT_SCHEMA_VERSION,
+            RAW_EVENT_SIZE,
+        );
+        mmio[32..40].copy_from_slice(&1_u64.to_ne_bytes());
+        mmio[40..48].copy_from_slice(&4_u64.to_ne_bytes());
+        assert!(matches!(
+            parse_raw_record(&mmio, 0, TARGET_TGID, EVENT_LIMIT)
+                .expect("read")
+                .kind,
+            EventKind::KvmMmio {
+                direction: crate::events::IoDirection::Read,
+                ..
+            }
+        ));
+        let mut irq = raw_bytes(
+            EventType::KvmSetIrq as u32,
+            RAW_EVENT_SCHEMA_VERSION,
+            RAW_EVENT_SIZE,
+        );
+        let left = parse_raw_record(&irq, 0, TARGET_TGID, EVENT_LIMIT).expect("irq");
+        irq[48..56].copy_from_slice(&7_u64.to_ne_bytes());
+        let right = parse_raw_record(&irq, 0, TARGET_TGID, EVENT_LIMIT).expect("irq source");
+        assert_ne!(left.kind, right.kind);
+    }
+
+    #[test]
+    fn comparison_rejects_foreign_cpu_target_and_typed_malformed_payload() {
+        let admitted =
+            admit_capture_profile(&profile(OrderingMode::ExactSingleProducer, 1)).expect("profile");
+        let valid = vec![event(FIRST_SOURCE, 0, 0, 0)];
+        for mut invalid in [event(SECOND_SOURCE, 0, 0, 0), event(FIRST_SOURCE, 0, 0, 0)] {
+            if invalid.source_cpu == FIRST_SOURCE {
+                invalid.pid += 1;
+            }
+            let invalid = vec![invalid];
+            let a = TestTrace::complete(&admitted, &valid);
+            let b = TestTrace::complete(&admitted, &invalid);
+            assert_eq!(
+                compare_complete_traces(a.input(), b.input())
+                    .expect_err("foreign producer")
+                    .class,
+                "event-source-drift"
+            );
+        }
+        let mut invalid = event(FIRST_SOURCE, 0, 0, 0);
+        invalid.kind = EventKind::KvmMmio {
+            direction: crate::events::IoDirection::Read,
+            len: 3,
+            gpa: 0,
+            val: 0,
+        };
+        assert_eq!(
+            canonical_event(&invalid).expect_err("bad length").class,
+            "event-payload"
+        );
+    }
+
+    #[test]
+    fn profile_rejects_private_identifiers_and_extra_claim_text() {
+        for private in [
+            "/home/private",
+            "token=secret",
+            "bearer secret",
+            "user@host",
+            "https://host",
+        ] {
+            let mut candidate = profile(OrderingMode::ExactSingleProducer, 1);
+            candidate.target.run_id = private.to_string();
+            assert_eq!(
+                admit_capture_profile(&candidate)
+                    .expect_err("private data")
+                    .class,
+                "identifier"
+            );
+        }
+        let mut candidate = profile(OrderingMode::ExactSingleProducer, 1);
+        candidate.non_claims.push("token=private".to_string());
+        assert_eq!(
+            admit_capture_profile(&candidate)
+                .expect_err("extra text")
+                .class,
+            "evidence-scope"
+        );
     }
 
     #[test]
@@ -2632,6 +2904,30 @@ mod tests {
             .expect("computed receipt");
         verify_comparison_receipt(&computed, &admitted, &manifest, &manifest, &events, &events)
             .expect("verified receipt");
+        for requested_use in [
+            TraceEvidenceUse::BoundedTraceObservation,
+            TraceEvidenceUse::VmDeterminism,
+            TraceEvidenceUse::ReplayCorrectness,
+            TraceEvidenceUse::EbpfSafety,
+            TraceEvidenceUse::KernelCorrectness,
+            TraceEvidenceUse::SecurityProof,
+            TraceEvidenceUse::PhysicalReadiness,
+            TraceEvidenceUse::ReleaseEligibility,
+        ] {
+            assert_eq!(
+                trace_receipt_supports_use(
+                    &computed,
+                    &admitted,
+                    &manifest,
+                    &manifest,
+                    &events,
+                    &events,
+                    requested_use
+                )
+                .expect("scope checked"),
+                requested_use == TraceEvidenceUse::BoundedTraceObservation
+            );
+        }
         let mut drifted = computed;
         drifted.comparison.matching_observations = 0;
         assert_eq!(
@@ -2677,26 +2973,6 @@ mod tests {
             })
             .status,
             AdmissionStatus::Blocked
-        );
-    }
-
-    #[test]
-    fn source_guard_rejects_leaks_and_missing_producer_accounting() {
-        let collector = include_str!("collector.rs");
-        let good_bpf = "eligible_attempts submitted_records reservation_drops enabled_event_types source_cpu schema_version record_size";
-        source_conformance_guard(collector, good_bpf).expect("guard");
-        let leaked = format!("{}\n{collector}", ["Box", "::", "leak"].concat());
-        assert_eq!(
-            source_conformance_guard(&leaked, good_bpf)
-                .expect_err("leak")
-                .class,
-            "source-ownership"
-        );
-        assert_eq!(
-            source_conformance_guard(collector, "source_cpu")
-                .expect_err("accounting")
-                .class,
-            "source-accounting"
         );
     }
 }

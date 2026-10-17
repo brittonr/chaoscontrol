@@ -7,6 +7,11 @@ distributed systems where reproducibility is essential.
 
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
+Production readiness remains blocked. The current
+[bounded correction ledger](dogfood-results/production-readiness-extension-20261017/attempts.ncl)
+retains the authorized ceiling and non-pass evidence. A passing runtime proof
+does not replace native readiness or exact clean-source release verdicts.
+
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >
@@ -991,7 +996,7 @@ Earlier Apache-2.0 grants remain valid for revisions published before this polic
 - [Bounded Tree](https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git) at `b0fd0103bc9eed2c1b6d852045959462d105d8f1` — bounded directory observation, revalidation, and copy mechanics used by kernel-bundle and OCI intake shells.
 - [VM Cohort](rad:z2QJLUqyAZnnHPiZQ1BFjLsX9ush3) at `ab123e3673b6dd616b3df5d044026b5e85755149` — product-neutral retained-base, private-overlay, KVM clone, lifecycle, cleanup, and conformance mechanics.
 - [NASA SpaceWasm](https://github.com/nasa/spacewasm) at `e24cf09355a90497148eb5029fdb8e3400bd63e3` — exact experimental core-MVP interpreter used by the bounded diagnostic rail.
-- [`../mantle/`](../mantle/) at `a141fcbaafe41f9a413a81275a33fe915bfca370` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.
+- [`../mantle/`](../mantle/) at `57fa0f5c2f8fb1edeed6d6113b57d32357612e34` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.
 - [Wasmtime](https://github.com/bytecodealliance/wasmtime) — independent reference engine for normalized bounded observations; a match does not prove engine equivalence.
 - [Antithesis documentation index](docs/references/antithesis-documentation.md) — design reference for deterministic simulation, fault injection, assertions, exploration, replay, and debugging.
 - [WalTier](https://github.com/danthegoodman1/waltier/tree/d5dda89fb176d590d03c7812d047ced2712bba94) — bounded object-store DST reference for seeded faults, crash cycles, and oracle invariants.

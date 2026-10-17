@@ -2494,6 +2494,8 @@ fn cmd_reproduce(
                 bug: &serialized_bug,
                 snapshot: snapshot_validation,
                 admitted_report: None,
+                executed_schedule_matches: false,
+                replay_parent_context: None,
                 target_failed: false,
                 diagnostic: diagnostic.clone(),
             },
@@ -2645,6 +2647,17 @@ fn cmd_reproduce(
         eprintln!("Error: {error}");
         std::process::exit(1);
     }
+    let replay_parent_tick = controller.tick();
+    if let Some(marker) = serialized_bug.marker_context.as_ref() {
+        if let Err(error) = chaoscontrol_explore::marker_branching::validate_parent_context(
+            marker,
+            &restored_report,
+            replay_parent_tick,
+        ) {
+            eprintln!("Error: replay parent marker differs from retained evidence: {error:?}");
+            std::process::exit(EXIT_ERROR);
+        }
+    }
     controller.reset_vm_statuses();
     if let Err(e) = controller.begin_counterfactual_fault_run(schedule) {
         eprintln!("Error: counterfactual fault run failed: {}", e);
@@ -2658,6 +2671,20 @@ fn cmd_reproduce(
     if let Err(e) = controller.run(ticks) {
         eprintln!("Error: simulation failed: {}", e);
         std::process::exit(1);
+    }
+    let executed_schedule_matches = match serialized_bug.schedule_variant.as_ref() {
+        Some(variant) => match controller.matches_schedule_variant(variant) {
+            Ok(matches) => matches,
+            Err(error) => {
+                eprintln!("Error: cannot observe executed scheduling policy: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        },
+        None => true,
+    };
+    if !executed_schedule_matches {
+        eprintln!("Error: recorded scheduling variant differs from executed policy");
+        std::process::exit(EXIT_ERROR);
     }
 
     eprintln!();
@@ -2747,6 +2774,8 @@ fn cmd_reproduce(
                 bug: &serialized_bug,
                 snapshot: snapshot_validation,
                 admitted_report: Some(&report),
+                executed_schedule_matches,
+                replay_parent_context: Some((&restored_report, replay_parent_tick)),
                 target_failed,
                 diagnostic,
             },

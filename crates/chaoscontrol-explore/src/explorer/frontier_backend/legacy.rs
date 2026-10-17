@@ -161,6 +161,7 @@ impl FrontierBackend for LegacyFrontier {
                     snapshot: entry.snapshot.clone(),
                     schedule: entry.schedule.clone(),
                     depth: entry.depth,
+                    marker: entry.marker.clone(),
                     explored,
                 })
             }

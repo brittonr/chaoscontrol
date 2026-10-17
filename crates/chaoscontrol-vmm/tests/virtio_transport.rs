@@ -340,3 +340,74 @@ fn transport_snapshot_rejects_queue_cursor_ahead_of_guest_ring() {
     ));
     assert_eq!(transport.snapshot().unwrap(), before);
 }
+
+#[test]
+fn driver_failed_status_excludes_polling_notification_and_activation() {
+    use chaoscontrol_vmm::devices::virtio_mmio::VIRTIO_MMIO_QUEUE_NOTIFY;
+    use chaoscontrol_vmm::devices::virtio_validation::VIRTIO_STATUS_FAILED;
+    let mem = memory();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut transport = device(calls.clone());
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    let failed_status = transport.live_state().status | VIRTIO_STATUS_FAILED;
+    register(&mut transport, &mem, VIRTIO_MMIO_STATUS, failed_status).unwrap();
+    assert!(!transport.process_queues(&mem));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        register(&mut transport, &mem, VIRTIO_MMIO_QUEUE_NOTIFY, 0),
+        Err(VirtioFailure::Transport(
+            TransportViolation::NotifyQueueNotReady { selected: 0 }
+        ))
+    );
+    assert_eq!(
+        register(&mut transport, &mem, VIRTIO_MMIO_QUEUE_READY, 1),
+        Err(VirtioFailure::Transport(TransportViolation::ReadyState))
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(!transport.interrupt_pending());
+}
+
+#[test]
+fn snapshot_preserves_failed_post_effect_pending_completion_without_reexecution() {
+    use chaoscontrol_vmm::devices::virtio_types::UsedWriteFailurePoint;
+    let mem = memory();
+    let mut transport = completing_device();
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    write_descriptor(&mem, 0, VirtqDesc::default());
+    publish_head(&mem, 0, 1);
+    transport
+        .inject_used_write_failure(0, UsedWriteFailurePoint::BeforeIndex)
+        .unwrap();
+    assert!(!transport.process_queues(&mem));
+    let before = transport.live_state();
+    assert_eq!(before.queues[0].failure, Some(VirtioFailure::UsedRingWrite));
+    assert!(before.queues[0].pending_completion.unwrap().backend_started);
+    let snapshot = transport
+        .snapshot()
+        .expect("defined failed state is exact state");
+    let bytes = serde_json::to_vec(&snapshot).unwrap();
+    let decoded = serde_json::from_slice(&bytes).unwrap();
+    let mut restored = completing_device();
+    restored.restore_snapshot(&decoded, &mem).unwrap();
+    assert_eq!(restored.live_state(), before);
+    assert!(!restored.process_queues(&mem));
+    assert!(!transport.process_queues(&mem));
+    assert_eq!(restored.live_state(), transport.live_state());
+    assert_eq!(used_index(&mem), 0);
+    assert!(!restored.interrupt_pending());
+    let mut missing = serde_json::to_value(&snapshot).unwrap();
+    missing["queues"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("pending_completion");
+    assert!(
+        serde_json::from_value::<chaoscontrol_vmm::devices::virtio_mmio::VirtioMmioSnapshot>(
+            missing
+        )
+        .is_err()
+    );
+}

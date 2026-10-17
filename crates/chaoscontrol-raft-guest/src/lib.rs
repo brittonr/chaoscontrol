@@ -837,8 +837,50 @@ impl RaftSmrAdapter {
         std::mem::take(&mut self.pending_proposals)
     }
 
-    /// Observe the consumer's committed application path.
-    pub fn observe_committed_values(&mut self, values: &[u64]) -> Result<(), SmrError> {
+    /// Bind observation to the consumer's committed application path, then
+    /// independently verify that no caller-injected projection bypassed it.
+    pub fn observe_consumer(&mut self, node: &Node) -> Result<(), SmrError> {
+        let values = node.committed_application_values();
+        self.observe_committed_values(&values)?;
+        self.validate_consumer_readback(node)
+    }
+
+    pub fn validate_consumer_readback(&self, node: &Node) -> Result<(), SmrError> {
+        let values = node.committed_application_values();
+        if values != self.committed_values || self.observations.len() != values.len() {
+            return Err(SmrError {
+                class: "observer-path",
+                detail: "adapter bypassed committed consumer application path".into(),
+            });
+        }
+        let mut prior = self.plan.genesis_digest.clone();
+        for (offset, value) in values.iter().enumerate() {
+            let observation = &self.observations[offset];
+            let expected = chain_transition(
+                &self.plan.profile_ref,
+                offset as u64 + 1,
+                &prior,
+                &value.to_be_bytes(),
+            )?;
+            if observation.prior_digest != prior
+                || observation.digest != expected
+                || observation.application_state_ref != expected
+                || observation.command_index != offset as u64 + 1
+                || observation.profile_ref != self.plan.profile_ref
+            {
+                return Err(SmrError {
+                    class: "observer-path",
+                    detail: "adapter facts differ from independently read committed application"
+                        .into(),
+                });
+            }
+            prior = expected;
+        }
+        Ok(())
+    }
+
+    // Internal projection only: public observation must read the real consumer.
+    fn observe_committed_values(&mut self, values: &[u64]) -> Result<(), SmrError> {
         if values.len() < self.committed_values.len() {
             return Err(SmrError {
                 class: "raft-adapter-rollback",
@@ -1019,14 +1061,35 @@ mod smr_adapter_tests {
         );
         assert_eq!(adapter.take_pending_proposals().len(), 1);
         adapter
-            .observe_committed_values(&node.committed_application_values())
+            .observe_consumer(&node)
             .expect("committed projection");
         assert_eq!(adapter.observations().len(), 1);
         node.commit_index = SECOND_COMMIT_INDEX;
         adapter
-            .observe_committed_values(&node.committed_application_values())
+            .observe_consumer(&node)
             .expect("advanced projection");
         assert_eq!(adapter.observations().len(), SECOND_COMMIT_INDEX);
+    }
+
+    #[test]
+    fn correctly_hashed_fabricated_observer_cannot_bypass_consumer() {
+        let mut node = Node::new(0);
+        node.log = vec![LogEntry {
+            term: 1,
+            value: FIRST_VALUE,
+        }];
+        node.commit_index = 1;
+        let mut adapter = RaftSmrAdapter::new(plan(), "raft-replica-a");
+        adapter.observe_consumer(&node).unwrap();
+        adapter.validate_consumer_readback(&node).unwrap();
+        // A valid chain over an uncommitted value is still fabricated evidence.
+        let mut bypass = RaftSmrAdapter::new(plan(), "raft-replica-a");
+        bypass.observe_committed_values(&[SECOND_VALUE]).unwrap();
+        assert_eq!(
+            bypass.validate_consumer_readback(&node).unwrap_err().class,
+            "observer-path"
+        );
+        assert!(chaoscontrol_smr::validate_history(&plan(), bypass.observations()).is_ok());
     }
 
     #[test]

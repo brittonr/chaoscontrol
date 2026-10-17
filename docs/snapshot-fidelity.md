@@ -130,3 +130,37 @@ Cairn aggregate verification remains nonpassing: its whole workspace command exc
 
 The source audit mapped all 120 remaining ChaosControl requirement IDs, with zero safe metadata-only whole-requirement closures. No blanket markers or evidence-root expansion were applied. The earlier deep Raft, watchdog and release observations above remain bound to their original exact revisions; they are not rerun, relabeled or promoted by this evidence-only delivery. Production readiness remains false. All 30 authorized corrective attempts are consumed; the receipt names the remaining owner-specific prerequisites without authorizing another repair, weakening bounds or changing host configuration.
 
+## Authorized terminal extension
+
+The separate `dogfood-results/production-readiness-extension-20261017/` receipt and ledger retain the prospectively authorized ceiling of 35 corrective attempts. Fresh release commands tested exactly clean implementation revision `6190343c9ffe578f39c13501bb44048c8179e712`. A later receipt/documentation-only commit is not that tested revision. Historical receipts remain unchanged.
+
+Workspace all-target tests, Clippy with warnings denied, and formatting passed. The existing `raft_lineage_proof` also passed on the current VMM and its exact recorded guest inputs: actual timer/watchdog interruption, poisoned-controller rejection, controller replacement, retained-parent memory, incremental recapture, and equal initial/final memory, strict execution identities, every admitted assertion outcome, fault ledgers, and rounds across all three continuations. Assertion coverage remains explicit: 43 passed and one unexercised of 44 sites; no whole-catalog or universal-determinism claim follows.
+
+All seven required matrix rows ran with their declared commands and bounds:
+
+| Row | Terminal status |
+| --- | --- |
+| `build-release-binaries` | `passed` |
+| `build-raft-guest` | `passed` |
+| `deterministic-smp` | `passed` |
+| `serialized-snapshot-replay` | `passed` |
+| `virtio-malformed-input` | `passed` |
+| `admitted-drift` | `timed-out` at 1,800 seconds |
+| `fresh-workload-replay` | `timed-out` at 3,600 seconds |
+
+The Rust-owned overall matrix verdict is `blocked`. Full Nix checks separately exhausted their unchanged 10,800-second bound during derivation evaluation. Their log retains an unavailable Git source and expired cached-ref warning; the timeout does not establish a deeper root cause. Neither these operational timeouts nor the queue monitor's separate broken pipe is a guest bug or a substitute gate verdict.
+
+The completed control/planted campaigns and six deep safety replays remain bound to their earlier exact cohorts in `campaign23-observations.json` and `deep-probe24-observations.json` under the follow-up evidence directory. Both paired campaigns completed ten rounds through depth ten under 600 seconds and retain every measured overlay size. All six retained deep safety findings reproduced from valid parents: five at depth three and one at depth four. The selected depth-one planted probe also reproduced. A finding-producing explorer campaign returns 1; validated output and every actual snapshot-backed replay verdict, not process success alone, establish this criterion. These intentional probe findings do not prove a newly discovered Raft algorithm defect.
+
+Native validation, policy freshness, and the four consumer-owned Preserves cases pass. Native traceability remains nonpassing with 118 mandatory missing requirements and zero dangling references; `mcp_agent_smoke` also fails. No blanket evidence markers, copied upstream fixtures, skipped checks, or ungated policy migration close those gaps. The current producer native gap is `cairn.octet_integration.evidence.blocked`; a fully passing immutable Cairn source cohort and the original complete downstream MCP contract remain required. Alternate Rust 1.98 diagnostics, a proven overlong diagnostic socket path, and missing `nickel-export` are retained separately from pinned producer gates.
+
+The manifest binds current inputs with BLAKE3 and preserves historical receipt bytes. The exact historical initrd `blake3:82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e` remains unavailable; a replacement with different bytes is not accepted. Current kernel/initrd and executable retention aliases, raw logs, snapshots, complete assertion tables, bug files, and replay attempts remain local at the recorded paths.
+
+Use the recorded Nickel 1.17.0 cohort to evaluate the receipt:
+
+```bash
+nickel export --format json dogfood-results/production-readiness-extension-20261017/receipt.ncl
+```
+
+`observations.json` retains exact argv, environments, limits, reports, and source boundaries. `receipt-validation.json` binds the actual export and artifact identities. Ownership remains with `chaoscontrol-vmm` for runtime/evidence and Cairn CLI/core maintainers for producer admission. The final release/readiness task stays unchecked; all 35 corrective attempts are consumed. No lifecycle sync, archive, readiness promotion, host reconfiguration, or production-readiness claim follows.
+

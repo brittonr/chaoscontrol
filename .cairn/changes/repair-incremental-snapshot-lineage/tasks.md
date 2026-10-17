@@ -47,3 +47,13 @@ Attempt 25 passed three report regressions, the actual CLI failed-report rejecti
 
 The pinned Nickel export passed, verified 388 current manifest entries, preserved historical receipt bytes, and computed `production_ready = false`. Native traceability still records 120 missing and zero dangling references; MCP producer support and the exact historical initrd remain explicit prerequisites. Attempt 25 is blocked, not complete; the authorized ceiling is exhausted. The final release/validation task stays unchecked. No lifecycle sync, archive, readiness promotion or production-readiness claim is supported.
 
+## Authorized terminal extension
+
+`dogfood-results/production-readiness-extension-20261017/` binds the final authorized implementation `6190343c9ffe578f39c13501bb44048c8179e712` to fresh clean-source observations. Workspace all-target tests, denied-warning Clippy, formatting, and the existing three-controller watchdog proof passed. Actual timeout/replacement, full retained-parent memory, incremental recapture, strict execution identities, every admitted assertion outcome, attributed faults, and rounds matched; one of 44 catalog sites remains explicitly unexercised.
+
+The prior completed ten-round control/planted campaigns retain overlays through depth ten, and all six retained deep safety findings reproduced from valid depth-three/four parents. Those results keep their original cohort identities; the current receipt reuses their genuine report/replay evidence rather than rerunning or relabeling them. The documented finding-producing CLI exit 1 is not a campaign failure when validated output and every required replay pass.
+
+All seven current KVM matrix rows ran: five passed; `admitted-drift` and `fresh-workload-replay` timed out at their unchanged 1,800/3,600-second bounds. The overall verdict is `blocked`. Full Nix checks separately timed out at 10,800 seconds. Native validation, policy freshness, and consumer-owned Preserves freshness passed; native readiness still fails with 118 missing requirements, zero dangling references, and a failing MCP smoke check. The exact historical initrd remains unavailable, and no fully passing immutable Cairn producer cohort exists.
+
+The final release/readiness task remains unchecked. The 35-attempt ledger stays blocked; no additional implementation, lifecycle sync/archive, or production-readiness promotion is authorized by these observations. Later evidence/documentation commits are not represented as the tested implementation revision. Maintenance owner: `chaoscontrol-vmm`; producer admission remains with Cairn CLI/core maintainers.
+

@@ -8,9 +8,13 @@ distributed systems where reproducibility is essential.
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
 Production readiness remains blocked. The current
-[bounded correction ledger](dogfood-results/production-readiness-extension-20261017/attempts.ncl)
-retains the authorized ceiling and non-pass evidence. A passing runtime proof
-does not replace native readiness or exact clean-source release verdicts.
+[receipt](dogfood-results/production-readiness-extension-20261017/receipt.ncl)
+records passing Cargo/runtime checks, nonpassing native readiness, and a blocked
+five-of-seven KVM matrix. The
+[correction ledger](dogfood-results/production-readiness-extension-20261017/attempts.ncl)
+retains the authorized 35-attempt ceiling. See the
+[terminal evidence boundary](docs/snapshot-fidelity.md#authorized-terminal-extension)
+for the exact tested source, gate verdicts, and retained-artifact limits.
 
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.

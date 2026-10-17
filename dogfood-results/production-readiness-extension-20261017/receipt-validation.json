@@ -1,0 +1,126 @@
+{
+  "schema": "chaoscontrol.production-readiness-receipt-validation.v1",
+  "valid": true,
+  "production_ready": false,
+  "outcome": "blocked",
+  "implementation_revision_tested": "6190343c9ffe578f39c13501bb44048c8179e712",
+  "implementation_source_clean_at_gate": true,
+  "source_boundary": "The gate commands test exactly this clean implementation revision. A later evidence/documentation-only commit is not represented as that tested revision.",
+  "identity_algorithm": "blake3",
+  "receipt_contract": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-extension-20261017/receipt.ncl",
+    "digest": "blake3:1243163cb15b0b832f06f64a7695e1b3911dae32b5d2fe646d848d387b826950",
+    "bytes": 10334
+  },
+  "receipt_output": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-extension-20261017/receipt.json",
+    "digest": "blake3:5f0f617de48e332d4917757b214374ac9aa664ab050264596250b6e6ee736b66",
+    "bytes": 330563
+  },
+  "observations": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-extension-20261017/observations.json",
+    "digest": "blake3:8f0338d69cbb7efd4cd0cf703b89657f9cf911c246afaeba33fdc382431ce2e5",
+    "bytes": 2418244
+  },
+  "evidence_manifest": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-extension-20261017/evidence-manifest.json",
+    "digest": "blake3:04ac29753fa54e2240925ce4ffb648b1325b2b54abdc45255e0a4451944518d8",
+    "bytes": 494130
+  },
+  "attempts": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/dogfood-results/production-readiness-extension-20261017/attempts.ncl",
+    "digest": "blake3:881440c5ab5b2c206fc168746784f2982feecb0f844481475dda8a861a270688",
+    "bytes": 9982
+  },
+  "evaluator": {
+    "tool": "nickel",
+    "command": [
+      "nickel",
+      "--version"
+    ],
+    "stdout": "nickel-lang-cli nickel 1.17.0 (rev 1320a98)\n",
+    "stderr": "",
+    "executable": {
+      "path": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+      "digest": "blake3:7f456b69a70cdcbdc32aa05edb8ed1f143493eba5b69e6417367180b2049e2cf",
+      "bytes": 32493712
+    }
+  },
+  "nickel_export": {
+    "command": [
+      "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+      "export",
+      "--format",
+      "json",
+      "dogfood-results/production-readiness-extension-20261017/receipt.ncl"
+    ],
+    "exit_code": 0,
+    "operational_timeout": false,
+    "observation": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/extension35-receipt-nickel-final/execution.json",
+      "digest": "blake3:d6cba07a81ae2294dea95cb4db35bc3f0259a1d07d7aa0df08ddea8c11e42099",
+      "bytes": 1371
+    },
+    "output": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/extension35-receipt-nickel-final/stdout.log",
+      "digest": "blake3:5f0f617de48e332d4917757b214374ac9aa664ab050264596250b6e6ee736b66",
+      "bytes": 330563
+    }
+  },
+  "acceptance_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": true
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": true
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "current_artifact_entries": 686,
+  "all_current_manifest_inputs_verified": true,
+  "historical_receipt_bytes_unchanged": true,
+  "historical_required_artifacts_retained": false,
+  "historical_initrd_present": false,
+  "evidence_collection": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/extension35-evidence-final-collect/execution.json",
+    "digest": "blake3:0fb43de7aeb5dbb0e406f45404c55da81772af841045c4388be37e204296d3a6",
+    "bytes": 1178
+  },
+  "later_document_validation": {
+    "valid": true,
+    "command": [
+      "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+      "validate",
+      "--root",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "--policy",
+      "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+      "--strict"
+    ],
+    "observation": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/extension35-delivery-native-validation/execution.json",
+      "digest": "blake3:5ea9cb47f078efdb8e41c514c81486feb6d296eb49521301c600da25810ba263",
+      "bytes": 1608
+    },
+    "report": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/extension35-delivery-native-validation/stdout.log",
+      "digest": "blake3:7be6c833a2c9d9e561c07c3a5100eb42817e63d2a310ccf9477753beeaca4891",
+      "bytes": 77138
+    },
+    "boundary": "Strict validation of the later lifecycle/documentation state, not a replacement release or native-readiness verdict for the tested implementation"
+  },
+  "non_claim": "Successful receipt evaluation and documentation validation do not pass failed native, Nix, KVM or historical-retention criteria; production readiness remains false."
+}

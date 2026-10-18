@@ -70,10 +70,61 @@ This section records prospective authorization and work, not completion evidence
 
 ## Attempt 36 current-guest consumer correction
 
-- [x] [depends:snapshot-lineage-shell] Preserve the Raft guest's applied application prefix when a node resets volatile protocol state. Exercise restart, catch-up, repeated restart, and changed/truncated-prefix rejection; rebuild the actual guest and rerun the strict three-controller proof without weakening any assertion or declared bound. r[chaoscontrol.smr_chain.adapter] r[chaoscontrol.smr_chain.history] r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [x] [depends:snapshot-lineage-shell] Preserve the Raft guest's applied application prefix when a node resets volatile protocol state. Exercise restart, catch-up, repeated restart, and changed/truncated-prefix rejection; rebuild the actual guest and rerun the strict three-controller proof without weakening any assertion or declared bound. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 
 The original attempt-36 Nix investigation made no implementation change. The retained counting rule excludes read-only diagnosis, so this is that still-unstarted authorized correction, not attempt 41. Current-source `2aa212f87021391f03717b86089330db0c8967d8` already reproduced `raft-adapter-rollback` in all three compared continuations: the guest retained the log but reset `commit_index` on restart. Missing mandatory virtio execution state remains a decode rejection; no healthy defaults or legacy-snapshot substitution are planned. Frozen-source release commands remain separate and unchanged.
 
 
 `target/pr40/correction36-application-before/` retains the reproduced empty-prefix failure. The corrected guest passed all 109 library tests and denied-warning Clippy; its Nix-built initrd then passed `target/pr40/correction36-precommit-lineage/runtime-proof.json`. The actual `SI_TIMER` timeout, permanent poison rejection, production replacement, retained-parent memory and immediate incremental recapture passed. All six strict comparison fields matched across long-lived, fresh-full and watchdog-replacement controllers. The 45 admitted sites retain 44 passed and one unexercised outcome, with no safety failure. This pre-commit proof is scoped behavior evidence, not a clean-source release verdict or whole-SMR requirement closure.
+
+## Terminal continuation evidence through attempt 40
+
+`dogfood-results/production-readiness-continuation-20261017/` binds corrected
+clean `7dace3fbd283c61e4e8ea0ed59da7e143fbc36fb` separately from prior clean
+`2aa212f87021391f03717b86089330db0c8967d8` and later evidence-only delivery
+commits. All 40 authorized corrective slots are consumed; previous receipts and
+ledgers remain byte-identical. Read-only diagnosis did not create attempt 41.
+
+The actual current-guest proof passed after the applied-prefix correction:
+real watchdog interruption, permanent poison enforcement, production controller
+replacement, retained-parent and immediate incremental recapture fidelity, and
+all six strict comparison fields across three controllers. All admitted
+assertion tables match: 44 passed and one unexercised of 45 sites, with no safety
+failure. Observed depth-one-through-four overlay payloads are 7,823,360;
+11,501,568; 15,151,104; and 17,166,336 bytes. Only the depth-four parent was
+persisted. These scoped observations support the existing completed watchdog
+task, not universal determinism or whole SMR completion.
+
+The corrected release-profile control/planted/probe explorer commands retain
+one accepted round then fail with `Frontier Adapter Campaign BoundExceeded`.
+They do not satisfy current ten-round/depth-four completion, and an empty fresh
+deep inventory is not a replay. Six original deep findings and the selected
+original probe reproduced again with the verified original executable and
+original exact inputs. Those results retain their explicit engine cohort;
+current readers still reject missing mandatory failure state in the old parents.
+No compatibility default or healthy snapshot is substituted.
+
+Fresh workspace all-target tests, denied-warning Clippy and formatting passed.
+All seven clean-source KVM rows ran: five passed, `admitted-drift` timed out at
+1,800 seconds and `fresh-workload-replay` at 3,600 seconds. The typed overall
+matrix verdict is `blocked`. Full Nix checks separately timed out at the
+unchanged 10,800-second bound. No timeout is classified as a guest bug.
+
+Frozen-source native traceability remains nonpassing: 266 of 382 requirements
+referenced, 116 mandatory missing requirements and zero dangling coverage
+references. Supported consumer-owned Preserves freshness passes; MCP smoke does
+not. This delivery removes two out-of-scope SMR references from the task note
+above, without claiming those whole requirements, and passes actual strict
+native validation. The original frozen-source validation failure remains
+retained. Every unsupported whole-requirement and final readiness task stays
+unchecked.
+
+No passing immutable compatible Cairn producer cohort exists in the admitted
+evidence. Required upstream Cargo/Nix/native/Octet gates and the original full
+downstream MCP contract remain prerequisites. The exact older missing initrd,
+current campaign failure and host-owned Nix dependency wait remain separate
+blockers. The new receipt retains exact commands, profiles, artifact identities,
+observed faults, assertion coverage, bug files and replay attempts; it never
+promotes historical or dirty-source evidence. Maintenance owner remains
+`chaoscontrol-vmm`, with producer admission owned by Cairn CLI/core maintainers.
 

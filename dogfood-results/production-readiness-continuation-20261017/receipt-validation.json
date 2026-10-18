@@ -1,0 +1,233 @@
+{
+  "schema": "chaoscontrol.production-readiness-continuation-receipt-validation.v1",
+  "validated": true,
+  "production_ready": false,
+  "outcome": "blocked",
+  "source": {
+    "boundary": "Clean implementation tested independently of2aa212f; later evidence-only commits are not this tested revision",
+    "dirty": false,
+    "observed_at": "2026-10-17T23:13:11.052451+00:00",
+    "revision": "7dace3fbd283c61e4e8ea0ed59da7e143fbc36fb",
+    "root": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/correction36-source",
+    "schema": "chaoscontrol.exact-clean-source-observation.v1",
+    "starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f"
+  },
+  "source_boundary": "Each cohort retains its exact source and commands. The corrected clean implementation is not the prior cohort, and a later evidence-only delivery commit is not release-tested by these commands.",
+  "required_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": false
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": true
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "complete_gate_inventory": true,
+  "implementation_attempts": {
+    "used": 40,
+    "authorized_maximum": 40,
+    "within_limit": true
+  },
+  "nickel": {
+    "executable": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+    "cohort": {
+      "schema": "chaoscontrol.observed-toolchain-versions.v1",
+      "source": {
+        "schema": "chaoscontrol.exact-clean-source-observation.v1",
+        "revision": "2aa212f87021391f03717b86089330db0c8967d8",
+        "dirty": false,
+        "root": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "observed_at": "2026-10-17T22:05:18.455840+00:00",
+        "starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+        "boundary": "Implementation commit; later evidence/documentation commits are not this tested revision"
+      },
+      "versions": [
+        {
+          "command": [
+            "/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin/cargo",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "cargo 1.98.0 (797e8a9bc 2026-08-05)\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "rustc",
+            "-vV"
+          ],
+          "exit_code": 0,
+          "stdout": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0\nLLVM version: 22.1.8\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "nickel",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "nickel-lang-cli nickel 1.17.0 (rev 1320a98)\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "nix",
+            "--version"
+          ],
+          "exit_code": 0,
+          "stdout": "nix (Nix) 2.36.0\n",
+          "stderr": ""
+        }
+      ]
+    },
+    "observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "command": [
+        "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl"
+      ],
+      "display_command": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel export --format json /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-18T02:16:45.924123+00:00",
+      "finished": "2026-10-18T02:16:46.048455+00:00",
+      "elapsed_seconds": 0.12434015798498876,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-receipt-validation/stdout.log",
+          "digest": "blake3:d73c18d7c8b793e7497e49142930753e94e1d40407afa9a85f26b8d243b1a68e",
+          "bytes": 529513
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-receipt-validation/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "observation_artifact": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-receipt-validation/execution.json",
+      "digest": "blake3:e0221c35c8f0bd29355b845afe21e43dd153b58836d93ec3f239706e636986e9",
+      "bytes": 1519
+    },
+    "receipt_source": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl",
+      "digest": "blake3:3657c168a14c31bf55cdda47cecb2052ddfdd74818844bff720f427ff35af990",
+      "bytes": 10228
+    },
+    "exported_receipt": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-receipt-validation/stdout.log",
+      "digest": "blake3:d73c18d7c8b793e7497e49142930753e94e1d40407afa9a85f26b8d243b1a68e",
+      "bytes": 529513
+    }
+  },
+  "artifact_verification": {
+    "identity_algorithm": "blake3",
+    "manifest": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/evidence-manifest.json",
+      "digest": "blake3:d5271bfd5cdecfc27bc15ecf74be460755ce14aa4461ffc837169ecfddba963c",
+      "bytes": 117558
+    },
+    "observations": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/observations.json",
+      "digest": "blake3:21829687996503af3fdd939a49ba7f0e5630ddb32573d836efd09356c58b3ba6",
+      "bytes": 2123046
+    },
+    "artifacts_checked": 455,
+    "all_current_manifest_inputs_verified": true,
+    "mismatches": [],
+    "all_historical_receipt_bytes_unchanged": true,
+    "all_historical_required_artifacts_retained": false,
+    "boundary": "Every retained manifest path was rehashed with b3sum --no-names and its byte count compared. Exact historical missing bytes remain missing; this validates the evidence record, not production readiness."
+  },
+  "unsupported_readiness_claim": {
+    "rejected": true,
+    "source": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/unsupported-readiness-claim.ncl",
+      "digest": "blake3:89d714cf8e1070a4911d871d45ea5a7673a33c9e18741d0440b9fe43a7286a04",
+      "bytes": 227
+    },
+    "source_utf8": "let Receipt = import \"/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl\" in\nReceipt & { production_ready | std.contract.Equal true }\n",
+    "source_removed_after_execution": true,
+    "observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "command": [
+        "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/unsupported-readiness-claim.ncl"
+      ],
+      "display_command": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel export --format json /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/unsupported-readiness-claim.ncl",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-18T02:17:23.112457+00:00",
+      "finished": "2026-10-18T02:17:23.176199+00:00",
+      "elapsed_seconds": 0.06375756999477744,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-unsupported-readiness-claim/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-unsupported-readiness-claim/stderr.log",
+          "digest": "blake3:4c5989cd1346e0f113341b9bc823bdbcec22c4d5b8e6ef979e061cb3fada07d2",
+          "bytes": 763
+        }
+      ]
+    },
+    "observation_artifact": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-unsupported-readiness-claim/execution.json",
+      "digest": "blake3:4f93c2c33329c85f405ddaa10efcb2ae1ba5ed8d246c6c35dfc12e20e8d43a6d",
+      "bytes": 1424
+    },
+    "diagnostic_artifact": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-unsupported-readiness-claim/stderr.log",
+      "digest": "blake3:4c5989cd1346e0f113341b9bc823bdbcec22c4d5b8e6ef979e061cb3fada07d2",
+      "bytes": 763
+    }
+  },
+  "delivery_metadata_check": {
+    "passed": true,
+    "observation_artifact": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-final-metadata-validation/execution.json",
+      "digest": "blake3:7fe014efa875a144a4afd0430f6e1965a7337b366c21c67b8965dc6914f15cb4",
+      "bytes": 1621
+    },
+    "report_artifact": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-final-metadata-validation/stdout.log",
+      "digest": "blake3:4e693219e17f266b829aa0c0f15b3a9d26e947e9e169bac0f4b86d0883e9bb1b",
+      "bytes": 77780
+    },
+    "boundary": "Evidence-only delivery metadata validation after scope-reference correction and terminal documentation updates, before publication. This does not replace frozen-source failures or pass traceability/MCP/readiness."
+  },
+  "non_claims": [
+    "Successful Nickel export means the receipt is structurally valid and its computed readiness is blocked. It is not a passing native, Nix or release verdict.",
+    "All seven matrix rows and their typed statuses remain required; only5 passed.",
+    "The later evidence/documentation-only delivery commit is not the exact clean implementation tested.",
+    "No historical receipt, old dirty-source gate or original-engine reproduction is promoted to current clean-source release eligibility."
+  ]
+}

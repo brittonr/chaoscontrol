@@ -214,3 +214,119 @@ consumers are restore/recovery, explorer resume/reproduction and evidence
 admission. Final clean-source Cargo, Nix, native, watchdog and seven-row matrix
 verdicts remain independent requirements; no production-readiness claim follows.
 
+## Continuation current-guest evidence
+
+The continuation receipt under
+`dogfood-results/production-readiness-continuation-20261017/` binds clean
+implementation `7dace3fbd283c61e4e8ea0ed59da7e143fbc36fb`, separately from prior
+clean `2aa212f87021391f03717b86089330db0c8967d8` and later evidence-only commits.
+All 40 explicitly authorized corrective slots are consumed. Historical receipts
+and their source cohorts remain unchanged.
+
+Attempt 36 used its still-unstarted implementation slot after read-only Nix
+diagnosis. The current Raft guest had retained its log but reset `commit_index`
+on protocol restart; all three continuations observed `raft-adapter-rollback`.
+The corrected consumer preserves its applied application prefix and rejects
+changed or truncated applied history. The failing-before regression, all 109
+Raft library tests and denied-warning Clippy are retained. This is not whole-SMR
+contract completion.
+
+On the corrected clean source, workspace all-target tests, denied-warning
+Clippy and formatting passed. The rebuilt current guest passed the existing
+three-controller proof: an actual `SI_TIMER` watchdog interruption, permanent
+poison enforcement, production controller replacement, exact retained-parent
+memory and immediate incremental recapture. Initial/final memory identities,
+strict execution identities, every admitted assertion outcome, fault ledgers
+and rounds matched across long-lived, fresh-full and replacement controllers.
+All three tables retain 44 passed and one unexercised of 45 admitted sites, with
+no safety failure. The watchdog is an operational host timeout, not a guest bug.
+
+| Parent depth | Observed dirty pages | Overlay payload bytes |
+| --- | ---: | ---: |
+| 1 | 1,910 | 7,823,360 |
+| 2 | 2,808 | 11,501,568 |
+| 3 | 3,699 | 15,151,104 |
+| 4 | 4,191 | 17,166,336 |
+
+Payload bytes are the proof's observed page counts times 4,096, not compressed
+snapshot sizes. Each depth matched a full-memory reference; only the depth-four
+parent was persisted by this proof. These measurements do not stand in for a
+completed explorer campaign.
+
+The corrected release-profile control, `fig8_commit` and deep-probe campaigns
+retain accepted one-round checkpoints, then fail with
+`Frontier { source: Adapter(Campaign(BoundExceeded)) }`. Their unchanged
+600-second bounds were not exhausted. Earlier debug-profile timeouts remain
+separate operational observations. Neither valid checkpoint admission nor an
+empty deep-finding inventory passes ten-round/depth-four exploration.
+
+All six original retained deep findings were replayed again: five depth-three
+parents and one depth-four parent, with exact bug/assertion identity, parent
+reference and valid digest-verified `snapshot_backed_reproduced` verdicts.
+The selected original depth-one probe also reproduced. These actual commands
+used the separately identity-verified original executable and original inputs;
+they do not prove current-reader acceptance. Current readers reject the old
+parents' missing mandatory device failure state. No healthy default, substituted
+snapshot or relabeled fresh finding hides that rejection. Intentional snapshot
+probe failures are not discovered Raft algorithm defects.
+
+The exact frozen-source native report remains nonpassing: 266 of 382
+requirements referenced, 116 mandatory gaps, zero dangling coverage references,
+and a failing `mcp_agent_smoke`. Supported consumer-owned Preserves freshness
+passes. Two task-note SMR references were outside the snapshot change's scope;
+the evidence-only delivery removes those references and passes actual strict
+native validation without claiming either whole SMR requirement. The frozen
+validation failure remains retained separately.
+
+The unchanged owner prerequisites remain explicit: one fully passing immutable
+compatible Cairn producer cohort through its required Cargo/Nix/native/Octet
+gates and the original complete downstream MCP contract; genuine residual
+ChaosControl requirement evidence; and the exact missing historical initrd.
+The local Nix dependency diagnosis isolates a client wait after daemon
+`AddToStore` for `base-orphans-0.9.3.tar.gz.drv`, while source-independent new
+derivation registration succeeds. It does not establish a general collector
+lock cause or authorize host reconfiguration.
+
+Maintenance owner: `chaoscontrol-vmm` for current runtime and evidence;
+Cairn CLI/core maintainers for producer admission. Exact commands, environments,
+profiles, complete assertion tables, raw logs, retained snapshots and executable
+aliases remain bound by the receipt's BLAKE3 manifest. No production-readiness
+claim follows from these scoped passes.
+
+### Terminal corrected-source release gates
+
+The unchanged-bound release consumers are terminal on clean `7dace3fb`:
+
+| Required gate or row | Observed verdict |
+| --- | --- |
+| Workspace all-target tests | passed |
+| Clippy with warnings denied | passed |
+| Formatting | passed |
+| Strict current-guest watchdog proof | passed |
+| Full Nix checks | operational timeout at 10,800 seconds |
+| `build-release-binaries` | passed |
+| `build-raft-guest` | passed |
+| `deterministic-smp` | passed |
+| `serialized-snapshot-replay` | passed |
+| `virtio-malformed-input` | passed |
+| `admitted-drift` | operational timeout at 1,800 seconds |
+| `fresh-workload-replay` | operational timeout at 3,600 seconds |
+
+The Rust-owned overall matrix verdict is `blocked`, not `release-eligible`.
+Its generated Markdown retains unconditional passed-matrix boilerplate; that
+sentence does not override the typed blocked verdict and two timed-out rows.
+No historical or dirty-source result replaces any corrected-source failure.
+
+Evaluate the separate continuation receipt with the recorded Nickel cohort:
+
+```bash
+nickel export --format json dogfood-results/production-readiness-continuation-20261017/receipt.ncl
+```
+
+The receipt requires every original criterion, complete gate/attempt inventories
+and passing report verdicts. `receipt-validation.json` records its actual export,
+artifact identity checks and rejection of an unsupported readiness claim.
+Production readiness remains false; the exact upstream, current-campaign,
+requirement-evidence, host-owned Nix and historical-retention prerequisites stay
+open. No lifecycle sync, archive or additional corrective slot is authorized.
+

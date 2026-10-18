@@ -90,6 +90,29 @@ The retained local multi-hypervisor report distinguishes a Raft child killed by 
 
 
 
+### 14. Advance each accepted staged control prefix without replaying earlier prefixes
+
+The retained read-only timing diagnosis isolates 234 actual control events whose
+held-projection publication pattern applies 27,495 suffix events in 124.12 seconds.
+A single pass applies the same 234 controls in 1.01 seconds with equal recorded
+pre-states and final complete state. This is bounded diagnosis, not a production
+speedup or attribution of the whole campaign timeout.
+
+Attempt 46 will advance the existing validated `ControlSession` projection after
+each accepted publication using the existing `seal` validation and independent
+applied-state comparison. The next publication therefore starts at the accepted
+prefix instead of replaying every earlier publication in the staged segment.
+Segment sealing, immutable publication planning, history/payload/identity checks,
+selection fences, resource reserves, journal durability and adopt-after-commit
+remain required. A staged validation failure is not a committed publication.
+
+The user authorized this one focused attempt with “do it” after the explicit
+proposal to exceed the retained 45-attempt ceiling by one. The original campaign
+bounds, depth-four/overlay and retained-finding replay requirements, strict
+controller proof, all release gates and ownership restrictions remain unchanged.
+No sibling correction, host change or unrelated implementation is authorized.
+
+
 ## Risks
 
 - Overlay size and restore cost grow with lineage depth. Validation records overlay page counts per depth for the Raft and redb workloads.

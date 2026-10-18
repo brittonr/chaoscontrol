@@ -1117,6 +1117,61 @@ fn admit_second_root(
 }
 
 // r[verify chaoscontrol.campaign_policy.history.valid]
+// r[verify chaoscontrol.campaign_policy.history.invalid]
+#[test]
+fn every_staged_publication_matches_cold_replay_and_rejects_stale_controls() {
+    use crate::campaign_adapter::{decay_revision, load_projection, GuidanceFacts};
+    use campaign_choregraph::{ControlProjectionRequest, ParentChoices};
+
+    let dir = tempfile::tempdir().unwrap();
+    let frontier = open_campaign(dir.path(), ScriptedIo::default());
+    let committed = frontier.control_session().unwrap();
+    let committed_projection = committed.projection().clone();
+    let mut staged = committed.clone();
+    let identity = AdapterIdentity::for_seed(SEED);
+    for increment in [1_u32, 2, 3] {
+        let request = decay_revision(
+            &identity,
+            staged.state().candidates[0].latest_guidance.as_ref().unwrap(),
+            GuidanceFacts {
+                score: ROOT_SCORES[0],
+                times_selected: increment,
+                entry_seq: 0,
+            },
+        )
+        .unwrap();
+        let event = campaign_core::revise_guidance(staged.state(), request).unwrap();
+        let stale = event.clone();
+        let publication = staged.publish(event).unwrap();
+        let choices = ParentChoices::new();
+        let replayed = load_projection(&ControlProjectionRequest {
+            graph: staged.graph(),
+            branch: &publication.branch_plan().after,
+            parent_choices: &choices,
+            maximum_events: staged.projection().maximum_events(),
+            expected_binding: staged.binding().unwrap(),
+            payloads: staged.payloads(),
+        })
+        .unwrap();
+        assert_eq!(staged.projection(), &replayed);
+        assert_eq!(staged.state(), replayed.state());
+
+        assert!(staged.publish(stale).is_err());
+        assert_eq!(staged.projection(), &replayed);
+        assert_eq!(staged.state(), replayed.state());
+        assert_eq!(staged.graph().len(), replayed.graph_events());
+        assert_eq!(staged.binding().unwrap(), *replayed.binding());
+        assert_eq!(staged.payloads().len(), replayed.control_events().len());
+        assert_current_graph_without_drafts(&frontier);
+    }
+    let before_seal = staged.projection().clone();
+    staged.seal().unwrap();
+    assert_eq!(staged.projection(), &before_seal);
+    assert_eq!(committed.projection(), &committed_projection);
+    assert_eq!(committed.state(), committed_projection.state());
+}
+
+// r[verify chaoscontrol.campaign_policy.history.valid]
 #[test]
 fn every_commit_presents_the_current_graph_and_leaves_no_control_draft() {
     let dir = tempfile::tempdir().unwrap();

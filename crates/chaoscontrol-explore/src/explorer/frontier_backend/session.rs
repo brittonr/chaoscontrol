@@ -2,10 +2,10 @@
 //!
 //! The session owns the history graph, the control branch, the control payloads,
 //! the Campaign state (advanced with `apply_control_event`), and the control
-//! projection validated at the last committed segment. Every publication is
-//! planned with `plan_control_event_publication` against the previously validated
-//! projection (D41 fast-forward), and sealing a segment advances the projection
-//! with `validate_control_advance` and requires it to equal the applied state.
+//! projection validated at the latest accepted prefix. Every publication is
+//! planned with `plan_control_event_publication` against that projection (D41
+//! fast-forward), then advances it with `validate_control_advance` and requires
+//! it to equal the independently applied state. Segment sealing repeats that check.
 //! Callers stage a clone, seal it, commit the journal segment, and only then
 //! adopt the staged session, so uncommitted state is always dropped.
 //!
@@ -130,7 +130,7 @@ impl ControlSession {
         &self.state
     }
 
-    /// Projection validated at the last committed segment.
+    /// Projection validated at the latest accepted staged or committed prefix.
     pub(super) const fn projection(&self) -> &ValidatedControlProjection {
         &self.projection
     }
@@ -204,6 +204,7 @@ impl ControlSession {
             history_event_id: publication.history_event_id(),
             control_event: publication.control_event().clone(),
         });
+        self.seal()?;
         Ok(publication)
     }
 

@@ -5,7 +5,7 @@
 - [x] [depends:snapshot-lineage-regression] Add pure page-set planning with bounds checks and positive and negative unit tests. r[chaoscontrol.deterministic_snapshots.incremental_core]
 - [x] [depends:snapshot-lineage-core] Route incremental capture and restore through the page set and drain the dirty log around host writes. r[chaoscontrol.deterministic_snapshots.incremental_lineage] r[chaoscontrol.deterministic_snapshots.incremental_revert]
 - [x] [depends:snapshot-lineage-shell] Compare fresh and long-lived controller branch results from the same parent, including the watchdog replacement path. r[chaoscontrol.deterministic_snapshots.incremental_validation]
-- [x] [depends:snapshot-lineage-shell] Rerun the Raft control and planted-bug campaigns, replay every safety finding at depth three or more, and record overlay sizes per depth. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [ ] [depends:snapshot-lineage-shell] Rerun the Raft control and planted-bug campaigns, replay every safety finding at depth three or more, and record overlay sizes per depth. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 - [ ] [depends:snapshot-lineage-campaign] Mark pre-change deep findings diagnostic-only in replay and readiness docs, then run workspace tests, KVM smoke tests, and Cairn validation. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 
 ## Implementation evidence
@@ -237,4 +237,16 @@ evidence was pushed to `main` without force. This supports only the delivery
 checkbox above. Campaign/replay, whole-requirement and release-readiness tasks
 remain unchecked. This later publication-state note is not part of the clean
 `b51beaf` implementation tested by the retained release commands.
+
+## Authorized focused attempt 46
+
+The user's “do it” authorizes one additional cohesive staged-prefix replay
+correction and its verification, extending the explicit ceiling from 45 to 46.
+`dogfood-results/production-readiness-attempt46-20261018/attempts.ncl` records the
+authorization separately; no earlier ledger or receipt is changed. The design's
+accepted-prefix advancement retains every publication, seal and durability check.
+The campaign checkbox above is pending because the retained clean-source evidence
+does not establish the complete depth-four, overlay and historical replay contract.
+No implementation or new gate pass is claimed by this authorization note.
+
 

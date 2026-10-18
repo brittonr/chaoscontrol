@@ -3571,9 +3571,13 @@ mod tests {
         use chaoscontrol_protocol::branch_marker::{
             BranchMarker, BRANCH_MARKER_EVENT, MAX_MARKERS_PER_RUN,
         };
-        for policy in [FrontierPolicy::Campaign, FrontierPolicy::LegacyDiagnostic] {
+        for (policy, num_vms) in [FrontierPolicy::Campaign, FrontierPolicy::LegacyDiagnostic]
+            .into_iter()
+            .flat_map(|policy| [1, 3].map(|num_vms| (policy, num_vms)))
+        {
             let output = tempfile::tempdir().unwrap();
             let mut explorer = Explorer::new(ExplorerConfig {
+                num_vms,
                 frontier_policy: policy,
                 output_dir: Some(output.path().display().to_string()),
                 max_frontier: 1,
@@ -3587,7 +3591,7 @@ mod tests {
                 tick: TEST_MARKER_TICK,
                 vm_snapshots: Vec::new(),
                 network_state: chaoscontrol_vmm::controller::NetworkFabric::new(
-                    1,
+                    num_vms,
                     TEST_VARIANT_SEED,
                 ),
                 fault_engine_snapshot: engine.snapshot(),
@@ -3604,37 +3608,54 @@ mod tests {
             explorer
                 .admit_frontier_root(root, FaultSchedule::new())
                 .unwrap();
-            let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
-            oracle.begin_run();
-            for index in 0..=MAX_MARKERS_PER_RUN {
-                let marker = BranchMarker::new(
-                    "fixture",
-                    &format!("rare-{index}"),
-                    "guest-0",
-                    serde_json::json!({}),
-                    None,
-                    None,
-                )
-                .unwrap();
-                let recorded =
-                    oracle.record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap());
-                if index == MAX_MARKERS_PER_RUN {
-                    assert_eq!(
-                        recorded,
-                        Err(chaoscontrol_protocol::admission::CatalogConflict::MarkerLimitExceeded)
-                    );
-                } else {
-                    recorded.expect("marker within the admitted run budget");
+            let descriptor =
+                crate::test_support::assertion_identity(u64::from(TEST_ALIAS)).descriptor;
+            let token = chaoscontrol_protocol::admission::token_for_descriptors(
+                core::slice::from_ref(&descriptor),
+            )
+            .unwrap();
+            let mut reports = Vec::with_capacity(num_vms);
+            for vm_instance in 0..num_vms {
+                let mut builder =
+                    chaoscontrol_protocol::admission::CatalogBuilder::begin(1).unwrap();
+                builder.insert(descriptor.clone()).unwrap();
+                let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+                oracle
+                    .activate_catalog(builder.complete(token).unwrap())
+                    .unwrap();
+                oracle.begin_run();
+                for index in 0..=MAX_MARKERS_PER_RUN {
+                    let marker = BranchMarker::new(
+                        "fixture",
+                        &format!("vm-{vm_instance}-rare-{index}"),
+                        &format!("guest-{vm_instance}"),
+                        serde_json::json!({}),
+                        None,
+                        None,
+                    )
+                    .unwrap();
+                    let recorded = oracle
+                        .record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap());
+                    if index == MAX_MARKERS_PER_RUN {
+                        assert_eq!(
+                            recorded,
+                            Err(chaoscontrol_protocol::admission::CatalogConflict::MarkerLimitExceeded)
+                        );
+                    } else {
+                        recorded.expect("marker within the admitted per-VM run budget");
+                    }
                 }
+                oracle.end_run();
+                reports.push((u32::try_from(vm_instance).unwrap(), oracle.report()));
             }
-            oracle.end_run();
-            let mut result = branch_result(oracle.report());
+            let report = chaoscontrol_fault::report_merge::merge_oracle_reports(&reports).unwrap();
+            let mut result = branch_result(report);
             result.snapshot = Some(parent);
             let coverage =
                 crate::marker_branching::coverage_report(Vec::new(), &result.oracle_report)
                     .unwrap();
-            assert_eq!(coverage.limit_events, 1);
-            assert_eq!(coverage.reached.len(), MAX_MARKERS_PER_RUN);
+            assert_eq!(coverage.limit_events, num_vms);
+            assert_eq!(coverage.reached.len(), MAX_MARKERS_PER_RUN * num_vms);
             assert!(explorer.should_retain_branch(&result, 0).unwrap());
             let plan = match explorer
                 .frontier

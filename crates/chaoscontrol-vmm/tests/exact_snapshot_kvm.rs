@@ -8,6 +8,12 @@ use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use vm_memory::{Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
 
 const TEST_MEMORY_BYTES: usize = 4096;
+const CODE_ADDRESS: u64 = 0x200;
+const NMI_HANDLER_ADDRESS: u16 = 0x100;
+const ARCHITECTURAL_RETURN_ADDRESS: u16 = CODE_ADDRESS as u16 + 10;
+const XCR0_X87_AND_SSE: u64 = 3;
+const NMI_OUTPUT: u8 = 0x44;
+const MSR_OUTPUT: u8 = 0xa6;
 const MEMORY_SLOT: u32 = 0;
 const GUEST_RFLAGS_RESERVED: u64 = 2;
 const OUTPUT_PORT: u16 = 0x10;
@@ -19,12 +25,37 @@ const MUTATED_XMM_MARKER: u8 = 0x5A;
 const EVENT_SET: u8 = 1;
 const EVENT_CLEAR: u8 = 0;
 const IA32_SYSENTER_ESP: u32 = 0x175;
-const SNAPSHOT_SYSENTER_ESP: u64 = 0x1234_5000;
+const SNAPSHOT_SYSENTER_ESP: u64 = 0x1234_50a6;
 const MUTATED_SYSENTER_ESP: u64 = 0x5678_9000;
-const GUEST_CODE: [u8; 12] = [
+const GUEST_CODE: [u8; 34] = [
     0xB0,
     FIRST_OUTPUT,
     0xE6,
+    OUTPUT_PORT as u8,
+    // Leave the masked-NMI region through an actual architectural IRET.
+    // Rewriting KVM event state to unmask is not guest continuation.
+    0x9c, // pushf
+    0x0e, // push cs
+    0x68,
+    ARCHITECTURAL_RETURN_ADDRESS as u8,
+    (ARCHITECTURAL_RETURN_ADDRESS >> 8) as u8, // push return IP
+    0xcf,                                      // iret
+    // Observe the restored required MSR, then the restored XMM register.
+    0x66,
+    0xb9,
+    0x75,
+    0x01,
+    0x00,
+    0x00, // mov ecx, IA32_SYSENTER_ESP
+    0x0f,
+    0x32, // rdmsr
+    0xe6,
+    OUTPUT_PORT as u8,
+    0x66,
+    0x0f,
+    0x7e,
+    0xc0, // movd eax, xmm0
+    0xe6,
     OUTPUT_PORT as u8,
     0xB0,
     SECOND_OUTPUT,
@@ -58,8 +89,20 @@ impl ContinuationHarness {
         let memory = GuestMemoryMmap::from_ranges(&[(GuestAddress(0), TEST_MEMORY_BYTES)])
             .expect("allocate guest memory");
         memory
-            .write_slice(&GUEST_CODE, GuestAddress(0))
+            .write_slice(&GUEST_CODE, GuestAddress(CODE_ADDRESS))
             .expect("write guest code");
+        memory
+            .write_obj(NMI_HANDLER_ADDRESS, GuestAddress(2 * 4))
+            .expect("write NMI vector offset");
+        memory
+            .write_obj(0u16, GuestAddress(2 * 4 + 2))
+            .expect("write NMI vector selector");
+        memory
+            .write_slice(
+                &[0xb0, NMI_OUTPUT, 0xe6, OUTPUT_PORT as u8, 0xcf], // out; iret
+                GuestAddress(u64::from(NMI_HANDLER_ADDRESS)),
+            )
+            .expect("write NMI handler");
         let userspace_addr = memory
             .get_host_address(GuestAddress(0))
             .expect("resolve guest memory") as u64;
@@ -74,12 +117,24 @@ impl ContinuationHarness {
         unsafe { vm.set_user_memory_region(region) }.expect("register guest memory");
 
         let vcpu = vm.create_vcpu(0).expect("create vCPU");
+        let cpuid =
+            chaoscontrol_vmm::cpu::filter_cpuid(&kvm, &chaoscontrol_vmm::cpu::CpuConfig::default())
+                .expect("admit production CPU feature profile");
+        vcpu.set_cpuid2(&cpuid).expect("set CPU feature profile");
+        let mut xcrs = vcpu.get_xcrs().expect("read extended-state controls");
+        assert_eq!(xcrs.nr_xcrs, 1);
+        assert_eq!(xcrs.xcrs[0].xcr, 0);
+        xcrs.xcrs[0].value = XCR0_X87_AND_SSE;
+        vcpu.set_xcrs(&xcrs)
+            .expect("enable retained x87 and SSE state");
         let mut sregs = vcpu.get_sregs().expect("read special registers");
         sregs.cs.base = 0;
         sregs.cs.selector = 0;
+        sregs.cr4 |= 1 << 9; // OSFXSR: permit the guest's XMM observation.
         vcpu.set_sregs(&sregs).expect("set real-mode code segment");
         let mut regs = vcpu.get_regs().expect("read registers");
-        regs.rip = 0;
+        regs.rip = CODE_ADDRESS;
+        regs.rsp = 0xf00; // Real-mode NMI frame and IRET use the retained guest stack.
         regs.rflags = GUEST_RFLAGS_RESERVED;
         vcpu.set_regs(&regs).expect("set initial registers");
         vcpu.set_mp_state(kvm_mp_state {
@@ -114,14 +169,12 @@ impl ContinuationHarness {
     }
 
     fn remaining_trace(&mut self) -> Vec<(u16, Vec<u8>)> {
-        vec![self.next_output(), self.next_output()]
+        (0..5).map(|_| self.next_output()).collect()
     }
 
     fn stage_pending_event_and_extended_state(&self) {
         self.set_sysenter_esp(SNAPSHOT_SYSENTER_ESP);
-        let mut fpu = self.vcpu.get_fpu().expect("read FPU state");
-        fpu.xmm[0][0] = SNAPSHOT_XMM_MARKER;
-        self.vcpu.set_fpu(&fpu).expect("stage extended state");
+        self.set_xmm_marker(SNAPSHOT_XMM_MARKER);
 
         let mut events = self.vcpu.get_vcpu_events().expect("read vCPU events");
         events.nmi.pending = EVENT_SET;
@@ -133,9 +186,7 @@ impl ContinuationHarness {
 
     fn mutate_pending_event_and_extended_state(&self) {
         self.set_sysenter_esp(MUTATED_SYSENTER_ESP);
-        let mut fpu = self.vcpu.get_fpu().expect("read FPU state");
-        fpu.xmm[0][0] = MUTATED_XMM_MARKER;
-        self.vcpu.set_fpu(&fpu).expect("mutate extended state");
+        self.set_xmm_marker(MUTATED_XMM_MARKER);
 
         let mut events = self.vcpu.get_vcpu_events().expect("read vCPU events");
         events.nmi.pending = EVENT_CLEAR;
@@ -162,6 +213,18 @@ impl ContinuationHarness {
             .expect("read restored vCPU events");
         assert_eq!(events.nmi.pending, EVENT_SET);
         assert_eq!(events.nmi.masked, EVENT_SET);
+    }
+
+    fn set_xmm_marker(&self, marker: u8) {
+        // Standard XSAVE: XMM0 starts at byte160; XSTATE_BV at byte512.
+        // KVM_SET_FPU alone does not mark the SSE component active.
+        const XMM0_WORD: usize = 160 / std::mem::size_of::<u32>();
+        const XSTATE_BV_WORD: usize = 512 / std::mem::size_of::<u32>();
+        const SSE_ACTIVE: u32 = 1 << 1;
+        let mut xsave = self.vcpu.get_xsave().expect("read selected extended state");
+        xsave.region[XMM0_WORD] = (xsave.region[XMM0_WORD] & !0xff) | u32::from(marker);
+        xsave.region[XSTATE_BV_WORD] |= SSE_ACTIVE;
+        self.vcpu.set_xsave(&xsave).expect("stage active SSE state");
     }
 
     fn set_sysenter_esp(&self, value: u64) {
@@ -199,6 +262,9 @@ fn serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence() 
     let replayed = harness.remaining_trace();
 
     let expected = vec![
+        (OUTPUT_PORT, vec![NMI_OUTPUT]),
+        (OUTPUT_PORT, vec![MSR_OUTPUT]),
+        (OUTPUT_PORT, vec![SNAPSHOT_XMM_MARKER]),
         (OUTPUT_PORT, vec![SECOND_OUTPUT]),
         (OUTPUT_PORT, vec![THIRD_OUTPUT]),
     ];

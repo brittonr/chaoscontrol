@@ -35,8 +35,6 @@ pub const RETENTION_RANK_ORDER: [u32; 2] = [ORIGINAL_SCORE_DIMENSION, INSERTION_
 pub const ROOT_MOMENTS: u64 = 1;
 /// Sequential shell: one outstanding selection, settled before the next plan.
 pub const SEQUENTIAL_OUTSTANDING: u64 = 1;
-/// Frontier entries one branch can push: one per marker observation, else one.
-pub const ENTRIES_PER_BRANCH: u64 = MAX_MARKERS_PER_RUN as u64;
 /// Findings one branch can report: one per failed structured assertion.
 pub const FINDINGS_PER_BRANCH: u64 = MAX_ASSERTION_REPORT_ENTRIES as u64;
 /// Genesis control events besides root guidance: admission, root candidate
@@ -160,14 +158,19 @@ fn exploration_bounds(config: &ExplorerConfig) -> Result<ExplorationBounds, Adap
         .max(1);
     let max_frontier =
         u64::try_from(config.max_frontier).map_err(|_| AdapterError::BoundOverflow)?;
-    let branch_entries = checked_mul(branches, ENTRIES_PER_BRANCH)?;
-    let max_candidates = checked_add(ROOT_MOMENTS, checked_mul(rounds, branch_entries)?)?;
+    // The oracle bound is per VM. Reports merge every VM's independently
+    // admitted marker instances; a marker-free branch still proposes one entry.
+    let vms = u64::try_from(config.num_vms).map_err(|_| AdapterError::BoundOverflow)?;
+    let entries_per_branch = checked_mul(vms, MAX_MARKERS_PER_RUN as u64)?.max(1);
+    let branch_entries = checked_mul(branches, entries_per_branch)?;
+    // Bootstrap proposals are candidates too, not just the one root moment.
+    let max_candidates = checked_add(entries_per_branch, checked_mul(rounds, branch_entries)?)?;
     if i64::try_from(max_candidates).is_err() {
         return Err(AdapterError::BoundOverflow);
     }
     let per_round_events = checked_add(ROUND_CONTROL_EVENTS, branch_entries)?;
     // Root guidance: one record per root proposal (one per bootstrap marker).
-    let genesis_events = checked_add(GENESIS_CONTROL_EVENTS, ENTRIES_PER_BRANCH)?;
+    let genesis_events = checked_add(GENESIS_CONTROL_EVENTS, entries_per_branch)?;
     let max_control_events = checked_add(
         checked_add(genesis_events, CLOSING_CONTROL_EVENTS)?,
         checked_mul(rounds, per_round_events)?,

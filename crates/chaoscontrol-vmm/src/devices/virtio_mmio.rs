@@ -1,7 +1,10 @@
 //! Virtio 1.2 MMIO transport with validated split-ring queue state.
 
 use super::virtio_chain::{plan_descriptor_chain, DescriptorChainPlan, VirtqDesc};
-use super::virtio_status::{queue_processing_allowed, validate_queue_activation};
+use super::virtio_status::{
+    plan_completion_transition, queue_processing_allowed, validate_queue_activation,
+    validate_queue_mutation, CompletionTransition, QueueMutation,
+};
 use super::virtio_types::{
     LastRequestLiveOutcome, PendingCompletionLiveState, QueueLiveState, QueueViolation,
     TransportViolation, UsedWriteFailurePoint, ValidatedQueueLiveConfig, VirtioFailure,
@@ -163,11 +166,8 @@ impl VirtQueue {
     }
 
     pub fn set_size(&mut self, value: u32) -> Result<(), VirtioFailure> {
-        if self.ready {
-            return Err(VirtioFailure::Transport(
-                TransportViolation::QueueSizeWhileReady,
-            ));
-        }
+        validate_queue_mutation(self.ready, QueueMutation::Size)
+            .map_err(VirtioFailure::Transport)?;
         validate_queue_size(value, self.max_size, self.limits).map_err(VirtioFailure::Queue)?;
         self.raw.size = value;
         Ok(())
@@ -196,9 +196,8 @@ impl VirtQueue {
     }
 
     pub fn activate(&mut self, mem: &GuestMemoryMmap) -> Result<(), VirtioFailure> {
-        if self.ready {
-            return Err(VirtioFailure::Transport(TransportViolation::ReadyState));
-        }
+        validate_queue_mutation(self.ready, QueueMutation::Activate)
+            .map_err(VirtioFailure::Transport)?;
         let (regions, count) = guest_memory_regions(mem)?;
         let validated =
             validate_queue_config(self.raw, self.max_size, &regions[..count], self.limits)
@@ -263,34 +262,29 @@ impl VirtQueue {
         head_index: u16,
         written_length: u32,
     ) -> Result<(), VirtioFailure> {
-        if self.pending_completion.is_some() {
-            return Err(VirtioFailure::CompletionState);
-        }
-        self.pending_completion = Some(PendingCompletionLiveState {
-            head_index,
-            written_length,
-            backend_started: false,
-            effects_started: false,
-        });
+        self.pending_completion = plan_completion_transition(
+            self.pending_completion,
+            CompletionTransition::Stage {
+                head_index,
+                written_length,
+            },
+        )?;
         Ok(())
     }
 
     pub fn mark_backend_started(&mut self) -> Result<(), VirtioFailure> {
-        let pending = self
-            .pending_completion
-            .as_mut()
-            .ok_or(VirtioFailure::CompletionState)?;
-        pending.backend_started = true;
-        pending.effects_started = true;
+        self.pending_completion = plan_completion_transition(
+            self.pending_completion,
+            CompletionTransition::BackendStarted,
+        )?;
         Ok(())
     }
 
     pub fn mark_effects_started(&mut self) -> Result<(), VirtioFailure> {
-        let pending = self
-            .pending_completion
-            .as_mut()
-            .ok_or(VirtioFailure::CompletionState)?;
-        pending.effects_started = true;
+        self.pending_completion = plan_completion_transition(
+            self.pending_completion,
+            CompletionTransition::EffectsStarted,
+        )?;
         Ok(())
     }
 
@@ -333,12 +327,13 @@ impl VirtQueue {
         head_index: u16,
         written_length: u32,
     ) -> Result<(), VirtioFailure> {
-        let pending = self
-            .pending_completion
-            .ok_or(VirtioFailure::CompletionState)?;
-        if pending.head_index != head_index || pending.written_length != written_length {
-            return Err(VirtioFailure::CompletionState);
-        }
+        let committed_completion = plan_completion_transition(
+            self.pending_completion,
+            CompletionTransition::Publish {
+                head_index,
+                written_length,
+            },
+        )?;
         let config = self.config()?;
         let element_address =
             used_element_address(config, self.next_used_idx).ok_or(VirtioFailure::UsedRingWrite)?;
@@ -363,7 +358,7 @@ impl VirtQueue {
             .map_err(|_| VirtioFailure::UsedRingWrite)?;
         self.last_avail_idx = self.last_avail_idx.wrapping_add(1);
         self.next_used_idx = next_used_index;
-        self.pending_completion = None;
+        self.pending_completion = committed_completion;
         Ok(())
     }
 
@@ -485,12 +480,8 @@ impl VirtQueue {
     }
 
     fn require_address_mutable(&self) -> Result<(), VirtioFailure> {
-        if self.ready {
-            return Err(VirtioFailure::Transport(
-                TransportViolation::QueueAddressWhileReady,
-            ));
-        }
-        Ok(())
+        validate_queue_mutation(self.ready, QueueMutation::Address)
+            .map_err(VirtioFailure::Transport)
     }
 
     fn read_descriptor_table(

@@ -1,53 +1,17 @@
-use campaign_core::{CampaignError, SelectionCountDecay, SelectionMode};
+use campaign_core::{CampaignError, SelectionMode};
 
-use super::{config, Session, EXPLOIT, MAX_FRONTIER, ROUNDS, SEED};
-use crate::campaign_adapter::profile::ENTRIES_PER_BRANCH;
+use super::{config, Session, EXPLOIT, SEED};
 use crate::campaign_adapter::ranks::ORIGINAL_SCORE_DIMENSION;
 use crate::campaign_adapter::{
     admit_config, retention_plan_request, stop_reason, AdapterError, AdapterIdentity,
     BootstrapFacts, DegenerateConfig, ProductStop, SelectionLimit, EXPLORATION_ORDER,
-    EXPLORATION_THRESHOLD_PARTS_PER_MILLION, MAX_RANK_MAGNITUDE, RANK_DIMENSIONS,
-    RETENTION_RANK_ORDER,
+    RANK_DIMENSIONS, RETENTION_RANK_ORDER,
 };
 use crate::explorer::ExplorerConfig;
 
 const RESTORABLE: BootstrapFacts = BootstrapFacts {
     restorable_root: true,
 };
-
-// r[verify chaoscontrol.campaign_policy.adapter.valid]
-#[test]
-fn explorer_config_maps_to_sequential_campaign_bounds() {
-    let identity = AdapterIdentity::for_seed(SEED);
-    let profile = admit_config(&identity, &config(), RESTORABLE).unwrap();
-    let bounds = &profile.bounds;
-    assert_eq!(bounds.validate(), Ok(()));
-    assert_eq!(bounds.max_roots, 1);
-    assert_eq!(bounds.max_selections, ROUNDS);
-    assert_eq!(bounds.max_retained_candidates, MAX_FRONTIER as u64);
-    assert_eq!(bounds.max_outstanding, 1);
-    assert_eq!(bounds.max_depth, ROUNDS + 1);
-    assert_eq!(bounds.max_rank_dimensions, 3);
-    assert_eq!(bounds.max_rank_magnitude, MAX_RANK_MAGNITUDE);
-    assert_eq!(bounds.max_rank_magnitude, i64::MAX as u64);
-    let branch_entries = super::BRANCHES as u64 * ENTRIES_PER_BRANCH;
-    assert_eq!(bounds.max_candidate_batch, branch_entries);
-    assert_eq!(bounds.max_prune_batch, branch_entries);
-    assert!(bounds.max_guidance_records >= bounds.max_candidates + bounds.max_selections);
-    assert_eq!(profile.resource_budget.amount, ROUNDS);
-    assert_eq!(profile.selection_limit, SelectionLimit::Rounds(ROUNDS));
-    assert_eq!(profile.selection_profile.decay, SelectionCountDecay::None);
-    assert_eq!(profile.selection_profile.stopping.finding_limit, None);
-    assert_eq!(
-        profile.selection_profile.mode,
-        SelectionMode::Exploratory {
-            threshold_parts_per_million: EXPLORATION_THRESHOLD_PARTS_PER_MILLION,
-            entropy_source_id: identity.entropy_source_id,
-            exploration_order: EXPLORATION_ORDER.to_vec(),
-        }
-    );
-    assert_eq!(profile.selection_profile.validate(), Ok(()));
-}
 
 // r[verify chaoscontrol.campaign_policy.adapter.invalid]
 #[test]

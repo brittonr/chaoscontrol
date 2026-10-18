@@ -6,13 +6,12 @@ use super::virtio_buffer::{
 };
 use super::virtio_chain::DescriptorBuffer;
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
-use super::virtio_request::plan_entropy_request;
+use super::virtio_request::{plan_chunked_scratch, plan_entropy_request};
 use super::virtio_types::{ResourceViolation, VirtioFailure};
 use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
 
 const VIRTIO_ENTROPY_DEVICE_ID: u32 = 4;
 const VIRTIO_ENTROPY_QUEUE_COUNT: usize = 1;
-const MINIMUM_SCRATCH_BYTES: usize = 1;
 
 pub struct VirtioEntropy {
     entropy: DeterministicEntropy,
@@ -70,7 +69,9 @@ impl VirtioEntropy {
         };
         let plan = plan_entropy_request(&available.chain, queue.limits())
             .map_err(VirtioFailure::Request)?;
-        let (requested, maximum) = Self::scratch_request(plan.transfer_bytes, queue)?;
+        let (requested, maximum) =
+            plan_chunked_scratch(plan.transfer_bytes, queue.limits().scratch_bytes)
+                .map_err(VirtioFailure::Resource)?;
         let used_length =
             u32::try_from(plan.transfer_bytes).map_err(|_| VirtioFailure::BackendWrite)?;
         queue.stage_completion(available.head_index, used_length)?;
@@ -90,32 +91,6 @@ impl VirtioEntropy {
         }
         queue.complete(mem, available.head_index, used_length)?;
         Ok(true)
-    }
-
-    fn scratch_request(
-        transfer_bytes: u64,
-        queue: &VirtQueue,
-    ) -> Result<(usize, usize), VirtioFailure> {
-        let maximum = queue.limits().scratch_bytes;
-        if maximum < MINIMUM_SCRATCH_BYTES {
-            return Err(VirtioFailure::Resource(ResourceViolation::ScratchLimit {
-                requested: MINIMUM_SCRATCH_BYTES,
-                maximum,
-            }));
-        }
-        let maximum_u64 = u64::try_from(maximum).map_err(|_| {
-            VirtioFailure::Resource(ResourceViolation::ScratchLimit {
-                requested: maximum,
-                maximum,
-            })
-        })?;
-        let requested = usize::try_from(transfer_bytes.min(maximum_u64)).map_err(|_| {
-            VirtioFailure::Resource(ResourceViolation::ScratchLimit {
-                requested: maximum,
-                maximum,
-            })
-        })?;
-        Ok((requested, maximum))
     }
 }
 

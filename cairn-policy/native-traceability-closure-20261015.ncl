@@ -4,6 +4,8 @@
   starting_revision = "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
   historical_requirements = 382,
   historical_missing_requirements = 226,
+  # Original audit checkpoint, not a current native coverage verdict. Fresh
+  # attempt-cohort coverage reports own the post-correction inventory counts.
   source_inventory_counts = {
     accepted_requirements = 382,
     referenced_requirements = 262,
@@ -632,7 +634,38 @@
       scope = "Compliant feature/status setup activates the validated raw configuration; planner preserves addresses and size rather than clamping. Behavioral source checks exact size, readiness and backend dispatch; snapshot round-trip retains raw geometry.",
       accepted_sources = [".cairn/specs/virtio-guest-input-safety/spec.md"],
     },
+    # r[impl chaoscontrol.deterministic_snapshots.validation.preflight]
+    # r[impl chaoscontrol.deterministic_snapshots.validation.round_trip]
+    # r[impl chaoscontrol.deterministic_snapshots.vcpu_state]
+    {
+      requirements = ["chaoscontrol.deterministic_snapshots.validation.preflight", "chaoscontrol.deterministic_snapshots.validation.round_trip", "chaoscontrol.deterministic_snapshots.vcpu_state"],
+      implementation = ["crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::capture", "crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::validate", "crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::restore", "crates/chaoscontrol-vmm/src/vm.rs::validate_fault_engine_snapshot", "crates/chaoscontrol-vmm/src/vm.rs::restore_validated"],
+      tests = ["crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::pure_preflight_retains_capabilities_and_isolates_topology_rejections", "crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect", "crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match", "crates/chaoscontrol-vmm/tests/exact_snapshot_kvm.rs::serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence"],
+      scope = "Actual complete-VM topology rejection preserves divergent destination memory, registers, scheduler, devices, assertions, serial state and counters for missing/duplicate/extra/unknown/wrong-kind identities and identity-free reassignment; identity-preserving vector reorder is accepted. Unavailable KVM descriptors exercise facts-only architecture/kernel preflight and malformed raw/full restore isolation. A complete nondefault VM canonical record round-trips without field loss. The separate architectural continuation observes actual guest IRET pending-NMI delivery, required SYSENTER_ESP, active XSAVE SSE state and subsequent outputs in the exact uninterrupted/restored order.",
+      boundary = "Host/capability/profile and bounded observation horizon only. Does not close complete_state, broad preflight, validation or every-owner/every-boundary continuation umbrellas; host-dependent CPUID/XSTATE/MSR value admission remains a separate obligation.",
+      accepted_sources = [".cairn/specs/deterministic-snapshots/spec.md"],
+    },
+    # r[impl chaoscontrol.virtio_safety.boundary]
+    # r[impl chaoscontrol.virtio_safety.descriptor_validation]
+    # r[impl chaoscontrol.virtio_safety.mutation_order]
+    # r[impl chaoscontrol.virtio_safety.queue_configuration]
+    # r[impl chaoscontrol.virtio_safety.request_validation]
+    # r[impl chaoscontrol.virtio_safety.validation]
+    # r[impl chaoscontrol.virtio_safety.validation.core]
+    # r[impl chaoscontrol.virtio_safety.validation.fuzz]
+    # r[impl chaoscontrol.virtio_safety.validation.kvm]
+    {
+      requirements = ["chaoscontrol.virtio_safety.boundary", "chaoscontrol.virtio_safety.descriptor_validation", "chaoscontrol.virtio_safety.mutation_order", "chaoscontrol.virtio_safety.queue_configuration", "chaoscontrol.virtio_safety.request_validation", "chaoscontrol.virtio_safety.validation", "chaoscontrol.virtio_safety.validation.core", "chaoscontrol.virtio_safety.validation.fuzz", "chaoscontrol.virtio_safety.validation.kvm"],
+      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_status.rs::validate_queue_mutation", "crates/chaoscontrol-vmm/src/devices/virtio_status.rs::plan_completion_transition", "crates/chaoscontrol-vmm/src/devices/virtio_status.rs::queue_processing_allowed", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_chunked_scratch", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_block_failure", "crates/chaoscontrol-vmm/src/devices/virtio_chain.rs::plan_descriptor_chain", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::publish_completion", "crates/chaoscontrol-vmm/src/vm.rs::DeterministicVm::step"],
+      tests = ["crates/chaoscontrol-vmm/tests/virtio_properties.rs::reached_shell_corpus::generated_memory_and_request_families_have_bounded_real_outcomes", "crates/chaoscontrol-vmm/tests/virtio_properties.rs::reached_shell_corpus::lifecycle_and_failure_plans_replay_without_allocation", "crates/chaoscontrol-vmm/tests/virtio_properties.rs::reached_shell_corpus::completion_plans_reject_duplicate_staging_and_mismatched_publication", "crates/chaoscontrol-vmm/tests/virtio_validation.rs::descriptor_head_count_and_unknown_non_indirect_flags_are_bounded", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::driver_failed_status_excludes_polling_notification_and_activation", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::read_only_status_rejects_without_any_guest_or_disk_write", "crates/chaoscontrol-vmm/tests/virtio_net_entropy_paths.rs::invalid_or_excessive_writable_entropy_range_preserves_exact_retry_stream", "crates/chaoscontrol-vmm/tests/virtio_post_progress.rs::used_ring_failure_keeps_used_index_as_completion_authority", "crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::malicious_guest_configuration_and_descriptor_use_full_vm_dispatch_and_shared_memory"],
+      scope = "Pure allocation-free lifecycle, queue/completion, descriptor/request, scratch-budget and failure plans are replayed with exact outcome and allocator oracles. Explicit head/count/unknown-flag, read-only block status, driver FAILED and entropy retry-stream cases complement prior malformed geometry, backend/allocation and post-progress tests. The generated full-width pure corpus and 736 explicitly reached bounded-shell cases vary mapped memory and actual block/entropy/net-TX/net-RX requests; applicable allocation failures are counted, not fabricated for RX. Actual KVM guest instructions issue malformed queue MMIO and descriptors through DeterministicVm dispatch using the same guest memory; typed failure, no completion/cursor/entropy mutation and continued guest output are observed.",
+      boundary = "Bounded deterministic fixtures and declared policies, not exhaustive guest-input safety, arbitrary-host correctness or whole-system readiness. Snapshot failure-state ownership remains a separate requirement.",
+      accepted_sources = [".cairn/specs/virtio-guest-input-safety/spec.md"],
+    },
   ],
+  # Rows not explicitly refreshed retain the original audit's observations;
+  # the fresh native report, not this historical residual table, owns the
+  # current mandatory-missing inventory.
   residual = [
     {
       id = "chaoscontrol.bounded_tree_adoption.evidence_boundary",
@@ -854,48 +887,24 @@
       id = "chaoscontrol.deterministic_snapshots.preflight",
       status = "blocked",
       implementation = ["crates/chaoscontrol-vmm/src/vm.rs::validate_fault_engine_snapshot", "crates/chaoscontrol-vmm/src/vm.rs::snapshot_topology", "crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::validate"],
-      tests = ["crates/chaoscontrol-vmm/src/snapshot.rs::tests::exact_metadata_rejects_topology_mismatch_and_duplicate_identity", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::transport_snapshot_rejects_queue_cursor_ahead_of_guest_ring"],
-      reason = "Integrated preflight calls snapshot_topology, which issues KVM_GET_MSR_INDEX_LIST before malformed payload checks, then materializes/writes an mmap and reconstructs virtqueues. Thus it is not the required pure facts-only preflight and violates malformed-field rejection before any KVM ioctl. CPU validate checks XSAVE length and MSR ordering/inventory, not architectural enum/range invariants such as MP state or event values.",
+      tests = ["crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::pure_preflight_retains_capabilities_and_isolates_topology_rejections", "crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect"],
+      reason = "Cached topology/capability facts and the unavailable-descriptor isolation corpus now establish facts-only checking for the exercised metadata, enum, range and reserved-field families before restore effects. The broader accepted malformed-architecture obligation remains open: destination CPUID/XSTATE support masks and per-MSR value constraints are not admitted by the cached MSR-index inventory. The narrower topology rejection scenario is linked separately, not promoted into this whole requirement.",
       accepted_source = ".cairn/specs/deterministic-snapshots/spec.md",
     },
     {
       id = "chaoscontrol.deterministic_snapshots.restore_atomicity",
-      status = "blocked",
+      status = "linked-in-runtime-owner",
       implementation = ["crates/chaoscontrol-vmm/src/vm.rs::restore", "crates/chaoscontrol-vmm/src/vm.rs::restore_validated", "crates/chaoscontrol-vmm/src/snapshot.rs::VmSnapshot::restore_devices_only"],
-      tests = [],
-      reason = "Ordered memory/in-kernel-device/vCPU/VMM/backend installation exists, and outer restore permanently poisons on apply failure. No inspected test injects a required KVM restore error after successful preflight and verifies phase-specific error, non-runnable destination and absence of success. Error is flattened into SnapshotRestore poison plus string rather than an inspected typed ordered restore-state-machine result.",
+      tests = ["crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::required_pit_restore_ioctl_failure_after_memory_write_permanently_blocks_resume"],
+      reason = "Historical blocked row superseded by the runtime owner's exact verification marker: the required PIT restore ioctl is forced to fail after preflight and memory replacement, yielding phase-specific failure and permanent non-runnable poison even after descriptors are repaired. This row does not remove or replace that current source evidence.",
       accepted_source = ".cairn/specs/deterministic-snapshots/spec.md",
     },
     {
       id = "chaoscontrol.deterministic_snapshots.validation.continuation",
       status = "blocked",
       implementation = ["crates/chaoscontrol-vmm/src/vm.rs::restore_validated", "crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::restore"],
-      tests = ["crates/chaoscontrol-vmm/tests/exact_snapshot_kvm.rs::serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence", "crates/chaoscontrol-vmm/src/vm.rs::tests::pit_irq0_uses_virtual_time_across_fresh_and_retained_restore"],
-      reason = "CPU fixture compares two I/O outputs after restore; IRQ0 regression checks host timer suppression and virtual deadline injection for fresh/retained/incremental restore. Neither proves bounded schedule/exit/interrupt/device-completion/output equivalence across every supported owner and checkpoint boundary. Parent explicitly reports strict controller memory/trace equality failure; timer correction source is not a fresh passing result.",
-      accepted_source = ".cairn/specs/deterministic-snapshots/spec.md",
-    },
-    {
-      id = "chaoscontrol.deterministic_snapshots.validation.preflight",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/snapshot.rs::validate_snapshot_metadata", "crates/chaoscontrol-vmm/src/vm.rs::validate_fault_engine_snapshot"],
-      tests = ["crates/chaoscontrol-vmm/src/snapshot.rs::tests::exact_metadata_rejects_legacy_and_missing_components", "crates/chaoscontrol-vmm/src/snapshot.rs::tests::exact_metadata_rejects_topology_mismatch_and_duplicate_identity", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::transport_snapshot_rejects_queue_cursor_ahead_of_guest_ring"],
-      reason = "Metadata and isolated transport negative tests are genuine, but not full destination unchanged/non-resumed tests for missing/duplicate/extra/reordered-without-identity/wrong-kind components. Integrated preflight also obtains live KVM inventory before rejecting malformed payloads, contradicting no-ioctl clause.",
-      accepted_source = ".cairn/specs/deterministic-snapshots/spec.md",
-    },
-    {
-      id = "chaoscontrol.deterministic_snapshots.validation.round_trip",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/snapshot.rs::VmSnapshot::capture", "crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::capture"],
-      tests = ["crates/chaoscontrol-vmm/src/snapshot.rs::tests::vcpu_snapshot_serialization_round_trips_and_rejects_truncation", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::transport_snapshot_restores_nonzero_cursors_and_pending_interrupt"],
-      reason = "CPU serialization test uses mostly defaults and asserts only MSR equality; transport test separately compares transport state. No inspected field-complete mutated VM canonical round-trip covering every listed architecture/VMM/virtio/backend owner together. Required no-field-loss inventory scenario is not established.",
-      accepted_source = ".cairn/specs/deterministic-snapshots/spec.md",
-    },
-    {
-      id = "chaoscontrol.deterministic_snapshots.vcpu_state",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::capture", "crates/chaoscontrol-vmm/src/snapshot.rs::VcpuSnapshot::restore"],
-      tests = ["crates/chaoscontrol-vmm/tests/exact_snapshot_kvm.rs::serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence"],
-      reason = "Implementation reads/writes events, sorted required MSRs and XSAVE plus existing register groups, checking MSR counts. Harness stages masked pending NMI and XMM marker, checks restoration and two output exits. It does not deliberately mutate required MSRs or compare pending-event delivery ordering in continuation, as mandatory scenario requires.",
+      tests = ["crates/chaoscontrol-vmm/tests/exact_snapshot_kvm.rs::serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence", "crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match", "crates/chaoscontrol-vmm/src/vm/runtime_readiness.rs::whole_vm_partial_quantum_restore_and_real_eintr_match_control_future"],
+      reason = "Actual architectural NMI/MSR/active-SSE continuation, composite complete-VM/backend continuation and partial-quantum/EINTR cases now have bounded evidence. The strict Raft controller proof also has its own passing scoped cohorts. These do not establish continuation at every declared architecture/device boundary across every supported profile, including supported PMU exact-step correction; that broader whole-ID claim remains open.",
       accepted_source = ".cairn/specs/deterministic-snapshots/spec.md",
     },
     {
@@ -1395,83 +1404,11 @@
       accepted_source = ".cairn/specs/unified-agpl-license/spec.md",
     },
     {
-      id = "chaoscontrol.virtio_safety.boundary",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_validation.rs::validate_queue_config", "crates/chaoscontrol-vmm/src/devices/virtio_status.rs::validate_status_transition", "crates/chaoscontrol-vmm/src/devices/virtio_chain.rs::plan_descriptor_chain", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_entropy_request", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::activate", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::write_queue_ready", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::record_failure"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_validation.rs::compliant_queue_and_wrapped_progress_validate", "crates/chaoscontrol-vmm/tests/virtio_properties.rs::generated_guest_inputs_never_panic_or_escape_limits", "crates/chaoscontrol-property-suite/src/virtio.rs::check"],
-      reason = "Geometry, descriptor/request planning and status validation are genuinely pure allocation-free logic. Full clause is broader: queue readiness/lifecycle decisions and failure handling remain embedded in mutable MMIO/queue methods mixed with memory reads; scratch sizing is also implemented on imperative backends. No inspected replay-in-memory test supplies identical complete raw facts twice and asserts identical full transition/failure plans independently of guest-memory I/O.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.descriptor_validation",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_chain.rs::plan_descriptor_chain", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::plan_next"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_validation.rs::cycles_bad_indices_and_flags_are_typed", "crates/chaoscontrol-vmm/tests/virtio_validation.rs::descriptor_ranges_and_aggregate_budget_are_typed", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::descriptor_cycle_stops_without_cursor_backend_or_interrupt", "crates/chaoscontrol-vmm/tests/virtio_properties.rs::generated_guest_inputs_never_panic_or_escape_limits"],
-      reason = "Implementation checks head/next, capacity-bounded count, visited cycles, flag mask, checked ranges, containment and aggregate budget using fixed arrays. Full mandatory-scenario evidence is missing: targeted tests exercise next index, cycle and indirect flag, but not an otherwise valid chain carrying an unknown non-indirect flag; generated chains are gated by random head/range/flags without a required reachability oracle. No inspected explicit count-limit/head-index behavioral oracle.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.mutation_order",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_entropy.rs::VirtioEntropy::process_one", "crates/chaoscontrol-vmm/src/devices/virtio_block.rs::VirtioBlock::process_one", "crates/chaoscontrol-vmm/src/devices/virtio_net.rs::VirtioNet::process_tx_one", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::publish_completion"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_net_entropy_paths.rs::invalid_entropy_direction_does_not_advance_or_commit", "crates/chaoscontrol-vmm/tests/virtio_net_entropy_paths.rs::entropy_allocation_failure_preserves_prng_and_queue", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::descriptor_cycle_stops_without_cursor_backend_or_interrupt", "crates/chaoscontrol-vmm/tests/virtio_post_progress.rs::used_ring_failure_keeps_used_index_as_completion_authority"],
-      reason = "Plans precede real backend actions; entropy advances a clone and assigns it only after guest writes; cursors commit only after used-index write. Mandatory entropy scenario lacks exact behavioral evidence: inspected tests reject direction or allocation, not an invalid/excessive writable destination followed by equality of the next entropy stream from the same pre-request state. bytes_generated()==0 alone does not assert retry-stream equality.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.queue_configuration",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::activate", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::write_queue_ready", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::process_queue", "crates/chaoscontrol-vmm/src/devices/virtio_status.rs::validate_status_transition", "crates/chaoscontrol-vmm/src/devices/virtio_validation.rs::validate_queue_config"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_transport.rs::compliant_linux_sequence_activates_exact_queue", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::invalid_queue_sizes_never_activate_or_process", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::invalid_geometry_fails_before_ready", "crates/chaoscontrol-vmm/tests/virtio_transport.rs::invalid_status_and_queue_selection_are_typed"],
-      reason = "Width, geometry, features and normal status order have genuine validation. Full legal-state obligation is incomplete: write_queue_ready checks only FEATURES_OK, and process_queue checks DRIVER_OK and DEVICE_NEEDS_RESET but not driver FAILED. validate_status_transition permits adding FAILED to active status, so the processing guard does not exclude that failed device state. No inspected test covers this transition.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.request_validation",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_block_request", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::validated_block_status", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_net_request", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_entropy_request", "crates/chaoscontrol-vmm/src/devices/virtio_block.rs::VirtioBlock::complete_request_error"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_validation.rs::wrong_directions_shapes_and_lengths_are_typed", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::wrong_direction_retains_typed_outcome_then_allows_valid_request", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::out_of_range_storage_gets_typed_error_completion", "crates/chaoscontrol-vmm/tests/virtio_net_entropy_paths.rs::valid_net_rx_writes_header_and_packet_before_backend_pop"],
-      reason = "All three request planners implement device-specific invariants; block safe-error completion independently requires a validated writable status byte. Required read-only-status case has no inspected behavioral mapping: existing wrong-direction tests change data direction, not the status descriptor. Thus no test establishes that a read-only status causes rejection without guest/disk mutation or unsafe error completion.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
       id = "chaoscontrol.virtio_safety.snapshot_state",
       status = "blocked",
       implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::live_state", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtQueue::snapshot", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::snapshot", "crates/chaoscontrol-vmm/src/vm.rs::DeterministicVm::capture_virtio_snapshots"],
       tests = ["crates/chaoscontrol-vmm/tests/virtio_transport.rs::transport_snapshot_restores_nonzero_cursors_and_pending_interrupt", "crates/chaoscontrol-vmm/tests/virtio_post_progress.rs::used_ring_failure_keeps_used_index_as_completion_authority"],
-      reason = "live_state exposes validated config, cursors, failure and pending effects. However the actual complete-VM adapter calls snapshot(), not live_state(); snapshot rejects failed/pending queues with CompletionState and payload omits those fields. Mandatory capture of defined failure state for deterministic continuation is therefore not implemented by the complete snapshot path. Nonzero quiescent cursors are covered, but do not satisfy failed/pending-state capture.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.validation",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::write_at", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::process_queue"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_transport.rs::invalid_queue_sizes_never_activate_or_process", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::allocation_failure_has_no_cursor_backend_completion_or_interrupt", "crates/chaoscontrol-vmm/tests/virtio_post_progress.rs::net_rx_used_ring_failure_retains_post_progress_state", "crates/chaoscontrol-vmm/tests/virtio_properties.rs::generated_guest_inputs_never_panic_or_escape_limits", "crates/chaoscontrol-vmm/tests/virtio_kvm_smoke.rs::x86_64_smoke::malicious_guest_mmio_write_keeps_vmm_alive_and_fails_typed"],
-      reason = "Substantial real valid/malformed register, queue, descriptor, allocation, backend and completion test sources exist. Mandatory generated corpus and malicious KVM descriptor/configuration scenario coverage remains incomplete as detailed in fuzz/kvm rows; cannot promote umbrella requirement from rail names or docs markers.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.validation.core",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_chain.rs::plan_descriptor_chain"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_validation.rs::cycles_bad_indices_and_flags_are_typed", "crates/chaoscontrol-vmm/tests/virtio_validation.rs::descriptor_ranges_and_aggregate_budget_are_typed", "crates/chaoscontrol-vmm/tests/virtio_block_paths.rs::descriptor_cycle_stops_without_cursor_backend_or_interrupt"],
-      reason = "Pure fixed-array planner never accesses payload ranges and returns typed errors. Explicit tests cover cycle, invalid next, indirect, overflow, outside-memory and aggregate-limit cases. Required unknown-flag scenario lacks a reachable targeted test; random inputs do not establish that branch or the complete mandatory scenario family.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.validation.fuzz",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_validation.rs::validate_queue_config", "crates/chaoscontrol-vmm/src/devices/virtio_chain.rs::plan_descriptor_chain", "crates/chaoscontrol-vmm/src/devices/virtio_request.rs::plan_block_request"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_properties.rs::generated_guest_inputs_never_panic_or_escape_limits", "crates/chaoscontrol-property-suite/src/virtio.rs::generate", "crates/chaoscontrol-property-suite/src/virtio.rs::check"],
-      reason = "4096-case corpus wraps pure planners in catch_unwind and checks successful chain/delta bounds. Memory extent is fixed, no bounded-shell corpus runs, and block/net/entropy requests are only attempted behind successful random-chain planning without a reachability assertion. It has no allocation-budget observation. Additional property suite generates only delta/status/unsupported-feature commands. Thus generated memory extents, reached device request-shape families, bounded-shell properties and allocation-beyond-policy oracle are not evidenced.",
-      accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
-    },
-    {
-      id = "chaoscontrol.virtio_safety.validation.kvm",
-      status = "blocked",
-      implementation = ["crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::write_at", "crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs::VirtioMmioDevice::write"],
-      tests = ["crates/chaoscontrol-vmm/tests/virtio_kvm_smoke.rs::x86_64_smoke::malicious_guest_mmio_write_keeps_vmm_alive_and_fails_typed"],
-      reason = "Real ignored KVM fixture emits one byte-wide QUEUE_NUM write, asserts typed MmioWidth error, resumes guest to HLT and inspects transport failure. It never negotiates/configures a queue or emits malformed descriptors. KVM memory and transport memory are separate fixtures, and MMIO exit is manually forwarded to write_at rather than using DeterministicVm dispatch. Mandatory malformed queue configuration AND descriptor guest paths, with their specified outcomes/resource oracles, are not present.",
+      reason = "The current codec now requires failure and pending-completion carriers, and transport behavior tests preserve post-effect failure without reexecuting backend work. The original omission described by this audit has been repaired; no legacy healthy defaults are admitted. This corrective cohort does not add a whole-ID link for complete-VM capture of a defined post-effect failure state; retain the component behavioral evidence and its scope rather than claiming that the payload still omits those fields.",
       accepted_source = ".cairn/specs/virtio-guest-input-safety/spec.md",
     },
     {

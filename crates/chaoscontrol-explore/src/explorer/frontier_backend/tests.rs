@@ -121,6 +121,46 @@ fn observation(depth: u32, branches: &[BranchScript]) -> RoundObservation {
     }
 }
 
+#[test]
+fn bootstrap_markers_and_each_round_have_separate_candidate_capacity() {
+    use chaoscontrol_protocol::branch_marker::MAX_MARKERS_PER_RUN;
+
+    const MARKER_ROUNDS: u64 = 2;
+    for num_vms in [1, 3] {
+        let dir = tempfile::tempdir().unwrap();
+        let configuration = ExplorerConfig {
+            num_vms,
+            branch_factor: 1,
+            max_rounds: MARKER_ROUNDS,
+            max_frontier: 1,
+            ..config(FrontierPolicy::Campaign, dir.path())
+        };
+        let mut frontier =
+            CampaignFrontier::open_with_io(&configuration, dir.path(), None, ScriptedIo::default())
+                .unwrap();
+        let entries = num_vms * MAX_MARKERS_PER_RUN;
+        let mut bootstrap = root(Some(dummy_snapshot()));
+        bootstrap.proposals = (0..entries).map(|_| proposal(1.0)).collect();
+        frontier.admit_root(bootstrap).unwrap();
+
+        let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+        for round_index in 0..MARKER_ROUNDS {
+            let plan = planned(&mut frontier, &mut rng, round_index);
+            let authorized = executable(frontier.authorize(plan).unwrap());
+            let depth = authorized.selected().unwrap().depth + 1;
+            frontier
+                .finish_round(authorized, &observation(depth, &[Some(vec![2.0; entries])]))
+                .expect("every admitted VM marker fits beside bootstrap history");
+            assert!(frontier.state().unwrap().outstanding.is_empty());
+        }
+        frontier.record_stop(ProductStop::Completed).unwrap();
+        assert_eq!(
+            frontier.state().unwrap().stopped.as_ref().unwrap().reason,
+            StopReason::SelectionLimitReached
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Scripted publication effects.
 

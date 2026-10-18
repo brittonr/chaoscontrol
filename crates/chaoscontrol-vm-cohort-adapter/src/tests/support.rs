@@ -150,7 +150,10 @@ pub fn replace_snapshot_topology(snapshot: &mut VmSnapshot, msr_indices: Vec<u32
 
 fn synthetic_vcpu_snapshot() -> VcpuSnapshot {
     VcpuSnapshot {
-        regs: kvm_regs::default(),
+        regs: kvm_regs {
+            rflags: 2,
+            ..kvm_regs::default()
+        },
         sregs: kvm_sregs::default(),
         fpu: kvm_fpu::default(),
         debug_regs: kvm_debugregs::default(),

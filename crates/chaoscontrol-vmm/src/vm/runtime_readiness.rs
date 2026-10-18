@@ -165,6 +165,21 @@ fn pure_preflight_retains_capabilities_and_isolates_topology_rejections() {
     use std::os::fd::{FromRawFd, IntoRawFd};
     let mut vm = spin_vm();
     let checkpoint = vm.snapshot().unwrap();
+    // Restore must not rewind this deliberately diverged destination.
+    vm.memory
+        .inner()
+        .write_obj(0x5au8, GuestAddress(0x8000))
+        .unwrap();
+    vm.step().unwrap();
+    let before_memory = vm.memory.dump();
+    let before_registers: Vec<_> = vm
+        .vcpus
+        .iter()
+        .map(|vcpu| vcpu.get_regs().unwrap())
+        .collect();
+    let before_devices = serde_json::to_value(vm.capture_virtio_snapshots().unwrap()).unwrap();
+    let before_assertions = serde_json::to_value(vm.fault_engine.snapshot()).unwrap();
+    let before_serial = vm.serial.state();
     // An accidental KVM capability ioctl during preflight would now fail ENOTTY.
     let not_kvm = std::fs::File::open("/dev/null").unwrap();
     // SAFETY: the file descriptor is uniquely owned and remains valid until Kvm drops it.
@@ -175,7 +190,7 @@ fn pure_preflight_retains_capabilities_and_isolates_topology_rejections() {
         vm.exit_count,
         vm.virtual_tsc.read(),
     );
-    for corruption in 0..5 {
+    for corruption in 0..7 {
         let mut invalid = checkpoint.clone();
         match corruption {
             0 => {
@@ -195,6 +210,15 @@ fn pure_preflight_retains_capabilities_and_isolates_topology_rejections() {
             4 => {
                 invalid.virtio_snapshots[0].backend = invalid.virtio_snapshots[1].backend.clone();
             }
+            5 => {
+                invalid.virtio_snapshots[0].transport.device_id = u32::MAX;
+            }
+            6 => {
+                let transport = invalid.virtio_snapshots[0].transport.clone();
+                invalid.virtio_snapshots[0].transport =
+                    invalid.virtio_snapshots[1].transport.clone();
+                invalid.virtio_snapshots[1].transport = transport;
+            }
             _ => unreachable!(),
         }
         let error = vm.restore(&invalid).unwrap_err();
@@ -209,6 +233,23 @@ fn pure_preflight_retains_capabilities_and_isolates_topology_rejections() {
             before
         );
         assert!(vm.schedule_execution_poison().is_none());
+        assert_eq!(vm.memory.dump(), before_memory);
+        assert_eq!(
+            vm.vcpus
+                .iter()
+                .map(|vcpu| vcpu.get_regs().unwrap())
+                .collect::<Vec<_>>(),
+            before_registers
+        );
+        assert_eq!(
+            serde_json::to_value(vm.capture_virtio_snapshots().unwrap()).unwrap(),
+            before_devices
+        );
+        assert_eq!(
+            serde_json::to_value(vm.fault_engine.snapshot()).unwrap(),
+            before_assertions
+        );
+        assert_eq!(vm.serial.state(), before_serial);
     }
     // Stable identities, not vector positions, define device matching.
     let mut reordered = checkpoint.clone();
@@ -523,6 +564,32 @@ fn whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match() {
     for _ in 0..3 {
         vm.step().unwrap();
     }
+    const SYSENTER_ESP: u32 = 0x175;
+    const REQUIRED_MSR_MARKER: u64 = 0x1234_5000;
+    assert!(vm.snapshot_msr_indices.contains(&SYSENTER_ESP));
+    for vcpu in &vm.vcpus {
+        let msrs = kvm_bindings::Msrs::from_entries(&[kvm_bindings::kvm_msr_entry {
+            index: SYSENTER_ESP,
+            data: REQUIRED_MSR_MARKER,
+            ..Default::default()
+        }])
+        .unwrap();
+        assert_eq!(vcpu.set_msrs(&msrs).unwrap(), 1);
+        let mut xcrs = vcpu.get_xcrs().unwrap();
+        xcrs.xcrs[0].value |= 3; // Retain active x87/SSE state in the selected profile.
+        vcpu.set_xcrs(&xcrs).unwrap();
+        let mut xsave = vcpu.get_xsave().unwrap();
+        const XMM3_WORD: usize = (160 + 3 * 16) / std::mem::size_of::<u32>();
+        const XSTATE_BV_WORD: usize = 512 / std::mem::size_of::<u32>();
+        xsave.region[XMM3_WORD..XMM3_WORD + 4].fill(0xa5a5_a5a5);
+        xsave.region[XSTATE_BV_WORD] |= 1 << 1; // SSE is active, not init-state.
+        vcpu.set_xsave(&xsave).unwrap();
+        let mut events = vcpu.get_vcpu_events().unwrap();
+        events.nmi.pending = 1;
+        events.nmi.masked = 1;
+        events.flags |= kvm_bindings::KVM_VCPUEVENT_VALID_NMI_PENDING;
+        vcpu.set_vcpu_events(&events).unwrap();
+    }
     vm.entropy.fill_bytes(&mut [0; 17]);
     vm.serial.write(7, 0xa5).unwrap(); // UART scratch register is part of exact state.
     for index in 0..vm.virtio_devices.len() {
@@ -549,6 +616,18 @@ fn whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match() {
     vm.scheduler.drain_trace().unwrap();
     let control_future = future(&mut vm, false, Duration::ZERO);
     vm.restore(&decoded).unwrap();
+    for vcpu in &vm.vcpus {
+        let mut msrs = kvm_bindings::Msrs::from_entries(&[kvm_bindings::kvm_msr_entry {
+            index: SYSENTER_ESP,
+            ..Default::default()
+        }])
+        .unwrap();
+        assert_eq!(vcpu.get_msrs(&mut msrs).unwrap(), 1);
+        assert_eq!(msrs.as_slice()[0].data, REQUIRED_MSR_MARKER);
+        assert_eq!(vcpu.get_fpu().unwrap().xmm[3], [0xa5; 16]);
+        let events = vcpu.get_vcpu_events().unwrap();
+        assert_eq!((events.nmi.pending, events.nmi.masked), (1, 1));
+    }
     for index in 0..vm.virtio_devices.len() {
         request(&mut vm, index, false);
     }
@@ -559,6 +638,27 @@ fn whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match() {
         serde_json::to_value(&control.virtio_snapshots).unwrap()
     );
     assert_eq!(restored.scheduler_snapshot, control.scheduler_snapshot);
+    assert_eq!(restored.hlt_latched_vcpus, control.hlt_latched_vcpus);
+    assert_eq!(restored.pit_snapshot, control.pit_snapshot);
+    assert_eq!(restored.last_kvm_pit_mode, control.last_kvm_pit_mode);
+    assert_eq!(
+        serde_json::to_value(&restored.fault_engine_snapshot).unwrap(),
+        serde_json::to_value(&control.fault_engine_snapshot).unwrap()
+    );
+    assert_eq!(
+        (
+            restored.exits_since_last_sdk,
+            restored.panic_detected,
+            restored.panic_match_state,
+            restored.coverage_active
+        ),
+        (
+            control.exits_since_last_sdk,
+            control.panic_detected,
+            control.panic_match_state,
+            control.coverage_active
+        )
+    );
     assert_eq!(
         (
             restored.virtual_tsc,
@@ -590,6 +690,48 @@ fn whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match() {
     assert_eq!(future(&mut vm, false, Duration::ZERO), control_future);
 }
 
+/// Keep live KVM objects owned while making every shell descriptor reject ioctls.
+/// Drop repairs the descriptors before architectural unchanged-state observations.
+struct UnavailableKvmDescriptors(Vec<(std::os::fd::RawFd, std::fs::File)>);
+
+impl UnavailableKvmDescriptors {
+    fn replace(vm: &DeterministicVm) -> Self {
+        use std::os::fd::{AsRawFd, FromRawFd};
+        let not_kvm = std::fs::File::open("/dev/null").unwrap();
+        let mut retained = Self(Vec::new());
+        for descriptor in [vm.kvm.as_raw_fd(), vm.vm.as_raw_fd()]
+            .into_iter()
+            .chain(vm.vcpus.iter().map(AsRawFd::as_raw_fd))
+        {
+            // SAFETY: dup retains this live descriptor as a fresh owned file.
+            let duplicate = unsafe { libc::dup(descriptor) };
+            assert!(duplicate >= 0);
+            // SAFETY: duplicate is uniquely owned and live.
+            let saved = unsafe { std::fs::File::from_raw_fd(duplicate) };
+            retained.0.push((descriptor, saved));
+            // SAFETY: dup2 preserves Rust ownership and the original KVM mmap.
+            assert_eq!(
+                unsafe { libc::dup2(not_kvm.as_raw_fd(), descriptor) },
+                descriptor
+            );
+        }
+        retained
+    }
+}
+
+impl Drop for UnavailableKvmDescriptors {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        for (descriptor, saved) in &self.0 {
+            // SAFETY: both descriptors remain owned and live until this drop ends.
+            assert_eq!(
+                unsafe { libc::dup2(saved.as_raw_fd(), *descriptor) },
+                *descriptor
+            );
+        }
+    }
+}
+
 #[test]
 fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
     let mut vm = spin_vm();
@@ -610,15 +752,28 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
     let before_registers: Vec<_> = vm
         .vcpus
         .iter()
-        .map(|vcpu| {
-            let regs = vcpu.get_regs().unwrap();
-            (regs.rax, regs.rip, regs.rflags)
-        })
+        .map(|vcpu| vcpu.get_regs().unwrap())
         .collect();
     let before_schedule = vm.scheduler.state_id();
     let before_counters = (vm.exit_count, vm.virtual_tsc.read());
     let before_devices = serde_json::to_value(vm.capture_virtio_snapshots().unwrap()).unwrap();
-    for corruption in 0..6 {
+    let before_assertions = serde_json::to_value(vm.fault_engine.snapshot()).unwrap();
+    let before_serial = vm.serial.state();
+    let unavailable = UnavailableKvmDescriptors::replace(&vm);
+    vm.validate_fault_engine_snapshot(&checkpoint).unwrap();
+    let mut boundary = checkpoint.clone();
+    boundary.pit.channels[1].read_state = 4; // Partially read word, not a boolean.
+    boundary.pit.channels[1].write_state = 4;
+    boundary.pit.channels[1].mode = u8::MAX; // Admitted KVM reset/unprogrammed mode.
+    boundary.pit.channels[1].count = 65_536;
+    vm.validate_fault_engine_snapshot(&boundary).unwrap();
+    let mut two_pending_nmis = checkpoint.clone();
+    two_pending_nmis.vcpu_snapshots[0].events.nmi.pending = 2;
+    two_pending_nmis.vcpu_snapshots[0].events.nmi.masked = 0;
+    vm.validate_fault_engine_snapshot(&two_pending_nmis)
+        .unwrap();
+    drop(unavailable);
+    for corruption in 0..31 {
         let mut invalid = checkpoint.clone();
         let component = match corruption {
             0 => {
@@ -645,19 +800,143 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
                 invalid.last_kvm_pit_mode = 8;
                 "PIT mirror mode"
             }
+            6 => {
+                invalid.vcpu_snapshots[0].mp_state.mp_state = u32::MAX;
+                "mp_state"
+            }
+            7 => {
+                invalid.vcpu_snapshots[0].events.nmi.pending = 3;
+                "vcpu_events"
+            }
+            8 => {
+                invalid.vcpu_snapshots[0].sregs.cs.present = 2;
+                "sregs.segment"
+            }
+            9 => {
+                invalid.vcpu_snapshots[0].xcrs.nr_xcrs = u32::MAX;
+                "xcrs.inventory"
+            }
+            10 => {
+                invalid.vcpu_snapshots[0].msrs.pop();
+                "MSR"
+            }
+            11 => {
+                invalid.vcpu_snapshots[0].xsave.pop();
+                "XSAVE"
+            }
+            12 => {
+                // SAFETY: the checkpoint carries the admitted PIC identity.
+                let mut pic = unsafe { invalid.pic_master.chip.pic };
+                pic.priority_add = 8;
+                invalid.pic_master.chip.pic = pic;
+                "pic_master"
+            }
+            13 => {
+                // SAFETY: the checkpoint carries the admitted PIC identity.
+                let mut pic = unsafe { invalid.pic_slave.chip.pic };
+                pic.auto_eoi = 2;
+                invalid.pic_slave.chip.pic = pic;
+                "pic_slave"
+            }
+            14 => {
+                // SAFETY: the checkpoint carries the admitted IOAPIC identity.
+                let mut ioapic = unsafe { invalid.ioapic.chip.ioapic };
+                ioapic.id = 16;
+                invalid.ioapic.chip.ioapic = ioapic;
+                "ioapic"
+            }
+            15 => {
+                // SAFETY: the checkpoint carries the admitted IOAPIC identity.
+                let mut ioapic = unsafe { invalid.ioapic.chip.ioapic };
+                ioapic.ioregsel = 256;
+                invalid.ioapic.chip.ioapic = ioapic;
+                "ioapic"
+            }
+            16 => {
+                invalid.pit.flags |= 1 << 31;
+                "pit.flags"
+            }
+            17 => {
+                invalid.pit.channels[0].count = 65_537;
+                "pit.channel"
+            }
+            18 => {
+                invalid.pit.channels[0].read_state = 5;
+                "pit.channel"
+            }
+            19 => {
+                invalid.pit.channels[0].gate = 2;
+                "pit.channel"
+            }
+            20 => {
+                invalid.clock.flags |= 1 << 31;
+                "clock"
+            }
+            21 => {
+                invalid.clock.pad[0] = 1;
+                "clock"
+            }
+            22 => {
+                invalid.vcpu_snapshots[0].sregs.cr8 = 16;
+                "sregs.cr8"
+            }
+            23 => {
+                invalid.vcpu_snapshots[0].fpu.mxcsr = 1 << 16;
+                "fpu.mxcsr"
+            }
+            24 => {
+                invalid.vcpu_snapshots[0].xsave[26] = 1;
+                "fpu.mxcsr"
+            }
+            25 => {
+                invalid.vcpu_snapshots[0].xsave[520] = 1;
+                "xsave.header"
+            }
+            26 => {
+                invalid.vcpu_snapshots[0].xsave[528] = 1;
+                "xsave.header"
+            }
+            27 => {
+                invalid.pit.channels[1].mode = 6;
+                "pit.channel"
+            }
+            28 => {
+                invalid.vcpu_snapshots[0].regs.rflags = 0;
+                "regs.rflags"
+            }
+            29 => {
+                invalid.vcpu_snapshots[0].regs.rflags |= 1 << 3;
+                "regs.rflags"
+            }
+            30 => {
+                invalid.vcpu_snapshots[0].debug_regs.flags = 1;
+                "debug_regs.flags"
+            }
             _ => unreachable!(),
         };
-        let error = vm.restore(&invalid).unwrap_err();
+        let unavailable = UnavailableKvmDescriptors::replace(&vm);
+        let raw_results = (corruption >= 6).then(|| {
+            (
+                invalid.restore(&vm.vcpus, &vm.vm, vm.memory.inner()),
+                invalid.restore_devices_only(&vm.vcpus, &vm.vm),
+            )
+        });
+        let result = vm.restore(&invalid);
+        drop(unavailable);
+        if let Some((full, devices)) = raw_results {
+            for result in [full, devices] {
+                let error = result.unwrap_err();
+                assert!(error.to_string().contains(component), "{error}");
+            }
+        }
+        let error = result.unwrap_err();
         assert!(matches!(error, VmError::Snapshot { .. }));
         assert!(error.to_string().contains(component), "{error}");
         assert_eq!(vm.memory.dump(), before_memory);
         let registers: Vec<_> = vm
             .vcpus
             .iter()
-            .map(|vcpu| {
-                let regs = vcpu.get_regs().unwrap();
-                (regs.rax, regs.rip, regs.rflags)
-            })
+            .map(|vcpu| vcpu.get_regs().unwrap())
             .collect();
         assert_eq!(registers, before_registers);
         assert_eq!(vm.scheduler.state_id(), before_schedule);
@@ -667,6 +946,11 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
             before_devices
         );
         assert!(vm.schedule_execution_poison().is_none());
+        assert_eq!(
+            serde_json::to_value(vm.fault_engine.snapshot()).unwrap(),
+            before_assertions
+        );
+        assert_eq!(vm.serial.state(), before_serial);
     }
     vm.restore(&checkpoint).unwrap();
     assert_eq!(vm.memory.dump(), checkpoint.memory.materialize());

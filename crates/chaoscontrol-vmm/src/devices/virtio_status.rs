@@ -1,6 +1,6 @@
 //! Pure virtio feature and device-status transition validation.
 
-use super::virtio_types::TransportViolation;
+use super::virtio_types::{PendingCompletionLiveState, TransportViolation, VirtioFailure};
 
 pub const VIRTIO_STATUS_ACKNOWLEDGE: u32 = 1;
 pub const VIRTIO_STATUS_DRIVER: u32 = 2;
@@ -46,6 +46,83 @@ pub fn queue_processing_allowed(status: u32, queue_ready: bool) -> bool {
     status & VIRTIO_STATUS_DRIVER_OK != 0
         && status & (VIRTIO_STATUS_DEVICE_NEEDS_RESET | VIRTIO_STATUS_FAILED) == 0
         && queue_ready
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueueMutation {
+    Size,
+    Address,
+    Activate,
+}
+
+/// Decide queue lifecycle eligibility before configuration or memory effects.
+pub fn validate_queue_mutation(
+    ready: bool,
+    mutation: QueueMutation,
+) -> Result<(), TransportViolation> {
+    if !ready {
+        return Ok(());
+    }
+    Err(match mutation {
+        QueueMutation::Size => TransportViolation::QueueSizeWhileReady,
+        QueueMutation::Address => TransportViolation::QueueAddressWhileReady,
+        QueueMutation::Activate => TransportViolation::ReadyState,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompletionTransition {
+    Stage {
+        head_index: u16,
+        written_length: u32,
+    },
+    BackendStarted,
+    EffectsStarted,
+    Publish {
+        head_index: u16,
+        written_length: u32,
+    },
+}
+
+/// Compute completion-state eligibility without accessing the ring or applying effects.
+pub fn plan_completion_transition(
+    pending: Option<PendingCompletionLiveState>,
+    transition: CompletionTransition,
+) -> Result<Option<PendingCompletionLiveState>, VirtioFailure> {
+    match transition {
+        CompletionTransition::Stage {
+            head_index,
+            written_length,
+        } => {
+            if pending.is_some() {
+                return Err(VirtioFailure::CompletionState);
+            }
+            Ok(Some(PendingCompletionLiveState {
+                head_index,
+                written_length,
+                backend_started: false,
+                effects_started: false,
+            }))
+        }
+        CompletionTransition::BackendStarted | CompletionTransition::EffectsStarted => {
+            let mut pending = pending.ok_or(VirtioFailure::CompletionState)?;
+            pending.effects_started = true;
+            if transition == CompletionTransition::BackendStarted {
+                pending.backend_started = true;
+            }
+            Ok(Some(pending))
+        }
+        CompletionTransition::Publish {
+            head_index,
+            written_length,
+        } => {
+            let pending = pending.ok_or(VirtioFailure::CompletionState)?;
+            if pending.head_index != head_index || pending.written_length != written_length {
+                return Err(VirtioFailure::CompletionState);
+            }
+            Ok(None)
+        }
+    }
 }
 
 pub fn validate_queue_activation(status: u32, value: u32) -> Result<(), TransportViolation> {

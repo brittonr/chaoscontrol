@@ -868,6 +868,40 @@ impl VcpuSnapshot {
     pub fn validate(&self) -> Result<(), SnapshotError> {
         let _: kvm_xsave =
             pod_from_bytes(&self.xsave, "xsave").map_err(|_| XsaveImageSnafu.build())?;
+        // This profile selects the standard (not compacted) KVM XSAVE image.
+        // XCOMP_BV and the rest of the header's reserved bytes must be zero.
+        if self.xsave[520..576].iter().any(|byte| *byte != 0) {
+            return ArchitectureFieldSnafu {
+                field: "xsave.header",
+            }
+            .fail();
+        }
+        let xsave_mxcsr = u32::from_le_bytes([
+            self.xsave[24],
+            self.xsave[25],
+            self.xsave[26],
+            self.xsave[27],
+        ]);
+        if self.fpu.mxcsr & !0xffff != 0 || xsave_mxcsr & !0xffff != 0 {
+            return ArchitectureFieldSnafu { field: "fpu.mxcsr" }.fail();
+        }
+        if self.sregs.cr8 > 15 {
+            return ArchitectureFieldSnafu { field: "sregs.cr8" }.fail();
+        }
+        if self.debug_regs.flags != 0 {
+            return ArchitectureFieldSnafu {
+                field: "debug_regs.flags",
+            }
+            .fail();
+        }
+        // RFLAGS bit 1 is fixed-one; bits 3, 5, 15 and 22..63 are reserved-zero.
+        const ARCHITECTURAL_RFLAGS: u64 = 0x003f_7fd7;
+        if self.regs.rflags & 2 == 0 || self.regs.rflags & !ARCHITECTURAL_RFLAGS != 0 {
+            return ArchitectureFieldSnafu {
+                field: "regs.rflags",
+            }
+            .fail();
+        }
         // x86 MP states: runnable, uninitialized, INIT received, halted,
         // SIPI received, and AP reset hold. Other architectures' states are invalid.
         if !matches!(self.mp_state.mp_state, 0..=4 | 9) {
@@ -937,7 +971,6 @@ impl VcpuSnapshot {
             events.interrupt.injected,
             events.interrupt.soft,
             events.nmi.injected,
-            events.nmi.pending,
             events.nmi.masked,
             events.smi.smm,
             events.smi.pending,
@@ -950,6 +983,8 @@ impl VcpuSnapshot {
         .any(|value| *value > 1)
             || events.exception.nr > 31
             || events.interrupt.shadow & !3 != 0
+            // Pending NMIs are a count, not a boolean; unmasked x86 permits two.
+            || events.nmi.pending > 2
             || events.sipi_vector > 255
             || events.flags & !EVENT_VALID_FLAGS != 0
         {
@@ -1073,6 +1108,88 @@ pub struct VmSnapshot {
 }
 
 impl VmSnapshot {
+    /// Validate retained architectural values, never consulting live KVM state.
+    pub(crate) fn validate_kernel_state(&self) -> Result<(), SnapshotError> {
+        for (chip, identity, field) in [
+            (&self.pic_master, KVM_IRQCHIP_PIC_MASTER, "pic_master"),
+            (&self.pic_slave, KVM_IRQCHIP_PIC_SLAVE, "pic_slave"),
+        ] {
+            if chip.chip_id != identity {
+                return ArchitectureFieldSnafu { field }.fail();
+            }
+            // SAFETY: the checked stable chip identity selects the PIC ABI arm.
+            let pic = unsafe { chip.chip.pic };
+            if pic.priority_add > 7
+                || pic.irq_base & 7 != 0
+                || pic.init_state > 3
+                || [
+                    pic.read_reg_select,
+                    pic.poll,
+                    pic.special_mask,
+                    pic.auto_eoi,
+                    pic.rotate_on_auto_eoi,
+                    pic.special_fully_nested_mode,
+                    pic.init4,
+                ]
+                .iter()
+                .any(|value| *value > 1)
+            {
+                return ArchitectureFieldSnafu { field }.fail();
+            }
+        }
+        if self.ioapic.chip_id != KVM_IRQCHIP_IOAPIC {
+            return ArchitectureFieldSnafu { field: "ioapic" }.fail();
+        }
+        // SAFETY: the checked stable chip identity selects the IOAPIC ABI arm.
+        let ioapic = unsafe { self.ioapic.chip.ioapic };
+        if ioapic.base_address & 0xfff != 0
+            || ioapic.ioregsel > 255
+            || ioapic.id > 15
+            || ioapic.irr >> ioapic.redirtbl.len() != 0
+        {
+            return ArchitectureFieldSnafu { field: "ioapic" }.fail();
+        }
+        // KVM's PIT read/write cursor has four states (LSB, MSB, WORD0,
+        // WORD1), plus the reset/unlatched zero state. WORD1 is not a bool.
+        for channel in &self.pit.channels {
+            if channel.count > 65_536
+                || channel.count_latched > 3
+                || channel.status_latched > 1
+                || channel.read_state > 4
+                || channel.write_state > 4
+                || channel.rw_mode > 3
+                // KVM normalizes modes 6/7 to 2/3; 0xff is its reset sentinel.
+                || (channel.mode > 5 && channel.mode != u8::MAX)
+                || channel.bcd > 1
+                || channel.gate > 1
+            {
+                return ArchitectureFieldSnafu {
+                    field: "pit.channel",
+                }
+                .fail();
+            }
+        }
+        if self.pit.flags
+            & !(kvm_bindings::KVM_PIT_FLAGS_HPET_LEGACY
+                | kvm_bindings::KVM_PIT_FLAGS_SPEAKER_DATA_ON)
+            != 0
+            || self.pit.reserved.iter().any(|value| *value != 0)
+        {
+            return ArchitectureFieldSnafu { field: "pit.flags" }.fail();
+        }
+        if self.clock.flags
+            & !(kvm_bindings::KVM_CLOCK_TSC_STABLE
+                | kvm_bindings::KVM_CLOCK_REALTIME
+                | kvm_bindings::KVM_CLOCK_HOST_TSC)
+            != 0
+            || self.clock.pad0 != 0
+            || self.clock.pad.iter().any(|value| *value != 0)
+        {
+            return ArchitectureFieldSnafu { field: "clock" }.fail();
+        }
+        Ok(())
+    }
+
     pub fn validate_assertion_identity(
         &self,
     ) -> Result<(), chaoscontrol_fault::oracle_validation::OracleValidationError> {
@@ -1209,6 +1326,36 @@ impl VmSnapshot {
         })
     }
 
+    fn validate_kernel_restore(&self, vcpu_count: usize) -> Result<(), SnapshotError> {
+        if vcpu_count != self.vcpu_snapshots.len() {
+            return VcpuCountMismatchSnafu {
+                snapshot: self.vcpu_snapshots.len(),
+                current: vcpu_count,
+            }
+            .fail();
+        }
+        let metadata = self
+            .metadata
+            .as_ref()
+            .ok_or_else(|| SnapshotError::Topology {
+                message: "exact kernel restore requires completeness metadata".to_string(),
+            })?;
+        validate_snapshot_metadata(Some(metadata), &metadata.topology).map_err(|error| {
+            SnapshotError::Topology {
+                message: format!("snapshot completeness preflight failed: {error:?}"),
+            }
+        })?;
+        if metadata.topology.vcpu_count as usize != vcpu_count {
+            return Err(SnapshotError::Topology {
+                message: "snapshot architecture inventory has the wrong vCPU count".to_string(),
+            });
+        }
+        for vcpu in &self.vcpu_snapshots {
+            vcpu.validate_msr_inventory(&metadata.topology.msr_indices)?;
+        }
+        self.validate_kernel_state()
+    }
+
     /// Restore VM state from this snapshot.
     pub fn restore(
         &self,
@@ -1216,13 +1363,10 @@ impl VmSnapshot {
         vm: &VmFd,
         guest_memory: &GuestMemoryMmap,
     ) -> Result<(), SnapshotError> {
-        if vcpus.len() != self.vcpu_snapshots.len() {
-            return VcpuCountMismatchSnafu {
-                snapshot: self.vcpu_snapshots.len(),
-                current: vcpus.len(),
-            }
-            .fail();
-        }
+        self.validate_kernel_restore(vcpus.len())?;
+        self.memory
+            .validate_for_guest_size(guest_memory.last_addr().raw_value() as usize + 1)
+            .map_err(|message| SnapshotError::Topology { message })?;
 
         if let SnapshotMemory::Overlay { base, .. } = &self.memory {
             guest_memory
@@ -1233,7 +1377,7 @@ impl VmSnapshot {
         self.memory.write_to_guest(guest_memory)?;
 
         // Restore KVM devices and vCPU registers
-        self.restore_devices_only(vcpus, vm)?;
+        self.restore_kernel_state_validated(vcpus, vm)?;
 
         info!(
             "Snapshot restored: {} vCPUs, BSP RIP=0x{:x}",
@@ -1248,14 +1392,15 @@ impl VmSnapshot {
     /// touching guest memory. Used by incremental restore where
     /// memory is handled separately.
     pub fn restore_devices_only(&self, vcpus: &[VcpuFd], vm: &VmFd) -> Result<(), SnapshotError> {
-        if vcpus.len() != self.vcpu_snapshots.len() {
-            return VcpuCountMismatchSnafu {
-                snapshot: self.vcpu_snapshots.len(),
-                current: vcpus.len(),
-            }
-            .fail();
-        }
+        self.validate_kernel_restore(vcpus.len())?;
+        self.restore_kernel_state_validated(vcpus, vm)
+    }
 
+    fn restore_kernel_state_validated(
+        &self,
+        vcpus: &[VcpuFd],
+        vm: &VmFd,
+    ) -> Result<(), SnapshotError> {
         // Restore in-kernel devices BEFORE vCPU state
         // Older snapshots may lack the host-timer inhibit flag. Set it in the
         // restored KVM state without changing the serialized snapshot identity.
@@ -1617,7 +1762,10 @@ mod tests {
 
     fn complete_vcpu_snapshot() -> VcpuSnapshot {
         VcpuSnapshot {
-            regs: Default::default(),
+            regs: kvm_regs {
+                rflags: 2,
+                ..Default::default()
+            },
             sregs: Default::default(),
             fpu: Default::default(),
             debug_regs: Default::default(),
@@ -1692,6 +1840,14 @@ mod tests {
             |state| state.sregs.cs.type_ = 16,
             |state| state.sregs.ds.dpl = 4,
             |state| state.sregs.ss.present = 2,
+            |state| state.sregs.cr8 = 16,
+            |state| state.debug_regs.flags = 1,
+            |state| state.regs.rflags = 0,
+            |state| state.regs.rflags |= 1 << 3,
+            |state| state.fpu.mxcsr = 1 << 16,
+            |state| state.xsave[26] = 1,
+            |state| state.xsave[520] = 1,
+            |state| state.xsave[528] = 1,
             |state| state.xcrs.nr_xcrs = 17,
             |state| state.xcrs.flags = 1,
             |state| {
@@ -1703,7 +1859,7 @@ mod tests {
                 state.xcrs.xcrs[0].value = 5;
             },
             |state| state.events.flags = 1 << 31,
-            |state| state.events.nmi.pending = 2,
+            |state| state.events.nmi.pending = 3,
             |state| state.events.exception.nr = 32,
             |state| state.events.interrupt.shadow = 4,
             |state| state.events.sipi_vector = 256,

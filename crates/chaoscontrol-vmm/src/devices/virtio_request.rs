@@ -1,7 +1,7 @@
 //! Pure device-specific request-shape and transfer-budget planning.
 
 use super::virtio_chain::{DescriptorBuffer, DescriptorChainPlan};
-use super::virtio_types::{RequestViolation, VirtioLimits};
+use super::virtio_types::{RequestViolation, ResourceViolation, VirtioLimits};
 
 pub const BLOCK_SECTOR_BYTES: u64 = 512;
 pub const BLOCK_HEADER_BYTES: u32 = 16;
@@ -49,13 +49,46 @@ pub struct EntropyRequestPlan {
     pub transfer_bytes: u64,
 }
 
-pub fn validated_block_status(chain: &DescriptorChainPlan) -> Option<u64> {
-    let status = chain.buffers().last()?;
-    if status.write && status.len >= BLOCK_STATUS_BYTES {
-        Some(status.addr)
-    } else {
-        None
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlockFailurePlan {
+    ErrorCompletion { status_address: u64 },
+    NeedsReset,
+}
+
+/// Classify request-local failure using only independently validated completion facts.
+pub fn plan_block_failure(chain: &DescriptorChainPlan) -> BlockFailurePlan {
+    match chain.buffers().last() {
+        Some(status) if status.write && status.len >= BLOCK_STATUS_BYTES => {
+            BlockFailurePlan::ErrorCompletion {
+                status_address: status.addr,
+            }
+        }
+        _ => BlockFailurePlan::NeedsReset,
     }
+}
+
+/// Allocation-free sizing for chunked block and entropy transfers.
+pub fn plan_chunked_scratch(
+    transfer_bytes: u64,
+    maximum: usize,
+) -> Result<(usize, usize), ResourceViolation> {
+    if maximum == 0 {
+        return Err(ResourceViolation::ScratchLimit {
+            requested: 1,
+            maximum,
+        });
+    }
+    let maximum_u64 = u64::try_from(maximum).map_err(|_| ResourceViolation::ScratchLimit {
+        requested: maximum,
+        maximum,
+    })?;
+    let requested = usize::try_from(transfer_bytes.min(maximum_u64)).map_err(|_| {
+        ResourceViolation::ScratchLimit {
+            requested: maximum,
+            maximum,
+        }
+    })?;
+    Ok((requested, maximum))
 }
 
 pub fn plan_block_request(

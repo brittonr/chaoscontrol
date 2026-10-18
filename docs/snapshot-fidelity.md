@@ -330,3 +330,48 @@ Production readiness remains false; the exact upstream, current-campaign,
 requirement-evidence, host-owned Nix and historical-retention prerequisites stay
 open. No lifecycle sync, archive or additional corrective slot is authorized.
 
+
+## Architectural and virtio corrections through attempt45
+
+The separate `dogfood-results/production-readiness-attempts41-45-20261018/`
+receipt owns this corrective cohort; earlier receipts keep their original
+source, artifact and verdict identities.
+
+CPU preflight now checks standard XSAVE header representation, MXCSR reserved
+bits, architectural RFLAGS, CR8 and reserved debug-register flags before raw or
+complete-VM restore effects. Pending NMIs are a count: two are valid while
+unmasked; they are not rejected as a non-boolean value. PIC, IOAPIC, PIT and
+clock payload admission preserves actual KVM reset and partial-word states.
+These facts-only checks do not establish every host-dependent CPUID, XSTATE or
+MSR value constraint; those broader requirements remain open.
+
+The raw-vCPU continuation fixture enables the selected SSE state and writes its
+active XSAVE component, rather than merely changing legacy FPU storage. A guest
+IRET leaves the masked-NMI region. The exact control and restored traces must
+observe pending NMI delivery, the required MSR, the nondefault XMM byte and both
+subsequent outputs. The initial duplicate-NMI and zero-XMM control failures stay
+in the new attempt ledger; expected outputs were not relaxed.
+
+Virtio queue lifecycle, completion, scratch sizing and block-error decisions
+remain allocation-free pure plans. Cursor commit still follows successful
+used-index publication. Generated bounded-shell cases require actual request
+family reachability, allocator observations, exact backend/guest output and
+prevalidation isolation. The malicious-guest fixture executes production MMIO
+dispatch against the same memory mapped into KVM, including malformed queue
+configuration and descriptors; a manually forwarded MMIO fixture is not its
+substitute.
+
+Only requirement clauses supported by those implementation paths and behavioral
+oracles acquire links. Every remaining native requirement, downstream Cairn
+producer prerequisite, strict watchdog comparison and clean-source release gate
+remains mandatory. Maintenance owner: `chaoscontrol-vmm`.
+
+The integrated precommit workspace, denied-warning Clippy, formatting and
+strict watchdog proof passed. The actual control campaign no longer exits with
+`Frontier BoundExceeded`: it retained seven rounds and fourteen branches before
+the unchanged 600-second operational timeout. Marker-only frontier regressions
+also pass in the complete workspace run; their earlier focused timeout remains
+recorded. None of those observations closes the ten-round/depth-four campaign
+or clean-source release requirements. All45 authorized corrective slots are
+consumed; further gates and evidence collection are not authority for another
+product correction.

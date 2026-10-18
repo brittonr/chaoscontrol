@@ -138,3 +138,35 @@ was fast-forwarded and pushed to `main` without force. This supports only the
 delivery checkbox above; the remaining runtime, requirement and release tasks
 stay unchecked. Later task-state commits are not release-tested source.
 
+## Authorized corrections 41–45
+
+The user explicitly selected five more attempts after the previous forty slots
+were exhausted. The separate prospective ledger is
+`dogfood-results/production-readiness-attempts41-45-20261018/attempts.ncl`.
+Every original acceptance criterion, report-verdict requirement, declared
+execution bound, sibling/host restriction and historical evidence boundary
+remains unchanged. This authorization does not supply passing upstream Cairn
+or host-owned Nix evidence.
+
+- [x] Record explicit authorization through attempt45 and validate its Nickel ledger.
+- [ ] Correct the actual frontier failure in attempt41 and exercise the unchanged-bound current control/planted/deep campaigns and actual retained-parent replay.
+- [x] In attempts42–45, implement and exercise genuine remaining owner-local runtime and evidence requirements; keep unsupported whole contracts open.
+- [ ] Require fresh exact-source Cargo, native, Nix, watchdog and all-seven-row clean-source report verdicts.
+- [ ] Retain a separate BLAKE3-bound Nickel receipt, update only supported task state, and commit/push verified changes without force.
+
+Attempt41 corrected merged per-VM marker capacity and run ownership. The actual
+control reached seven rounds and fourteen branches without Frontier
+BoundExceeded, but hit the unchanged 600-second operational bound. Its campaign
+checkbox remains open. Attempts42/43 exercised complete-VM continuation, pure
+preflight, apply-failure poisoning and allocation-free/adversarial virtio
+consumers. Attempt44's uninterrupted XMM control failed; attempt45 repaired the
+active XSAVE representation without relaxing the required outputs, and added
+reserved debug-register admission with valid two-pending-NMI handling.
+
+The integrated precommit workspace, denied-warning Clippy, formatting and
+strict real-watchdog Raft proof passed. These are not clean-source release
+verdicts. All45 explicitly authorized corrective slots are consumed. Fresh
+frozen-source native, Cargo, Nix, campaign/replay, watchdog and seven-row matrix
+observations remain required, as do the unresolved Cairn producer and host
+prerequisites. No historical receipt is promoted or overwritten.
+

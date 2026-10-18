@@ -3045,6 +3045,11 @@ impl DeterministicVm {
                 });
             }
         }
+        snapshot
+            .validate_kernel_state()
+            .map_err(|error| VmError::Snapshot {
+                message: format!("invalid in-kernel snapshot: {error}"),
+            })?;
         if snapshot.pit_snapshot.tsc_khz == 0
             || snapshot.pit_snapshot.tsc_khz != self.virtual_tsc.tsc_khz()
         {

@@ -1,0 +1,59 @@
+{
+  "schema": "chaoscontrol.historical-initrd-availability-manifest.v1",
+  "identity_algorithm": "blake3",
+  "curated_inputs": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/observations.json",
+      "digest": "blake3:bf082dd752b378376bcc8d0f7ad7492a7ea8a5f48d243faeb83f5d781a818f34",
+      "bytes": 4577
+    }
+  ],
+  "raw_local_inputs": [
+    {
+      "id": "public",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/public-initrd-availability-after-a162893/observations.json",
+      "digest": "blake3:67ffa7f1936783f2b3f599a0729ab3edab6e2ceda8ccd29ed4a9169151fe4c51",
+      "bytes": 2838
+    },
+    {
+      "id": "private",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/configured-initrd-availability-after-a162893/observations.json",
+      "digest": "blake3:2346010daaa028481f1339036cfeb53118d6999c0f511cdd846f89023eda16de",
+      "bytes": 2585
+    }
+  ],
+  "prior_authority_inputs": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl",
+      "digest": "blake3:a396878864208a8374f7d74113989228b660f4f8ce62d1bb2e0d74272085f1b2",
+      "bytes": 10959
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/observations.json",
+      "digest": "blake3:3c43509936fdfc172107cab73b33afe1e7fd1845f5f3a14b0c7669dc95b92c4c",
+      "bytes": 1381154
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/evidence-manifest.json",
+      "digest": "blake3:c5682b09e8e89cabb23e87a310c59ae19366bce43ed6f5742ff057d8c9c3ebd0",
+      "bytes": 371348
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/attempts.ncl",
+      "digest": "blake3:84bdf0f56457d8b11c504c6782c4a89424f18742b34cf924b0690b9de3c91f16",
+      "bytes": 6608
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/evidence/profile-primitives.ncl",
+      "digest": "blake3:829939b6d573df8a78b59016c6b5eb0ed745333ace8522da076a223eca3eea08",
+      "bytes": 3897
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/kvm-release/matrix.json",
+      "digest": "blake3:4f1254e7150d4f31bef7be184c1f716f1aa1d84bc1c3f642d62bab2fd1917b3e",
+      "bytes": 5269
+    }
+  ],
+  "raw_artifacts_copied": false,
+  "historical_inputs_modified": false
+}

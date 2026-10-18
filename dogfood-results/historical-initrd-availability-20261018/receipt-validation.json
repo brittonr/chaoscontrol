@@ -1,0 +1,178 @@
+{
+  "schema": "chaoscontrol.historical-initrd-availability-publication-validation.v1",
+  "validated": true,
+  "outcome": "missing-artifact-blocked",
+  "production_ready": false,
+  "artifact_recovered": false,
+  "source": {
+    "implementation_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc",
+    "delivery_parent_revision": "a16289337fb42c485319a4576495849d39b5dd9b",
+    "boundary": "Evidence-only publication, not a new release-tested implementation."
+  },
+  "authority": {
+    "maximum_corrective_attempts": 45,
+    "used_corrective_attempts": 45,
+    "new_product_corrections": 0,
+    "release_gates_rerun": false,
+    "host_configuration_changed": false,
+    "credentials_accessed": false,
+    "user_decision": "Keep 45-attempt limit"
+  },
+  "nickel": {
+    "passed": true,
+    "evaluator": {
+      "path": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+      "digest": "blake3:7f456b69a70cdcbdc32aa05edb8ed1f143493eba5b69e6417367180b2049e2cf",
+      "bytes": 32493712
+    },
+    "commands": [
+      {
+        "id": "nickel-export",
+        "argv": [
+          "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+          "export",
+          "--format",
+          "json",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.ncl"
+        ],
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "timeout_seconds": 60,
+        "exit_code": 0,
+        "elapsed_seconds": 0.0506279029941652,
+        "operational_timeout": false,
+        "stdout": {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/nickel-export/stdout.log",
+          "digest": "blake3:e3cf1d427bc340bb06636f8768dc7997624fdcda82859466ed322c0954b355f2",
+          "bytes": 7748
+        },
+        "stderr": {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/nickel-export/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      },
+      {
+        "id": "unsupported-readiness",
+        "argv": [
+          "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+          "export",
+          "--format",
+          "json",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-readiness.ncl"
+        ],
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "timeout_seconds": 60,
+        "exit_code": 1,
+        "elapsed_seconds": 0.040922361018601805,
+        "operational_timeout": false,
+        "stdout": {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-readiness/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-readiness/stderr.log",
+          "digest": "blake3:3e47524bca1b8909e7d5542d13d1c82fa70c7b6b98272607d86dc02adfe41c37",
+          "bytes": 809
+        }
+      },
+      {
+        "id": "unsupported-recovery",
+        "argv": [
+          "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+          "export",
+          "--format",
+          "json",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-recovery.ncl"
+        ],
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "timeout_seconds": 60,
+        "exit_code": 1,
+        "elapsed_seconds": 0.035445409012027085,
+        "operational_timeout": false,
+        "stdout": {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-recovery/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-recovery/stderr.log",
+          "digest": "blake3:9f7449812becb2920a50db363493626ff08e7d06a81202819b5d9b2d3f5e502f",
+          "bytes": 981
+        }
+      }
+    ]
+  },
+  "negative_claim_checks": {
+    "unsupported-readiness": {
+      "rejected": true,
+      "exit_code": 1,
+      "evidence": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-readiness/execution.json",
+        "digest": "blake3:8267f806ee7871d4a8cbd16c526d7560ac24e9bfa1c3a23be191f957b45ae96e",
+        "bytes": 1044
+      }
+    },
+    "unsupported-recovery": {
+      "rejected": true,
+      "exit_code": 1,
+      "evidence": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/availability-publication-validation/unsupported-recovery/execution.json",
+        "digest": "blake3:b7d33e94ab5c347ca0363a74037262601a4c4a7a25ecc69e4b009861654b62fc",
+        "bytes": 1040
+      }
+    }
+  },
+  "artifact_verification": {
+    "identity_algorithm": "blake3",
+    "independent_file_identity_comparisons": 9,
+    "identity_mismatches": 0,
+    "prior_authority_files_unchanged": 6,
+    "raw_observation_files_unchanged": 2
+  },
+  "publication_inputs": {
+    "contract": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.ncl",
+      "digest": "blake3:47752fde317f85812f6581f52d9ada08be38a4ff9386a6ebdeff697b21aa0632",
+      "bytes": 4770
+    },
+    "manifest": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/evidence-manifest.json",
+      "digest": "blake3:63bdbe2085d4d84c9414be194ef003517a53073270496a140c2d8ca4b6a0fdfd",
+      "bytes": 2791
+    },
+    "observations": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/observations.json",
+      "digest": "blake3:bf082dd752b378376bcc8d0f7ad7492a7ea8a5f48d243faeb83f5d781a818f34",
+      "bytes": 4577
+    },
+    "projection": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.json",
+      "digest": "blake3:e3cf1d427bc340bb06636f8768dc7997624fdcda82859466ed322c0954b355f2",
+      "bytes": 7748
+    }
+  },
+  "original_required_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": false
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": true
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "boundary": "Evidence-only publication. Private cache locations and raw observations remain local. No product correction, host reconfiguration, failed gate rerun, recovery, or replay pass is claimed."
+}

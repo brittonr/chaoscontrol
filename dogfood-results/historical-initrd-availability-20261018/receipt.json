@@ -1,0 +1,185 @@
+{
+  "artifact_recovered": false,
+  "authority": {
+    "credentials_accessed": false,
+    "host_configuration_changed": false,
+    "maximum_corrective_attempts": 45,
+    "new_product_corrections": 0,
+    "release_gates_rerun": false,
+    "used_corrective_attempts": 45,
+    "user_decision": "Keep 45-attempt limit"
+  },
+  "curated_inputs": [
+    {
+      "bytes": 4577,
+      "digest": "blake3:bf082dd752b378376bcc8d0f7ad7492a7ea8a5f48d243faeb83f5d781a818f34",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/observations.json"
+    }
+  ],
+  "current_consumer": "Original retained Raft safety-finding reproduction",
+  "discovery_command": {
+    "argv": [
+      "nix",
+      "config",
+      "show",
+      "substituters"
+    ],
+    "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol",
+    "exit_code": 0,
+    "selection": "Deduplicated configured public HTTPS cache endpoints. Private network endpoints were not queried.",
+    "timeout_seconds": 30
+  },
+  "durable_capability": "An identity-bound availability boundary for the original historical Raft replay input, kept separate from recovery, reproduction, and release verdicts.",
+  "endpoints": [
+    {
+      "id": "nixos",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 0,
+      "tool": "read",
+      "url": "https://cache.nixos.org/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "visibility": "public"
+    },
+    {
+      "id": "nix-community",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 1,
+      "tool": "read",
+      "url": "https://nix-community.cachix.org/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "visibility": "public"
+    },
+    {
+      "id": "devenv",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 2,
+      "tool": "read",
+      "url": "https://devenv.cachix.org/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "visibility": "public"
+    },
+    {
+      "id": "spectrum",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 3,
+      "tool": "read",
+      "url": "https://cache.dataaturservice.se/spectrum/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "visibility": "public"
+    },
+    {
+      "id": "configured-private-1",
+      "observed_http_status": 404,
+      "raw_observation": "private",
+      "raw_query_index": 0,
+      "tool": "read",
+      "url": null,
+      "visibility": "private"
+    },
+    {
+      "id": "configured-private-2",
+      "observed_http_status": 404,
+      "raw_observation": "private",
+      "raw_query_index": 1,
+      "tool": "read",
+      "url": null,
+      "visibility": "private"
+    }
+  ],
+  "evidence_class": "bounded-configured-cache-metadata-observation",
+  "immediate_outcome": "All six unique configured cache endpoints returned HTTP 404 for the exact original initrd narinfo path; no artifact bytes were recovered.",
+  "limitations": [
+    "The HTTP 404 observations are bounded to these exact metadata URLs when queried; they do not establish universal artifact absence.",
+    "The read tool returned status notes, not raw HTTP response headers or bodies; no per-request timestamp was captured.",
+    "This receipt validates the supplied availability observations and their boundaries, not the truth of an external cache or a successful recovery/replay.",
+    "No campaign, replay, native gate, Nix check, or KVM release matrix row was rerun.",
+    "Every original readiness acceptance criterion remains required and retains the prior computed verdict."
+  ],
+  "maintenance_owner": "ChaosControl evidence-retention and release maintainers",
+  "next_action": "The evidence-retention owner must supply the exact original bytes matching the required BLAKE3 identity. Product corrections require separately authorized additional attempts; the current limit remains45.",
+  "observations_validated": true,
+  "original_required_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": false
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": true
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "outcome": "missing-artifact-blocked",
+  "prior_authority_inputs": [
+    {
+      "bytes": 10959,
+      "digest": "blake3:a396878864208a8374f7d74113989228b660f4f8ce62d1bb2e0d74272085f1b2",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl"
+    },
+    {
+      "bytes": 1381154,
+      "digest": "blake3:3c43509936fdfc172107cab73b33afe1e7fd1845f5f3a14b0c7669dc95b92c4c",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/observations.json"
+    },
+    {
+      "bytes": 371348,
+      "digest": "blake3:c5682b09e8e89cabb23e87a310c59ae19366bce43ed6f5742ff057d8c9c3ebd0",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/evidence-manifest.json"
+    },
+    {
+      "bytes": 6608,
+      "digest": "blake3:84bdf0f56457d8b11c504c6782c4a89424f18742b34cf924b0690b9de3c91f16",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/attempts.ncl"
+    },
+    {
+      "bytes": 3897,
+      "digest": "blake3:829939b6d573df8a78b59016c6b5eb0ed745333ace8522da076a223eca3eea08",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/evidence/profile-primitives.ncl"
+    },
+    {
+      "bytes": 5269,
+      "digest": "blake3:4f1254e7150d4f31bef7be184c1f716f1aa1d84bc1c3f642d62bab2fd1917b3e",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/kvm-release/matrix.json"
+    }
+  ],
+  "private_endpoint_boundary": "Private locations and exact read requests remain in the BLAKE3-bound local observation, not copied into the public summary. The configured endpoint IDs preserve query order.",
+  "production_ready": false,
+  "publication_prepared_at_utc": "2026-10-18T16:59:37.614317+00:00",
+  "raw_local_inputs": [
+    {
+      "bytes": 2838,
+      "digest": "blake3:67ffa7f1936783f2b3f599a0729ab3edab6e2ceda8ccd29ed4a9169151fe4c51",
+      "id": "public",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/public-initrd-availability-after-a162893/observations.json"
+    },
+    {
+      "bytes": 2585,
+      "digest": "blake3:2346010daaa028481f1339036cfeb53118d6999c0f511cdd846f89023eda16de",
+      "id": "private",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/configured-initrd-availability-after-a162893/observations.json"
+    }
+  ],
+  "requested_metadata_path": "/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+  "required_artifact": {
+    "expected_content_digest": "blake3:82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e",
+    "store_path": "/nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft",
+    "substitute_with_different_identity_accepted": false
+  },
+  "schema": "chaoscontrol.historical-initrd-availability-receipt.v1",
+  "source": {
+    "boundary": "Evidence-only publication, not a new release-tested implementation.",
+    "delivery_parent_revision": "a16289337fb42c485319a4576495849d39b5dd9b",
+    "implementation_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc"
+  }
+}

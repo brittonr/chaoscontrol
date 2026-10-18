@@ -1,0 +1,107 @@
+{
+  "schema": "chaoscontrol.historical-initrd-availability-observations.v1",
+  "maintenance_owner": "ChaosControl evidence-retention and release maintainers",
+  "immediate_outcome": "All six unique configured cache endpoints returned HTTP 404 for the exact original initrd narinfo path; no artifact bytes were recovered.",
+  "durable_capability": "An identity-bound availability boundary for the original historical Raft replay input, kept separate from recovery, reproduction, and release verdicts.",
+  "current_consumer": "Original retained Raft safety-finding reproduction",
+  "source": {
+    "implementation_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc",
+    "delivery_parent_revision": "a16289337fb42c485319a4576495849d39b5dd9b",
+    "boundary": "Evidence-only publication, not a new release-tested implementation."
+  },
+  "publication_prepared_at_utc": "2026-10-18T16:59:37.614317+00:00",
+  "authority": {
+    "maximum_corrective_attempts": 45,
+    "used_corrective_attempts": 45,
+    "new_product_corrections": 0,
+    "release_gates_rerun": false,
+    "host_configuration_changed": false,
+    "credentials_accessed": false,
+    "user_decision": "Keep 45-attempt limit"
+  },
+  "required_artifact": {
+    "store_path": "/nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft",
+    "expected_content_digest": "blake3:82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e",
+    "substitute_with_different_identity_accepted": false
+  },
+  "discovery_command": {
+    "argv": [
+      "nix",
+      "config",
+      "show",
+      "substituters"
+    ],
+    "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol",
+    "timeout_seconds": 30,
+    "exit_code": 0,
+    "selection": "Deduplicated configured public HTTPS cache endpoints. Private network endpoints were not queried."
+  },
+  "requested_metadata_path": "/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+  "endpoints": [
+    {
+      "id": "nixos",
+      "visibility": "public",
+      "url": "https://cache.nixos.org/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "tool": "read",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 0
+    },
+    {
+      "id": "nix-community",
+      "visibility": "public",
+      "url": "https://nix-community.cachix.org/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "tool": "read",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 1
+    },
+    {
+      "id": "devenv",
+      "visibility": "public",
+      "url": "https://devenv.cachix.org/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "tool": "read",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 2
+    },
+    {
+      "id": "spectrum",
+      "visibility": "public",
+      "url": "https://cache.dataaturservice.se/spectrum/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62.narinfo",
+      "tool": "read",
+      "observed_http_status": 404,
+      "raw_observation": "public",
+      "raw_query_index": 3
+    },
+    {
+      "id": "configured-private-1",
+      "visibility": "private",
+      "url": null,
+      "tool": "read",
+      "observed_http_status": 404,
+      "raw_observation": "private",
+      "raw_query_index": 0
+    },
+    {
+      "id": "configured-private-2",
+      "visibility": "private",
+      "url": null,
+      "tool": "read",
+      "observed_http_status": 404,
+      "raw_observation": "private",
+      "raw_query_index": 1
+    }
+  ],
+  "private_endpoint_boundary": "Private locations and exact read requests remain in the BLAKE3-bound local observation, not copied into the public summary. The configured endpoint IDs preserve query order.",
+  "artifact_recovered": false,
+  "production_ready": false,
+  "next_action": "The evidence-retention owner must supply the exact original bytes matching the required BLAKE3 identity. Product corrections require separately authorized additional attempts; the current limit remains45.",
+  "limitations": [
+    "The HTTP 404 observations are bounded to these exact metadata URLs when queried; they do not establish universal artifact absence.",
+    "The read tool returned status notes, not raw HTTP response headers or bodies; no per-request timestamp was captured.",
+    "This receipt validates the supplied availability observations and their boundaries, not the truth of an external cache or a successful recovery/replay.",
+    "No campaign, replay, native gate, Nix check, or KVM release matrix row was rerun.",
+    "Every original readiness acceptance criterion remains required and retains the prior computed verdict."
+  ]
+}

@@ -148,11 +148,11 @@ execution bound, sibling/host restriction and historical evidence boundary
 remains unchanged. This authorization does not supply passing upstream Cairn
 or host-owned Nix evidence.
 
-- [x] Record explicit authorization through attempt45 and validate its Nickel ledger.
-- [ ] Correct the actual frontier failure in attempt41 and exercise the unchanged-bound current control/planted/deep campaigns and actual retained-parent replay.
-- [x] In attempts42–45, implement and exercise genuine remaining owner-local runtime and evidence requirements; keep unsupported whole contracts open.
-- [ ] Require fresh exact-source Cargo, native, Nix, watchdog and all-seven-row clean-source report verdicts.
-- [ ] Retain a separate BLAKE3-bound Nickel receipt, update only supported task state, and commit/push verified changes without force.
+- [x] [depends:snapshot-lineage-shell] Record explicit authorization through attempt45 and validate its Nickel ledger.
+- [ ] [depends:snapshot-lineage-shell] Correct the actual frontier failure in attempt41 and exercise the unchanged-bound current control/planted/deep campaigns and actual retained-parent replay.
+- [x] [depends:snapshot-lineage-shell] In attempts42–45, implement and exercise genuine remaining owner-local runtime and evidence requirements; keep unsupported whole contracts open.
+- [ ] [depends:snapshot-lineage-campaign] Require fresh exact-source Cargo, native, Nix, watchdog and all-seven-row clean-source report verdicts.
+- [ ] [depends:snapshot-lineage-campaign] Retain a separate BLAKE3-bound Nickel receipt, update only supported task state, and commit/push verified changes without force.
 
 Attempt41 corrected merged per-VM marker capacity and run ownership. The actual
 control reached seven rounds and fourteen branches without Frontier
@@ -169,4 +169,66 @@ verdicts. All45 explicitly authorized corrective slots are consumed. Fresh
 frozen-source native, Cargo, Nix, campaign/replay, watchdog and seven-row matrix
 observations remain required, as do the unresolved Cairn producer and host
 prerequisites. No historical receipt is promoted or overwritten.
+
+## Clean-source runtime observations through attempt45
+
+Clean implementation `b51beafc4507cab1fa32bb7a7a3b83d24ed543fc` passed workspace
+tests, denied-warning Clippy, formatting and the strict real-watchdog proof.
+The separate attempts41–45 receipt owns its exact commands and artifacts;
+later evidence-only commits are not this release-tested source.
+
+Control and planted campaigns each retained eight rounds and sixteen branches
+before their unchanged 600-second operational timeout. The deliberate deep
+probe completed ten rounds and twenty branches; all eight retained safety
+findings with recorded parent depth three genuinely reproduced from the
+complete validated fresh-directory export. Admitted frontier entry depth
+reached three, not four, and the campaign did not emit per-capture overlay
+diagnostics. The six historical deep findings and selected original finding
+were attempted by the current reader and rejected incomplete CBOR with
+`missing field failure`. Original-engine historical successes are not promoted.
+The whole campaign/replay task remains unchecked.
+
+The reused `raft_lineage_proof` observed an actual watchdog timeout, poison
+enforcement, replacement and equal retained-parent restore/recapture. All
+three continuations matched every admitted outcome, memory/execution identity,
+fault ledger and round observation; each retained 44 passing, zero failing
+and one unexercised catalog site. Its separate depth-one-through-four overlay
+payloads were 8241152, 10575872, 14196736 and 16744448 bytes. Those structured
+controller-proof measurements do not replace missing campaign measurements.
+
+Native traceability remains 278/382 with 104 mandatory gaps and zero dangling
+coverage references. Preserves freshness passes; MCP smoke does not. The five
+frozen task-metadata failures remain in that source's gate; later valid
+dependency metadata is not a replacement native-readiness pass. No unsupported
+requirement, campaign, release or production-readiness task is marked complete.
+
+## Terminal clean-source release observations through attempt45
+
+Every declared release consumer is terminal for clean `b51beaf`. Workspace
+output reports 2203 passed, zero failed and 16 ignored tests; denied-warning
+Clippy, formatting and strict watchdog continuation passed. Required Nix
+checks timed out at the unchanged 10800-second bound. All seven matrix rows
+ran: binary/guest builds, deterministic SMP, serialized snapshot replay and
+malformed virtio input passed; admitted drift and fresh workload replay timed
+out at their unchanged 1800/3600-second bounds. The Rust matrix's overall
+verdict is `blocked`, not passing. Empty timed-out row logs do not establish
+a guest defect or a particular host/dependency root cause.
+
+The separate Nickel receipt preserves every required gate, all original
+acceptance criteria and all earlier receipt bytes. Exact older missing initrd
+bytes remain unavailable. A fully passing immutable compatible Cairn producer
+cohort, the original full MCP completion contract, remaining ChaosControl
+requirement/campaign/compatibility evidence and fresh passing Nix/matrix gates
+remain prerequisites. The delivery-only metadata correction is not a frozen
+native gate pass. Production readiness remains false; unsupported tasks stay
+unchecked and no new corrective slot, sibling edit or host change is implied.
+
+Actual Nickel export and independent BLAKE3/length verification passed for
+all 559 retained manifest artifacts, with zero identity mismatches, six
+checked helper-source versions and unchanged historical receipt bytes. A
+forced `production_ready = true` claim was rejected. The validated receipt
+computes a blocked outcome; it does not repair missing historical bytes or
+pass native, campaign/replay or release criteria. Strict delivery-only native
+metadata validation also passed. Publication remains a separate observable
+step; only its completed evidence can support the delivery checkbox above.
 

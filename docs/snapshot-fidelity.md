@@ -375,3 +375,119 @@ recorded. None of those observations closes the ten-round/depth-four campaign
 or clean-source release requirements. All45 authorized corrective slots are
 consumed; further gates and evidence collection are not authority for another
 product correction.
+
+### Clean-source campaign, replay and watchdog observations
+
+The tested implementation is clean
+`b51beafc4507cab1fa32bb7a7a3b83d24ed543fc`, not the later evidence-only delivery
+commit. Workspace tests, denied-warning Clippy, formatting and the strict
+real-watchdog `raft_lineage_proof` passed on that source.
+
+The unchanged 600-second control and planted campaigns each retained eight
+rounds and sixteen branches, with no retained findings, before an operational
+timeout. Neither completes the required ten-round/depth-four campaign. The
+separate deliberate deep probe completed ten rounds and twenty branches. Its
+eight retained safety findings all have recorded replay-parent depth three;
+every one produced a current-reader `snapshot_backed_reproduced` verdict with
+matching bug/assertion/parent identity and a validated snapshot. The admitted
+frontier entry depth reached three, not four. The exact campaign profile did
+not emit per-capture dirty-page diagnostics, so no campaign overlay sizes are
+inferred from missing diagnostics or compressed file lengths.
+
+An initial debug export timed out at its unchanged 300-second bound and
+partially overwrote in-place ordinal bug filenames, yielding duplicate bug
+identities. Those failed command records remain retained. The complete
+checkpoint and a successful fresh-directory release export retain all eight
+unique identities; the completed replays use that export, not the partial one.
+The archived failed helper is diagnostic history, not the reproduction recipe.
+
+The six historical deep findings and selected original planted finding were
+also attempted by the current reader. Their snapshots were rejected with CBOR
+`missing field failure`; historical original-engine successes remain in their
+original receipt and are not current-source passes. Fresh deliberate probes
+do not replace that selected original finding or establish a discovered Raft
+`fig8` defect.
+
+The strict controller proof separately observed a real watchdog timer signal,
+poison enforcement and controller replacement. Restored parent memory and
+immediate incremental recapture matched. Long-lived incremental, fresh full
+and watchdog-replacement incremental continuations matched every admitted
+assertion outcome, initial/final memory identity, strict execution identity,
+fault ledger and round observation. Each reported 44 passing, zero failing
+and one unexercised site in the 45-site catalog. The host timeout was classified
+as operational, never as a guest bug.
+
+The Rust-emitted controller proof records these overlay payload sizes; these
+are dirty pages times 4096, not compressed store sizes or campaign captures:
+
+| Depth | Dirty pages | Overlay payload bytes |
+| --- | ---: | ---: |
+| 1 | 2012 | 8241152 |
+| 2 | 2582 | 10575872 |
+| 3 | 3466 | 14196736 |
+| 4 | 4088 | 16744448 |
+
+Frozen-source native traceability references 278 of 382 requirements: 104
+mandatory gaps remain, with zero dangling coverage references. Consumer-owned
+Preserves freshness passes; MCP smoke does not. Five task-metadata issues are
+corrected only in the evidence delivery tree; its passing validation does not
+replace the frozen-source native failure. Every original criterion remains
+mandatory, and all 45 authorized corrective slots remain consumed.
+
+### Terminal clean-source release verdict
+
+All declared commands are terminal for clean `b51beaf`. Workspace output
+reports 2203 passed, zero failed and 16 ignored tests. Clippy with warnings
+denied, formatting and the strict watchdog proof passed. Required Nix checks
+timed out at the unchanged 10800-second bound. Evaluation last reported
+`packages.x86_64-linux.raft-accepted-verdict-dogfood`; the recorded Radicle
+fetch warning did not stop earlier derivation evaluation. This observation
+does not prove a particular daemon, dependency or repository root cause.
+
+The Rust release matrix emitted an overall `blocked` verdict on the same
+clean revision. Every required row ran:
+
+| Required row | Terminal status |
+| --- | --- |
+| `build-release-binaries` | passed |
+| `build-raft-guest` | passed |
+| `deterministic-smp` | passed |
+| `serialized-snapshot-replay` | passed |
+| `virtio-malformed-input` | passed |
+| `admitted-drift` | timed out at 1800 seconds |
+| `fresh-workload-replay` | timed out at 3600 seconds |
+
+The two timed-out rows emitted no stdout/stderr. Their operational deadlines
+are not guest safety findings, skipped checks or passing evidence. No declared
+bound, required row, original acceptance criterion or strict comparison was
+relaxed. No previous dirty-source receipt is promoted.
+
+The separate attempts41–45 receipt retains commands, environments, bounded
+profiles, BLAKE3 identities, assertion/fault/snapshot records, all current and
+historical replay attempts, and passing/nonpassing report verdicts. Validate it
+with the pinned Nickel cohort:
+
+```bash
+nickel export --format json dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl
+```
+
+Successful export validates the evidence and its computed blocked outcome,
+not production readiness. The exact older missing historical initrd remains a
+retention blocker; a different current initrd is not its replacement. Cairn
+maintainers must supply an immutable compatible cohort passing the unchanged
+Octet integration and full producer Cargo/Nix/native gates before the supported
+policy update and original full MCP completion contract can be admitted.
+Remaining ChaosControl requirement/campaign/compatibility work and fresh
+passing Nix/matrix verdicts remain independent prerequisites. All 45 corrective
+slots are consumed; this evidence closure authorizes no further correction,
+sibling edit, host reconfiguration, lifecycle archive or release claim.
+
+`receipt-validation.json` records successful Nickel export, independent
+BLAKE3/length checks of all 559 retained manifest artifacts with zero identity
+mismatches, six checked helper-source versions, unchanged historical receipt
+bytes, and rejection of an unsupported `production_ready = true` claim.
+The computed outcome is `blocked`: historical artifact retention and the
+native, campaign/replay and release criteria remain nonpassing. This delivery
+adds repeatable owner-local runtime and exact-source evidence capability, not
+production-readiness authority.
+

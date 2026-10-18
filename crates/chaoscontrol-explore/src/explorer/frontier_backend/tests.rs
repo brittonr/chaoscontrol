@@ -1132,7 +1132,10 @@ fn every_staged_publication_matches_cold_replay_and_rejects_stale_controls() {
     for increment in [1_u32, 2, 3] {
         let request = decay_revision(
             &identity,
-            staged.state().candidates[0].latest_guidance.as_ref().unwrap(),
+            staged.state().candidates[0]
+                .latest_guidance
+                .as_ref()
+                .unwrap(),
             GuidanceFacts {
                 score: ROOT_SCORES[0],
                 times_selected: increment,

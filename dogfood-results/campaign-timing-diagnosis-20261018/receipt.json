@@ -1,0 +1,986 @@
+{
+  "authority": {
+    "campaign_bounds_changed": false,
+    "maximum_corrective_attempts": 45,
+    "new_product_corrections": 0,
+    "release_gates_rerun": false,
+    "used_corrective_attempts": 45,
+    "user_decision": "Keep current limit"
+  },
+  "campaign_timing": [
+    {
+      "branch_component_seconds": 97.52640739099999,
+      "by_mode": {
+        "fault-schedule": {
+          "admitted": 774,
+          "outside_components_seconds": 238.403419886,
+          "round_wall_seconds": 285.475875117,
+          "rounds": 4
+        },
+        "input-tree": {
+          "admitted": 521,
+          "outside_components_seconds": 94.10880318899999,
+          "round_wall_seconds": 144.56275534899999,
+          "rounds": 4
+        }
+      },
+      "checkpoint_journal_segment": 16,
+      "exit_code": 124,
+      "host_watchdog_timeouts": 0,
+      "id": "control",
+      "operational_timeout": true,
+      "outside_branch_components_seconds": 332.512223075,
+      "process_elapsed_seconds": 610.1407408899977,
+      "round_wall_seconds": 430.03863046600003,
+      "rounds_completed": 8,
+      "rows": [
+        {
+          "admitted": 84,
+          "branch_components_seconds": 6.527016963,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 1.3704290309999996,
+          "proposals": 84,
+          "pruned_entries": 35,
+          "retained": 50,
+          "round": 1,
+          "settlement_control_events": 88,
+          "source_derived_replayed_suffix_applications": 3916,
+          "wall_seconds": 7.897445994
+        },
+        {
+          "admitted": 161,
+          "branch_components_seconds": 9.983643534,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 10.506506002,
+          "proposals": 161,
+          "pruned_entries": 161,
+          "retained": 50,
+          "round": 2,
+          "settlement_control_events": 165,
+          "source_derived_replayed_suffix_applications": 13695,
+          "wall_seconds": 20.490149536
+        },
+        {
+          "admitted": 230,
+          "branch_components_seconds": 13.605322126999997,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 42.82955922400001,
+          "proposals": 230,
+          "pruned_entries": 230,
+          "retained": 50,
+          "round": 3,
+          "settlement_control_events": 234,
+          "source_derived_replayed_suffix_applications": 27495,
+          "wall_seconds": 56.434881351
+        },
+        {
+          "admitted": 120,
+          "branch_components_seconds": 13.439527840999999,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 17.578191187999998,
+          "proposals": 120,
+          "pruned_entries": 120,
+          "retained": 50,
+          "round": 4,
+          "settlement_control_events": 124,
+          "source_derived_replayed_suffix_applications": 7750,
+          "wall_seconds": 31.017719029
+        },
+        {
+          "admitted": 230,
+          "branch_components_seconds": 13.510101922,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 78.78756744799999,
+          "proposals": 230,
+          "pruned_entries": 230,
+          "retained": 50,
+          "round": 5,
+          "settlement_control_events": 234,
+          "source_derived_replayed_suffix_applications": 27495,
+          "wall_seconds": 92.29766937
+        },
+        {
+          "admitted": 120,
+          "branch_components_seconds": 13.614688495,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 27.616571274,
+          "proposals": 120,
+          "pruned_entries": 120,
+          "retained": 50,
+          "round": 6,
+          "settlement_control_events": 124,
+          "source_derived_replayed_suffix_applications": 7750,
+          "wall_seconds": 41.231259769
+        },
+        {
+          "admitted": 230,
+          "branch_components_seconds": 13.430014219000002,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 115.41586418300001,
+          "proposals": 230,
+          "pruned_entries": 230,
+          "retained": 50,
+          "round": 7,
+          "settlement_control_events": 234,
+          "source_derived_replayed_suffix_applications": 27495,
+          "wall_seconds": 128.845878402
+        },
+        {
+          "admitted": 120,
+          "branch_components_seconds": 13.41609229,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 38.407534725,
+          "proposals": 120,
+          "pruned_entries": 120,
+          "retained": 50,
+          "round": 8,
+          "settlement_control_events": 124,
+          "source_derived_replayed_suffix_applications": 7750,
+          "wall_seconds": 51.823627015
+        }
+      ],
+      "source_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc",
+      "timeout_seconds": 600,
+      "total_admitted_entries": 1295,
+      "trace_has_stop_record": false
+    },
+    {
+      "branch_component_seconds": 99.63805512,
+      "by_mode": {
+        "fault-schedule": {
+          "admitted": 774,
+          "outside_components_seconds": 245.92832643100002,
+          "round_wall_seconds": 293.955498274,
+          "rounds": 4
+        },
+        "input-tree": {
+          "admitted": 509,
+          "outside_components_seconds": 89.503147679,
+          "round_wall_seconds": 141.114030956,
+          "rounds": 4
+        }
+      },
+      "checkpoint_journal_segment": 16,
+      "exit_code": 124,
+      "host_watchdog_timeouts": 0,
+      "id": "planted",
+      "operational_timeout": true,
+      "outside_branch_components_seconds": 335.43147411,
+      "process_elapsed_seconds": 610.132335642993,
+      "round_wall_seconds": 435.06952923,
+      "rounds_completed": 8,
+      "rows": [
+        {
+          "admitted": 84,
+          "branch_components_seconds": 6.552260187,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 1.3755763940000003,
+          "proposals": 84,
+          "pruned_entries": 35,
+          "retained": 50,
+          "round": 1,
+          "settlement_control_events": 88,
+          "source_derived_replayed_suffix_applications": 3916,
+          "wall_seconds": 7.927836581
+        },
+        {
+          "admitted": 161,
+          "branch_components_seconds": 10.060347119,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 10.475862489,
+          "proposals": 161,
+          "pruned_entries": 161,
+          "retained": 50,
+          "round": 2,
+          "settlement_control_events": 165,
+          "source_derived_replayed_suffix_applications": 13695,
+          "wall_seconds": 20.536209608
+        },
+        {
+          "admitted": 230,
+          "branch_components_seconds": 13.807244479000001,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 43.37875923300001,
+          "proposals": 230,
+          "pruned_entries": 230,
+          "retained": 50,
+          "round": 3,
+          "settlement_control_events": 234,
+          "source_derived_replayed_suffix_applications": 27495,
+          "wall_seconds": 57.18600371200001
+        },
+        {
+          "admitted": 116,
+          "branch_components_seconds": 13.933308003000002,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 16.731417041,
+          "proposals": 116,
+          "pruned_entries": 116,
+          "retained": 50,
+          "round": 4,
+          "settlement_control_events": 120,
+          "source_derived_replayed_suffix_applications": 7260,
+          "wall_seconds": 30.664725044
+        },
+        {
+          "admitted": 230,
+          "branch_components_seconds": 13.819154187999999,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 80.210340202,
+          "proposals": 230,
+          "pruned_entries": 230,
+          "retained": 50,
+          "round": 5,
+          "settlement_control_events": 234,
+          "source_derived_replayed_suffix_applications": 27495,
+          "wall_seconds": 94.02949439
+        },
+        {
+          "admitted": 116,
+          "branch_components_seconds": 13.868906295,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 26.229592474999997,
+          "proposals": 116,
+          "pruned_entries": 116,
+          "retained": 50,
+          "round": 6,
+          "settlement_control_events": 120,
+          "source_derived_replayed_suffix_applications": 7260,
+          "wall_seconds": 40.09849877
+        },
+        {
+          "admitted": 230,
+          "branch_components_seconds": 13.848512989000001,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 120.963650602,
+          "proposals": 230,
+          "pruned_entries": 230,
+          "retained": 50,
+          "round": 7,
+          "settlement_control_events": 234,
+          "source_derived_replayed_suffix_applications": 27495,
+          "wall_seconds": 134.812163591
+        },
+        {
+          "admitted": 116,
+          "branch_components_seconds": 13.74832186,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 36.066275673999996,
+          "proposals": 116,
+          "pruned_entries": 116,
+          "retained": 50,
+          "round": 8,
+          "settlement_control_events": 120,
+          "source_derived_replayed_suffix_applications": 7260,
+          "wall_seconds": 49.814597534
+        }
+      ],
+      "source_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc",
+      "timeout_seconds": 600,
+      "total_admitted_entries": 1283,
+      "trace_has_stop_record": false
+    },
+    {
+      "branch_component_seconds": 60.139608395,
+      "by_mode": {
+        "fault-schedule": {
+          "admitted": 812,
+          "outside_components_seconds": 206.469703159,
+          "round_wall_seconds": 235.038185283,
+          "rounds": 5
+        },
+        "input-tree": {
+          "admitted": 520,
+          "outside_components_seconds": 74.19032348399999,
+          "round_wall_seconds": 105.761449755,
+          "rounds": 5
+        }
+      },
+      "checkpoint_journal_segment": 20,
+      "exit_code": 1,
+      "host_watchdog_timeouts": 0,
+      "id": "deep-probe",
+      "operational_timeout": false,
+      "outside_branch_components_seconds": 280.660026643,
+      "process_elapsed_seconds": 573.2453430749883,
+      "round_wall_seconds": 340.79963503799996,
+      "rounds_completed": 10,
+      "rows": [
+        {
+          "admitted": 84,
+          "branch_components_seconds": 6.502105302999999,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 1.3996061960000015,
+          "proposals": 84,
+          "pruned_entries": 35,
+          "retained": 50,
+          "round": 1,
+          "settlement_control_events": 88,
+          "source_derived_replayed_suffix_applications": 3916,
+          "wall_seconds": 7.901711499
+        },
+        {
+          "admitted": 156,
+          "branch_components_seconds": 9.727708193,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 9.537599986000002,
+          "proposals": 156,
+          "pruned_entries": 156,
+          "retained": 50,
+          "round": 2,
+          "settlement_control_events": 160,
+          "source_derived_replayed_suffix_applications": 12880,
+          "wall_seconds": 19.265308179
+        },
+        {
+          "admitted": 182,
+          "branch_components_seconds": 5.574644693,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 24.606124819,
+          "proposals": 182,
+          "pruned_entries": 182,
+          "retained": 50,
+          "round": 3,
+          "settlement_control_events": 186,
+          "source_derived_replayed_suffix_applications": 17391,
+          "wall_seconds": 30.180769512
+        },
+        {
+          "admitted": 91,
+          "branch_components_seconds": 5.515891254000001,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 8.711682351999999,
+          "proposals": 91,
+          "pruned_entries": 91,
+          "retained": 50,
+          "round": 4,
+          "settlement_control_events": 95,
+          "source_derived_replayed_suffix_applications": 4560,
+          "wall_seconds": 14.227573606
+        },
+        {
+          "admitted": 182,
+          "branch_components_seconds": 5.534252767000001,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 42.365325997,
+          "proposals": 182,
+          "pruned_entries": 182,
+          "retained": 50,
+          "round": 5,
+          "settlement_control_events": 186,
+          "source_derived_replayed_suffix_applications": 17391,
+          "wall_seconds": 47.899578764
+        },
+        {
+          "admitted": 91,
+          "branch_components_seconds": 5.516321481,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 14.008466541999999,
+          "proposals": 91,
+          "pruned_entries": 91,
+          "retained": 50,
+          "round": 6,
+          "settlement_control_events": 95,
+          "source_derived_replayed_suffix_applications": 4560,
+          "wall_seconds": 19.524788023
+        },
+        {
+          "admitted": 182,
+          "branch_components_seconds": 5.486554433,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 60.236246638999994,
+          "proposals": 182,
+          "pruned_entries": 182,
+          "retained": 50,
+          "round": 7,
+          "settlement_control_events": 186,
+          "source_derived_replayed_suffix_applications": 17391,
+          "wall_seconds": 65.722801072
+        },
+        {
+          "admitted": 91,
+          "branch_components_seconds": 5.499576974000001,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 19.00431908,
+          "proposals": 91,
+          "pruned_entries": 91,
+          "retained": 50,
+          "round": 8,
+          "settlement_control_events": 95,
+          "source_derived_replayed_suffix_applications": 4560,
+          "wall_seconds": 24.503896054
+        },
+        {
+          "admitted": 182,
+          "branch_components_seconds": 5.4709249280000005,
+          "mode": "fault-schedule",
+          "outside_branch_components_seconds": 77.862399508,
+          "proposals": 182,
+          "pruned_entries": 182,
+          "retained": 50,
+          "round": 9,
+          "settlement_control_events": 186,
+          "source_derived_replayed_suffix_applications": 17391,
+          "wall_seconds": 83.333324436
+        },
+        {
+          "admitted": 91,
+          "branch_components_seconds": 5.311628369,
+          "mode": "input-tree",
+          "outside_branch_components_seconds": 22.928255523999997,
+          "proposals": 91,
+          "pruned_entries": 91,
+          "retained": 50,
+          "round": 10,
+          "settlement_control_events": 95,
+          "source_derived_replayed_suffix_applications": 4560,
+          "wall_seconds": 28.239883893
+        }
+      ],
+      "source_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc",
+      "timeout_seconds": 600,
+      "total_admitted_entries": 1332,
+      "trace_has_stop_record": true
+    }
+  ],
+  "conclusions": [
+    {
+      "claim": "Control and planted each retained eight rounds, zero findings, zero watchdog firings, and an unclosed ninth-round selection; both ended with the unchanged 600-second operational timeout.",
+      "kind": "observed"
+    },
+    {
+      "claim": "Reported completed-round wall time exceeds the four branch phase timers by332.512223075 seconds for control and335.43147411 seconds for planted.",
+      "kind": "observed"
+    },
+    {
+      "claim": "Every admitted marker creates a separate guidance publication before pruning. The held projection is advanced only at segment seal, so k controls induce k(k-1)/2+k replayed suffix applications, excluding planner and shell event applications.",
+      "kind": "source-derived"
+    },
+    {
+      "claim": "Control round7 settlement has234 controls. Actual retained-event core suffix replay performed27495 applications in124.120458443 seconds. One pass over those same234 controls took1.009902299 seconds. Every recorded pre-state and final complete state matched.",
+      "kind": "observed"
+    },
+    {
+      "claim": "The same experiment at control round1 used88 controls,3916 suffix applications and0.891245762 seconds, versus0.022081939 seconds for a single pass.",
+      "kind": "observed"
+    },
+    {
+      "claim": "All retained journal envelopes and digest chains decoded successfully; pure decoding took0.004985279/0.005158274/0.007235308 seconds for control/planted/deep-probe. This does not measure synchronized journal publication.",
+      "kind": "observed"
+    },
+    {
+      "claim": "The selected58423832-byte retained three-VM snapshot loaded/validated in9.376321364 seconds; repeated store puts took2.849754367 and2.910977332 seconds and preserved exact BLAKE3 byte identity. No control or planted finding required this store path.",
+      "kind": "observed"
+    },
+    {
+      "claim": "Repeated staged suffix validation is a major contributor to the campaign timing gap: the exact subpath independently reproduces minute-scale work without KVM or disk synchronization. It is not an exact attribution of the original whole-round timing.",
+      "kind": "inference"
+    }
+  ],
+  "core_suffix_measurements": [
+    {
+      "command_observation": {
+        "bytes": 1471,
+        "digest": "blake3:69bc7ead7b1d078caaa29e84a79b18ef68ea04ec24643e209efe5dc16252f277",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-control-segment2/execution.json"
+      },
+      "id": "core-control-segment2",
+      "measurement": {
+        "all_recorded_state_boundaries_match": true,
+        "final_complete_state_equal": true,
+        "final_state_digest": [
+          224,
+          246,
+          123,
+          151,
+          125,
+          9,
+          188,
+          94,
+          37,
+          154,
+          253,
+          220,
+          110,
+          2,
+          106,
+          48,
+          87,
+          219,
+          135,
+          30,
+          100,
+          226,
+          23,
+          110,
+          60,
+          246,
+          168,
+          236,
+          191,
+          78,
+          110,
+          105
+        ],
+        "held_projection_suffix_seconds": 0.891245762,
+        "non_claim": "Measures the core suffix-replay subpath using actual retained control events. Does not run Choregraph publication planning, graph scans/clones, fsync, KVM, a campaign, or a release gate. One-pass comparison is diagnostic only; no production validation was removed or bypassed.",
+        "one_pass_applications": 88,
+        "one_pass_seconds": 0.022081939,
+        "prefix_candidates": 1,
+        "prefix_controls": 4,
+        "schema": "chaoscontrol.offline-campaign-core-suffix-observation.v1",
+        "settlement_controls": 88,
+        "suffix_applications": 3916,
+        "target_segment": 2
+      },
+      "setup": {
+        "load_seconds": 0.004509026,
+        "one_pass_seconds": 0.022081939,
+        "phase": "prefix-and-one-pass-complete",
+        "prefix_controls": 4,
+        "prefix_seconds": 0.000106981,
+        "settlement_controls": 88,
+        "target_segment": 2
+      }
+    },
+    {
+      "command_observation": {
+        "bytes": 1477,
+        "digest": "blake3:bb4999dc08d550e0336b732f7658f0afdaa9cad2c02378c1a00d64af1d4ea886",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-control-segment14/execution.json"
+      },
+      "id": "core-control-segment14",
+      "measurement": {
+        "all_recorded_state_boundaries_match": true,
+        "final_complete_state_equal": true,
+        "final_state_digest": [
+          223,
+          229,
+          63,
+          74,
+          103,
+          110,
+          233,
+          43,
+          66,
+          158,
+          88,
+          130,
+          0,
+          147,
+          80,
+          224,
+          160,
+          41,
+          252,
+          227,
+          96,
+          209,
+          225,
+          44,
+          217,
+          48,
+          207,
+          73,
+          181,
+          83,
+          136,
+          166
+        ],
+        "held_projection_suffix_seconds": 124.120458443,
+        "non_claim": "Measures the core suffix-replay subpath using actual retained control events. Does not run Choregraph publication planning, graph scans/clones, fsync, KVM, a campaign, or a release gate. One-pass comparison is diagnostic only; no production validation was removed or bypassed.",
+        "one_pass_applications": 234,
+        "one_pass_seconds": 1.009902299,
+        "prefix_candidates": 946,
+        "prefix_controls": 979,
+        "schema": "chaoscontrol.offline-campaign-core-suffix-observation.v1",
+        "settlement_controls": 234,
+        "suffix_applications": 27495,
+        "target_segment": 14
+      },
+      "setup": {
+        "load_seconds": 0.047842944,
+        "one_pass_seconds": 1.009902299,
+        "phase": "prefix-and-one-pass-complete",
+        "prefix_controls": 979,
+        "prefix_seconds": 1.8753675890000001,
+        "settlement_controls": 234,
+        "target_segment": 14
+      }
+    }
+  ],
+  "curated_inputs": [
+    {
+      "bytes": 35224,
+      "digest": "blake3:7634453be59632f8d9069dec4337f66dc44d84ab3cd645ea81df60c55e20b9d3",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/observations.json"
+    },
+    {
+      "bytes": 69636,
+      "digest": "blake3:4d50f50e633cb4875b9c73793ee1b27499bb639335b1a9277ffdf8f2e6692bcd",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/reproduction-inputs.json"
+    }
+  ],
+  "current_consumer": "ChaosControl Raft explorer and release operator",
+  "diagnosis_validated": true,
+  "durable_capability": "Repeatable offline isolation of Campaign control-state replay and snapshot-store costs using exact retained journal events, complete state comparisons, commands, source text and BLAKE3 artifact identities.",
+  "evidence_class": "offline-retained-data-diagnosis",
+  "immediate_outcome": "Actual retained Campaign controls reproduce minute-scale repeated suffix replay outside branch phase timers; the defect is diagnosed, not corrected.",
+  "journal_measurements": [
+    {
+      "bytes": 3235620,
+      "command_observation": {
+        "bytes": 1477,
+        "digest": "blake3:1af65bfc1eeb24b92cdf2c536ad7840de10c755bc6836a93f33b70f9636844fd",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-control/execution.json"
+      },
+      "decode_seconds": 0.004985279,
+      "digest_chain_verified": true,
+      "label": "journal-control",
+      "read_seconds": 0.004501545,
+      "record_kinds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "records": 2667,
+      "segments": 18
+    },
+    {
+      "bytes": 3197057,
+      "command_observation": {
+        "bytes": 1477,
+        "digest": "blake3:af3370fb690dd7a0cf2015025ad28e4345a3ce549975509bbb4aedc725d0a843",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-planted/execution.json"
+      },
+      "decode_seconds": 0.005158274,
+      "digest_chain_verified": true,
+      "label": "journal-planted",
+      "read_seconds": 0.005675786,
+      "record_kinds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "records": 2643,
+      "segments": 18
+    },
+    {
+      "bytes": 3325574,
+      "command_observation": {
+        "bytes": 1489,
+        "digest": "blake3:6094ad18e0b95cbfda015ae79bf58748f3e24e2d54ea1f354a30162408fd6d93",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-deep-probe/execution.json"
+      },
+      "decode_seconds": 0.007235308,
+      "digest_chain_verified": true,
+      "label": "journal-deep-probe",
+      "read_seconds": 0.008571941999999999,
+      "record_kinds": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "records": 2757,
+      "segments": 22
+    }
+  ],
+  "limitations": [
+    "No live campaign, watchdog, Nix, native Cairn, Cargo suite, or release matrix gate was rerun. No previously blocked verdict changes.",
+    "Repeated-core timing is an isolated computation subpath, not the full Choregraph planner; graph traversal/cloning, payload validation, state copies, guidance admission, and synchronization remain unprofiled in the original campaign.",
+    "Single-pass comparison is diagnostic only. No publication-fence, identity, durable-base, seal, or other validation was removed or weakened.",
+    "The600-second observer started Cargo, so control also included the recorded1m14s build; planted included only0.08s and still timed out.",
+    "Process elapsed minus completed-round timers also includes bootstrap, checkpoints, unfinished work, and observer teardown; it is not all serialization time.",
+    "All45 corrective implementation attempts remain consumed. This local diagnosis adds no implementation or production-readiness authority."
+  ],
+  "local_diagnosis": {
+    "bytes": 257927,
+    "digest": "blake3:811713b50c34d4d8ee1013e9dacbdd4d442e37038d7e971c920b2418e62676f8",
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/diagnosis.json"
+  },
+  "local_validation": {
+    "bytes": 2663,
+    "digest": "blake3:56c18d499a6eb8dda6b8a6f9684afefde9a5967c89263534657b6d8927683d50",
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/receipt-validation.json"
+  },
+  "maintenance_owner": "chaoscontrol-vmm",
+  "next_action": "A separately authorized owner-local correction must eliminate redundant staged-prefix replay while preserving exact admission, state identity, selection publication fences, durability and seal checks, then rerun the original control/planted600-second contracts. No such correction is authorized under the retained45-attempt limit; Cairn and host-owned Nix prerequisites also remain open.",
+  "non_claim": "This evidence does not satisfy depth-four campaign completion, resolve native gaps or historical retention failures, pass Nix/KVM release gates, authorize another correction, or prove production readiness.",
+  "original_required_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": false
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": true
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "outcome": "diagnosed-not-corrected",
+  "prior_readiness": {
+    "production_ready": false,
+    "required_criteria": [
+      {
+        "id": "native-cairn-readiness",
+        "passed": false
+      },
+      {
+        "id": "deep-raft-campaign-and-replay",
+        "passed": false
+      },
+      {
+        "id": "strict-watchdog-continuation",
+        "passed": true
+      },
+      {
+        "id": "fresh-release-gates",
+        "passed": false
+      },
+      {
+        "id": "reproducible-evidence-retention",
+        "passed": false
+      }
+    ],
+    "source_receipt": {
+      "bytes": 10959,
+      "digest": "blake3:a396878864208a8374f7d74113989228b660f4f8ce62d1bb2e0d74272085f1b2",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl"
+    },
+    "validated_projection": {
+      "bytes": 424071,
+      "digest": "blake3:a20125940ad789d0f682215f85bf3a268fd7b87c84d1cbdcd5843ca333f5b008",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.json"
+    },
+    "verdict": "blocked"
+  },
+  "production_ready": false,
+  "raw_local_manifest": {
+    "bytes": 36828,
+    "digest": "blake3:9b6f13d735931222afdad577dd6bca1cb50f88ef2edcc3f23803db636c2a9d92",
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/evidence-manifest.json"
+  },
+  "schema": "chaoscontrol.campaign-timing-diagnosis-receipt.v1",
+  "snapshot_store_measurement": {
+    "command_observation": {
+      "bytes": 1837,
+      "digest": "blake3:31a34b9b2e140db1433c19ac790f14358f6c998e2631af04fd9a7eda859f3490",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/snapshot-consumer/execution.json"
+    },
+    "exact_bytes_equal": true,
+    "get_seconds": 9.376321364,
+    "mode": "offline-snapshot-store-consumer",
+    "non_claim": "Only local retained-data store get/put cost; no KVM, VM restore, new campaign, or release verdict.",
+    "original_artifact": {
+      "bytes": 58423832,
+      "digest": "blake3:d9bb3aee4012c6dd629b7c9c720fbd1d6ccdb3d498d1737e2aad46b7efdbb790",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/snapshots/97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238.snapshot.bin"
+    },
+    "parent_depth": 3,
+    "puts": [
+      {
+        "compressed_bytes": 58423832,
+        "invocation": 1,
+        "put_seconds": 2.849754367,
+        "reference_unchanged": true
+      },
+      {
+        "compressed_bytes": 58423832,
+        "invocation": 2,
+        "put_seconds": 2.910977332,
+        "reference_unchanged": true
+      }
+    ],
+    "reference": {
+      "codec": "simulation-snapshot-cbor-zstd-v2",
+      "digest": "sha256:97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238",
+      "path": "snapshots/97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238.snapshot.bin",
+      "schema_version": 2,
+      "store": "file-content-addressed"
+    },
+    "scratch_artifact": {
+      "bytes": 58423832,
+      "digest": "blake3:d9bb3aee4012c6dd629b7c9c720fbd1d6ccdb3d498d1737e2aad46b7efdbb790",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/snapshot-recode/snapshots/97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238.snapshot.bin"
+    },
+    "tick": 2179,
+    "vm_count": 3
+  },
+  "source": {
+    "boundary": "Measurements consume retained artifacts from clean b51beaf. This later evidence-only publication is not a new release-tested implementation.",
+    "campaign_revision": "e7757a5134f631e1ed410df3cae57e57f887c468",
+    "delivery_parent_revision": "5dd38965149edca0fb25c3499232a44e9ed82274",
+    "history_revision": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
+    "implementation_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc"
+  },
+  "source_citations": [
+    {
+      "artifact": {
+        "bytes": 166018,
+        "digest": "blake3:60583894f3dbc857a0d88c506cedb254d5c3b9f5f0049afd34ab8572aaae1a80",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer.rs"
+      },
+      "fact": "Round timer includes frontier begin/authorize/settle but ends before checkpoint publication; branch timers exclude result admission and settlement.",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer.rs",
+      "ranges": [
+        [
+          689,
+          719
+        ],
+        [
+          758,
+          763
+        ],
+        [
+          970,
+          1024
+        ],
+        [
+          1775,
+          1859
+        ],
+        [
+          2696,
+          2754
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 27493,
+        "digest": "blake3:a58b8da144943ead561bbe23252942996f9f080df844243f5015a8b53a2fdb69",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/campaign.rs"
+      },
+      "fact": "Candidate batch is followed by one guidance publication per admitted proposal.",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/campaign.rs",
+      "ranges": [
+        [
+          334,
+          411
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 24289,
+        "digest": "blake3:ce3f0be70100d4b3915db562500a0f6fa01fd59470af9680acd960a80b102ec3",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/campaign/round.rs"
+      },
+      "fact": "Settlement publishes result, candidate batch, guidance, decay, then prune and seal; pruning does not bound prior guidance work.",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/campaign/round.rs",
+      "ranges": [
+        [
+          405,
+          417
+        ],
+        [
+          494,
+          537
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 9081,
+        "digest": "blake3:f910b1b0cd37882e9adfc852456e71e9df90cc8dfbee5da98e95ceb34a4ba47b",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/session.rs"
+      },
+      "fact": "Each staged publication plans from the last sealed projection; projection is updated only in seal.",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/session.rs",
+      "ranges": [
+        [
+          182,
+          232
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 13537,
+        "digest": "blake3:1854628b37237cebf75c8e96625ef2d44840623bac7401066f6de2693ff08285",
+        "path": "/home/brittonr/.cargo/git/checkouts/z2scC9MCm3pxk9mX4FEidRKabQ5LN-a37ab63070abdbf9/e7757a5/crates/campaign-choregraph/src/admission/mod.rs"
+      },
+      "fact": "Publication planner validates the current history as an advance from previous before applying its event.",
+      "path": "/home/brittonr/.cargo/git/checkouts/z2scC9MCm3pxk9mX4FEidRKabQ5LN-a37ab63070abdbf9/e7757a5/crates/campaign-choregraph/src/admission/mod.rs",
+      "ranges": [
+        [
+          82,
+          88
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 6978,
+        "digest": "blake3:2f1544b48f35885110c5a37d3d3e43d18399274607d0dce5bdfe391098ead1cd",
+        "path": "/home/brittonr/.cargo/git/checkouts/z2scC9MCm3pxk9mX4FEidRKabQ5LN-a37ab63070abdbf9/e7757a5/crates/campaign-choregraph/src/fast_forward/mod.rs"
+      },
+      "fact": "Fast-forward validation clones previous state and applies every suffix control event.",
+      "path": "/home/brittonr/.cargo/git/checkouts/z2scC9MCm3pxk9mX4FEidRKabQ5LN-a37ab63070abdbf9/e7757a5/crates/campaign-choregraph/src/fast_forward/mod.rs",
+      "ranges": [
+        [
+          32,
+          57
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 25174,
+        "digest": "blake3:9d1b7d14f621ba26080d124e38fe38d776273c7b13ef3ff5950937979427b2ab",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/snapshot_store.rs"
+      },
+      "fact": "get verifies and decodes a full retained snapshot; every put clones/encodes/compresses/writes even when identical reference bytes already exist.",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/snapshot_store.rs",
+      "ranges": [
+        [
+          233,
+          271
+        ],
+        [
+          281,
+          311
+        ]
+      ]
+    },
+    {
+      "artifact": {
+        "bytes": 5556,
+        "digest": "blake3:b36420facb3054f431b5091c9aa6c911746bbd7152a7d735ab5b04a643e04d75",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/digests.rs"
+      },
+      "fact": "Branch/moment digest path does not hash snapshot byte payloads; base identity binds bootstrap facts and base lengths.",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/digests.rs",
+      "ranges": [
+        [
+          1,
+          6
+        ],
+        [
+          91,
+          109
+        ]
+      ]
+    }
+  ]
+}

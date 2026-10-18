@@ -1,0 +1,781 @@
+{
+  "schema": "chaoscontrol.campaign-timing-diagnosis-reproduction-inputs.v1",
+  "probe_sources": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe.rs",
+      "digest": "blake3:b2312ed184bde22f260e11eea9f9aaebe99d87a4c18080fc2e2a309721de3d69",
+      "bytes": 3708,
+      "source_utf8": "use chaoscontrol_explore::explorer::journal::{decode_segment, segment_file_name, SegmentDigest};\nuse chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};\nuse serde_json::{json, Value};\nuse std::error::Error;\nuse std::path::Path;\nuse std::time::Instant;\n\nfn main() -> Result<(), Box<dyn Error>> {\n    let args: Vec<String> = std::env::args().collect();\n    match args.get(1).map(String::as_str) {\n        Some(\"journal\") if args.len() == 4 => {\n            let last: u64 = args[3].parse()?;\n            let mut previous = SegmentDigest::ZERO;\n            let mut rows = Vec::new();\n            for seq in 0..=last {\n                let path = Path::new(&args[2]).join(segment_file_name(seq));\n                let started = Instant::now();\n                let bytes = std::fs::read(&path)?;\n                let read_seconds = started.elapsed().as_secs_f64();\n                let started = Instant::now();\n                let segment = decode_segment(&bytes)?;\n                let decode_seconds = started.elapsed().as_secs_f64();\n                if segment.header().seq != seq || segment.header().previous_digest != previous {\n                    return Err(\"segment sequence or digest chain mismatch\".into());\n                }\n                previous = segment.digest();\n                rows.push(json!({\n                    \"seq\": seq, \"bytes\": bytes.len(), \"records\": segment.records().len(),\n                    \"read_seconds\": read_seconds, \"decode_seconds\": decode_seconds,\n                    \"record_kinds\": segment.records().iter().map(|r| r.kind().get()).collect::<Vec<_>>()\n                }));\n            }\n            println!(\"{}\", json!({\"mode\":\"journal-envelope-decoding-only\",\"segments\":rows,\n                \"non_claim\":\"Validates bounded segment envelopes and their digest chain, not Campaign record semantics or whole-history validation.\"}));\n        }\n        Some(\"snapshot\") if args.len() == 5 => {\n            let bug: Value = serde_json::from_slice(&std::fs::read(&args[3])?)?;\n            let reference = serde_json::from_value(bug[\"replay_parent_snapshot_ref\"].clone())?;\n            let store = FileSnapshotStore::new(&args[2]);\n            let started = Instant::now();\n            let artifact = store.get_snapshot_artifact(&reference)?;\n            let get_seconds = started.elapsed().as_secs_f64();\n            let output_store = FileSnapshotStore::new(&args[4]);\n            let mut puts = Vec::new();\n            for invocation in 1..=2 {\n                let started = Instant::now();\n                let written = output_store.put_snapshot(&artifact.snapshot, artifact.replay_parent_depth)?;\n                let put_seconds = started.elapsed().as_secs_f64();\n                let same_reference = written == reference;\n                if !same_reference { return Err(\"offline recode changed snapshot reference\".into()); }\n                puts.push(json!({\"invocation\":invocation,\"put_seconds\":put_seconds,\n                    \"reference_unchanged\":same_reference,\n                    \"compressed_bytes\":std::fs::metadata(Path::new(&args[4]).join(&written.path))?.len()}));\n            }\n            println!(\"{}\", json!({\"mode\":\"offline-snapshot-store-consumer\",\"get_seconds\":get_seconds,\n                \"parent_depth\":artifact.replay_parent_depth,\"tick\":artifact.tick,\"vm_count\":artifact.vm_count,\n                \"reference\":reference,\"puts\":puts,\n                \"non_claim\":\"Only local retained-data store get/put cost; no KVM, VM restore, new campaign, or release verdict.\"}));\n        }\n        _ => return Err(\"usage: probe journal <epoch-dir> <last-segment> | snapshot <artifact-root> <bug-json> <new-output-root>\".into()),\n    }\n    Ok(())\n}\n"
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe.rs",
+      "digest": "blake3:087d90de1cb0b815475d3643601de39497a223af2aacfa67bb599668fc5d7af1",
+      "bytes": 4239,
+      "source_utf8": "use campaign_core::{apply_control_event, reconstruct, CampaignControlEvent, FrontierState};\nuse chaoscontrol_explore::campaign_adapter::decode_control_event;\nuse chaoscontrol_explore::explorer::journal::{decode_segment, segment_file_name, SegmentDigest};\nuse serde_json::json;\nuse std::error::Error;\nuse std::path::Path;\nuse std::time::Instant;\n\ntype Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;\n\nfn apply(mut state: FrontierState, events: &[CampaignControlEvent]) -> Result<FrontierState> {\n    for event in events {\n        state = apply_control_event(state, event).map_err(|error| format!(\"control apply: {error:?}\"))?;\n    }\n    Ok(state)\n}\n\nfn main() -> Result<()> {\n    let args: Vec<String> = std::env::args().collect();\n    if args.len() != 3 {\n        return Err(\"usage: core-probe <epoch-directory> <settlement-segment>\".into());\n    }\n    let target: u64 = args[2].parse()?;\n    if target == 0 || target % 2 != 0 {\n        return Err(\"select a nonzero even settlement segment\".into());\n    }\n    let mut before = Vec::new();\n    let mut settlement = Vec::new();\n    let mut previous = SegmentDigest::ZERO;\n    let started = Instant::now();\n    for seq in 0..=target {\n        let bytes = std::fs::read(Path::new(&args[1]).join(segment_file_name(seq)))?;\n        let segment = decode_segment(&bytes)?;\n        if segment.header().seq != seq || segment.header().previous_digest != previous {\n            return Err(\"segment sequence or digest chain mismatch\".into());\n        }\n        previous = segment.digest();\n        for record in segment.records() {\n            if record.kind().get() == 3 {\n                let event = decode_control_event(record.payload())\n                    .map_err(|error| format!(\"control decode: {error:?}\"))?;\n                if seq == target { settlement.push(event); } else { before.push(event); }\n            }\n        }\n    }\n    let load_seconds = started.elapsed().as_secs_f64();\n    let started = Instant::now();\n    let base = reconstruct(&before).map_err(|error| format!(\"prefix reconstruct: {error:?}\"))?;\n    let prefix_seconds = started.elapsed().as_secs_f64();\n    let started = Instant::now();\n    let expected = apply(base.clone(), &settlement)?;\n    let one_pass_seconds = started.elapsed().as_secs_f64();\n    println!(\"{}\", json!({\"phase\":\"prefix-and-one-pass-complete\",\"target_segment\":target,\n        \"prefix_controls\":before.len(),\"settlement_controls\":settlement.len(),\n        \"load_seconds\":load_seconds,\"prefix_seconds\":prefix_seconds,\"one_pass_seconds\":one_pass_seconds}));\n    let started = Instant::now();\n    let mut applications: usize = 0;\n    for cutoff in 0..settlement.len() {\n        let current = apply(base.clone(), &settlement[..cutoff])?;\n        applications += cutoff;\n        if Some(current.state_id) != settlement[cutoff].state_before_id() {\n            return Err(\"replayed suffix did not reach recorded next-event state\".into());\n        }\n    }\n    let sealed = apply(base.clone(), &settlement)?;\n    applications += settlement.len();\n    let held_projection_suffix_seconds = started.elapsed().as_secs_f64();\n    if sealed != expected {\n        return Err(\"single pass and held-projection suffix replay changed state\".into());\n    }\n    let k = settlement.len();\n    if applications != k * (k - 1) / 2 + k {\n        return Err(\"suffix application count mismatch\".into());\n    }\n    println!(\"{}\", json!({\"schema\":\"chaoscontrol.offline-campaign-core-suffix-observation.v1\",\n        \"target_segment\":target,\"prefix_controls\":before.len(),\"prefix_candidates\":base.candidates.len(),\n        \"settlement_controls\":k,\"one_pass_applications\":k,\"suffix_applications\":applications,\n        \"one_pass_seconds\":one_pass_seconds,\"held_projection_suffix_seconds\":held_projection_suffix_seconds,\n        \"all_recorded_state_boundaries_match\":true,\"final_complete_state_equal\":true,\n        \"final_state_digest\":sealed.state_id.digest,\n        \"non_claim\":\"Measures the core suffix-replay subpath using actual retained control events. Does not run Choregraph publication planning, graph scans/clones, fsync, KVM, a campaign, or a release gate. One-pass comparison is diagnostic only; no production validation was removed or bypassed.\"}));\n    Ok(())\n}\n"
+    }
+  ],
+  "commands": [
+    {
+      "id": "compile-offline-store-and-journal-probe",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "env",
+          "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics",
+          "CARGO_BUILD_JOBS=2",
+          "CARGO_PROFILE_DEV_DEBUG=0",
+          "CARGO_PROFILE_TEST_DEBUG=0",
+          "CARGO_INCREMENTAL=0",
+          "TMPDIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/tmp",
+          "PATH=/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin:/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin:/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/scripts:/nix/store/rvp7qlpf5jqvdckjy1afjb6aha6j8dxg-pkg-config-wrapper-0.29.2/bin:/nix/store/c2p7haf4zzkbrir9zs662r68c5dmylbq-patchelf-0.15.2/bin:/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin:/nix/store/mjf8jlq9grydcdvyw6hb063x5c34g5gf-gcc-15.2.0/bin:/nix/store/0bdqq2z98kg2hfn3k60if6pb5fd5p10h-glibc-2.42-47-bin/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/i6ppbrlpp6yki8qvka7nyv091xa8dchx-binutils-wrapper-2.44/bin:/nix/store/47mn80zqpygykqailwzw8zlag4cgl75q-binutils-2.44/bin:/nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin:/nix/store/zrx7kmcgzax4s6fldam9hf6nmwcw5nks-cargo-watch-8.5.3/bin:/nix/store/7va1z8il76ycxvyvgsbpr4bjk89lzj5a-cargo-edit-0.13.8/bin:/nix/store/igr59k7fiwvxhdnpx5jf2d6gb9mbnvlv-nickel-1.15.1/bin:/nix/store/6n5r46icm0bl55s9p5z2zgcv93m39r5l-clang-wrapper-21.1.8/bin:/nix/store/rm8isfm4fd14is3fv3h4m459rbiy91bx-clang-21.1.8/bin:/nix/store/m0rbbdfsbkdqpr6bs621jwi21ra1br4g-binutils-wrapper-2.44/bin:/nix/store/rcy0axk6gaw5q6r3r631bnp6ap351jrg-bpftools-6.18/bin:/nix/store/nqdwms8r6kqnz9ds0qczn7af58k9ylvj-elfutils-0.194-bin/bin:/nix/store/yg2h4l9j1izbnlhxx8vcpxgc18izyad9-x86_64-unknown-linux-musl-gcc-wrapper-15.2.0/bin:/nix/store/7kkip2bbrg6cpwdq269wzvjcvw4pwlqh-x86_64-unknown-linux-musl-gcc-15.2.0/bin:/nix/store/vdisgkb1vn3wl2cn5xhgbhal794vdbhp-musl-x86_64-unknown-linux-musl-1.2.5-bin/bin:/nix/store/g1ar420lv3hh389bfp7jznchmgjz2vqf-x86_64-unknown-linux-musl-binutils-wrapper-2.44/bin:/nix/store/dajfkvsps80pmw2b8hdgvq0860a9mx2c-x86_64-unknown-linux-musl-binutils-2.44/bin:/nix/store/njphskr4mfna7gjsks3l33xna9wzrsya-cargo-octet-0.1.0/bin:/nix/store/am0d0cdbzzj8krwxswix2qddzxrfj4mz-octet-standards-0.1.0/bin:/nix/store/0drjksxdb8v81inx4r1n2nxxcmwm82nr-verified-logic-0.2.0/bin:/nix/store/b5m1h822ln0s493r30sgns77618ws59n-nixfmt-1.2.0/bin:/nix/store/idl8schy78hxa05jyndj4nmb4wzgcln2-compiler-rt-libc-21.1.8/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/16wfacfgap3chf7mcjnd8dwi85dj4qqi-findutils-4.10.0/bin:/nix/store/3p87h6dn5i87i3iq9364imzbqgwvkg2p-diffutils-3.12/bin:/nix/store/ryz8kcrm2bxpccllfqlb7qldsfnqp5c2-gnused-4.9/bin:/nix/store/02vv0r262agf9j5n2y1gmbjvdf12zkl0-gnugrep-3.12/bin:/nix/store/2xq9rayckw8zq26k274xxlikn77jn60j-gawk-5.3.2/bin:/nix/store/qyg62bc2xnpwz0fa9prqxvvk00zj4g9q-gnutar-1.35/bin:/nix/store/84yyzmxs7mb8nhkvcfv9n1l9irpb6mnq-gzip-1.14/bin:/nix/store/90yw24gqmwph4xjp4mqhpx1y1gcrvqla-bzip2-1.0.8-bin/bin:/nix/store/vbah5c4rzy1q1hbqhginyxjhj8d4dj8j-gnumake-4.4.1/bin:/nix/store/f15k3dpilmiyv6zgpib289rnjykgr1r4-bash-5.3p9/bin:/nix/store/wwij6563c6wbg4kzgjhng7vlhf7api19-patch-2.8/bin:/nix/store/zys6d102zp171wpwcs08g632886w2qxs-xz-5.8.2-bin/bin:/nix/store/nyy0bvgjwd98x7ih8pl6pr79qjljgsf7-file-5.45/bin:/home/brittonr/git/OnixResearch/chaoscontrol/.direnv/bin:/home/brittonr/.local/bin:/home/brittonr/.nix-profile/bin:/nix/store/7a60q5dgnv6z96c279rc1nalyiw4mgqn-bash-interactive-5.3p15/bin:/nix/store/gzh2rx2sjwra135my0jw3va49hm7z4vf-bun-1.3.13/bin:/nix/store/jnsflr3i2c90hrlly1cgwvxr9s74kgab-docker-29.8.0/bin:/nix/store/f51vybn5cd5v88pk7hnrdr6db1q0rzw7-ghzinga-0.5.0/bin:/nix/store/8yjpgadavqdwphcd2kw4dfvxmgdp5sb3-git-2.55.0/bin:/nix/store/xvd6920kffyyshg7mbw5wvfk6lg9wfkl-jq-1.8.2-bin/bin:/nix/store/hwifmhfi50y1595lhwiqsn7acppa7zdm-jujutsu-0.45.1/bin:/nix/store/ggcm0s524bsly3qc7kww945qs7003psf-openssh-10.5p1/bin:/nix/store/mcdxl3mmx2s8zy6gxy4ss5paiaz79qkc-pueue-4.0.4/bin:/nix/store/a8hj1bz1gd378sxz4fabmgrl61ad202p-socat-1.8.1.3/bin:/home/brittonr/.optmem:/run/wrappers/bin:/etc/profiles/per-user/brittonr/bin:/run/current-system/sw/bin",
+          "NIX_LDFLAGS=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib",
+          "NIX_LDFLAGS_x86_64_unknown_linux_gnu=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib",
+          "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+          "/nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin/rustc",
+          "--edition=2021",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe.rs",
+          "-o",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe",
+          "-L",
+          "dependency=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps",
+          "--extern",
+          "chaoscontrol_explore=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libchaoscontrol_explore-2764222d0b22cdaa.rlib",
+          "--extern",
+          "serde_json=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libserde_json-05c291f5a17060fc.rlib",
+          "-C",
+          "linker=/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin/cc",
+          "-C",
+          "opt-level=2"
+        ],
+        "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 TMPDIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/tmp PATH=/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin:/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin:/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/scripts:/nix/store/rvp7qlpf5jqvdckjy1afjb6aha6j8dxg-pkg-config-wrapper-0.29.2/bin:/nix/store/c2p7haf4zzkbrir9zs662r68c5dmylbq-patchelf-0.15.2/bin:/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin:/nix/store/mjf8jlq9grydcdvyw6hb063x5c34g5gf-gcc-15.2.0/bin:/nix/store/0bdqq2z98kg2hfn3k60if6pb5fd5p10h-glibc-2.42-47-bin/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/i6ppbrlpp6yki8qvka7nyv091xa8dchx-binutils-wrapper-2.44/bin:/nix/store/47mn80zqpygykqailwzw8zlag4cgl75q-binutils-2.44/bin:/nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin:/nix/store/zrx7kmcgzax4s6fldam9hf6nmwcw5nks-cargo-watch-8.5.3/bin:/nix/store/7va1z8il76ycxvyvgsbpr4bjk89lzj5a-cargo-edit-0.13.8/bin:/nix/store/igr59k7fiwvxhdnpx5jf2d6gb9mbnvlv-nickel-1.15.1/bin:/nix/store/6n5r46icm0bl55s9p5z2zgcv93m39r5l-clang-wrapper-21.1.8/bin:/nix/store/rm8isfm4fd14is3fv3h4m459rbiy91bx-clang-21.1.8/bin:/nix/store/m0rbbdfsbkdqpr6bs621jwi21ra1br4g-binutils-wrapper-2.44/bin:/nix/store/rcy0axk6gaw5q6r3r631bnp6ap351jrg-bpftools-6.18/bin:/nix/store/nqdwms8r6kqnz9ds0qczn7af58k9ylvj-elfutils-0.194-bin/bin:/nix/store/yg2h4l9j1izbnlhxx8vcpxgc18izyad9-x86_64-unknown-linux-musl-gcc-wrapper-15.2.0/bin:/nix/store/7kkip2bbrg6cpwdq269wzvjcvw4pwlqh-x86_64-unknown-linux-musl-gcc-15.2.0/bin:/nix/store/vdisgkb1vn3wl2cn5xhgbhal794vdbhp-musl-x86_64-unknown-linux-musl-1.2.5-bin/bin:/nix/store/g1ar420lv3hh389bfp7jznchmgjz2vqf-x86_64-unknown-linux-musl-binutils-wrapper-2.44/bin:/nix/store/dajfkvsps80pmw2b8hdgvq0860a9mx2c-x86_64-unknown-linux-musl-binutils-2.44/bin:/nix/store/njphskr4mfna7gjsks3l33xna9wzrsya-cargo-octet-0.1.0/bin:/nix/store/am0d0cdbzzj8krwxswix2qddzxrfj4mz-octet-standards-0.1.0/bin:/nix/store/0drjksxdb8v81inx4r1n2nxxcmwm82nr-verified-logic-0.2.0/bin:/nix/store/b5m1h822ln0s493r30sgns77618ws59n-nixfmt-1.2.0/bin:/nix/store/idl8schy78hxa05jyndj4nmb4wzgcln2-compiler-rt-libc-21.1.8/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/16wfacfgap3chf7mcjnd8dwi85dj4qqi-findutils-4.10.0/bin:/nix/store/3p87h6dn5i87i3iq9364imzbqgwvkg2p-diffutils-3.12/bin:/nix/store/ryz8kcrm2bxpccllfqlb7qldsfnqp5c2-gnused-4.9/bin:/nix/store/02vv0r262agf9j5n2y1gmbjvdf12zkl0-gnugrep-3.12/bin:/nix/store/2xq9rayckw8zq26k274xxlikn77jn60j-gawk-5.3.2/bin:/nix/store/qyg62bc2xnpwz0fa9prqxvvk00zj4g9q-gnutar-1.35/bin:/nix/store/84yyzmxs7mb8nhkvcfv9n1l9irpb6mnq-gzip-1.14/bin:/nix/store/90yw24gqmwph4xjp4mqhpx1y1gcrvqla-bzip2-1.0.8-bin/bin:/nix/store/vbah5c4rzy1q1hbqhginyxjhj8d4dj8j-gnumake-4.4.1/bin:/nix/store/f15k3dpilmiyv6zgpib289rnjykgr1r4-bash-5.3p9/bin:/nix/store/wwij6563c6wbg4kzgjhng7vlhf7api19-patch-2.8/bin:/nix/store/zys6d102zp171wpwcs08g632886w2qxs-xz-5.8.2-bin/bin:/nix/store/nyy0bvgjwd98x7ih8pl6pr79qjljgsf7-file-5.45/bin:/home/brittonr/git/OnixResearch/chaoscontrol/.direnv/bin:/home/brittonr/.local/bin:/home/brittonr/.nix-profile/bin:/nix/store/7a60q5dgnv6z96c279rc1nalyiw4mgqn-bash-interactive-5.3p15/bin:/nix/store/gzh2rx2sjwra135my0jw3va49hm7z4vf-bun-1.3.13/bin:/nix/store/jnsflr3i2c90hrlly1cgwvxr9s74kgab-docker-29.8.0/bin:/nix/store/f51vybn5cd5v88pk7hnrdr6db1q0rzw7-ghzinga-0.5.0/bin:/nix/store/8yjpgadavqdwphcd2kw4dfvxmgdp5sb3-git-2.55.0/bin:/nix/store/xvd6920kffyyshg7mbw5wvfk6lg9wfkl-jq-1.8.2-bin/bin:/nix/store/hwifmhfi50y1595lhwiqsn7acppa7zdm-jujutsu-0.45.1/bin:/nix/store/ggcm0s524bsly3qc7kww945qs7003psf-openssh-10.5p1/bin:/nix/store/mcdxl3mmx2s8zy6gxy4ss5paiaz79qkc-pueue-4.0.4/bin:/nix/store/a8hj1bz1gd378sxz4fabmgrl61ad202p-socat-1.8.1.3/bin:/home/brittonr/.optmem:/run/wrappers/bin:/etc/profiles/per-user/brittonr/bin:/run/current-system/sw/bin 'NIX_LDFLAGS=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib' 'NIX_LDFLAGS_x86_64_unknown_linux_gnu=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib' 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' /nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin/rustc --edition=2021 /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe.rs -o /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe -L dependency=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps --extern chaoscontrol_explore=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libchaoscontrol_explore-2764222d0b22cdaa.rlib --extern serde_json=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libserde_json-05c291f5a17060fc.rlib -C linker=/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin/cc -C opt-level=2",
+        "timeout_seconds": 90,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:01:10.372368+00:00",
+        "finished": "2026-10-18T16:01:11.338747+00:00",
+        "elapsed_seconds": 0.9663699709926732,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/compile-observation/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/compile-observation/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "compile-offline-core-probe",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "env",
+          "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics",
+          "CARGO_BUILD_JOBS=2",
+          "CARGO_PROFILE_DEV_DEBUG=0",
+          "CARGO_PROFILE_TEST_DEBUG=0",
+          "CARGO_INCREMENTAL=0",
+          "TMPDIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/tmp",
+          "PATH=/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin:/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin:/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/scripts:/nix/store/rvp7qlpf5jqvdckjy1afjb6aha6j8dxg-pkg-config-wrapper-0.29.2/bin:/nix/store/c2p7haf4zzkbrir9zs662r68c5dmylbq-patchelf-0.15.2/bin:/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin:/nix/store/mjf8jlq9grydcdvyw6hb063x5c34g5gf-gcc-15.2.0/bin:/nix/store/0bdqq2z98kg2hfn3k60if6pb5fd5p10h-glibc-2.42-47-bin/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/i6ppbrlpp6yki8qvka7nyv091xa8dchx-binutils-wrapper-2.44/bin:/nix/store/47mn80zqpygykqailwzw8zlag4cgl75q-binutils-2.44/bin:/nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin:/nix/store/zrx7kmcgzax4s6fldam9hf6nmwcw5nks-cargo-watch-8.5.3/bin:/nix/store/7va1z8il76ycxvyvgsbpr4bjk89lzj5a-cargo-edit-0.13.8/bin:/nix/store/igr59k7fiwvxhdnpx5jf2d6gb9mbnvlv-nickel-1.15.1/bin:/nix/store/6n5r46icm0bl55s9p5z2zgcv93m39r5l-clang-wrapper-21.1.8/bin:/nix/store/rm8isfm4fd14is3fv3h4m459rbiy91bx-clang-21.1.8/bin:/nix/store/m0rbbdfsbkdqpr6bs621jwi21ra1br4g-binutils-wrapper-2.44/bin:/nix/store/rcy0axk6gaw5q6r3r631bnp6ap351jrg-bpftools-6.18/bin:/nix/store/nqdwms8r6kqnz9ds0qczn7af58k9ylvj-elfutils-0.194-bin/bin:/nix/store/yg2h4l9j1izbnlhxx8vcpxgc18izyad9-x86_64-unknown-linux-musl-gcc-wrapper-15.2.0/bin:/nix/store/7kkip2bbrg6cpwdq269wzvjcvw4pwlqh-x86_64-unknown-linux-musl-gcc-15.2.0/bin:/nix/store/vdisgkb1vn3wl2cn5xhgbhal794vdbhp-musl-x86_64-unknown-linux-musl-1.2.5-bin/bin:/nix/store/g1ar420lv3hh389bfp7jznchmgjz2vqf-x86_64-unknown-linux-musl-binutils-wrapper-2.44/bin:/nix/store/dajfkvsps80pmw2b8hdgvq0860a9mx2c-x86_64-unknown-linux-musl-binutils-2.44/bin:/nix/store/njphskr4mfna7gjsks3l33xna9wzrsya-cargo-octet-0.1.0/bin:/nix/store/am0d0cdbzzj8krwxswix2qddzxrfj4mz-octet-standards-0.1.0/bin:/nix/store/0drjksxdb8v81inx4r1n2nxxcmwm82nr-verified-logic-0.2.0/bin:/nix/store/b5m1h822ln0s493r30sgns77618ws59n-nixfmt-1.2.0/bin:/nix/store/idl8schy78hxa05jyndj4nmb4wzgcln2-compiler-rt-libc-21.1.8/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/16wfacfgap3chf7mcjnd8dwi85dj4qqi-findutils-4.10.0/bin:/nix/store/3p87h6dn5i87i3iq9364imzbqgwvkg2p-diffutils-3.12/bin:/nix/store/ryz8kcrm2bxpccllfqlb7qldsfnqp5c2-gnused-4.9/bin:/nix/store/02vv0r262agf9j5n2y1gmbjvdf12zkl0-gnugrep-3.12/bin:/nix/store/2xq9rayckw8zq26k274xxlikn77jn60j-gawk-5.3.2/bin:/nix/store/qyg62bc2xnpwz0fa9prqxvvk00zj4g9q-gnutar-1.35/bin:/nix/store/84yyzmxs7mb8nhkvcfv9n1l9irpb6mnq-gzip-1.14/bin:/nix/store/90yw24gqmwph4xjp4mqhpx1y1gcrvqla-bzip2-1.0.8-bin/bin:/nix/store/vbah5c4rzy1q1hbqhginyxjhj8d4dj8j-gnumake-4.4.1/bin:/nix/store/f15k3dpilmiyv6zgpib289rnjykgr1r4-bash-5.3p9/bin:/nix/store/wwij6563c6wbg4kzgjhng7vlhf7api19-patch-2.8/bin:/nix/store/zys6d102zp171wpwcs08g632886w2qxs-xz-5.8.2-bin/bin:/nix/store/nyy0bvgjwd98x7ih8pl6pr79qjljgsf7-file-5.45/bin:/home/brittonr/git/OnixResearch/chaoscontrol/.direnv/bin:/home/brittonr/.local/bin:/home/brittonr/.nix-profile/bin:/nix/store/7a60q5dgnv6z96c279rc1nalyiw4mgqn-bash-interactive-5.3p15/bin:/nix/store/gzh2rx2sjwra135my0jw3va49hm7z4vf-bun-1.3.13/bin:/nix/store/jnsflr3i2c90hrlly1cgwvxr9s74kgab-docker-29.8.0/bin:/nix/store/f51vybn5cd5v88pk7hnrdr6db1q0rzw7-ghzinga-0.5.0/bin:/nix/store/8yjpgadavqdwphcd2kw4dfvxmgdp5sb3-git-2.55.0/bin:/nix/store/xvd6920kffyyshg7mbw5wvfk6lg9wfkl-jq-1.8.2-bin/bin:/nix/store/hwifmhfi50y1595lhwiqsn7acppa7zdm-jujutsu-0.45.1/bin:/nix/store/ggcm0s524bsly3qc7kww945qs7003psf-openssh-10.5p1/bin:/nix/store/mcdxl3mmx2s8zy6gxy4ss5paiaz79qkc-pueue-4.0.4/bin:/nix/store/a8hj1bz1gd378sxz4fabmgrl61ad202p-socat-1.8.1.3/bin:/home/brittonr/.optmem:/run/wrappers/bin:/etc/profiles/per-user/brittonr/bin:/run/current-system/sw/bin",
+          "NIX_LDFLAGS=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib",
+          "NIX_LDFLAGS_x86_64_unknown_linux_gnu=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib",
+          "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+          "/nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin/rustc",
+          "--edition=2021",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe.rs",
+          "-o",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe",
+          "-L",
+          "dependency=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps",
+          "--extern",
+          "chaoscontrol_explore=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libchaoscontrol_explore-2764222d0b22cdaa.rlib",
+          "--extern",
+          "campaign_core=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libcampaign_core-ad697652ee1081c8.rlib",
+          "--extern",
+          "serde_json=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libserde_json-05c291f5a17060fc.rlib",
+          "-C",
+          "linker=/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin/cc",
+          "-C",
+          "opt-level=2"
+        ],
+        "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 TMPDIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/tmp PATH=/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin:/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin:/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source/scripts:/nix/store/rvp7qlpf5jqvdckjy1afjb6aha6j8dxg-pkg-config-wrapper-0.29.2/bin:/nix/store/c2p7haf4zzkbrir9zs662r68c5dmylbq-patchelf-0.15.2/bin:/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin:/nix/store/mjf8jlq9grydcdvyw6hb063x5c34g5gf-gcc-15.2.0/bin:/nix/store/0bdqq2z98kg2hfn3k60if6pb5fd5p10h-glibc-2.42-47-bin/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/i6ppbrlpp6yki8qvka7nyv091xa8dchx-binutils-wrapper-2.44/bin:/nix/store/47mn80zqpygykqailwzw8zlag4cgl75q-binutils-2.44/bin:/nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin:/nix/store/zrx7kmcgzax4s6fldam9hf6nmwcw5nks-cargo-watch-8.5.3/bin:/nix/store/7va1z8il76ycxvyvgsbpr4bjk89lzj5a-cargo-edit-0.13.8/bin:/nix/store/igr59k7fiwvxhdnpx5jf2d6gb9mbnvlv-nickel-1.15.1/bin:/nix/store/6n5r46icm0bl55s9p5z2zgcv93m39r5l-clang-wrapper-21.1.8/bin:/nix/store/rm8isfm4fd14is3fv3h4m459rbiy91bx-clang-21.1.8/bin:/nix/store/m0rbbdfsbkdqpr6bs621jwi21ra1br4g-binutils-wrapper-2.44/bin:/nix/store/rcy0axk6gaw5q6r3r631bnp6ap351jrg-bpftools-6.18/bin:/nix/store/nqdwms8r6kqnz9ds0qczn7af58k9ylvj-elfutils-0.194-bin/bin:/nix/store/yg2h4l9j1izbnlhxx8vcpxgc18izyad9-x86_64-unknown-linux-musl-gcc-wrapper-15.2.0/bin:/nix/store/7kkip2bbrg6cpwdq269wzvjcvw4pwlqh-x86_64-unknown-linux-musl-gcc-15.2.0/bin:/nix/store/vdisgkb1vn3wl2cn5xhgbhal794vdbhp-musl-x86_64-unknown-linux-musl-1.2.5-bin/bin:/nix/store/g1ar420lv3hh389bfp7jznchmgjz2vqf-x86_64-unknown-linux-musl-binutils-wrapper-2.44/bin:/nix/store/dajfkvsps80pmw2b8hdgvq0860a9mx2c-x86_64-unknown-linux-musl-binutils-2.44/bin:/nix/store/njphskr4mfna7gjsks3l33xna9wzrsya-cargo-octet-0.1.0/bin:/nix/store/am0d0cdbzzj8krwxswix2qddzxrfj4mz-octet-standards-0.1.0/bin:/nix/store/0drjksxdb8v81inx4r1n2nxxcmwm82nr-verified-logic-0.2.0/bin:/nix/store/b5m1h822ln0s493r30sgns77618ws59n-nixfmt-1.2.0/bin:/nix/store/idl8schy78hxa05jyndj4nmb4wzgcln2-compiler-rt-libc-21.1.8/bin:/nix/store/i2vmgx46q9hd3z6rigaiman3wl3i2gc4-coreutils-9.9/bin:/nix/store/16wfacfgap3chf7mcjnd8dwi85dj4qqi-findutils-4.10.0/bin:/nix/store/3p87h6dn5i87i3iq9364imzbqgwvkg2p-diffutils-3.12/bin:/nix/store/ryz8kcrm2bxpccllfqlb7qldsfnqp5c2-gnused-4.9/bin:/nix/store/02vv0r262agf9j5n2y1gmbjvdf12zkl0-gnugrep-3.12/bin:/nix/store/2xq9rayckw8zq26k274xxlikn77jn60j-gawk-5.3.2/bin:/nix/store/qyg62bc2xnpwz0fa9prqxvvk00zj4g9q-gnutar-1.35/bin:/nix/store/84yyzmxs7mb8nhkvcfv9n1l9irpb6mnq-gzip-1.14/bin:/nix/store/90yw24gqmwph4xjp4mqhpx1y1gcrvqla-bzip2-1.0.8-bin/bin:/nix/store/vbah5c4rzy1q1hbqhginyxjhj8d4dj8j-gnumake-4.4.1/bin:/nix/store/f15k3dpilmiyv6zgpib289rnjykgr1r4-bash-5.3p9/bin:/nix/store/wwij6563c6wbg4kzgjhng7vlhf7api19-patch-2.8/bin:/nix/store/zys6d102zp171wpwcs08g632886w2qxs-xz-5.8.2-bin/bin:/nix/store/nyy0bvgjwd98x7ih8pl6pr79qjljgsf7-file-5.45/bin:/home/brittonr/git/OnixResearch/chaoscontrol/.direnv/bin:/home/brittonr/.local/bin:/home/brittonr/.nix-profile/bin:/nix/store/7a60q5dgnv6z96c279rc1nalyiw4mgqn-bash-interactive-5.3p15/bin:/nix/store/gzh2rx2sjwra135my0jw3va49hm7z4vf-bun-1.3.13/bin:/nix/store/jnsflr3i2c90hrlly1cgwvxr9s74kgab-docker-29.8.0/bin:/nix/store/f51vybn5cd5v88pk7hnrdr6db1q0rzw7-ghzinga-0.5.0/bin:/nix/store/8yjpgadavqdwphcd2kw4dfvxmgdp5sb3-git-2.55.0/bin:/nix/store/xvd6920kffyyshg7mbw5wvfk6lg9wfkl-jq-1.8.2-bin/bin:/nix/store/hwifmhfi50y1595lhwiqsn7acppa7zdm-jujutsu-0.45.1/bin:/nix/store/ggcm0s524bsly3qc7kww945qs7003psf-openssh-10.5p1/bin:/nix/store/mcdxl3mmx2s8zy6gxy4ss5paiaz79qkc-pueue-4.0.4/bin:/nix/store/a8hj1bz1gd378sxz4fabmgrl61ad202p-socat-1.8.1.3/bin:/home/brittonr/.optmem:/run/wrappers/bin:/etc/profiles/per-user/brittonr/bin:/run/current-system/sw/bin 'NIX_LDFLAGS=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib' 'NIX_LDFLAGS_x86_64_unknown_linux_gnu=-L/nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -rpath /nix/store/wf2yfa70lv7n5mg839h7i84ci73v9n37-elfutils-0.194/lib -L/nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib -rpath /nix/store/ri9paa3mri4kqakljak8ldvbcp7lpmif-zlib-1.3.1/lib' 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' /nix/store/y2vglckrmfxynvnm9bkfap7m31rfk99s-rust-default-1.98.0/bin/rustc --edition=2021 /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe.rs -o /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe -L dependency=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps --extern chaoscontrol_explore=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libchaoscontrol_explore-2764222d0b22cdaa.rlib --extern campaign_core=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libcampaign_core-ad697652ee1081c8.rlib --extern serde_json=/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libserde_json-05c291f5a17060fc.rlib -C linker=/nix/store/a245z3cvf9x9sn0xlk6k8j9xhxbhda1z-gcc-wrapper-15.2.0/bin/cc -C opt-level=2",
+        "timeout_seconds": 90,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:21:49.108267+00:00",
+        "finished": "2026-10-18T16:21:49.573196+00:00",
+        "elapsed_seconds": 0.46493658298277296,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-compile-observation/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-compile-observation/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "journal-control",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe",
+          "journal",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000",
+          "17"
+        ],
+        "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe journal /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000 17",
+        "timeout_seconds": 30,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:02:29.569543+00:00",
+        "finished": "2026-10-18T16:02:29.585261+00:00",
+        "elapsed_seconds": 0.015718530979938805,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-control/stdout.log",
+            "digest": "blake3:81749dd4bab137b9436aab2b881183e2f0f0fdfa4f01e9f2a9903d032f3c6663",
+            "bytes": 7502
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-control/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "journal-planted",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe",
+          "journal",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000",
+          "17"
+        ],
+        "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe journal /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000 17",
+        "timeout_seconds": 30,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:02:29.877020+00:00",
+        "finished": "2026-10-18T16:02:29.892559+00:00",
+        "elapsed_seconds": 0.015539805986918509,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-planted/stdout.log",
+            "digest": "blake3:45ccf309e71b6a6d9e40073a5fcda77ebc11b9e045bce064631abb38628d1d81",
+            "bytes": 7457
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-planted/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "journal-deep-probe",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe",
+          "journal",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000",
+          "21"
+        ],
+        "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe journal /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000 21",
+        "timeout_seconds": 30,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:02:30.203486+00:00",
+        "finished": "2026-10-18T16:02:30.235664+00:00",
+        "elapsed_seconds": 0.032182071008719504,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-deep-probe/stdout.log",
+            "digest": "blake3:d1441b719fdbc6c41c3c8a5f1075c6e54f0bba24e9214ef4f44686293691147f",
+            "bytes": 8122
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/journal-deep-probe/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "snapshot-consumer",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe",
+          "snapshot",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/bug_0.json",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/snapshot-recode"
+        ],
+        "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/probe snapshot /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/bug_0.json /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/snapshot-recode",
+        "timeout_seconds": 90,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:02:30.514484+00:00",
+        "finished": "2026-10-18T16:02:45.708647+00:00",
+        "elapsed_seconds": 15.194180058984784,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/snapshot-consumer/stdout.log",
+            "digest": "blake3:927e3600568ffd1ab2a2856a1131197ebfd76c527cffd4db4823f5511de376b1",
+            "bytes": 718
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/snapshot-consumer/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-control-segment2",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000",
+          "2"
+        ],
+        "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000 2",
+        "timeout_seconds": 180,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:21:49.719343+00:00",
+        "finished": "2026-10-18T16:21:50.684691+00:00",
+        "elapsed_seconds": 0.965358659013873,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-control-segment2/stdout.log",
+            "digest": "blake3:67d78a9cd1c5725b58450d73af5cc8687e5b105113b69a86e42ec4e607b02036",
+            "bytes": 985
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-control-segment2/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-control-segment14",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-source",
+        "command": [
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000",
+          "14"
+        ],
+        "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-probe /home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000 14",
+        "timeout_seconds": 180,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-18T16:21:50.936874+00:00",
+        "finished": "2026-10-18T16:23:58.018177+00:00",
+        "elapsed_seconds": 127.08129202201962,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-control-segment14/stdout.log",
+            "digest": "blake3:522a90b2751a445edca5f96e492224e50cdf2bb514d69e43b54b0d05addc1a80",
+            "bytes": 1004
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/core-control-segment14/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    }
+  ],
+  "required_local_libraries": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libchaoscontrol_explore-2764222d0b22cdaa.rlib",
+      "digest": "blake3:029dc40f12d3a79f0ed6383d6e0ccaec872becb9e5639b9c254c9921dc1b9393",
+      "bytes": 32214176
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libcampaign_core-ad697652ee1081c8.rlib",
+      "digest": "blake3:66840c2b9b72cc1c3413130566260d85496f8f80e60e65575d070d94ccebf7ea",
+      "bytes": 2342260
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/production-readiness-extension-20261017-diagnostics/release/deps/libserde_json-05c291f5a17060fc.rlib",
+      "digest": "blake3:926e65b020f20767d62cad89ea559ccd93f7537ef3d5b45e2a0403761d6a9abb",
+      "bytes": 2041402
+    }
+  ],
+  "required_local_inputs": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-control/execution.json",
+      "digest": "blake3:bcf1ea08927f8c7519a43ee2fff24b5f114b4d8c931851ca142e94879d9be112",
+      "bytes": 12290,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-control/stderr.log",
+      "digest": "blake3:618c899bcc04ec5b042f4eaf7aa66539e46ebba0639a55c260e70c36794e6045",
+      "bytes": 4533,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/checkpoint.json",
+      "digest": "blake3:3b2b9fa6bbdf323d29f773ae37d21c0bb0648ce37341163350d27889a6fc7e70",
+      "bytes": 770930,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/frontier-trace.jsonl",
+      "digest": "blake3:52ab3497cf33a1f4a4c176d54409e32a8d27d431beed9e6b3abd76c1f271d24f",
+      "bytes": 103296,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-planted/execution.json",
+      "digest": "blake3:d6502909b41e22bc8b9c4eeb56c02a6aa82427f7cb8c6779b3df50af38cdfaaf",
+      "bytes": 12303,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-planted/stderr.log",
+      "digest": "blake3:e827ce7299484f2d497ee25ff44af710b8707d0d304d4afa4bf6575e60864606",
+      "bytes": 4117,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/checkpoint.json",
+      "digest": "blake3:88cd8f4800ec92c89df79e43a0ae1842744a121b78ab964781119bbef2cf51b7",
+      "bytes": 768956,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/frontier-trace.jsonl",
+      "digest": "blake3:10cd089ad5b7d231d976f333da25ba0c9b2bac51c0ec0a5b33b4082fb6b01997",
+      "bytes": 102587,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-deep-probe/execution.json",
+      "digest": "blake3:6289e2e9952d4c0f3d793f2282464d787219d63f7b4023b2ca1e06ed6f2b6110",
+      "bytes": 12407,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-deep-probe/stderr.log",
+      "digest": "blake3:f0817334c0cb791e27d455ff7e3f447645b0db85d3b3d1f187f9ae0664037d20",
+      "bytes": 4755,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/checkpoint.json",
+      "digest": "blake3:6fbfcb1d4903a60cf57659ede56ec5e43e490ac669bae5762ed589057d5890f1",
+      "bytes": 806403,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/frontier-trace.jsonl",
+      "digest": "blake3:3470530eb24a0d98cc83a0843afcf85abdb29742998b0f9171a40934b6074f20",
+      "bytes": 112767,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:16b299129f4382f83d6f8a04bdf4c2d417150039fecb369efe122195aa195a26",
+      "bytes": 6187,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:a39a1f03b2abdc3a4290deb3a229e4852d1849edc2aa5c106fb9b68d9fdf2204",
+      "bytes": 3417,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:bd1db0f6a242a1cba4015d7d874ec8c2d9fbcbe8f5c513263ccfb6ea3e4ad90d",
+      "bytes": 207072,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:1a2dfbaa80cee9e5faf05b4bc28f5a71f4a5da2bbb9b62335f67243fe051d7ef",
+      "bytes": 3395,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000004.cbor",
+      "digest": "blake3:31a7d0e1e3701d071ca6b2fcc564c39ba85c151ca56c6fb36859b9c7cfe4ceff",
+      "bytes": 398217,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000005.cbor",
+      "digest": "blake3:c0b81ac1427fa2c5cc091c03072806770a60aa9ae755f97757c871ef82c6210b",
+      "bytes": 3408,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000006.cbor",
+      "digest": "blake3:e3db031bda1e918f5fbf91e274c26708ef3a933ac5d6946d45920770519f4cbf",
+      "bytes": 567027,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000007.cbor",
+      "digest": "blake3:79e4534eeb6eab4cd5ea0bbacf884a553d0a78cb5be1af25daa8bed342c72381",
+      "bytes": 3403,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000008.cbor",
+      "digest": "blake3:80a533a297faf5aaee705df2e9cabe6a88d9b951bb1d503e319b47da63c7cf75",
+      "bytes": 297593,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000009.cbor",
+      "digest": "blake3:a3addacd044503e37c72bb775809a1cacdaca1b3508e47ca01661f6841368853",
+      "bytes": 3416,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000010.cbor",
+      "digest": "blake3:f393e055771524a0f67c603ad80e5fb6a7a84823f339e0d4d7b00cded2452880",
+      "bytes": 566159,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000011.cbor",
+      "digest": "blake3:9c233433ece109cee1d9ad0a725875ae40491310cd689ae9d51539eabcd63f77",
+      "bytes": 3404,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000012.cbor",
+      "digest": "blake3:2e8402b57df61897ea6f7a983766608684038887e5439be2cdf8d04c4784bf42",
+      "bytes": 297658,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000013.cbor",
+      "digest": "blake3:1ee9d607531b0c5c89751a712286b2832d2672a16581dc2fdf8fd2c2cbb8b392",
+      "bytes": 3411,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000014.cbor",
+      "digest": "blake3:c58e0404d233dd0ac345e18221ceaf9a21f0deaa686b404b10c963d81e77fe90",
+      "bytes": 566588,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000015.cbor",
+      "digest": "blake3:fa35e122e8a18896eb173c079430fd21145a795b3003870793b0e09721aed72b",
+      "bytes": 3410,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000016.cbor",
+      "digest": "blake3:c4941c84e7ea22f1092a1d4819350d2943fa54ca3f515499f93b7873df363e12",
+      "bytes": 298445,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000017.cbor",
+      "digest": "blake3:67b316a66739fa170787db2e32b3caf8130f9f5808c6d6257b5e514acfa96d89",
+      "bytes": 3410,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:bb9ca55b6950795faeac383483d6b06a580df0e5e07f5920a94e0bfe909bd5e3",
+      "bytes": 6142,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:4cedd42a61f582463c3b28f89aa2a1dd2c858b4902758f7139093a8340315733",
+      "bytes": 3416,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:7e2c8c3ca8436b6a323e20b9134b4f926a914eef815acaaf8290c67f83ee1f3f",
+      "bytes": 205798,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:c97093f8c609fc5feaa004698bc5644bf28dd5993fc2625dcd4a9ffd0f48ff19",
+      "bytes": 3403,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000004.cbor",
+      "digest": "blake3:fd2d41a28b128b09de1f7eda58a770d7e688114c8aa6108d954f2f20629b8dfa",
+      "bytes": 397229,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000005.cbor",
+      "digest": "blake3:097562e454a54e0a1e08a5a66832e4ce7d2d162c1030552f4edfae451dc2ea9d",
+      "bytes": 3412,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000006.cbor",
+      "digest": "blake3:31c5d5fedbc6cb995852a31e754b8fb43f2c798c987ce44f90991bbf2b39e245",
+      "bytes": 566120,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000007.cbor",
+      "digest": "blake3:641830f3c9815a5dfe1145a0a3635481d8e18967c3f891fa794eca69a0a8a812",
+      "bytes": 3398,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000008.cbor",
+      "digest": "blake3:8f121c6e09a1d329bd19a5febc36eccf8e375e69af7a6324abcaea9b6a33aedf",
+      "bytes": 287146,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000009.cbor",
+      "digest": "blake3:6561908d00219304f98920c2d6cb3c041eb88f2795d0bb97c167ed88edcdbc13",
+      "bytes": 3410,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000010.cbor",
+      "digest": "blake3:ca6a7a4579e85e11cde637d8ae8d648d7378ddf8f3bc867592a6a0c2048aa2c5",
+      "bytes": 564867,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000011.cbor",
+      "digest": "blake3:1a7416a3988cd54975c3c43fc879ab6f0d30c35c91f69f185c7a4f66c4b971d8",
+      "bytes": 3390,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000012.cbor",
+      "digest": "blake3:a90626b901107a1664bfca44ab60b57bcb3804a1b75821fcd728a2eca2a14f0f",
+      "bytes": 286748,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000013.cbor",
+      "digest": "blake3:76afb8fc786bea0bc322ddd2244cadc1eaaceaa71a9be1634604f77d1f113d82",
+      "bytes": 3385,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000014.cbor",
+      "digest": "blake3:faffa84f9969fa797369574fb760922b51fd6700d180fac9f5cfee4e795efaf4",
+      "bytes": 565257,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000015.cbor",
+      "digest": "blake3:d7a64bfbe26e0bfec52e6da901fed46f295113e8f0f6b386467e7a1f973836e7",
+      "bytes": 3410,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000016.cbor",
+      "digest": "blake3:1cd04525f1e1281504aefa25d682410311d78ae2f9fbfb32e28d1482097522e2",
+      "bytes": 287148,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000017.cbor",
+      "digest": "blake3:01b316ef31ff58b7e6179588beb9c946fabce50044db233f4d1f9a098b16e6c1",
+      "bytes": 3378,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:332158acce0e4380a7401bb648df95b8f13fef31d945dd0d2bc45542dbad9f63",
+      "bytes": 6151,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:253051f93c9753940a176bda71838aa4f5f94fb9a75d62a8c142fd2ce30f138c",
+      "bytes": 3388,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:134e91c0a761b373e9a6f46a3bbf632496af826c43342e2e0632d064c7cd6cc4",
+      "bytes": 205872,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:aa6c649455f3a81cf85420d0d6288c487505dd9e50be094f57ea3c33314331f1",
+      "bytes": 3411,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000004.cbor",
+      "digest": "blake3:cffe0efdbd5b2b06ad2a2a2b2f3ae051942bc98de21edc28abf2ee1d6d94eec4",
+      "bytes": 384330,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000005.cbor",
+      "digest": "blake3:474b668d9f656419a63efde72b405e6c1d55de24db68e76c24e9f1ea8c3bee00",
+      "bytes": 3408,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000006.cbor",
+      "digest": "blake3:dbd8e82028b5b94c1603c5a4cdc9b2ff2025a188fac5cf973270a1f25f9fab5e",
+      "bytes": 447916,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000007.cbor",
+      "digest": "blake3:8c5ec2ca3123f61a9feb407846ba631750e0132190eb2220bd4b3ea08bfb4ea0",
+      "bytes": 3393,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000008.cbor",
+      "digest": "blake3:9cd06224eccbd3eb6badcdf3068a177650874f20885ab7f8d5bcef08dbc05384",
+      "bytes": 226069,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000009.cbor",
+      "digest": "blake3:92f31c82b1c41de3f79be999b353669fce71bc87e6bf3334f05f21a2d0f44517",
+      "bytes": 3403,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000010.cbor",
+      "digest": "blake3:a90d54559a8844563434849cc3a43c62d03c511f91552273cb027e961ee1be0a",
+      "bytes": 447953,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000011.cbor",
+      "digest": "blake3:f9c287de52ff0bb9406c3064b37ab2f56caec5565c5f951cc5f897fcf344ea08",
+      "bytes": 3395,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000012.cbor",
+      "digest": "blake3:d4692c8f66dae15db03c5a6ccdcd69ac41a56a540da85753c193bcfd7bca5f88",
+      "bytes": 225643,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000013.cbor",
+      "digest": "blake3:47c7bdd84f98728130e9a55660d48246fffc128f36736cef9f5fc2fe70208b53",
+      "bytes": 3395,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000014.cbor",
+      "digest": "blake3:3da6f51279ee3cb20802da5e4fe9da167bfb6f486aa7a420df0f5c8991634909",
+      "bytes": 447552,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000015.cbor",
+      "digest": "blake3:66a7cccd563e9a6c7b82301299137243d31711b04c1082226662f2d1af8bd8fa",
+      "bytes": 3380,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000016.cbor",
+      "digest": "blake3:bd4ff9e11bf543bdd460cbc67bd01a611af6a2875cb5c0571e63e8c9034b5971",
+      "bytes": 226043,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000017.cbor",
+      "digest": "blake3:85e0c28a2fcc9674aa0d3f44408ccfbfef11ce4b7270f9ac3b04182ccb5be01e",
+      "bytes": 3398,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000018.cbor",
+      "digest": "blake3:59a1041f5618c7d27ca93f08fc977d8a24b58cb3258edd0db1c505347b90b819",
+      "bytes": 446953,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000019.cbor",
+      "digest": "blake3:3b9abec2b4391239dad34607435870a7d358eb8202185722332cd9d2acbac64c",
+      "bytes": 3393,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000020.cbor",
+      "digest": "blake3:e6e0d7b4d4b868444924251909b906a096a0124b59286c3b96f059cd8605fd9a",
+      "bytes": 226207,
+      "published_manifest_match": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000021.cbor",
+      "digest": "blake3:61f947613069d4616e14b961bea7197e842990d7c89d85815e9ed50d730b189f",
+      "bytes": 921,
+      "published_manifest_match": true
+    }
+  ],
+  "runtime_snapshot_interoperability_identity": {
+    "codec": "simulation-snapshot-cbor-zstd-v2",
+    "digest": "sha256:97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238",
+    "path": "snapshots/97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238.snapshot.bin",
+    "schema_version": 2,
+    "store": "file-content-addressed"
+  },
+  "snapshot_artifact": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-cohort/deep-probe-artifacts/snapshots/97498778f4e4208b89089648a15b43d91087c81c29f5ee3c93617dd6e395d238.snapshot.bin",
+    "digest": "blake3:d9bb3aee4012c6dd629b7c9c720fbd1d6ccdb3d498d1737e2aad46b7efdbb790",
+    "bytes": 58423832
+  },
+  "repeatability_boundary": "Probe sources are embedded verbatim; commands retain argv, cwd, compiler environment, timeout and output identities. Raw journal, snapshot, compiler/library and log bytes remain local and must match these identities before reuse. No missing artifact is reconstructed or represented as present.",
+  "measurement_boundary": "The source-derived repeated-suffix subpath uses actual authenticated retained events. The single-pass comparison is diagnostic and is not an implementation change or permission to remove production validation."
+}

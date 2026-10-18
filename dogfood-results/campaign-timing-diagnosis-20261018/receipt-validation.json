@@ -1,0 +1,103 @@
+{
+  "schema": "chaoscontrol.campaign-timing-diagnosis-publication-validation.v1",
+  "validated": true,
+  "outcome": "diagnosed-not-corrected",
+  "production_ready": false,
+  "source": {
+    "implementation_revision": "b51beafc4507cab1fa32bb7a7a3b83d24ed543fc",
+    "delivery_parent_revision": "5dd38965149edca0fb25c3499232a44e9ed82274",
+    "campaign_revision": "e7757a5134f631e1ed410df3cae57e57f887c468",
+    "history_revision": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
+    "boundary": "Measurements consume retained artifacts from clean b51beaf. This later evidence-only publication is not a new release-tested implementation."
+  },
+  "authority": {
+    "maximum_corrective_attempts": 45,
+    "used_corrective_attempts": 45,
+    "new_product_corrections": 0,
+    "release_gates_rerun": false,
+    "campaign_bounds_changed": false,
+    "user_decision": "Keep current limit"
+  },
+  "nickel": {
+    "passed": true,
+    "command_observation": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/publication-nickel-export/execution.json",
+      "digest": "blake3:5b27c8f0a5fb927fb62fdabab621f776451d9c0945fc553533e5cf96edff1049",
+      "bytes": 1553
+    },
+    "exported_stdout": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/publication-nickel-export/stdout.log",
+      "digest": "blake3:d7fd4212de8144accd953d80a4b3a224001f458fc6e92aa22f76ce271bb84e81",
+      "bytes": 36664
+    }
+  },
+  "unsupported_readiness_claim": {
+    "rejected": true,
+    "command_observation": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/read-only-timeout-diagnosis/publication-unsupported-readiness/execution.json",
+      "digest": "blake3:88d31736c3d80ff61c22b45e3a15922e2c9602293832f8eeb955f3db4c4ef5e7",
+      "bytes": 1541
+    }
+  },
+  "artifact_verification": {
+    "identity_algorithm": "blake3",
+    "independent_file_identity_comparisons": 129,
+    "identity_mismatches": 0,
+    "embedded_probe_sources_verified": 2,
+    "published_historical_input_bindings_verified": 70,
+    "all_historical_input_bytes_unchanged": true
+  },
+  "curated_artifacts": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/observations.json",
+      "digest": "blake3:7634453be59632f8d9069dec4337f66dc44d84ab3cd645ea81df60c55e20b9d3",
+      "bytes": 35224
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/reproduction-inputs.json",
+      "digest": "blake3:4d50f50e633cb4875b9c73793ee1b27499bb639335b1a9277ffdf8f2e6692bcd",
+      "bytes": 69636
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/evidence-manifest.json",
+      "digest": "blake3:f83a2a8978d213599622768e803ba0ca26a23872a25d592a177a33f728517c17",
+      "bytes": 35051
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/receipt.ncl",
+      "digest": "blake3:afc35d4d867d5b3239dbd5126437cc2483218dd0142d3c9b899aa39315f478a0",
+      "bytes": 5168
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/receipt.json",
+      "digest": "blake3:d7fd4212de8144accd953d80a4b3a224001f458fc6e92aa22f76ce271bb84e81",
+      "bytes": 36664
+    }
+  ],
+  "original_required_criteria_unchanged": true,
+  "original_required_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": false
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": true
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "native_task_state": "Intentionally unchanged: diagnosis is not correction, campaign completion, requirement closure, or a release-gate pass.",
+  "raw_artifact_boundary": "VM snapshots, journals, compiled libraries/binaries, and raw logs remain local with exact identities. The curated bundle retains bounded observations and verbatim probe sources, not copied runtime artifacts.",
+  "publication_boundary": "Validation precedes the new evidence-only commit. Its delivery-parent revision is not the measured implementation revision; no new release-gate result is claimed."
+}

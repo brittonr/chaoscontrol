@@ -63,7 +63,7 @@ The final release/readiness task remains unchecked. The 35-attempt ledger stays 
 - [ ] [depends:snapshot-lineage-shell] Complete and exercise genuine remaining snapshot/SMP/virtio/runtime acceptance gaps; retain every strict memory, execution, assertion, fault and recovery comparison. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 - [ ] [depends:snapshot-lineage-shell] Complete and exercise the actual explorer, workload and evidence consumers needed for native requirement closure; unsupported whole requirements remain open, not annotation debt.
 - [ ] [depends:snapshot-lineage-campaign] Diagnose and correct repository-owned Nix/release-wrapper faults, then require fresh Cargo, Nix, native and all-seven-row clean-source report verdicts. Keep unavailable Cairn producer support as an exact owner prerequisite.
-- [ ] [depends:snapshot-lineage-campaign] Validate a separate BLAKE3-bound Nickel receipt, update only supported task state, commit verified changes and push main without force. Do not claim production readiness unless every original acceptance criterion passes.
+- [x] [depends:snapshot-lineage-campaign] Validate a separate BLAKE3-bound Nickel receipt, update only supported task state, commit verified changes and push main without force. Do not claim production readiness unless every original acceptance criterion passes.
 
 This section records prospective authorization and work, not completion evidence. Existing campaign/replay cohorts and historical release receipts are not relabeled as results of the continuation.
 
@@ -127,4 +127,14 @@ blockers. The new receipt retains exact commands, profiles, artifact identities,
 observed faults, assertion coverage, bug files and replay attempts; it never
 promotes historical or dirty-source evidence. Maintenance owner remains
 `chaoscontrol-vmm`, with producer admission owned by Cairn CLI/core maintainers.
+
+The separate receipt was exported with the recorded Nickel 1.17 cohort;
+`receipt-validation.json` records 455 BLAKE3/length-verified retained artifacts,
+zero identity mismatches, complete gate/attempt inventories and rejection of
+an unsupported `production_ready = true` claim. It computes
+`production_ready = false`. Actual strict delivery-metadata validation passed.
+Commit `782c534` containing that evidence and the verified source corrections
+was fast-forwarded and pushed to `main` without force. This supports only the
+delivery checkbox above; the remaining runtime, requirement and release tasks
+stay unchecked. Later task-state commits are not release-tested source.
 

@@ -113,6 +113,32 @@ controller proof, all release gates and ownership restrictions remain unchanged.
 No sibling correction, host change or unrelated implementation is authorized.
 
 
+### 15. Bound frontier multiplicity by logical marker, not repeated observations
+
+The completed attempt46 traces retain fifty marker proposals from round one's
+single probe snapshot. Original-score pruning removes every depth-three proposal
+(1400 control, 1384 planted, 1092 deliberate probe); selection-count decay does
+not affect that retention dimension. The declared profile permits depth eleven,
+so neither the snapshot implementation nor an execution bound explains this
+observed depth-three ceiling.
+
+Attempt47 will coalesce a completed branch's repeated logical marker/owner
+observations into ranked representatives of that same restorable parent. Keep
+distinct logical marker identities and owners, exact selected state/position refs,
+every oracle event and coverage fact, and deterministic rarity/novelty scoring.
+The shared rank conversion, selection-count decay, capacity pruning, entropy,
+candidate admission, publication and snapshot/replay validation remain unchanged.
+Product proposal normalization is shared by both frontier backends; do not change
+Campaign decisions or invent a second selection policy.
+
+The user explicitly selected "Authorize attempt 47" after the read-only diagnosis.
+This is one additional cohesive owner-local correction and verification, not
+authority for extra rounds, wider timeouts, depth relabeling, sibling/host changes,
+unrelated compatibility repairs or readiness promotion. The native marker and
+Campaign parity contracts remain required. Run the actual unchanged campaigns
+and replay every retained safety finding whose parent depth is at least three;
+do not substitute new probes for the selected historical finding.
+
 ## Risks
 
 - Overlay size and restore cost grow with lineage depth. Validation records overlay page counts per depth for the Raft and redb workloads.

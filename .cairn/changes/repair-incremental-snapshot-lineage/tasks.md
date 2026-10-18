@@ -284,3 +284,24 @@ criterion. Old native/Nix/matrix failures and incomplete historical artifacts ar
 not current-source passes. Historical receipts remain byte-identical. No whole
 campaign/release checkbox, lifecycle sync or archive is closed by this delivery.
 
+## Authorized focused attempt47
+
+The explicit "Authorize attempt 47" selection permits one owner-local frontier
+proposal/diversity correction and its verification, extending the ceiling to47.
+The separate `production-readiness-attempt47-20261018/attempts.ncl` ledger preserves
+the original criteria and every earlier receipt. Logical-marker representatives
+must retain all observed events, exact selected context and existing shared
+rank/admission/publication semantics. This note is authorization, not a gate pass.
+
+- [x] [depends:snapshot-lineage-shell] Record focused attempt47 authority and the read-only depth-retention diagnosis before implementation.
+- [x] [depends:snapshot-lineage-shell] Correct logical-marker proposal multiplicity with consumer regression evidence and unchanged Campaign parity.
+- [ ] [depends:snapshot-lineage-campaign] Complete unchanged-bound depth-four campaigns, record overlays and replay every retained deep safety finding.
+- [ ] [depends:snapshot-lineage-campaign] Retain exact-source Cargo/watchdog and Nickel/BLAKE3 evidence; preserve independent readiness blockers and publish verified changes without force.
+
+The bounded-frontier regression failed before the correction: Campaign selected
+depth1 instead of the distinct depth2 child. After normalization, both new
+regressions and the complete explorer library passed (418 passed, zero failed,
+one ignored), including the existing Campaign/legacy parity corpus. Distinct
+logical keys and owners retain their own exact context; every observed hit still
+contributes to rarity decay. Runtime campaigns and release criteria remain open.
+

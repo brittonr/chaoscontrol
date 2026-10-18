@@ -93,7 +93,7 @@ pub(crate) struct RoundContext {
     pub(crate) mode: RoundMode,
 }
 
-/// One frontier-entry proposal of a retained branch (one per marker, else one).
+/// One frontier proposal per logical marker/owner of a retained branch, else one.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EntryProposal {
     /// Legacy frontier score at proposal time.

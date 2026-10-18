@@ -1025,7 +1025,8 @@ impl Explorer {
     }
 
     // r[impl chaoscontrol.campaign_policy.product_authority]
-    /// Frontier-entry proposals of one branch result (one per marker, else one).
+    // r[impl chaoscontrol.event_branching.frontier_entry]
+    /// Frontier proposals of one branch (one per logical marker/owner, else one).
     ///
     /// Scores against the current global coverage and advances marker hit
     /// counts, so it runs at branch time, exactly where the legacy loop pushed.
@@ -1045,17 +1046,24 @@ impl Explorer {
                 marker: None,
             }]);
         }
-        Ok(markers
-            .into_iter()
-            .map(|observation| {
-                let prior_hits =
-                    update_hit_counts(&mut self.marker_hits, &observation.marker.identity);
-                EntryProposal {
+        let mut seen = BTreeSet::new();
+        let mut proposals = Vec::new();
+        for observation in &markers {
+            let prior_hits = update_hit_counts(&mut self.marker_hits, &observation.marker.identity);
+            // Every proposal restores the same completed branch snapshot. The
+            // first observation has the highest novelty/rarity score; later
+            // instances still count as hits, but must not crowd out new parents.
+            if seen.insert((
+                observation.marker.identity.as_str(),
+                observation.marker.owner.as_str(),
+            )) {
+                proposals.push(EntryProposal {
                     score: marker_score(base_score, prior_hits),
-                    marker: Some(frontier_metadata(&observation, result.total_ticks)),
-                }
-            })
-            .collect())
+                    marker: Some(frontier_metadata(observation, result.total_ticks)),
+                });
+            }
+        }
+        Ok(proposals)
     }
 
     fn should_retain_branch(
@@ -3529,6 +3537,243 @@ mod tests {
         assert_eq!(
             proposals[0].marker.as_ref().unwrap().marker_identity,
             identity
+        );
+    }
+
+    // r[verify chaoscontrol.event_branching.frontier_entry]
+    #[test]
+    fn repeated_markers_do_not_evict_a_distinct_deeper_snapshot() {
+        use chaoscontrol_protocol::branch_marker::{BranchMarker, BRANCH_MARKER_EVENT};
+
+        const OLD_EDGES: usize = 64;
+        const CHILD_EDGES: usize = OLD_EDGES / 2;
+        const REPEATED_OBSERVATIONS: usize = 16;
+        for policy in [FrontierPolicy::Campaign, FrontierPolicy::LegacyDiagnostic] {
+            let output = tempfile::tempdir().unwrap();
+            let mut explorer = Explorer::new(ExplorerConfig {
+                num_vms: 1,
+                frontier_policy: policy,
+                output_dir: Some(output.path().display().to_string()),
+                max_frontier: 2,
+                branch_factor: 1,
+                max_rounds: 3,
+                ..ExplorerConfig::default()
+            });
+            explorer.open_frontier(output.path()).unwrap();
+            let snapshot = |tick| SimulationSnapshot {
+                tick,
+                vm_snapshots: Vec::new(),
+                network_state: chaoscontrol_vmm::controller::NetworkFabric::new(
+                    1,
+                    TEST_VARIANT_SEED,
+                ),
+                fault_engine_snapshot: chaoscontrol_fault::engine::FaultEngine::new(
+                    Default::default(),
+                )
+                .snapshot(),
+                vcpu_stall_until: Vec::new(),
+                clock_freeze: Vec::new(),
+                clock_jitter_bound: Vec::new(),
+                memory_pressure: Vec::new(),
+                process_fault_attempt: Vec::new(),
+                pending_process_observations: Default::default(),
+                fault_operation_sequence: 0,
+            };
+            let mut root = branch_result(OracleReport::empty());
+            root.snapshot = Some(snapshot(TEST_MARKER_TICK));
+            explorer
+                .admit_frontier_root(root, FaultSchedule::new())
+                .unwrap();
+            for (round, edges, key, repetitions) in [
+                (0, OLD_EDGES, "old", REPEATED_OBSERVATIONS),
+                (1, CHILD_EDGES, "child", 1),
+            ] {
+                let plan = match explorer
+                    .frontier
+                    .backend()
+                    .unwrap()
+                    .begin_round(
+                        &mut explorer.rng,
+                        RoundContext {
+                            round,
+                            mode: RoundMode::FaultSchedule,
+                        },
+                    )
+                    .unwrap()
+                {
+                    RoundBegin::Planned(plan) => plan,
+                    RoundBegin::Stop(stop) => panic!("unexpected stop {stop:?}"),
+                };
+                let authorized = match explorer
+                    .frontier
+                    .backend()
+                    .unwrap()
+                    .authorize(plan)
+                    .unwrap()
+                {
+                    Authorization::Execute(round) => round,
+                    Authorization::Skipped(_) => panic!("parent disappeared"),
+                };
+                assert_eq!(authorized.selected().unwrap().depth, round as u32);
+                let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+                oracle.begin_run();
+                for occurrence in 0..repetitions {
+                    let marker = BranchMarker::new(
+                        "fixture",
+                        key,
+                        "guest-0",
+                        serde_json::json!({}),
+                        None,
+                        Some(format!("occurrence:{occurrence}")),
+                    )
+                    .unwrap();
+                    oracle
+                        .record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap())
+                        .unwrap();
+                }
+                oracle.end_run();
+                let mut result = branch_result(oracle.report());
+                result.total_ticks = TEST_MARKER_TICK + round + 1;
+                result.snapshot = Some(snapshot(result.total_ticks));
+                for edge in 0..edges {
+                    result.coverage.record_hit(edge);
+                }
+                let schedule = FaultSchedule::new();
+                let outcome = explorer
+                    .branch_outcome(
+                        BranchSlot::Variant(0),
+                        edges,
+                        &[],
+                        Some((&result, &schedule, round as u32 + 1)),
+                        true,
+                    )
+                    .unwrap();
+                explorer
+                    .frontier
+                    .backend()
+                    .unwrap()
+                    .finish_round(
+                        *authorized,
+                        &RoundObservation {
+                            branches: vec![outcome],
+                        },
+                    )
+                    .unwrap();
+            }
+            let plan = match explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .begin_round(
+                    &mut explorer.rng,
+                    RoundContext {
+                        round: 2,
+                        mode: RoundMode::FaultSchedule,
+                    },
+                )
+                .unwrap()
+            {
+                RoundBegin::Planned(plan) => plan,
+                RoundBegin::Stop(stop) => panic!("deeper parent unavailable: {stop:?}"),
+            };
+            let selected = match explorer
+                .frontier
+                .backend()
+                .unwrap()
+                .authorize(plan)
+                .unwrap()
+            {
+                Authorization::Execute(round) => round,
+                Authorization::Skipped(_) => panic!("deeper parent disappeared"),
+            };
+            let parent = selected.selected().unwrap();
+            assert_eq!(
+                parent.depth, 2,
+                "repeated aliases displaced the distinct child under {policy:?}"
+            );
+            assert_eq!(parent.snapshot.tick, TEST_MARKER_TICK + 2);
+            assert_eq!(
+                parent.marker.as_ref().unwrap().marker_identity,
+                chaoscontrol_protocol::branch_marker::marker_identity("fixture", "child")
+            );
+        }
+    }
+
+    // r[verify chaoscontrol.event_branching.frontier_entry]
+    #[test]
+    fn logical_marker_representatives_preserve_owners_and_best_context() {
+        use chaoscontrol_protocol::branch_marker::{BranchMarker, BRANCH_MARKER_EVENT};
+
+        let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+        oracle.begin_run();
+        for (key, owner, position) in [
+            ("repeated", "guest-0", "first"),
+            ("repeated", "guest-0", "later"),
+            ("repeated", "guest-1", "other-owner"),
+            ("distinct", "guest-0", "other-key"),
+        ] {
+            let marker = BranchMarker::new(
+                "fixture",
+                key,
+                owner,
+                serde_json::json!({}),
+                None,
+                Some(position.to_string()),
+            )
+            .unwrap();
+            oracle
+                .record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap())
+                .unwrap();
+        }
+        oracle.end_run();
+        let result = branch_result(oracle.report());
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let proposals = explorer.entry_proposals(&result, 0).unwrap();
+        let contexts = proposals
+            .iter()
+            .map(|proposal| {
+                let marker = proposal.marker.as_ref().unwrap();
+                crate::marker_branching::validate_parent_context(
+                    marker,
+                    &result.oracle_report,
+                    TEST_MARKER_TICK,
+                )
+                .unwrap();
+                (
+                    marker.owner.as_str(),
+                    marker.logical_position_ref.as_deref().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            contexts,
+            vec![
+                ("guest-0", "first"),
+                ("guest-1", "other-owner"),
+                ("guest-0", "other-key")
+            ]
+        );
+        assert!(proposals[0].score > proposals[1].score);
+        let mut next = chaoscontrol_fault::oracle::PropertyOracle::new();
+        next.begin_run();
+        let marker = BranchMarker::new(
+            "fixture",
+            "repeated",
+            "guest-0",
+            serde_json::json!({}),
+            None,
+            None,
+        )
+        .unwrap();
+        next.record_event(BRANCH_MARKER_EVENT, serde_json::to_value(marker).unwrap())
+            .unwrap();
+        next.end_run();
+        let later = explorer
+            .entry_proposals(&branch_result(next.report()), 0)
+            .unwrap();
+        assert!(
+            later[0].score < proposals[1].score,
+            "suppressed repeated observations must still contribute to rarity decay"
         );
     }
 

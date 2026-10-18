@@ -98,7 +98,7 @@ A single pass applies the same 234 controls in 1.01 seconds with equal recorded
 pre-states and final complete state. This is bounded diagnosis, not a production
 speedup or attribution of the whole campaign timeout.
 
-Attempt 46 will advance the existing validated `ControlSession` projection after
+Attempt 46 advances the existing validated `ControlSession` projection after
 each accepted publication using the existing `seal` validation and independent
 applied-state comparison. The next publication therefore starts at the accepted
 prefix instead of replaying every earlier publication in the staged segment.

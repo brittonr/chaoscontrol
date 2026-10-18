@@ -36,10 +36,15 @@ let Attempt = {
     {
       number = 46,
       correction = "Advance the existing validated ControlSession projection after each accepted staged publication, retaining independent state comparison and final segment sealing, so the next publication does not replay all earlier staged controls.",
-      status = 'planned,
+      status = 'passed,
       evidence = [
-        "The native lineage design records the accepted-prefix correction before implementation; the complete campaign/replay task remains pending.",
-        "The retained read-only diagnosis binds actual controls and full state comparisons; its single-pass timing is not a production fix or passing campaign verdict.",
+        "The existing native lineage design admitted the accepted-prefix correction before implementation. Clean ad7e892ad6838872432cc227cb1c88bb6f0ae303 retains independent apply/seal validation and every existing caller.",
+        "The staged-prefix/cold-replay regression failed before the repair and passed afterward; final exact-source workspace tests report2204 passed, zero failed and16 ignored. Denied-warning workspace Clippy and formatting passed.",
+        "Original600-second control and planted profiles completed ten rounds/twenty branches in245.729 and246.746 seconds with Accepted collision-safe catalogs. All three profiles retain twenty aligned per-VM overlay measurements, but their admitted depth reaches only3, not required4.",
+        "The deliberate deep probe completed in319.544 seconds and retained eight depth-three safety findings. Actual Rust checkpoint export admitted the complete inventories; all eight current findings produced snapshot_backed_reproduced with matching identities and valid retained parents.",
+        "The current real SI_TIMER watchdog proof passed poison enforcement, controller replacement, full retained-parent and immediate-recapture fidelity, strict memory/execution identities, every admitted assertion outcome, fault ledgers and rounds. Each continuation reports44 passing, zero failing and one unexercised site of45.",
+        "The Nickel receipt and BLAKE3 manifest retain source, commands, environments, built executables, immutable kernel/initrd copies, snapshots, assertions, faults, findings, replay verdicts and all prior failures without rewriting historical receipt bytes.",
+        "Passed describes this one focused publication-prefix correction, not production readiness. Depth-four campaign completion, selected original historical replay/retention,104 prior native requirement gaps, passing immutable Cairn integration, and fresh passing Nix/all-seven-row matrix verdicts remain mandatory. All46 authorized slots are consumed.",
       ],
     },
   ],

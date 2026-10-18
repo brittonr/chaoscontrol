@@ -8,13 +8,13 @@ distributed systems where reproducibility is essential.
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
 Production readiness remains blocked. The current
-[receipt](dogfood-results/production-readiness-extension-20261017/receipt.ncl)
-records passing Cargo/runtime checks, nonpassing native readiness, and a blocked
-five-of-seven KVM matrix. The
-[correction ledger](dogfood-results/production-readiness-extension-20261017/attempts.ncl)
-retains the authorized 35-attempt ceiling. See the
-[terminal evidence boundary](docs/snapshot-fidelity.md#authorized-terminal-extension)
-for the exact tested source, gate verdicts, and retained-artifact limits.
+[focused attempt46 receipt](dogfood-results/production-readiness-attempt46-20261018/receipt.ncl)
+separates completed bounded campaigns and deep-probe replays from the still-required
+depth-four campaign, historical replay/retention, native and release criteria.
+The [correction ledger](dogfood-results/production-readiness-attempt46-20261018/attempts.ncl)
+records the one additional authorized attempt and the resulting 46-attempt ceiling.
+See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-staged-prefix-correction-attempt46)
+for exact sources, measured limits and non-claims.
 
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.

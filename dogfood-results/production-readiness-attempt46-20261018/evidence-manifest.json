@@ -1,0 +1,2494 @@
+{
+  "schema": "chaoscontrol.attempt46-evidence-manifest.v1",
+  "identity_algorithm": "blake3",
+  "observation_records": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt46-20261018/observations.json",
+    "digest": "blake3:87091866d3ca409e9aa238ea0d7f81f29b6d708aa651603862cb2b711e60712a",
+    "bytes": 498908
+  },
+  "artifacts": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/execution.json",
+      "digest": "blake3:92a35077327c810ea4afca96509a72a4e31bb10accc049b0bb208d62ae93ef59",
+      "bytes": 11065
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/stdout.log",
+      "digest": "blake3:b880f027f0fc72e7cf603ca830c752b6766f5ed2ff0441a55724cbd5b657d2d8",
+      "bytes": 229
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/stderr.log",
+      "digest": "blake3:4d1f4aa7adf8b08a2a390bd0f7b4c24107c42604e14940f1179ac653d63e7479",
+      "bytes": 4429
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/execution.json",
+      "digest": "blake3:204d799bb93e373946975ef3658f306db01f1ccd5e8fab462096fa2eae401d8e",
+      "bytes": 11062
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/stdout.log",
+      "digest": "blake3:67a07a9203e1701b914ef9e96509b5ccd34bc7aee46f47bb979a3d0bcbb6f9f9",
+      "bytes": 374
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/stderr.log",
+      "digest": "blake3:32833d6e6a08a5eea20a96126a8f02aaf34ea62395f500423cd35c989125133a",
+      "bytes": 772
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/execution.json",
+      "digest": "blake3:fdfc321c06a196596f35d774269c4f520c07eee99d4d40f1beb61909c5567596",
+      "bytes": 11094
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/stdout.log",
+      "digest": "blake3:67a07a9203e1701b914ef9e96509b5ccd34bc7aee46f47bb979a3d0bcbb6f9f9",
+      "bytes": 374
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/stderr.log",
+      "digest": "blake3:d81299ca33bdd8c1b1ef501e38858e0d5ed422132b09556cc580fa073b456561",
+      "bytes": 62671
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/execution.json",
+      "digest": "blake3:7b2bf0a28d3d761021bbe6d1600dcbafcdcb7bf5e23a27e3d6371cc9bbd06723",
+      "bytes": 10920
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/stdout.log",
+      "digest": "blake3:c90ba68d815ef1ea74e56c6fd95c33489c4ff4e36a95a93583f2b574163146f2",
+      "bytes": 33990
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/stderr.log",
+      "digest": "blake3:f63fd06da2ed602503ca838009ade26043929bf7d76bb3d21cf70d3f444fd451",
+      "bytes": 354
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/execution.json",
+      "digest": "blake3:3a780a4a80dd4f2a39d3d8a2f5b745bd03be297956cdbdff10301698d134fbe1",
+      "bytes": 10904
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/stderr.log",
+      "digest": "blake3:0639b91bf50ada679d1de966b21addac6418c781fc43389f79aae0316d873e0a",
+      "bytes": 4161
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/execution.json",
+      "digest": "blake3:09687bcc29662d19e5c66f7442179fb6530e2146b168b59c9a64b0915839d7ff",
+      "bytes": 10805
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/stdout.log",
+      "digest": "blake3:2a861ea314e79105db4b52391ec7bd029d140c0b978aeeabf2175159eb2de5b5",
+      "bytes": 4370170
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/stderr.log",
+      "digest": "blake3:3aa2ad363e8359d9708735f635f5209328494dada844058026528920c24eeab9",
+      "bytes": 34934
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/execution.json",
+      "digest": "blake3:5627198fc96d98247ea463881513771c4cfc62d9016b0290afee36922391e3d7",
+      "bytes": 10834
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/stderr.log",
+      "digest": "blake3:770d72b5b948daff5837a34c99b3577b75947a52143bd628ed5aac9e34efa5ca",
+      "bytes": 8048
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/execution.json",
+      "digest": "blake3:c38edc6f70cc77021d4280ac3dfb102b41c9968f993ccb309249ecf91995e757",
+      "bytes": 10722
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/stdout.log",
+      "digest": "blake3:cb76ccfbf91580cbce9464a735e42d70eda71d0d4f9fae2d36d3898db96125ce",
+      "bytes": 631
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/execution.json",
+      "digest": "blake3:0fc2a3d79a4c8597cd2608ea94cf675f1023eaec547e461b28c26e67230b53fe",
+      "bytes": 10740
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/execution.json",
+      "digest": "blake3:cbc37a505d26f82b9bacc1655cc26dffd37cc2d5cb16158b50d9fd0ef3a082b8",
+      "bytes": 10919
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/stderr.log",
+      "digest": "blake3:80e7053f122e85913e29c54dbe04d9e377efb60a710d07f4d35f39a92d795d19",
+      "bytes": 62
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/execution.json",
+      "digest": "blake3:e17baac7f7a372c74e1b1a839302ad1f5204d81009df59fb39eb6cc630780085",
+      "bytes": 11013
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/execution.json",
+      "digest": "blake3:8e2b4d4b60bb1af645cc7e0f15bd4c22faedf7e3ead0fc367cd5f1f051c884f9",
+      "bytes": 10821
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/stdout.log",
+      "digest": "blake3:471b043792c68667587c8826bc256ac05f0142d114dc8af781d291bfbb768e7d",
+      "bytes": 4370169
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/stderr.log",
+      "digest": "blake3:9631e54166a4d44151ea1e875ac75e2d0c061b75999d527f341c118479feccbe",
+      "bytes": 27475
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/execution.json",
+      "digest": "blake3:de3f2f9529587207895904b16ed5872e0f2b26de5c98df1618bebf9ebfd38513",
+      "bytes": 10849
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/stderr.log",
+      "digest": "blake3:c288dc5578f5b9f921d5a5253e82e33d9cbeec7ac027f27062c80ced58b2b826",
+      "bytes": 201
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/execution.json",
+      "digest": "blake3:d824aa0c9f172b682fd1dc87ea51b0d329c02408825acb22232da9da26d9ef3b",
+      "bytes": 10735
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/execution.json",
+      "digest": "blake3:b85ce30c9f959cf42129c293671ea46bb54470ac705d913f1de27b44ff5b798f",
+      "bytes": 11509
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/stdout.log",
+      "digest": "blake3:b08e786507b7fe8513d329e3d151828146363560128ae8ec40bcfeb1dbab24a0",
+      "bytes": 186332
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/stderr.log",
+      "digest": "blake3:8cd4267e6f5ebc43bab92e51948066a751485b1eb0d277bc756cc200752eb019",
+      "bytes": 607
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/execution.json",
+      "digest": "blake3:600051e099167c84a5f21b27608e46a8b77d07f316b89639787dd1a386e30430",
+      "bytes": 10753
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/stdout.log",
+      "digest": "blake3:c5c738caba29c08abb6c25d0843beaf01eb3d7f60c828f10cfed0eb63114c5b4",
+      "bytes": 24899
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/execution.json",
+      "digest": "blake3:2cbe2b87e25ceeeacfbebc1904263032ba7af9b43a02d64dd3fa491ecaaf3e34",
+      "bytes": 1267
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/stdout.log",
+      "digest": "blake3:d92204f1ac5c8f555d22c3d85969b9072cf58257fd62b8853ef1a26af738f4b7",
+      "bytes": 157
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/execution.json",
+      "digest": "blake3:a1bf28af9cf440dcfb5eb5757e92517a89ab22716ae308613fe57be50ad793fb",
+      "bytes": 1377
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/stdout.log",
+      "digest": "blake3:97d7c38266cf53e4c1f4620f95aa63146a9ff27f90c9d2fe656a9808f2bbd332",
+      "bytes": 189
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/execution.json",
+      "digest": "blake3:c9c0d0fce7c98362b0f96dc3ae57093db45ed2e0dd91a24c91d9ff0ca5669285",
+      "bytes": 12256
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/stdout.log",
+      "digest": "blake3:b14ddc5f92ff157ee4e904512e919bc5773797283281b2f524ab3460d5f26f33",
+      "bytes": 443558
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/stderr.log",
+      "digest": "blake3:b3534cdc282736c49ec19c7f4069fc57b634222a8c5d0e70ee318a198da4172c",
+      "bytes": 27062
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/execution.json",
+      "digest": "blake3:1a49acdb3a5b1ba04faba6aa3ff65ce15d7e0be518b9a05aee2b8eac09c5a34d",
+      "bytes": 1761
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/stderr.log",
+      "digest": "blake3:dbf20ccdca376c202d918ae16a6457619e8ef1f8a9b9d0014bfaecca92721f45",
+      "bytes": 169
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/checkpoint.json",
+      "digest": "blake3:dca086074d5d00497bfd50085daa6821934f4898ab02931b4cde1ea3caf55605",
+      "bytes": 771848
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/execution.json",
+      "digest": "blake3:34c5993dc21da3935cf4d2591f18608171aa8fff3c559c5c9db05b4eb66365a7",
+      "bytes": 12269
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/stdout.log",
+      "digest": "blake3:2a4e4d5163c57ef0d7a80deb8ddccb01c5d410bc3d0bbbb53a6d6694f475a9b9",
+      "bytes": 445161
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/stderr.log",
+      "digest": "blake3:c19a0643ab5ad1808a473a669aa3b21e14ac7da8bf65a6eb0bca5d58f291e51e",
+      "bytes": 27076
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/execution.json",
+      "digest": "blake3:416ec8524f77be6e21b37a93bcebf17c21da176363349067f6805c894393edcc",
+      "bytes": 1761
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/stderr.log",
+      "digest": "blake3:66334298fa2b2234d00457072348db3973915e50ac36db540173ba163600b4a1",
+      "bytes": 169
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/checkpoint.json",
+      "digest": "blake3:2f5ad26cdc2f1afa50f19c81c41315bb84a8c263cd3b4d2c2a0d46bbead414b4",
+      "bytes": 769903
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/execution.json",
+      "digest": "blake3:c5e66e59d9e1ea4884032f996788e428a45338223c39847282737933e62fb82e",
+      "bytes": 12374
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/stdout.log",
+      "digest": "blake3:3b91495170dc069728902839e3d2e0722859aafdae6446b0458a196a40644e6b",
+      "bytes": 264097
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/stderr.log",
+      "digest": "blake3:e4f90c4f61217a02e2992e8637cdfe1dbb055a24db8c1349dcfd8fc397be9614",
+      "bytes": 29526
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/execution.json",
+      "digest": "blake3:7e022abd9182dc5a0393aef119c11f6d71be1c6caedc6038d11b5b6b282053f9",
+      "bytes": 1776
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/stderr.log",
+      "digest": "blake3:dc73092a2f6ce01ebb2662dbe2d61ac1744a0319681d51c58a6512522ca88232",
+      "bytes": 220
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/checkpoint.json",
+      "digest": "blake3:a4a617016a10e2870d6e8c36b5dd508b173e334b8d7a3d959cbd7fa4268d1534",
+      "bytes": 806389
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/execution.json",
+      "digest": "blake3:ee09e76a95870e6eccaf8b8ee517bf9834dbb66920ccc736b7976664e08384ee",
+      "bytes": 2647
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/stdout.log",
+      "digest": "blake3:969dd211359e90ccb2bd16059a6f859472b0192630b59d4660a400297def6269",
+      "bytes": 8026
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/stderr.log",
+      "digest": "blake3:13d6b6e7347009c1801f1c58c51ea3cb5816dcefef8502852d6e510e6b8adf7a",
+      "bytes": 12004
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_0.json",
+      "digest": "blake3:9e0b580e9b6e89af1734201b783c586e4dfb3cd1f08610b3eda4f482557011d9",
+      "bytes": 4947
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/snapshots/b2271fe97562952b3fd20e5e3783cbdedf2ef81d2ae5f9e24dbee9ddc2806c30.snapshot.bin",
+      "digest": "blake3:81d7e45af91a2fba37166d048fb703ec2317fa3e4325ee97afa7471e3f101ca6",
+      "bytes": 58442060
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug0-verdict.json",
+      "digest": "blake3:fff513030464aa2dcc01bfd606841a14a945d99f803e04c8eb357f682538479f",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/execution.json",
+      "digest": "blake3:3c2f3ed03355019f6025f0d7257d9134546c0e78c380de63e1f0d53b54533b27",
+      "bytes": 2647
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/stderr.log",
+      "digest": "blake3:41bfeab6e08e305297eb360d23bbbb59b914396d73dbba60a77958e7341f0345",
+      "bytes": 11829
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_1.json",
+      "digest": "blake3:6d4fa111f03fca0bb0ec0663ccaeb64eedc341267f48ae6bcec9423043957962",
+      "bytes": 4412
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug1-verdict.json",
+      "digest": "blake3:e28e57b45d1946e24d408f56f0285047faffff6655b5d38fea6b945a1a1e6b87",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/execution.json",
+      "digest": "blake3:b8de3eb1b32cecc4e0951d10642c1f4a78f449a948c999e35e9a00294080d57e",
+      "bytes": 2648
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/stderr.log",
+      "digest": "blake3:85180d1294fea0fe068a321e606b2ed6ca970f50905fed6807992e174189a322",
+      "bytes": 11916
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_2.json",
+      "digest": "blake3:4076f7ed03ffd1d1612e834be37b9b1fcf92930cfed6baae91641284cfdfebc6",
+      "bytes": 4615
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug3-verdict.json",
+      "digest": "blake3:9a27ed0d1c35a32362b3696d62ecd88ad371b48ae297be929243d0168b815d11",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/execution.json",
+      "digest": "blake3:f1d7deb23b6a90e5596313364a9d6e470804f8cd50dafbf48ece5fcb1a311677",
+      "bytes": 2648
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/stderr.log",
+      "digest": "blake3:fc3cdc6e34556b8b4cb29e4bc9e231a5b018a493fcf7edbfed781c8fe9a4b34b",
+      "bytes": 11894
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_3.json",
+      "digest": "blake3:4e53cb8c96e3d3ae638c23369faee04561d94c5adcf1fc6d6bd9874712da9a20",
+      "bytes": 4579
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug4-verdict.json",
+      "digest": "blake3:63e3a70dfeb08ff4b86ade62a15e899cf3ab53a11fa33c9ec0bd3506792d5d5f",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/execution.json",
+      "digest": "blake3:9d2571f0b15ed23bdcef14d62cc2c2f928d2c569bb40b30cfb93277a8c5571fb",
+      "bytes": 2648
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/stderr.log",
+      "digest": "blake3:4b14083445fd32a65b3ca5b37c2307d2b505de2840f68686ad13b3cf11c75ee9",
+      "bytes": 11981
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_4.json",
+      "digest": "blake3:2fa374a7745f10dda32ddf8d65bced2f5ebb3c48163a3c871e2abea694780cf9",
+      "bytes": 4808
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug5-verdict.json",
+      "digest": "blake3:4aaa9dff51fd661ad1596304b40a733e5501b65f8e5e44d1d6bf041177c4d5b4",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/execution.json",
+      "digest": "blake3:70de5a1dffb6006e21e4dfbe26c85127323771b246d5be6e1b81e9146c6f637c",
+      "bytes": 2648
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/stderr.log",
+      "digest": "blake3:b6ac8256d3f4fdc36d18c91d04c76094606bc54626bbbf38f8563928b24dcce6",
+      "bytes": 12001
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_5.json",
+      "digest": "blake3:a4df9c50df6a70b15caedc06b601998afdb680697f682ca4183cd58ce0575f79",
+      "bytes": 4929
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug6-verdict.json",
+      "digest": "blake3:abac56e87881ebfefa23e3ffe1f094f3d8ab53ca4c4fb080f1b8828290000e95",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/execution.json",
+      "digest": "blake3:427cb989da6f57dd78f53799e30bb7f0c7bc3ae45bfdbde640d8679d2ba27d5e",
+      "bytes": 2648
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/stderr.log",
+      "digest": "blake3:24b2234d3220e10d7874256d7c0a8490736f72df443efc3752b618c65a300973",
+      "bytes": 11963
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_6.json",
+      "digest": "blake3:424c5eb6d8742b94abc7b79f9d23d2b2ad464cb97dcde69df74aa3e67fb1b895",
+      "bytes": 4776
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug7-verdict.json",
+      "digest": "blake3:6c26096347dd7bf6c57ffb6041ebc5522273d94988b755935d57e2ca7c0d1fcf",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/execution.json",
+      "digest": "blake3:9d6995c678f03f6ab40118a43e2a45284914fd48e942d16f9a10d61c7d9b8f7a",
+      "bytes": 2647
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/stdout.log",
+      "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "bytes": 7816
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/stderr.log",
+      "digest": "blake3:a57b35354c1966945e3f4c55bc6c623ccea8018415666b4ec1222b6b602b02fb",
+      "bytes": 11890
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-checkpoint-validation-export/bug_7.json",
+      "digest": "blake3:85d207cee49cea634570d07aec1087bbffbbb13ebcc597601b4ca689b9d8449f",
+      "bytes": 4574
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-deep-replay-bug2-verdict.json",
+      "digest": "blake3:9d5eb561658cbf2fae6d72c30a1c457e3fb921c4b58939addbad6339cf80a727",
+      "bytes": 5966
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/runtime-proof.json",
+      "digest": "blake3:4bfee718f46f7752ad4ec329c7132157e5db53716e5e4abc1b763a250a08bd94",
+      "bytes": 4534277
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-native/execution.json",
+      "digest": "blake3:03eb4ae42af482d1d2abc16aff1a8eca0501165104facd36651b0665bc31aa38",
+      "bytes": 11328
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-nix/execution.json",
+      "digest": "blake3:131d495e0232a25bf6d7d6925f6b37efe0b3e9f43d43fc23e1306e9cc27bcc67",
+      "bytes": 10961
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/clean-kvm-release/execution.json",
+      "digest": "blake3:9b18ecaf3bc5039dc453c0ca1886800cb93656aea35bd3668d10c490812f8249",
+      "bytes": 11573
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.ncl",
+      "digest": "blake3:47752fde317f85812f6581f52d9ada08be38a4ff9386a6ebdeff697b21aa0632",
+      "bytes": 4770
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/receipt.ncl",
+      "digest": "blake3:afc35d4d867d5b3239dbd5126437cc2483218dd0142d3c9b899aa39315f478a0",
+      "bytes": 5168
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl",
+      "digest": "blake3:a396878864208a8374f7d74113989228b660f4f8ce62d1bb2e0d74272085f1b2",
+      "bytes": 10959
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl",
+      "digest": "blake3:3657c168a14c31bf55cdda47cecb2052ddfdd74818844bff720f427ff35af990",
+      "bytes": 10228
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-cairn-20261017/receipt.ncl",
+      "digest": "blake3:96eed9bc8cad257abc1edffb90d4247d62384ed22c5e7be44570a512cb1ac462",
+      "bytes": 6866
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-20261015/receipt.ncl",
+      "digest": "blake3:46297e89793a1ce19f9492df12f010a5b926606c7e077b3b01ccdf77e35f0ea1",
+      "bytes": 15971
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-followup-20261016/receipt.ncl",
+      "digest": "blake3:7e6dac1ad04481f544d0acef7cab357a59f608df754318163af9833071792252",
+      "bytes": 10322
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-extension-20261017/receipt.ncl",
+      "digest": "blake3:1243163cb15b0b832f06f64a7695e1b3911dae32b5d2fe646d848d387b826950",
+      "bytes": 10334
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-closure-20261015/receipt.ncl",
+      "digest": "blake3:eda66fe8ecb27d9b5b3191900a96ce8be0b99c60455e511d78e07e21acb434a0",
+      "bytes": 8274
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/collect-evidence.py",
+      "digest": "blake3:7f3475c26bdd6bbb74c423c961f1e00c8b9c13b2a6f767756fda2f3e087c289e",
+      "bytes": 29940
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/environment.json",
+      "digest": "blake3:9437e79cd2b01778e60886e8e95132be64911ff369c6faf24213b09b10d5bbbd",
+      "bytes": 5385
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/environment.json",
+      "digest": "blake3:43931c508357ac81379888722bf49f519cfa3ba2252aedf1a232b960b74b74ac",
+      "bytes": 5423
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/helper-sources.json",
+      "digest": "blake3:c4f2f6f6081e1b2ceb6857fec8e6fedcb18543bd6f7e01da4a1ae6a854071369",
+      "bytes": 54197
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retained-inputs.json",
+      "digest": "blake3:2684c07d794ab2b57896068740a824426d94fa39d3a645eb747b25064296998f",
+      "bytes": 2935
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/queue-setup-failure.json",
+      "digest": "blake3:bf84111d57526896d262eca9e779959d17b25b87580eae724a75f6861a611ee3",
+      "bytes": 796
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/pre-format-queue-transition.json",
+      "digest": "blake3:bd3b2df44268b9b79a84d33c7fda6ce5a0e75263e8c4e2adcee332cd5fc2d3f0",
+      "bytes": 6693
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/historical-receipt-baseline.json",
+      "digest": "blake3:47c68e5384c29e11dbdb7d383ef2ff6104cd484c0045929ed5b5429cfabd2521",
+      "bytes": 2620
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/implementation-source.tar.gz",
+      "digest": "blake3:59bf7e3e0e6398cb9f6466416e70d2ac7c0bd1735236a0808756fb4abee8dd59",
+      "bytes": 757555062
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/implementation-source.tar.gz",
+      "digest": "blake3:4524544854c915af8c1d165c934877787564f536cd5fe36d25217d392dc10da2",
+      "bytes": 755958355
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-executables/release-chaoscontrol-explore",
+      "digest": "blake3:094e312cfd247098bc3fc08b761e3d15b579461f9c0c40a22378c28691dd707a",
+      "bytes": 16639512
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-executables/debug-examples-raft_lineage_proof",
+      "digest": "blake3:b8bb4e1377074a1fb67feeb9b2e4d498a84fd5f90ebcdaf11f8ce16011f4ec6f",
+      "bytes": 35048760
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/campaign-command-contracts.json",
+      "digest": "blake3:02494b6dce39e041abd848e19a71847ff5fd2411097b33bdc9d507f63bc203e5",
+      "bytes": 9644
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-replay-inventory.json",
+      "digest": "blake3:f7fa9c76360194a879f31c5eafe6f78368f687b461c952553b56fe258a254316",
+      "bytes": 6675
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/session.rs",
+      "digest": "blake3:57519faed9f8081fd6982154bb546a60216ceb7ec755436cf5f3578ae4d20a9a",
+      "bytes": 9124
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final-source/crates/chaoscontrol-explore/src/explorer/frontier_backend/tests.rs",
+      "digest": "blake3:6de5283770fe931730b7eaa97d892f6f7613428a3d1bed06be75ddf991a31122",
+      "bytes": 51694
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/observations.json",
+      "digest": "blake3:3c43509936fdfc172107cab73b33afe1e7fd1845f5f3a14b0c7669dc95b92c4c",
+      "bytes": 1381154
+    },
+    {
+      "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+      "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "bytes": 410793408
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/campaign-kernel",
+      "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "bytes": 410793408
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/execution.json",
+      "digest": "blake3:df136c8901c54ec3ac946b2d3c59727abefb1826772d797342565e22ca115cf3",
+      "bytes": 1399
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/nix/store/q48ll0ar6fxw4r562yyral95ha6glsad-linux-6.19-dev/vmlinux",
+      "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "bytes": 410793408
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/watchdog-kernel",
+      "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "bytes": 410793408
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/execution.json",
+      "digest": "blake3:727fe555e5c1554225bd00e104387624145d48a84104f547f28ca2024ac2b76c",
+      "bytes": 1387
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/corrected-cohort/immutable-inputs/current-initrd-raft",
+      "digest": "blake3:7d0aad39b3f2a1c3b6152260b244e7f2ba9c060196481fc67e01dd53b83d7f21",
+      "bytes": 477091
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/raft-initrd",
+      "digest": "blake3:7d0aad39b3f2a1c3b6152260b244e7f2ba9c060196481fc67e01dd53b83d7f21",
+      "bytes": 477091
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/execution.json",
+      "digest": "blake3:19b9e4d29a1d2566737fc83d513fe2b68b1266222bbc4d6fb34ad2498474e5f9",
+      "bytes": 1461
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build/debug/examples/raft_lineage_proof",
+      "digest": "blake3:b8bb4e1377074a1fb67feeb9b2e4d498a84fd5f90ebcdaf11f8ce16011f4ec6f",
+      "bytes": 35048760
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/execution.json",
+      "digest": "blake3:1b7db4a5b52af9ba4943155bd84c8dcd0c9596a136940d72bccbef3e77c1cf0c",
+      "bytes": 1496
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/assertions.json",
+      "digest": "blake3:64907b5de890fa2291f51b3fe0c4c8407edd734b23abddf2b375fd544808c4fb",
+      "bytes": 73446
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/branch-marker-coverage.json",
+      "digest": "blake3:567fbac9f04201c50087c13c9c59a48033ef0430f8478358bde1d40a032fb4fc",
+      "bytes": 226
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/LOCK",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:16b299129f4382f83d6f8a04bdf4c2d417150039fecb369efe122195aa195a26",
+      "bytes": 6187
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:a39a1f03b2abdc3a4290deb3a229e4852d1849edc2aa5c106fb9b68d9fdf2204",
+      "bytes": 3417
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:bd1db0f6a242a1cba4015d7d874ec8c2d9fbcbe8f5c513263ccfb6ea3e4ad90d",
+      "bytes": 207072
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:1a2dfbaa80cee9e5faf05b4bc28f5a71f4a5da2bbb9b62335f67243fe051d7ef",
+      "bytes": 3395
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000004.cbor",
+      "digest": "blake3:31a7d0e1e3701d071ca6b2fcc564c39ba85c151ca56c6fb36859b9c7cfe4ceff",
+      "bytes": 398217
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000005.cbor",
+      "digest": "blake3:c0b81ac1427fa2c5cc091c03072806770a60aa9ae755f97757c871ef82c6210b",
+      "bytes": 3408
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000006.cbor",
+      "digest": "blake3:e3db031bda1e918f5fbf91e274c26708ef3a933ac5d6946d45920770519f4cbf",
+      "bytes": 567027
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000007.cbor",
+      "digest": "blake3:79e4534eeb6eab4cd5ea0bbacf884a553d0a78cb5be1af25daa8bed342c72381",
+      "bytes": 3403
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000008.cbor",
+      "digest": "blake3:80a533a297faf5aaee705df2e9cabe6a88d9b951bb1d503e319b47da63c7cf75",
+      "bytes": 297593
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000009.cbor",
+      "digest": "blake3:a3addacd044503e37c72bb775809a1cacdaca1b3508e47ca01661f6841368853",
+      "bytes": 3416
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000010.cbor",
+      "digest": "blake3:f393e055771524a0f67c603ad80e5fb6a7a84823f339e0d4d7b00cded2452880",
+      "bytes": 566159
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000011.cbor",
+      "digest": "blake3:9c233433ece109cee1d9ad0a725875ae40491310cd689ae9d51539eabcd63f77",
+      "bytes": 3404
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000012.cbor",
+      "digest": "blake3:2e8402b57df61897ea6f7a983766608684038887e5439be2cdf8d04c4784bf42",
+      "bytes": 297658
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000013.cbor",
+      "digest": "blake3:1ee9d607531b0c5c89751a712286b2832d2672a16581dc2fdf8fd2c2cbb8b392",
+      "bytes": 3411
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000014.cbor",
+      "digest": "blake3:c58e0404d233dd0ac345e18221ceaf9a21f0deaa686b404b10c963d81e77fe90",
+      "bytes": 566588
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000015.cbor",
+      "digest": "blake3:fa35e122e8a18896eb173c079430fd21145a795b3003870793b0e09721aed72b",
+      "bytes": 3410
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000016.cbor",
+      "digest": "blake3:c4941c84e7ea22f1092a1d4819350d2943fa54ca3f515499f93b7873df363e12",
+      "bytes": 298445
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000017.cbor",
+      "digest": "blake3:67b316a66739fa170787db2e32b3caf8130f9f5808c6d6257b5e514acfa96d89",
+      "bytes": 3410
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000018.cbor",
+      "digest": "blake3:47346486f783260b1e3ce2a2fe49cb1714420d61a1cb9ef742c7da45087a251b",
+      "bytes": 565314
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000019.cbor",
+      "digest": "blake3:17a0da5a054815f0c8fef7621636e9b53ec0abeec330d296dbe753e3921b3474",
+      "bytes": 3397
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000020.cbor",
+      "digest": "blake3:885921c9bb59ef795d05b18517c0347a8bfdc832716b38489f900012747a3683",
+      "bytes": 297393
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/campaign-journal/epoch-0000/seg-00000021.cbor",
+      "digest": "blake3:18c9dbcc06fb97f51c0c0c38eb384390d10613154bf50208c13714ac479dad53",
+      "bytes": 924
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/frontier-trace.jsonl",
+      "digest": "blake3:189a89f32eb83d742a413cadd278cb58aeecafe52c4375001734c1adc062c98a",
+      "bytes": 131236
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/control-artifacts/report.txt",
+      "digest": "blake3:04d3d25376a07ec93cac82572c298885f8d8fead3fbcfa6a995e415514137cdf",
+      "bytes": 8500
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/assertions.json",
+      "digest": "blake3:91b02d68f1af8d1f87393dcf480bb7b516d45fd765d34416c9362629e2cbffc0",
+      "bytes": 73446
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/branch-marker-coverage.json",
+      "digest": "blake3:567fbac9f04201c50087c13c9c59a48033ef0430f8478358bde1d40a032fb4fc",
+      "bytes": 226
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/LOCK",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:bb9ca55b6950795faeac383483d6b06a580df0e5e07f5920a94e0bfe909bd5e3",
+      "bytes": 6142
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:4cedd42a61f582463c3b28f89aa2a1dd2c858b4902758f7139093a8340315733",
+      "bytes": 3416
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:7e2c8c3ca8436b6a323e20b9134b4f926a914eef815acaaf8290c67f83ee1f3f",
+      "bytes": 205798
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:c97093f8c609fc5feaa004698bc5644bf28dd5993fc2625dcd4a9ffd0f48ff19",
+      "bytes": 3403
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000004.cbor",
+      "digest": "blake3:fd2d41a28b128b09de1f7eda58a770d7e688114c8aa6108d954f2f20629b8dfa",
+      "bytes": 397229
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000005.cbor",
+      "digest": "blake3:097562e454a54e0a1e08a5a66832e4ce7d2d162c1030552f4edfae451dc2ea9d",
+      "bytes": 3412
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000006.cbor",
+      "digest": "blake3:31c5d5fedbc6cb995852a31e754b8fb43f2c798c987ce44f90991bbf2b39e245",
+      "bytes": 566120
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000007.cbor",
+      "digest": "blake3:641830f3c9815a5dfe1145a0a3635481d8e18967c3f891fa794eca69a0a8a812",
+      "bytes": 3398
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000008.cbor",
+      "digest": "blake3:8f121c6e09a1d329bd19a5febc36eccf8e375e69af7a6324abcaea9b6a33aedf",
+      "bytes": 287146
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000009.cbor",
+      "digest": "blake3:6561908d00219304f98920c2d6cb3c041eb88f2795d0bb97c167ed88edcdbc13",
+      "bytes": 3410
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000010.cbor",
+      "digest": "blake3:ca6a7a4579e85e11cde637d8ae8d648d7378ddf8f3bc867592a6a0c2048aa2c5",
+      "bytes": 564867
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000011.cbor",
+      "digest": "blake3:1a7416a3988cd54975c3c43fc879ab6f0d30c35c91f69f185c7a4f66c4b971d8",
+      "bytes": 3390
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000012.cbor",
+      "digest": "blake3:a90626b901107a1664bfca44ab60b57bcb3804a1b75821fcd728a2eca2a14f0f",
+      "bytes": 286748
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000013.cbor",
+      "digest": "blake3:76afb8fc786bea0bc322ddd2244cadc1eaaceaa71a9be1634604f77d1f113d82",
+      "bytes": 3385
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000014.cbor",
+      "digest": "blake3:faffa84f9969fa797369574fb760922b51fd6700d180fac9f5cfee4e795efaf4",
+      "bytes": 565257
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000015.cbor",
+      "digest": "blake3:d7a64bfbe26e0bfec52e6da901fed46f295113e8f0f6b386467e7a1f973836e7",
+      "bytes": 3410
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000016.cbor",
+      "digest": "blake3:1cd04525f1e1281504aefa25d682410311d78ae2f9fbfb32e28d1482097522e2",
+      "bytes": 287148
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000017.cbor",
+      "digest": "blake3:01b316ef31ff58b7e6179588beb9c946fabce50044db233f4d1f9a098b16e6c1",
+      "bytes": 3378
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000018.cbor",
+      "digest": "blake3:a8b59fd050fdca2eee3b49c4dff005e1d67de454f54c0343831a9bb2797f8525",
+      "bytes": 565936
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000019.cbor",
+      "digest": "blake3:d3a9db93e248a2da3de1c6d71d8fc3e96a3b8fa113177c9b18f52125b40c67dd",
+      "bytes": 3401
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000020.cbor",
+      "digest": "blake3:346ff1ab9e32cc114fe3fbf4607c3c81516b92f2487d2e5718b6c23b03c8876d",
+      "bytes": 287325
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/campaign-journal/epoch-0000/seg-00000021.cbor",
+      "digest": "blake3:c72d7d60a2da7bd7b5ebc916740d2a62f3b125c5c5ee825a6285faa8c71cb04a",
+      "bytes": 926
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/frontier-trace.jsonl",
+      "digest": "blake3:e55cea6063e3e99341f3a0286f268b91cd79a0b5171562fcf1a6f70dc2108e3c",
+      "bytes": 130291
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/planted-artifacts/report.txt",
+      "digest": "blake3:616868a44fb94baf0a5818fd316d79de5f1ea1922d7b95c847bb9bcd117b50ed",
+      "bytes": 8499
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/assertions.json",
+      "digest": "blake3:2ffa0b6eaa7157943ebf34c39f84743f5dde5261a118729b30256e7ca5868acb",
+      "bytes": 73501
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/branch-marker-coverage.json",
+      "digest": "blake3:567fbac9f04201c50087c13c9c59a48033ef0430f8478358bde1d40a032fb4fc",
+      "bytes": 226
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_0.json",
+      "digest": "blake3:9e0b580e9b6e89af1734201b783c586e4dfb3cd1f08610b3eda4f482557011d9",
+      "bytes": 4947
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_1.json",
+      "digest": "blake3:6d4fa111f03fca0bb0ec0663ccaeb64eedc341267f48ae6bcec9423043957962",
+      "bytes": 4412
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_2.json",
+      "digest": "blake3:85d207cee49cea634570d07aec1087bbffbbb13ebcc597601b4ca689b9d8449f",
+      "bytes": 4574
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_3.json",
+      "digest": "blake3:4076f7ed03ffd1d1612e834be37b9b1fcf92930cfed6baae91641284cfdfebc6",
+      "bytes": 4615
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_4.json",
+      "digest": "blake3:4e53cb8c96e3d3ae638c23369faee04561d94c5adcf1fc6d6bd9874712da9a20",
+      "bytes": 4579
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_5.json",
+      "digest": "blake3:2fa374a7745f10dda32ddf8d65bced2f5ebb3c48163a3c871e2abea694780cf9",
+      "bytes": 4808
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_6.json",
+      "digest": "blake3:a4df9c50df6a70b15caedc06b601998afdb680697f682ca4183cd58ce0575f79",
+      "bytes": 4929
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/bug_7.json",
+      "digest": "blake3:424c5eb6d8742b94abc7b79f9d23d2b2ad464cb97dcde69df74aa3e67fb1b895",
+      "bytes": 4776
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/LOCK",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:67aa1b1b86837d904605a946cbb5ae2ab4cc77c6a5029cf5367b84dc827e1af6",
+      "bytes": 6149
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:5e8a423ec648692ab58f692aaf53edc0746352a3b0a1604e8de18fc8756eded5",
+      "bytes": 3384
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:3281c7d02b73a854f12ac5f08b4a41882d0750948bcaec1571b5924f703213e1",
+      "bytes": 206555
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:a1f10935f6607d9c83fa662938e7c7ec14883e3a590874fbacdfe1b911a52809",
+      "bytes": 3394
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000004.cbor",
+      "digest": "blake3:d1f56e989f1dda3b01736e195762a0ba7678d44684471a1ac480487dcccfd334",
+      "bytes": 375905
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000005.cbor",
+      "digest": "blake3:45d7ce3340ff976b82fe8fd1345b5c4547eb6e19a9ec5c406a243c05f9f84457",
+      "bytes": 3412
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000006.cbor",
+      "digest": "blake3:867fee1b602621bab11d7b98a741b827d7a57e9c048f1c5c30b89fd09ab2cfb8",
+      "bytes": 449008
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000007.cbor",
+      "digest": "blake3:b8f741f39f3e54d0eca658f06cd99f547803f561e7aef0c441b37f60341455cf",
+      "bytes": 3379
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000008.cbor",
+      "digest": "blake3:0067eff3f481a9077c455136ec4543d6410993c67c68b6538df413a442a7aa3c",
+      "bytes": 227050
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000009.cbor",
+      "digest": "blake3:fdfa7392992e50a1a99a68531fd20ce08d77ea39ee93985c19e77560b489b76a",
+      "bytes": 3411
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000010.cbor",
+      "digest": "blake3:bfd9eb5ddeb77dbf15dc43ef740d3370644a0de1060d540d3bd68369e9ee5de0",
+      "bytes": 449103
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000011.cbor",
+      "digest": "blake3:a14da244da424374fa20fc9dfd97ff0f944c1381675e9ded49747c6c708778f3",
+      "bytes": 3394
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000012.cbor",
+      "digest": "blake3:62c95b2ce745e9daffae98576f16b2e8f977ed2c4a46348d3f4eee4128188c29",
+      "bytes": 226805
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000013.cbor",
+      "digest": "blake3:7a5d2da9e01c1340bc5c6d8476fe4a421dd389d3ffc184988cabb4042c86cd90",
+      "bytes": 3417
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000014.cbor",
+      "digest": "blake3:7a7194729760a0a4bbaa089ab70fb213bf98360d617673547d92cbfdea88fa2d",
+      "bytes": 448832
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000015.cbor",
+      "digest": "blake3:78195c0b745bb922c6574217605eb5f6a7cf9c0d5ed552d62e67bf0c0a7b2fd8",
+      "bytes": 3419
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000016.cbor",
+      "digest": "blake3:40ec2ce882888998838322580d5549b79d22a2f466ccc994667077a3640fc5af",
+      "bytes": 226917
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000017.cbor",
+      "digest": "blake3:3a68f1aeb7f4640bcec233171d20cbc65d69b15789f348217c31e16b05e9f1a2",
+      "bytes": 3410
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000018.cbor",
+      "digest": "blake3:fe1a7b57bc31da6400cd44e1738bc3e8e56a218b1bb016fec089139aaa4c8f01",
+      "bytes": 450258
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000019.cbor",
+      "digest": "blake3:e959839b8586434a32f8a4b02e48613412f733e73cde4b0790d9a8e62fdc85b8",
+      "bytes": 3396
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000020.cbor",
+      "digest": "blake3:2e64fad19291d4c578ccaaf8003baf1b9168da904164cc016f7fb6f13b679454",
+      "bytes": 226847
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/campaign-journal/epoch-0000/seg-00000021.cbor",
+      "digest": "blake3:0e4b6c58c7fe27741c9e7c77533e5385956a64b7aa7e1f28e6196c52659173ed",
+      "bytes": 924
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/frontier-trace.jsonl",
+      "digest": "blake3:81b48631ff0f1cd634991689349e1dd842367dcc60ba02b27eec16080dda8425",
+      "bytes": 112531
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/report.txt",
+      "digest": "blake3:d07a6cc7a6218efcee5480f08afd9fbab389a6605eac95b7380f327ba92ea804",
+      "bytes": 11044
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/deep-probe-artifacts/snapshots/b2271fe97562952b3fd20e5e3783cbdedf2ef81d2ae5f9e24dbee9ddc2806c30.snapshot.bin",
+      "digest": "blake3:81d7e45af91a2fba37166d048fb703ec2317fa3e4325ee97afa7471e3f101ca6",
+      "bytes": 58442060
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/fault-ledger.json",
+      "digest": "blake3:5892e2eac051bbf31c28b86005958fafa94ac792253f2b670c503e2b197ddc10",
+      "bytes": 6623
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/oracle-reports.json",
+      "digest": "blake3:72bd678779ee1adbb764a858a6568b77d97797294797a14a080aa0b4e83e5a83",
+      "bytes": 1164715
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/rounds.json",
+      "digest": "blake3:657401da1985f5c9cd27a094233ee34cc7b5cf0c6a5a7f459de0093edba67166",
+      "bytes": 58502
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/runtime-proof.json",
+      "digest": "blake3:c8ce9f572fb624a7de876295ed4e1476c7e429d07356fec975b86447acb9160b",
+      "bytes": 1282248
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/vm_0.dlog",
+      "digest": "blake3:776fbe971b2438cdf8475a25dec91d132960d9f0759466adf317f98fae81ec64",
+      "bytes": 2592000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/vm_1.dlog",
+      "digest": "blake3:770a0799b2e225b45e956f1e8262d7abb0577b18c13af98c16238e4e179dfbfa",
+      "bytes": 3232000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/fresh-full/vm_2.dlog",
+      "digest": "blake3:033de114e713870415ef5571506f6ff9896b95f7b62b2d4e578952b1f78bd17b",
+      "bytes": 3232000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/fault-ledger.json",
+      "digest": "blake3:5892e2eac051bbf31c28b86005958fafa94ac792253f2b670c503e2b197ddc10",
+      "bytes": 6623
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/oracle-reports.json",
+      "digest": "blake3:72bd678779ee1adbb764a858a6568b77d97797294797a14a080aa0b4e83e5a83",
+      "bytes": 1164715
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/rounds.json",
+      "digest": "blake3:657401da1985f5c9cd27a094233ee34cc7b5cf0c6a5a7f459de0093edba67166",
+      "bytes": 58502
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/runtime-proof.json",
+      "digest": "blake3:553c17f20238f97274bb051d8f903d764f5bafbd8787fd35abba7edbdf9e1f82",
+      "bytes": 1282332
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/vm_0.dlog",
+      "digest": "blake3:776fbe971b2438cdf8475a25dec91d132960d9f0759466adf317f98fae81ec64",
+      "bytes": 2592000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/vm_1.dlog",
+      "digest": "blake3:770a0799b2e225b45e956f1e8262d7abb0577b18c13af98c16238e4e179dfbfa",
+      "bytes": 3232000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/long-lived-incremental/vm_2.dlog",
+      "digest": "blake3:033de114e713870415ef5571506f6ff9896b95f7b62b2d4e578952b1f78bd17b",
+      "bytes": 3232000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/profile.json",
+      "digest": "blake3:8d4a4cae55e6be0ab8a10a12be609e092aa54b66b1b12e523a6161774f5c6056",
+      "bytes": 1162
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/snapshots/9c443a4660c13d4e47897050f0e666a021e4d7311bde893b5af2a97f15ba327a.snapshot.bin",
+      "digest": "blake3:3d93e40a076eee0ff12feaca436e2bb18978d5be79d56dd4739e128872d0b9dc",
+      "bytes": 59082926
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/snapshots.json",
+      "digest": "blake3:122916342ff986cbbf9532e0da96146bc4548ac337303c723b3f43832d89050f",
+      "bytes": 1699
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-event.json",
+      "digest": "blake3:87d35028ac6240f00c5d363a4c985837315b6c0128a39b17c96b7f133eb70325",
+      "bytes": 3817
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-interrupted/vm_0.dlog",
+      "digest": "blake3:257e9cb46423a7aee8b0dc07f16df097ca7eb12b79a1d471771a7e1996aaa2cd",
+      "bytes": 128
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-interrupted/vm_1.dlog",
+      "digest": "blake3:e32785869c71d3f2e3e85b7082968a9fa83a6dcd549d59e3102171382cd9fb09",
+      "bytes": 128
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-interrupted/vm_2.dlog",
+      "digest": "blake3:b700c657b531e0212de94f2f32da01a283ee80fa0f63133e6629555d34e75d56",
+      "bytes": 128
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/fault-ledger.json",
+      "digest": "blake3:5892e2eac051bbf31c28b86005958fafa94ac792253f2b670c503e2b197ddc10",
+      "bytes": 6623
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/oracle-reports.json",
+      "digest": "blake3:72bd678779ee1adbb764a858a6568b77d97797294797a14a080aa0b4e83e5a83",
+      "bytes": 1164715
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/rounds.json",
+      "digest": "blake3:657401da1985f5c9cd27a094233ee34cc7b5cf0c6a5a7f459de0093edba67166",
+      "bytes": 58502
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/runtime-proof.json",
+      "digest": "blake3:029bb14a3c6116be8e8682cd70f84b555b0f776f7bee86c1a2dbf5f26c8995e2",
+      "bytes": 1282402
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/vm_0.dlog",
+      "digest": "blake3:776fbe971b2438cdf8475a25dec91d132960d9f0759466adf317f98fae81ec64",
+      "bytes": 2592000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/vm_1.dlog",
+      "digest": "blake3:770a0799b2e225b45e956f1e8262d7abb0577b18c13af98c16238e4e179dfbfa",
+      "bytes": 3232000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/cohort/lineage-artifacts/watchdog-replacement-incremental/vm_2.dlog",
+      "digest": "blake3:033de114e713870415ef5571506f6ff9896b95f7b62b2d4e578952b1f78bd17b",
+      "bytes": 3232000
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/execution.json",
+      "digest": "blake3:e94988930a8b6e898704a8edaaf68e24d786fdc4cd789064c9163edf0cb2fc81",
+      "bytes": 12232
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/stdout.log",
+      "digest": "blake3:14ceef27ac850996c734035899065d1bed14c0f5be2aad54b30ae519b35c58cf",
+      "bytes": 441492
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/stderr.log",
+      "digest": "blake3:59c40df882629abb6a794dd24271c423adcc4433468cca28d48618a454166742",
+      "bytes": 26965
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/evidence-manifest.json",
+      "digest": "blake3:c5682b09e8e89cabb23e87a310c59ae19366bce43ed6f5742ff057d8c9c3ebd0",
+      "bytes": 371348
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/execution.json",
+      "digest": "blake3:13ae023a58c7e3e30ae42b0e3ddab618333c62553f9c530b9d68114bb6c7e760",
+      "bytes": 1222
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/stdout.log",
+      "digest": "blake3:c07971323349cda2332202e2ce0d0c407b7aadfa835c933a853ed0f288f5b99d",
+      "bytes": 75585
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt46-20261018/observations.json",
+      "digest": "blake3:87091866d3ca409e9aa238ea0d7f81f29b6d708aa651603862cb2b711e60712a",
+      "bytes": 498908
+    }
+  ],
+  "integrity_observations": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/stdout.log",
+      "expected_digest": "blake3:b880f027f0fc72e7cf603ca830c752b6766f5ed2ff0441a55724cbd5b657d2d8",
+      "expected_bytes": 229,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/stdout.log",
+        "digest": "blake3:b880f027f0fc72e7cf603ca830c752b6766f5ed2ff0441a55724cbd5b657d2d8",
+        "bytes": 229
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/stderr.log",
+      "expected_digest": "blake3:4d1f4aa7adf8b08a2a390bd0f7b4c24107c42604e14940f1179ac653d63e7479",
+      "expected_bytes": 4429,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/session-baseline-recovered/stderr.log",
+        "digest": "blake3:4d1f4aa7adf8b08a2a390bd0f7b4c24107c42604e14940f1179ac653d63e7479",
+        "bytes": 4429
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/stdout.log",
+      "expected_digest": "blake3:67a07a9203e1701b914ef9e96509b5ccd34bc7aee46f47bb979a3d0bcbb6f9f9",
+      "expected_bytes": 374,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/stdout.log",
+        "digest": "blake3:67a07a9203e1701b914ef9e96509b5ccd34bc7aee46f47bb979a3d0bcbb6f9f9",
+        "bytes": 374
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/stderr.log",
+      "expected_digest": "blake3:32833d6e6a08a5eea20a96126a8f02aaf34ea62395f500423cd35c989125133a",
+      "expected_bytes": 772,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before/stderr.log",
+        "digest": "blake3:32833d6e6a08a5eea20a96126a8f02aaf34ea62395f500423cd35c989125133a",
+        "bytes": 772
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/stdout.log",
+      "expected_digest": "blake3:67a07a9203e1701b914ef9e96509b5ccd34bc7aee46f47bb979a3d0bcbb6f9f9",
+      "expected_bytes": 374,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/stdout.log",
+        "digest": "blake3:67a07a9203e1701b914ef9e96509b5ccd34bc7aee46f47bb979a3d0bcbb6f9f9",
+        "bytes": 374
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/stderr.log",
+      "expected_digest": "blake3:d81299ca33bdd8c1b1ef501e38858e0d5ed422132b09556cc580fa073b456561",
+      "expected_bytes": 62671,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-before-valid-revision/stderr.log",
+        "digest": "blake3:d81299ca33bdd8c1b1ef501e38858e0d5ed422132b09556cc580fa073b456561",
+        "bytes": 62671
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/stdout.log",
+      "expected_digest": "blake3:c90ba68d815ef1ea74e56c6fd95c33489c4ff4e36a95a93583f2b574163146f2",
+      "expected_bytes": 33990,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/stdout.log",
+        "digest": "blake3:c90ba68d815ef1ea74e56c6fd95c33489c4ff4e36a95a93583f2b574163146f2",
+        "bytes": 33990
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/stderr.log",
+      "expected_digest": "blake3:f63fd06da2ed602503ca838009ade26043929bf7d76bb3d21cf70d3f444fd451",
+      "expected_bytes": 354,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/staged-prefix-after-and-explorer-library/stderr.log",
+        "digest": "blake3:f63fd06da2ed602503ca838009ade26043929bf7d76bb3d21cf70d3f444fd451",
+        "bytes": 354
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/stderr.log",
+      "expected_digest": "blake3:0639b91bf50ada679d1de966b21addac6418c781fc43389f79aae0316d873e0a",
+      "expected_bytes": 4161,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build-release-explorer/stderr.log",
+        "digest": "blake3:0639b91bf50ada679d1de966b21addac6418c781fc43389f79aae0316d873e0a",
+        "bytes": 4161
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/stdout.log",
+      "expected_digest": "blake3:2a861ea314e79105db4b52391ec7bd029d140c0b978aeeabf2175159eb2de5b5",
+      "expected_bytes": 4370170,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/stdout.log",
+        "digest": "blake3:2a861ea314e79105db4b52391ec7bd029d140c0b978aeeabf2175159eb2de5b5",
+        "bytes": 4370170
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/stderr.log",
+      "expected_digest": "blake3:3aa2ad363e8359d9708735f635f5209328494dada844058026528920c24eeab9",
+      "expected_bytes": 34934,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/workspace-tests/stderr.log",
+        "digest": "blake3:3aa2ad363e8359d9708735f635f5209328494dada844058026528920c24eeab9",
+        "bytes": 34934
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/stderr.log",
+      "expected_digest": "blake3:770d72b5b948daff5837a34c99b3577b75947a52143bd628ed5aac9e34efa5ca",
+      "expected_bytes": 8048,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clippy/stderr.log",
+        "digest": "blake3:770d72b5b948daff5837a34c99b3577b75947a52143bd628ed5aac9e34efa5ca",
+        "bytes": 8048
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/stdout.log",
+      "expected_digest": "blake3:cb76ccfbf91580cbce9464a735e42d70eda71d0d4f9fae2d36d3898db96125ce",
+      "expected_bytes": 631,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/stdout.log",
+        "digest": "blake3:cb76ccfbf91580cbce9464a735e42d70eda71d0d4f9fae2d36d3898db96125ce",
+        "bytes": 631
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/formatting-corrected/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/stderr.log",
+      "expected_digest": "blake3:80e7053f122e85913e29c54dbe04d9e377efb60a710d07f4d35f39a92d795d19",
+      "expected_bytes": 62,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-build-release-explorer/stderr.log",
+        "digest": "blake3:80e7053f122e85913e29c54dbe04d9e377efb60a710d07f4d35f39a92d795d19",
+        "bytes": 62
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/freeze-clean-release-explorer/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/stdout.log",
+      "expected_digest": "blake3:471b043792c68667587c8826bc256ac05f0142d114dc8af781d291bfbb768e7d",
+      "expected_bytes": 4370169,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/stdout.log",
+        "digest": "blake3:471b043792c68667587c8826bc256ac05f0142d114dc8af781d291bfbb768e7d",
+        "bytes": 4370169
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/stderr.log",
+      "expected_digest": "blake3:9631e54166a4d44151ea1e875ac75e2d0c061b75999d527f341c118479feccbe",
+      "expected_bytes": 27475,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-workspace-tests/stderr.log",
+        "digest": "blake3:9631e54166a4d44151ea1e875ac75e2d0c061b75999d527f341c118479feccbe",
+        "bytes": 27475
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/stderr.log",
+      "expected_digest": "blake3:c288dc5578f5b9f921d5a5253e82e33d9cbeec7ac027f27062c80ced58b2b826",
+      "expected_bytes": 201,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-clippy/stderr.log",
+        "digest": "blake3:c288dc5578f5b9f921d5a5253e82e33d9cbeec7ac027f27062c80ced58b2b826",
+        "bytes": 201
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-formatting/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/stdout.log",
+      "expected_digest": "blake3:b08e786507b7fe8513d329e3d151828146363560128ae8ec40bcfeb1dbab24a0",
+      "expected_bytes": 186332,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/stdout.log",
+        "digest": "blake3:b08e786507b7fe8513d329e3d151828146363560128ae8ec40bcfeb1dbab24a0",
+        "bytes": 186332
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/stderr.log",
+      "expected_digest": "blake3:8cd4267e6f5ebc43bab92e51948066a751485b1eb0d277bc756cc200752eb019",
+      "expected_bytes": 607,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/watchdog-proof/stderr.log",
+        "digest": "blake3:8cd4267e6f5ebc43bab92e51948066a751485b1eb0d277bc756cc200752eb019",
+        "bytes": 607
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/stdout.log",
+      "expected_digest": "blake3:c5c738caba29c08abb6c25d0843beaf01eb3d7f60c828f10cfed0eb63114c5b4",
+      "expected_bytes": 24899,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/stdout.log",
+        "digest": "blake3:c5c738caba29c08abb6c25d0843beaf01eb3d7f60c828f10cfed0eb63114c5b4",
+        "bytes": 24899
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/deep-replay-consumers/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/stdout.log",
+      "expected_digest": "blake3:d92204f1ac5c8f555d22c3d85969b9072cf58257fd62b8853ef1a26af738f4b7",
+      "expected_bytes": 157,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/stdout.log",
+        "digest": "blake3:d92204f1ac5c8f555d22c3d85969b9072cf58257fd62b8853ef1a26af738f4b7",
+        "bytes": 157
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-refs/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/stdout.log",
+      "expected_digest": "blake3:97d7c38266cf53e4c1f4620f95aa63146a9ff27f90c9d2fe656a9808f2bbd332",
+      "expected_bytes": 189,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/stdout.log",
+        "digest": "blake3:97d7c38266cf53e4c1f4620f95aa63146a9ff27f90c9d2fe656a9808f2bbd332",
+        "bytes": 189
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/upstream-cairn-check-runs/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/stdout.log",
+      "expected_digest": "blake3:b14ddc5f92ff157ee4e904512e919bc5773797283281b2f524ab3460d5f26f33",
+      "expected_bytes": 443558,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/stdout.log",
+        "digest": "blake3:b14ddc5f92ff157ee4e904512e919bc5773797283281b2f524ab3460d5f26f33",
+        "bytes": 443558
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/stderr.log",
+      "expected_digest": "blake3:b3534cdc282736c49ec19c7f4069fc57b634222a8c5d0e70ee318a198da4172c",
+      "expected_bytes": 27062,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control/stderr.log",
+        "digest": "blake3:b3534cdc282736c49ec19c7f4069fc57b634222a8c5d0e70ee318a198da4172c",
+        "bytes": 27062
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/stderr.log",
+      "expected_digest": "blake3:dbf20ccdca376c202d918ae16a6457619e8ef1f8a9b9d0014bfaecca92721f45",
+      "expected_bytes": 169,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-control-output-validation/stderr.log",
+        "digest": "blake3:dbf20ccdca376c202d918ae16a6457619e8ef1f8a9b9d0014bfaecca92721f45",
+        "bytes": 169
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/stdout.log",
+      "expected_digest": "blake3:2a4e4d5163c57ef0d7a80deb8ddccb01c5d410bc3d0bbbb53a6d6694f475a9b9",
+      "expected_bytes": 445161,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/stdout.log",
+        "digest": "blake3:2a4e4d5163c57ef0d7a80deb8ddccb01c5d410bc3d0bbbb53a6d6694f475a9b9",
+        "bytes": 445161
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/stderr.log",
+      "expected_digest": "blake3:c19a0643ab5ad1808a473a669aa3b21e14ac7da8bf65a6eb0bca5d58f291e51e",
+      "expected_bytes": 27076,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted/stderr.log",
+        "digest": "blake3:c19a0643ab5ad1808a473a669aa3b21e14ac7da8bf65a6eb0bca5d58f291e51e",
+        "bytes": 27076
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/stderr.log",
+      "expected_digest": "blake3:66334298fa2b2234d00457072348db3973915e50ac36db540173ba163600b4a1",
+      "expected_bytes": 169,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-planted-output-validation/stderr.log",
+        "digest": "blake3:66334298fa2b2234d00457072348db3973915e50ac36db540173ba163600b4a1",
+        "bytes": 169
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/stdout.log",
+      "expected_digest": "blake3:3b91495170dc069728902839e3d2e0722859aafdae6446b0458a196a40644e6b",
+      "expected_bytes": 264097,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/stdout.log",
+        "digest": "blake3:3b91495170dc069728902839e3d2e0722859aafdae6446b0458a196a40644e6b",
+        "bytes": 264097
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/stderr.log",
+      "expected_digest": "blake3:e4f90c4f61217a02e2992e8637cdfe1dbb055a24db8c1349dcfd8fc397be9614",
+      "expected_bytes": 29526,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe/stderr.log",
+        "digest": "blake3:e4f90c4f61217a02e2992e8637cdfe1dbb055a24db8c1349dcfd8fc397be9614",
+        "bytes": 29526
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/stderr.log",
+      "expected_digest": "blake3:dc73092a2f6ce01ebb2662dbe2d61ac1744a0319681d51c58a6512522ca88232",
+      "expected_bytes": 220,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-output-validation/stderr.log",
+        "digest": "blake3:dc73092a2f6ce01ebb2662dbe2d61ac1744a0319681d51c58a6512522ca88232",
+        "bytes": 220
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/stdout.log",
+      "expected_digest": "blake3:969dd211359e90ccb2bd16059a6f859472b0192630b59d4660a400297def6269",
+      "expected_bytes": 8026,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/stdout.log",
+        "digest": "blake3:969dd211359e90ccb2bd16059a6f859472b0192630b59d4660a400297def6269",
+        "bytes": 8026
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/stderr.log",
+      "expected_digest": "blake3:13d6b6e7347009c1801f1c58c51ea3cb5816dcefef8502852d6e510e6b8adf7a",
+      "expected_bytes": 12004,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug0/stderr.log",
+        "digest": "blake3:13d6b6e7347009c1801f1c58c51ea3cb5816dcefef8502852d6e510e6b8adf7a",
+        "bytes": 12004
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/stderr.log",
+      "expected_digest": "blake3:41bfeab6e08e305297eb360d23bbbb59b914396d73dbba60a77958e7341f0345",
+      "expected_bytes": 11829,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug1/stderr.log",
+        "digest": "blake3:41bfeab6e08e305297eb360d23bbbb59b914396d73dbba60a77958e7341f0345",
+        "bytes": 11829
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/stderr.log",
+      "expected_digest": "blake3:85180d1294fea0fe068a321e606b2ed6ca970f50905fed6807992e174189a322",
+      "expected_bytes": 11916,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug3/stderr.log",
+        "digest": "blake3:85180d1294fea0fe068a321e606b2ed6ca970f50905fed6807992e174189a322",
+        "bytes": 11916
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/stderr.log",
+      "expected_digest": "blake3:fc3cdc6e34556b8b4cb29e4bc9e231a5b018a493fcf7edbfed781c8fe9a4b34b",
+      "expected_bytes": 11894,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug4/stderr.log",
+        "digest": "blake3:fc3cdc6e34556b8b4cb29e4bc9e231a5b018a493fcf7edbfed781c8fe9a4b34b",
+        "bytes": 11894
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/stderr.log",
+      "expected_digest": "blake3:4b14083445fd32a65b3ca5b37c2307d2b505de2840f68686ad13b3cf11c75ee9",
+      "expected_bytes": 11981,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug5/stderr.log",
+        "digest": "blake3:4b14083445fd32a65b3ca5b37c2307d2b505de2840f68686ad13b3cf11c75ee9",
+        "bytes": 11981
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/stderr.log",
+      "expected_digest": "blake3:b6ac8256d3f4fdc36d18c91d04c76094606bc54626bbbf38f8563928b24dcce6",
+      "expected_bytes": 12001,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug6/stderr.log",
+        "digest": "blake3:b6ac8256d3f4fdc36d18c91d04c76094606bc54626bbbf38f8563928b24dcce6",
+        "bytes": 12001
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/stderr.log",
+      "expected_digest": "blake3:24b2234d3220e10d7874256d7c0a8490736f72df443efc3752b618c65a300973",
+      "expected_bytes": 11963,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug7/stderr.log",
+        "digest": "blake3:24b2234d3220e10d7874256d7c0a8490736f72df443efc3752b618c65a300973",
+        "bytes": 11963
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/stdout.log",
+      "expected_digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+      "expected_bytes": 7816,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/stdout.log",
+        "digest": "blake3:678639acf4bd04e5aabd9a5cbf4c9ed17c8718ac242f2331e60da7b416dc929c",
+        "bytes": 7816
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/stderr.log",
+      "expected_digest": "blake3:a57b35354c1966945e3f4c55bc6c623ccea8018415666b4ec1222b6b602b02fb",
+      "expected_bytes": 11890,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/clean-deep-probe-deep-replay-bug2/stderr.log",
+        "digest": "blake3:a57b35354c1966945e3f4c55bc6c623ccea8018415666b4ec1222b6b602b02fb",
+        "bytes": 11890
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.ncl",
+      "expected_digest": "blake3:47752fde317f85812f6581f52d9ada08be38a4ff9386a6ebdeff697b21aa0632",
+      "expected_bytes": 4770,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.ncl",
+        "digest": "blake3:47752fde317f85812f6581f52d9ada08be38a4ff9386a6ebdeff697b21aa0632",
+        "bytes": 4770
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/receipt.ncl",
+      "expected_digest": "blake3:afc35d4d867d5b3239dbd5126437cc2483218dd0142d3c9b899aa39315f478a0",
+      "expected_bytes": 5168,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/campaign-timing-diagnosis-20261018/receipt.ncl",
+        "digest": "blake3:afc35d4d867d5b3239dbd5126437cc2483218dd0142d3c9b899aa39315f478a0",
+        "bytes": 5168
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl",
+      "expected_digest": "blake3:a396878864208a8374f7d74113989228b660f4f8ce62d1bb2e0d74272085f1b2",
+      "expected_bytes": 10959,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempts41-45-20261018/receipt.ncl",
+        "digest": "blake3:a396878864208a8374f7d74113989228b660f4f8ce62d1bb2e0d74272085f1b2",
+        "bytes": 10959
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl",
+      "expected_digest": "blake3:3657c168a14c31bf55cdda47cecb2052ddfdd74818844bff720f427ff35af990",
+      "expected_bytes": 10228,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-continuation-20261017/receipt.ncl",
+        "digest": "blake3:3657c168a14c31bf55cdda47cecb2052ddfdd74818844bff720f427ff35af990",
+        "bytes": 10228
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-cairn-20261017/receipt.ncl",
+      "expected_digest": "blake3:96eed9bc8cad257abc1edffb90d4247d62384ed22c5e7be44570a512cb1ac462",
+      "expected_bytes": 6866,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-cairn-20261017/receipt.ncl",
+        "digest": "blake3:96eed9bc8cad257abc1edffb90d4247d62384ed22c5e7be44570a512cb1ac462",
+        "bytes": 6866
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-20261015/receipt.ncl",
+      "expected_digest": "blake3:46297e89793a1ce19f9492df12f010a5b926606c7e077b3b01ccdf77e35f0ea1",
+      "expected_bytes": 15971,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-20261015/receipt.ncl",
+        "digest": "blake3:46297e89793a1ce19f9492df12f010a5b926606c7e077b3b01ccdf77e35f0ea1",
+        "bytes": 15971
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-followup-20261016/receipt.ncl",
+      "expected_digest": "blake3:7e6dac1ad04481f544d0acef7cab357a59f608df754318163af9833071792252",
+      "expected_bytes": 10322,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-followup-20261016/receipt.ncl",
+        "digest": "blake3:7e6dac1ad04481f544d0acef7cab357a59f608df754318163af9833071792252",
+        "bytes": 10322
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-extension-20261017/receipt.ncl",
+      "expected_digest": "blake3:1243163cb15b0b832f06f64a7695e1b3911dae32b5d2fe646d848d387b826950",
+      "expected_bytes": 10334,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-extension-20261017/receipt.ncl",
+        "digest": "blake3:1243163cb15b0b832f06f64a7695e1b3911dae32b5d2fe646d848d387b826950",
+        "bytes": 10334
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-closure-20261015/receipt.ncl",
+      "expected_digest": "blake3:eda66fe8ecb27d9b5b3191900a96ce8be0b99c60455e511d78e07e21acb434a0",
+      "expected_bytes": 8274,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-closure-20261015/receipt.ncl",
+        "digest": "blake3:eda66fe8ecb27d9b5b3191900a96ce8be0b99c60455e511d78e07e21acb434a0",
+        "bytes": 8274
+      },
+      "verified": true
+    },
+    {
+      "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+      "expected_digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "expected_bytes": 410793408,
+      "observed": {
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+        "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "bytes": 410793408
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/campaign-kernel",
+      "expected_digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "expected_bytes": 410793408,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/campaign-kernel",
+        "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "bytes": 410793408
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-campaign-kernel/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/nix/store/q48ll0ar6fxw4r562yyral95ha6glsad-linux-6.19-dev/vmlinux",
+      "expected_digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "expected_bytes": 410793408,
+      "observed": {
+        "path": "/nix/store/q48ll0ar6fxw4r562yyral95ha6glsad-linux-6.19-dev/vmlinux",
+        "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "bytes": 410793408
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/watchdog-kernel",
+      "expected_digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "expected_bytes": 410793408,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/watchdog-kernel",
+        "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "bytes": 410793408
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-watchdog-kernel/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/corrected-cohort/immutable-inputs/current-initrd-raft",
+      "expected_digest": "blake3:7d0aad39b3f2a1c3b6152260b244e7f2ba9c060196481fc67e01dd53b83d7f21",
+      "expected_bytes": 477091,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/corrected-cohort/immutable-inputs/current-initrd-raft",
+        "digest": "blake3:7d0aad39b3f2a1c3b6152260b244e7f2ba9c060196481fc67e01dd53b83d7f21",
+        "bytes": 477091
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/raft-initrd",
+      "expected_digest": "blake3:7d0aad39b3f2a1c3b6152260b244e7f2ba9c060196481fc67e01dd53b83d7f21",
+      "expected_bytes": 477091,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-inputs/raft-initrd",
+        "digest": "blake3:7d0aad39b3f2a1c3b6152260b244e7f2ba9c060196481fc67e01dd53b83d7f21",
+        "bytes": 477091
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-raft-initrd/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build/debug/examples/raft_lineage_proof",
+      "expected_digest": "blake3:b8bb4e1377074a1fb67feeb9b2e4d498a84fd5f90ebcdaf11f8ce16011f4ec6f",
+      "expected_bytes": 35048760,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build/debug/examples/raft_lineage_proof",
+        "digest": "blake3:b8bb4e1377074a1fb67feeb9b2e4d498a84fd5f90ebcdaf11f8ce16011f4ec6f",
+        "bytes": 35048760
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-executables/debug-examples-raft_lineage_proof",
+      "expected_digest": "blake3:b8bb4e1377074a1fb67feeb9b2e4d498a84fd5f90ebcdaf11f8ce16011f4ec6f",
+      "expected_bytes": 35048760,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/immutable-executables/debug-examples-raft_lineage_proof",
+        "digest": "blake3:b8bb4e1377074a1fb67feeb9b2e4d498a84fd5f90ebcdaf11f8ce16011f4ec6f",
+        "bytes": 35048760
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/stdout.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/final/retain-proof-executable/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/stdout.log",
+      "expected_digest": "blake3:14ceef27ac850996c734035899065d1bed14c0f5be2aad54b30ae519b35c58cf",
+      "expected_bytes": 441492,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/stdout.log",
+        "digest": "blake3:14ceef27ac850996c734035899065d1bed14c0f5be2aad54b30ae519b35c58cf",
+        "bytes": 441492
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/stderr.log",
+      "expected_digest": "blake3:59c40df882629abb6a794dd24271c423adcc4433468cca28d48618a454166742",
+      "expected_bytes": 26965,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/clean-control/stderr.log",
+        "digest": "blake3:59c40df882629abb6a794dd24271c423adcc4433468cca28d48618a454166742",
+        "bytes": 26965
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/stdout.log",
+      "expected_digest": "blake3:c07971323349cda2332202e2ce0d0c407b7aadfa835c933a853ed0f288f5b99d",
+      "expected_bytes": 75585,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/stdout.log",
+        "digest": "blake3:c07971323349cda2332202e2ce0d0c407b7aadfa835c933a853ed0f288f5b99d",
+        "bytes": 75585
+      },
+      "verified": true
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/stderr.log",
+      "expected_digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "expected_bytes": 0,
+      "observed": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr45/post-publication-cairn-failed-log/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      "verified": true
+    }
+  ],
+  "all_current_manifest_inputs_verified": true,
+  "all_historical_receipt_bytes_unchanged": true,
+  "all_historical_required_artifacts_retained": false
+}

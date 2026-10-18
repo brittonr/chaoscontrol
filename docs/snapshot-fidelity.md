@@ -491,3 +491,90 @@ native, campaign/replay and release criteria remain nonpassing. This delivery
 adds repeatable owner-local runtime and exact-source evidence capability, not
 production-readiness authority.
 
+## Focused staged-prefix correction (attempt46)
+
+`ControlSession::publish` now advances its validated projection after each
+accepted staged control through the existing `seal` path. The next publication
+starts at that accepted prefix rather than replaying all earlier staged controls.
+Independent applied-state comparison, publication fences, resource reserves,
+final segment sealing, journal durability and adopt-after-commit remain intact.
+The regression compares every staged prefix with a cold reconstruction under
+the same projection bound and verifies stale-control rejection without mutation.
+Maintenance owner and current consumer: `chaoscontrol-vmm` and the Campaign
+frontier's existing publication/recovery path.
+
+The final implementation is clean `ad7e892ad6838872432cc227cb1c88bb6f0ae303`.
+All three original campaign profiles completed ten rounds and twenty branches
+under their unchanged 600-second bounds:
+
+| Campaign | Wall seconds | Maximum admitted depth | Retained findings |
+| --- | ---: | ---: | ---: |
+| Control (`raft_bug=none`) | 245.729 | 3 | 0 |
+| Planted (`raft_bug=fig8_commit`) | 246.746 | 3 | 0 |
+| Deliberate deep snapshot probe | 319.544 | 3 | 8 safety findings |
+
+Control and planted catalogs were Accepted with 44 passing, zero failing and one
+unexercised site of 45. The deliberate probe reported its expected safety
+assertion failures; its exit 1 is distinct from an operational timeout. Every
+retained probe finding has replay-parent depth three. Existing info-level VM
+capture diagnostics provide dirty-page counts without a product logging change.
+
+Ten completed rounds do **not** establish depth four: the admitted traces reach
+only depth three. The separate controller proof's depth-four snapshot does not
+replace that campaign obligation. Original historical replay/retention, native
+readiness, Nix and clean-source release-matrix obligations also remain mandatory.
+The separate [attempt46 receipt](../dogfood-results/production-readiness-attempt46-20261018/receipt.ncl)
+binds each observed verdict and the unchanged acceptance boundary; earlier
+receipts and the initial pre-format control observation retain their own sources.
+
+All eight current retained depth-three probe findings reproduced with
+`snapshot_backed_reproduced`, matching bug/assertion/parent identities and valid,
+present, digest-verified retained snapshots. The actual Rust checkpoint export
+admitted and matched every retained identity before replay. Control and planted
+retained no findings; neither liveness failure nor operational timeout was
+reclassified as a safety finding. These current deliberate-probe successes do
+not replace the selected original historical planted finding.
+
+Each campaign has twenty aligned captures: two at depth one, two at depth two
+and sixteen at depth three. Summed per-VM dirty pages times 4096 give these
+overlay payload ranges; compressed snapshot lengths are not substituted:
+
+| Depth | Control bytes | Planted bytes | Deliberate probe bytes |
+| --- | ---: | ---: | ---: |
+| 1 | 7782400–8069120 | 7843840–7856128 | 7540736–7565312 |
+| 2 | 10035200–10391552 | 9674752–10018816 | 9613312 |
+| 3 | 12800000–13811712 | 12918784–13824000 | 11096064–11669504 |
+| 4 | not observed | not observed | not observed |
+
+The same clean implementation passed workspace all-target tests (2204 passed,
+zero failed, 16 ignored), workspace Clippy with warnings denied, and formatting.
+Its existing `raft_lineage_proof` observed one real `SI_TIMER` watchdog signal,
+poison enforcement and production controller replacement. Restored parent memory
+and immediate incremental recapture matched. Long-lived incremental, fresh full
+and replacement incremental continuations matched initial/final memory identities,
+strict execution records, every admitted assertion outcome, fault ledgers and
+rounds. Each retained 44 passing, zero failing and one unexercised site of 45.
+The watchdog remained an operational timeout, not a guest bug.
+
+The controller proof independently measured overlay payload bytes of 7983104,
+10350592, 14024704 and 16015360 at depths one through four. These are **controller
+proof** observations, not missing depth-four campaign measurements.
+
+The required Nix/full native/matrix gates are not rerun or promoted by this
+scoped correction; their previous nonpassing observations retain their original
+source. No new clean-source matrix verdict is manufactured. Refreshed Cairn
+refs still identify main `d2c1dd7` and producer `35e6bd4`; the same
+[failed producer job](https://github.com/OnixResearch/cairn/actions/runs/39011460673/job/117334691926)
+stops fetching `ssh://git@github.com/OnixResearch/onix-artifact.git`.
+An immutable compatible producer cohort must pass its original complete
+Cargo/Nix/native/Octet and MCP integration contracts before consumer migration.
+The exact historical initrd remains unavailable. All 46 authorized attempts are
+consumed; no further product correction or host change is authorized.
+
+Validate this scoped receipt with `nickel export --format json
+dogfood-results/production-readiness-attempt46-20261018/receipt.ncl`.
+The adjacent `receipt-validation.json` retains independent BLAKE3/length checks,
+the unsupported-readiness rejection and strict delivery-metadata verdict.
+Successful export validates the computed **blocked** outcome, not readiness;
+later evidence/documentation commits are not the clean implementation tested.
+

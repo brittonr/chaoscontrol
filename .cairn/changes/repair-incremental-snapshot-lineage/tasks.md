@@ -250,3 +250,37 @@ does not establish the complete depth-four, overlay and historical replay contra
 No implementation or new gate pass is claimed by this authorization note.
 
 
+## Focused attempt46 runtime evidence
+
+Clean `ad7e892ad6838872432cc227cb1c88bb6f0ae303` advances the accepted staged
+control prefix through the existing independent state comparison and seal path.
+The cold-replay/stale-control regression failed before the repair and passed
+afterward; no admission, publication, reserve or durability check was removed.
+
+The unchanged ten-round, two-branch control and planted profiles completed in
+245.729 and 246.746 seconds under 600-second bounds, each with an Accepted 45-site
+catalog, 44 passing, zero failing and one unexercised site. The separate deliberate
+probe completed in 319.544 seconds and retained eight depth-three safety findings;
+every one reproduced with a valid retained parent and `snapshot_backed_reproduced`.
+Actual Rust export admitted each checkpoint and matched every retained identity.
+All three campaigns retain twenty aligned, per-VM dirty-page overlay measurements.
+
+The admitted traces reach depth three, not required depth four. The campaign and
+release checkboxes above therefore remain unchecked; a separate controller depth-four
+proof or fresh deliberate probe cannot replace the complete campaign or selected
+original historical finding. No extra rounds, wider bounds, validation bypass,
+production-readiness promotion, lifecycle sync or archive is supported.
+
+The same clean implementation passed final workspace all-target tests (2204 passed,
+zero failed, 16 ignored), denied-warning workspace Clippy and formatting. The
+existing strict three-controller proof again observed actual `SI_TIMER` timeout,
+poison enforcement, production replacement, retained-parent and recapture fidelity,
+and equality of initial/final memory, strict execution identities, every admitted
+assertion outcome, fault ledgers and rounds. Its depth-one-through-four overlays
+are separately identified controller-proof evidence, not campaign depth four.
+
+The separate focused receipt computes production readiness from every unchanged
+criterion. Old native/Nix/matrix failures and incomplete historical artifacts are
+not current-source passes. Historical receipts remain byte-identical. No whole
+campaign/release checkbox, lifecycle sync or archive is closed by this delivery.
+

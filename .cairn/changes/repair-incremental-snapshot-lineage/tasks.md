@@ -152,7 +152,7 @@ or host-owned Nix evidence.
 - [ ] [depends:snapshot-lineage-shell] Correct the actual frontier failure in attempt41 and exercise the unchanged-bound current control/planted/deep campaigns and actual retained-parent replay.
 - [x] [depends:snapshot-lineage-shell] In attempts42–45, implement and exercise genuine remaining owner-local runtime and evidence requirements; keep unsupported whole contracts open.
 - [ ] [depends:snapshot-lineage-campaign] Require fresh exact-source Cargo, native, Nix, watchdog and all-seven-row clean-source report verdicts.
-- [ ] [depends:snapshot-lineage-campaign] Retain a separate BLAKE3-bound Nickel receipt, update only supported task state, and commit/push verified changes without force.
+- [x] [depends:snapshot-lineage-campaign] Retain a separate BLAKE3-bound Nickel receipt, update only supported task state, and commit/push verified changes without force.
 
 Attempt41 corrected merged per-VM marker capacity and run ownership. The actual
 control reached seven rounds and fourteen branches without Frontier
@@ -231,4 +231,10 @@ computes a blocked outcome; it does not repair missing historical bytes or
 pass native, campaign/replay or release criteria. Strict delivery-only native
 metadata validation also passed. Publication remains a separate observable
 step; only its completed evidence can support the delivery checkbox above.
+
+Commit `c3be308` containing the verified corrections and separate attempts41–45
+evidence was pushed to `main` without force. This supports only the delivery
+checkbox above. Campaign/replay, whole-requirement and release-readiness tasks
+remain unchecked. This later publication-state note is not part of the clean
+`b51beaf` implementation tested by the retained release commands.
 

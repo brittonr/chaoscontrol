@@ -1,7 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
-  "current_source_revision": "102a6387f1825f0f39f69bfcd4398e1a6f798006",
+  "current_source_revision": "3ef3a99f76c58c6683a7e7bb82e30dc8221b4be3",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -172,7 +172,7 @@
     "exit_code": null,
     "operational_timeout": null,
     "elapsed_seconds": null,
-    "blocked_reason": "The host Nix daemon/GC path and an invalid Mantle source path prevented the full flake check from completing; the attempt was killed after 20 minutes."
+    "blocked_reason": "The host Nix daemon/GC path and an invalid Mantle source path prevented the full flake check from completing; the attempt was killed after 20 minutes. Public Radicle mirrors were added for the campaign flake inputs, but the daemon remained blocked."
   },
   "kvm_release_matrix": {
     "executed": false,
@@ -180,7 +180,7 @@
     "operational_timeout": null,
     "elapsed_seconds": null,
     "receipt": null,
-    "blocked_reason": "The admitted-drift row could not fetch https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git (repository not found), while deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed. The matrix therefore has no complete clean-source verdict.",
+    "blocked_reason": "The admitted-drift row could not complete: the private HTTPS source was unreachable and the host Nix daemon remained blocked by GC/CI activity. The campaign flake inputs were moved to public Radicle mirrors, but the host did not become available to rerun the row. deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed; no complete verdict.",
     "partial_passing_rows": [
       "deterministic-smp",
       "serialized-snapshot-replay",

@@ -1,7 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
-  "current_source_revision": "3ef3a99f76c58c6683a7e7bb82e30dc8221b4be3",
+  "current_source_revision": "4026e3f00348ebb79c7ec22f1e148af9f42f805e",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -168,11 +168,11 @@
     }
   },
   "nix_flake_check": {
-    "executed": false,
-    "exit_code": null,
-    "operational_timeout": null,
-    "elapsed_seconds": null,
-    "blocked_reason": "The host Nix daemon/GC path and an invalid Mantle source path prevented the full flake check from completing; the attempt was killed after 20 minutes. Public Radicle mirrors were added for the campaign flake inputs, but the daemon remained blocked."
+    "executed": true,
+    "exit_code": 1,
+    "operational_timeout": false,
+    "elapsed_seconds": 2641.5944260749966,
+    "blocked_reason": "checks.x86_64-linux.local-multi-hypervisor-kvm-smoke failed: the raft run passed, but the rust-workload dogfood aborted with HostWatchdogTimeout on all six attempts on aspen1 and on the local host."
   },
   "kvm_release_matrix": {
     "executed": false,
@@ -252,6 +252,11 @@
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr49/watchdog-lineage-final/runtime-proof.json",
       "digest": "blake3:1a166af7d0082c9ddacbf7a0fcdee17973b070935bb95755a321f98139c13cd5",
       "bytes": 4534117
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/nix-flake-check-10/execution.json",
+      "digest": "blake3:c41f011756d9d4076807360e993ed1a6ed748f045a628e822a6b4705ee1a2ccd",
+      "bytes": 1091
     }
   ],
   "non_claims": [

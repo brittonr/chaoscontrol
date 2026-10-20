@@ -259,11 +259,13 @@
               cp -a ${innerVendor} "$out"
               chmod -R u+w "$out"
               sed -i "s|${innerVendor}|$out|g" "$out/config.toml"
-              while IFS= read -r link; do
-                target="$(readlink -f "$link")"
-                rm "$link"
-                cp -a "$target" "$link"
-              done < <(find "$out" -type l)
+              for _pass in 1 2 3 4; do
+                while IFS= read -r link; do
+                  target="$(readlink -f "$link")"
+                  rm "$link"
+                  cp -a "$target" "$link"
+                done < <(find "$out" -type l)
+              done
               mkdir -p "$out/config/generated"
               cp ${vm-cohort-src}/config/generated/profile.json "$out/config/generated/profile.json"
             '';

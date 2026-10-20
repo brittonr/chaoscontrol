@@ -253,6 +253,7 @@
           # the vendored dependency tree must retain it at the vendor root.
           vmCohortVendorDir = pkgs.runCommand "chaoscontrol-vendor-with-vm-cohort-config" { } ''
             cp -a ${craneLib.vendorCargoDeps { inherit src; }} "$out"
+            chmod -R u+w "$out"
             mkdir -p "$out/config/generated"
             cp ${vm-cohort-src}/config/generated/profile.json "$out/config/generated/profile.json"
           '';

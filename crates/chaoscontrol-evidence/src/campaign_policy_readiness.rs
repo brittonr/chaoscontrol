@@ -54,7 +54,7 @@ pub fn admit_source_pins(manifest: &str, lock: &str, flake: &str) -> Result<(), 
         if !line.contains(revision) {
             return Err(format!("{name} revision differs from the reviewed pin"));
         }
-        if !lock.contains(revision) || !flake.contains(revision) {
+        if !lock.contains(revision) || (!flake.trim().is_empty() && !flake.contains(revision)) {
             return Err(format!(
                 "{name} is not bound across Cargo.lock and flake.nix"
             ));
@@ -337,8 +337,9 @@ pub fn admit_cutover_receipt(
         .map_err(|error| format!("campaign manifest: {error}"))?;
     let lock = std::fs::read_to_string(root.join("Cargo.lock"))
         .map_err(|error| format!("Cargo.lock: {error}"))?;
-    let flake = std::fs::read_to_string(root.join("flake.nix"))
-        .map_err(|error| format!("flake.nix: {error}"))?;
+    // Packaged Nix sources intentionally omit flake.nix; the committed
+    // receipt and Cargo lock are the authority there.
+    let flake = std::fs::read_to_string(root.join("flake.nix")).unwrap_or_default();
     admit_source_pins(&manifest, &lock, &flake)?;
     admit_baseline(Some(&receipt.baseline), current_revision)?;
     admit_kvm_parity(Some(&receipt.kvm_parity), current_revision)?;

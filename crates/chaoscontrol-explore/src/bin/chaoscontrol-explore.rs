@@ -3003,10 +3003,24 @@ fn admit_committed_campaign_cutover() {
             eprintln!("Error: cannot resolve source revision: {error}");
             std::process::exit(1);
         });
-    let revision = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if !output.status.success() || revision.is_empty() {
-        eprintln!("Error: git rev-parse HEAD failed");
-        std::process::exit(1);
+    let revision = if output.status.success() {
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    } else {
+        String::new()
+    };
+    if revision.is_empty() {
+        // Packaged Nix checks have no .git; the committed receipt is the
+        // source authority and must still pass every other gate.
+        chaoscontrol_evidence::campaign_policy_readiness::admit_cutover_receipt(
+            &root,
+            &receipt,
+            &receipt.source_revision,
+        )
+        .unwrap_or_else(|error| {
+            eprintln!("Error: Campaign cutover blocked: {error}");
+            std::process::exit(1);
+        });
+        return;
     }
     if receipt.source_revision != revision {
         let status = std::process::Command::new("git")

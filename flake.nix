@@ -251,12 +251,17 @@
           # VM Cohort's conformance crate includes its repository-level
           # config/generated/profile.json. Cargo sees it in the git checkout;
           # the vendored dependency tree must retain it at the vendor root.
-          vmCohortVendorDir = pkgs.runCommand "chaoscontrol-vendor-with-vm-cohort-config" { } ''
-            cp -a ${craneLib.vendorCargoDeps { inherit src; }} "$out"
-            chmod -R u+w "$out"
-            mkdir -p "$out/config/generated"
-            cp ${vm-cohort-src}/config/generated/profile.json "$out/config/generated/profile.json"
-          '';
+          vmCohortVendorDir =
+            let
+              innerVendor = craneLib.vendorCargoDeps { inherit src; };
+            in
+            pkgs.runCommand "chaoscontrol-vendor-with-vm-cohort-config" { } ''
+              cp -a ${innerVendor} "$out"
+              chmod -R u+w "$out"
+              sed -i "s|${innerVendor}|$out|g" "$out/config.toml"
+              mkdir -p "$out/config/generated"
+              cp ${vm-cohort-src}/config/generated/profile.json "$out/config/generated/profile.json"
+            '';
 
           commonArgs = {
             inherit src;

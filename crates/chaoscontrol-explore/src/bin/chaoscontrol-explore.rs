@@ -2997,19 +2997,14 @@ fn admit_committed_campaign_cutover() {
             eprintln!("Error: invalid Campaign cutover receipt: {error}");
             std::process::exit(1);
         });
-    let output = std::process::Command::new("git")
+    let revision = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(&root)
         .output()
-        .unwrap_or_else(|error| {
-            eprintln!("Error: cannot resolve source revision: {error}");
-            std::process::exit(1);
-        });
-    let revision = if output.status.success() {
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    } else {
-        String::new()
-    };
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_default();
     if revision.is_empty() {
         // Packaged Nix checks have no .git; the committed receipt is the
         // source authority and must still pass every other gate.

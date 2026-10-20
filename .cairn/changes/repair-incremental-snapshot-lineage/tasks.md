@@ -358,7 +358,7 @@ and every earlier receipt. No further corrective slot is implied.
 - [x] [depends:snapshot-lineage-shell] Record the failing source-policy control, the exact additional authority and the bounded cutover design before implementation.
 - [x] [depends:snapshot-lineage-shell] Remove obsolete HTTPS source allowances and no-op mutations; pass the actual baseline/source/license policy controls without weakening admission.
 - [x] [depends:snapshot-lineage-shell] Rerun the full required Nix checks and all seven KVM rows on an exact clean correction revision; retain independent report verdicts and artifacts.
-- [ ] [depends:snapshot-lineage-shell] Publish Nickel/BLAKE3-bound attempt evidence while preserving Cairn MCP smoke and original planted-finding replay prerequisites.
+- [x] [depends:snapshot-lineage-shell] Publish Nickel/BLAKE3-bound attempt evidence while preserving Cairn MCP smoke and original planted-finding replay prerequisites.
 
 The focused Nix dependency-policy gate passes after removing the two obsolete
 allowances and their mutations. The baseline reports `bans ok, licenses ok,
@@ -387,3 +387,7 @@ The focused correction is verified, but the original readiness criteria remain
 open. No additional product correction, host/sibling change or attempt is
 authorized. The separate attempt48 receipt retains the exact commands and
 failures; raw logs and VM artifacts stay local under `target/pr52/`.
+
+Attempt48's validated receipt and supporting evidence were published to `main`
+at `8154c4f` without force-push. Publication does not close the original release
+acceptance criteria; the correction-source receipt remains `blocked`.

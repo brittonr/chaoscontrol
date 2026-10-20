@@ -37,7 +37,7 @@ struct ReviewAssertion {
     )]
     identity: Option<ReviewIdentity>,
     #[serde(
-        default,
+        default = "empty_review_process_instances",
         deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances"
     )]
     process_instances: BTreeSet<String>,
@@ -54,6 +54,10 @@ struct ReviewAssertion {
 
 fn no_review_identity() -> Option<ReviewIdentity> {
     None
+}
+
+fn empty_review_process_instances() -> BTreeSet<String> {
+    BTreeSet::new()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

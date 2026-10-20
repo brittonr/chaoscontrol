@@ -2606,16 +2606,16 @@ pub struct BugRecord {
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
     #[serde(
-        default,
+        default = "empty_process_instances",
         deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances",
         skip_serializing_if = "std::collections::BTreeSet::is_empty"
     )]
     pub process_instances: std::collections::BTreeSet<String>,
-    #[serde(default)]
+    #[serde(default = "no_fallback_scope")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
-    #[serde(default)]
+    #[serde(default = "no_marker_context")]
     pub marker_context: Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext>,
-    #[serde(default)]
+    #[serde(default = "no_schedule_variant")]
     pub schedule_variant: Option<chaoscontrol_sim_core::scheduler::ScheduleVariant>,
     pub assertion_location: Option<String>,
     pub tick: Option<u64>,
@@ -2642,16 +2642,19 @@ pub struct ReplayVerdict {
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
     #[serde(
-        default,
+        default = "empty_process_instances",
         deserialize_with = "chaoscontrol_replay_evidence_core::validate::deserialize_process_instances",
         skip_serializing_if = "std::collections::BTreeSet::is_empty"
     )]
     pub process_instances: std::collections::BTreeSet<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_marker_context", skip_serializing_if = "Option::is_none")]
     pub marker_context: Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "no_replay_schedule_variant",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub schedule_variant: Option<chaoscontrol_replay_evidence_core::dto::ReplayScheduleVariant>,
     pub replay_parent_depth: u64,
     pub snapshot: SnapshotVerdict,
@@ -2659,6 +2662,27 @@ pub struct ReplayVerdict {
 }
 
 fn no_evidence_identity() -> Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
+    None
+}
+
+fn empty_process_instances() -> std::collections::BTreeSet<String> {
+    std::collections::BTreeSet::new()
+}
+
+fn no_fallback_scope() -> Option<chaoscontrol_protocol::fallback::FallbackAssertionScope> {
+    None
+}
+
+fn no_marker_context() -> Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext> {
+    None
+}
+
+fn no_schedule_variant() -> Option<chaoscontrol_sim_core::scheduler::ScheduleVariant> {
+    None
+}
+
+fn no_replay_schedule_variant(
+) -> Option<chaoscontrol_replay_evidence_core::dto::ReplayScheduleVariant> {
     None
 }
 

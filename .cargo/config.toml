@@ -3,7 +3,7 @@
 git-fetch-with-cli = true
 # These reviewed sources support exact-object fetches. Other remotes stay unchanged.
 git-fetch-exact-revisions = [
-  "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
+  "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN",
   "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",
 ]
 

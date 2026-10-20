@@ -202,6 +202,7 @@
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isCampaignCutover = pkgs.lib.hasPrefix "contracts/campaign-cutover/" relPath;
               isFlakeInput = relPath == "flake.nix" || relPath == "flake.lock";
+              isDocs = pkgs.lib.hasPrefix "docs/" relPath;
               isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
               isFrontierParityFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-explore/tests/fixtures/frontier-parity/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
@@ -214,6 +215,7 @@
             || isKvmReleaseMatrix
             || isCampaignCutover
             || isFlakeInput
+            || isDocs
             || isAssertionReadinessFixture
             || isFrontierParityFixture
             || isDogfoodCheckpointFixture

@@ -201,6 +201,7 @@
               isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isCampaignCutover = pkgs.lib.hasPrefix "contracts/campaign-cutover/" relPath;
+              isFlakeInput = relPath == "flake.nix" || relPath == "flake.lock";
               isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
               isFrontierParityFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-explore/tests/fixtures/frontier-parity/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
@@ -212,6 +213,7 @@
             || isPropertyCoverageFixture
             || isKvmReleaseMatrix
             || isCampaignCutover
+            || isFlakeInput
             || isAssertionReadinessFixture
             || isFrontierParityFixture
             || isDogfoodCheckpointFixture

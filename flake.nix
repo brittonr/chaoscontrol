@@ -2165,6 +2165,7 @@
                   requiredSystemFeatures = [ "kvm" ];
                 }
                 ''
+                  cd ${./.}
                   KERNEL=${mkChaosKernel { virtioNet = true; }}/vmlinux \
                     INITRD=${initrd-raft} \
                     OUT=$out \

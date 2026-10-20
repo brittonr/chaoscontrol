@@ -1,0 +1,97 @@
+{
+  "schema": "chaoscontrol.focused-source-policy-receipt-validation.v1",
+  "source": {
+    "dirty": false,
+    "revision": "17b8abdbb294f7fdb4da7e680a05e74c8e0542a0"
+  },
+  "receipt_valid": true,
+  "release_verdict": "blocked",
+  "production_ready": false,
+  "export_command": [
+    "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+    "export",
+    "--format",
+    "json",
+    "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/receipt.ncl"
+  ],
+  "export_exit_code": 0,
+  "rejected_claims": [
+    {
+      "field": "production_ready",
+      "expression": "let R = import \"/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/receipt.ncl\" in R.production_ready | std.contract.Equal true",
+      "exit_code": 1,
+      "unsupported_claim_rejected": true
+    },
+    {
+      "field": "kvm_release_matrix_ready",
+      "expression": "let R = import \"/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/receipt.ncl\" in R.kvm_release_matrix_ready | std.contract.Equal true",
+      "exit_code": 1,
+      "unsupported_claim_rejected": true
+    },
+    {
+      "field": "workspace_repeated_pass",
+      "expression": "let R = import \"/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/receipt.ncl\" in R.workspace_repeated_pass | std.contract.Equal true",
+      "exit_code": 1,
+      "unsupported_claim_rejected": true
+    }
+  ],
+  "verified_evidence_and_historical_artifacts": 44,
+  "verified_matrix_artifacts": 112,
+  "receipt_artifacts": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/receipt.ncl",
+      "digest": "blake3:03e91d3cd59a07dafbcbb2c794a3b98534e4b65411033c5fddc04e3a6aaf74c2",
+      "bytes": 3923
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/receipt.json",
+      "digest": "blake3:e34d233433724d83c61fbe2141cf8e02fe9007f1d28fe66d403bfc82c9a53965",
+      "bytes": 39504
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/observations.json",
+      "digest": "blake3:f4a8d1c6a61b7321fa4c0960736a46b04ff577ec1a08109a022cbd017b81a1c9",
+      "bytes": 37941
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt48-20261020/attempts.ncl",
+      "digest": "blake3:2842834bb8d7e5bbd435af3d4883150a4cb3341af8e03ff801ed381d19ff794e",
+      "bytes": 4232
+    }
+  ],
+  "delivery_metadata_validation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+    "command": [
+      "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+      "validate",
+      "--root",
+      "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "--policy",
+      "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/generated/cairn-policy.json",
+      "--strict"
+    ],
+    "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn validate --root /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source --policy /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/generated/cairn-policy.json --strict",
+    "timeout_seconds": 300,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-20T17:28:16.052709+00:00",
+    "finished": "2026-10-20T17:28:16.167926+00:00",
+    "elapsed_seconds": 0.11521926103159785,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr52/delivery-validation/stdout.log",
+        "digest": "blake3:18467c25d2d887a87db06fc4fdbab3ca3989b8a3c3a0ac64a78d91bfd4dec95d",
+        "bytes": 77782
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr52/delivery-validation/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "delivery_metadata_valid": true,
+  "boundary": "Receipt evaluation and metadata validation only. Implementation gates retain their exact clean correction source. The initial workspace failure, Nix integration-failure, blocked correction-source matrix, Cairn MCP support and original planted-finding prerequisites remain independent; no production-readiness claim is authorized."
+}

@@ -23,12 +23,18 @@ for exact sources, measured limits and non-claims.
 The [2026-10-20 gate receipt](dogfood-results/production-readiness-gates-20261020/receipt.ncl)
 records all seven KVM release rows passing on clean
 `29329c854338702457eb9967c4830b79487a8901`, with independent receipt validation.
-The full Nix check fails at `dependency-policy`: its negative controls mutate
-obsolete HTTPS source entries after the Radicle repin. Required Nix checks,
-Cairn MCP smoke applicability, and reproduction of the original planted finding
-with its exact historical initrd remain blockers. Fresh probe replay is not a
-substitute for that finding. Later evidence-only commits are not release-tested
-revisions.
+The [focused source-policy receipt](dogfood-results/production-readiness-attempt48-20261020/receipt.ncl)
+verifies the obsolete-allowlist correction on clean
+`17b8abdbb294f7fdb4da7e680a05e74c8e0542a0`. Native coverage remains 382/382;
+Clippy and formatting pass. The complete no-fail-fast workspace run passes
+2224 tests, but the initial shutdown-flag test failure remains recorded.
+Full Nix checks now fail at the Octet nightly Cargo integration. The correction's
+matrix passes six rows; fresh replay fails with a direct-child teardown timeout,
+an operational failure rather than a guest bug. The earlier seven-row pass is
+not a pass on this correction revision. Cairn MCP smoke applicability and the
+original planted-finding replay with its exact historical initrd remain blockers.
+Fresh probe replay is not a substitute. Later evidence-only commits are not
+release-tested revisions.
 
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.

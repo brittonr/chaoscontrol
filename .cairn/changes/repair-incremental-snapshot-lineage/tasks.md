@@ -357,7 +357,7 @@ and every earlier receipt. No further corrective slot is implied.
 
 - [x] [depends:snapshot-lineage-shell] Record the failing source-policy control, the exact additional authority and the bounded cutover design before implementation.
 - [x] [depends:snapshot-lineage-shell] Remove obsolete HTTPS source allowances and no-op mutations; pass the actual baseline/source/license policy controls without weakening admission.
-- [ ] [depends:snapshot-lineage-shell] Rerun the full required Nix checks and all seven KVM rows on an exact clean correction revision; retain independent report verdicts and artifacts.
+- [x] [depends:snapshot-lineage-shell] Rerun the full required Nix checks and all seven KVM rows on an exact clean correction revision; retain independent report verdicts and artifacts.
 - [ ] [depends:snapshot-lineage-shell] Publish Nickel/BLAKE3-bound attempt evidence while preserving Cairn MCP smoke and original planted-finding replay prerequisites.
 
 The focused Nix dependency-policy gate passes after removing the two obsolete
@@ -365,3 +365,25 @@ allowances and their mutations. The baseline reports `bans ok, licenses ok,
 sources ok`; all four active source-denial and both license-denial controls pass
 under the unchanged 120-second bound. Full clean-source gate verification remains
 required before recording any broader release pass.
+
+Clean correction `17b8abdbb294f7fdb4da7e680a05e74c8e0542a0` retains the passing
+source-policy controls, native validation and 382/382 traceability with zero
+missing/dangling links. Workspace Clippy with warnings denied and formatting
+pass. The first workspace command fails at the unsynchronized shutdown-flag
+test; the separate complete no-fail-fast command passes 2224 tests with zero
+failures and 16 ignored. Both outcomes remain evidence; no serialization, skip
+or unrelated signal-test correction is used.
+
+Full Nix checks fail at `tigerstyle-chaoscontrol-focused`: Octet's
+`nightly-2026-03-21` Cargo panics at `package_id_spec.rs:244` and reports
+`integration-failure`. This is not a zero-finding pass. The matrix passes six
+rows but fresh replay fails with `bounded-exec failed: direct child teardown
+timed out`. The pinned-evaluator independent checker rejects that receipt as
+blocked. All 112 retained row artifacts match their BLAKE3 identities and
+lengths. No operational failure is classified as a guest finding, and the
+earlier clean `29329c8` seven-row pass is not promoted to the correction source.
+
+The focused correction is verified, but the original readiness criteria remain
+open. No additional product correction, host/sibling change or attempt is
+authorized. The separate attempt48 receipt retains the exact commands and
+failures; raw logs and VM artifacts stay local under `target/pr52/`.

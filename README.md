@@ -44,6 +44,17 @@ reproduces from a persisted parent under unchanged bounds. See the
 and `dogfood-results/production-readiness-attempts49-51-20261020/` for the new
 command/artifact evidence. Scoped correction proof is not production readiness.
 
+The [attempts49–51 receipt](dogfood-results/production-readiness-attempts49-51-20261020/receipt.ncl)
+binds clean `ab006a79ce6de78ca40cbdde60d35efce07513a9`: 2223 workspace tests,
+denied-warning Clippy, formatting, 382/382 native traceability, and all seven KVM
+rows pass, including independent `release-eligible` validation. Full Nix fails
+at `local-multi-hypervisor-kvm-smoke`: Raft passes, but all six Rust-workload
+attempts stop with an operational bootstrap `HostWatchdogTimeout`. Native
+readiness still reports `fail` at MCP smoke. The selected original planted
+finding still lacks its exact historical initrd and accepted current-source
+replay. The computed overall verdict remains **blocked**; all 51 authorized
+corrective slots are consumed. No failed or historical source is relabeled.
+
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >

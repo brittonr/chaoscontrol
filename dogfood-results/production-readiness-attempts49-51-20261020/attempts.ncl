@@ -51,6 +51,8 @@ let Attempt = {
       "All three actual first-party consumer derivations build after the scoped repair. The two deny-all checks report clean with zero findings. The focused check reports warning-only, 3293 warnings, zero errors; the pinned Octet RunStatus explicitly accepts clean and warning-only. This is not a zero-warning claim.",
       "An actual non-snake-case compiler-warning fixture is rejected through the original deny-all consumer check: -D non-snake-case is implied by -D warnings, with two compilation errors and a failed build. No failed command is promoted to a passing checker verdict; this is the expected negative control.",
       "Every real report retains nightly-2026-03-21-x86_64-unknown-linux-gnu. The compiler, driver, lint library, package scope, arguments and policy hashes remain the original first-party cohort; only the selected Cargo client changes.",
+      "The first full clean-source run ce4b443 fails Nix formatting. Required nixfmt cleanup is normalized-Nix-parse-identical (BLAKE3 1cec08debaa9745c4d2fdc73649ae1322bf3e783cabd6b122d4f28db1cc945fe); all gates run again on clean ab006a79ce6de78ca40cbdde60d35efce07513a9. This is nonsemantic cleanup, not another corrective slot.",
+      "The final-source focused Octet report is warning-only with 3294 warnings and zero errors; both deny-all reports are clean with zero findings under the unchanged nightly toolchain. This remains distinct from denied-warning workspace Clippy, which passes.",
     ],
   }, {
     number = 51,
@@ -64,6 +66,8 @@ let Attempt = {
       "A controlled run changes only the explorer executable while retaining the original immutable kernel, initrd, cohort, seed and every declared bound. It accepts snapshot_backed_reproduced in 201.835 seconds; the rebuilt guest is not used as causal isolation evidence.",
       "The unchanged raft_lineage_proof completes in 355.474 seconds. One actual SI_TIMER watchdog signal causes HostWatchdogTimeout, poison rejection and production controller replacement. Restored memory and immediate incremental recapture match; all three continuations match memory, exact execution records, every admitted assertion outcome, fault ledgers and rounds. This deliberate host watchdog is not a guest bug.",
       "The fresh probe is not the selected original planted finding. Fresh clean-source Cargo/Nix/native/matrix gates remain separately required; the original historical initrd and compatible Cairn producer cohort remain prerequisites.",
+      "Final clean ab006a79ce6de78ca40cbdde60d35efce07513a9 passes 2223 workspace tests, denied-warning Clippy, formatting and all seven KVM rows with an independent release-eligible verdict. Native coverage is 382/382 with zero missing or dangling references, but native readiness remains fail at MCP smoke.",
+      "Full Nix fails at local-multi-hypervisor-kvm-smoke: Raft passes; all six Rust-workload attempts stop at bootstrap HostWatchdogTimeout, with no retained candidate or replay. No additional product correction, widened bound, permission change or fourth attempt is implied. The receipt preserves this failure and the historical replay prerequisites.",
     ],
   }],
   used_implementation_attempts = previous_used_attempts + std.array.length attempts,

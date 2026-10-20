@@ -6,42 +6,42 @@
     "dirty": true,
     "changed_compilation_inputs": [
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/signal.rs",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/crates/chaoscontrol-explore/src/signal.rs",
         "digest": "blake3:f4bf38f4b635d5784db5a1e7cbec95546eaa733d6f6dda509e8498dc1f1b7d32",
         "bytes": 4008
       },
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/explorer.rs",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/crates/chaoscontrol-explore/src/explorer.rs",
         "digest": "blake3:83e3d3b8c1f27e6b09de4678b4951d698a26f0a101bda5a5da342359b1d69f14",
         "bytes": 175932
       },
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/corpus.rs",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/crates/chaoscontrol-explore/src/corpus.rs",
         "digest": "blake3:ad2d545a9efbc10445f6d58c6db1dc0b9d58816d38f9a15272b982c93729f0b5",
         "bytes": 11772
       },
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/minimizer.rs",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/crates/chaoscontrol-explore/src/minimizer.rs",
         "digest": "blake3:961ebf7d7bcf15fa7e78e4db7068118058c1d7aba2914379b10da0feb2f77788",
         "bytes": 19468
       },
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/bin/chaoscontrol-explore.rs",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/crates/chaoscontrol-explore/src/bin/chaoscontrol-explore.rs",
         "digest": "blake3:bd0e9a2ed5b5f2eb0ed80a71abef367b94d77b625d8a0d42150da10456a73836",
         "bytes": 114177
       },
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/examples/raft_lineage_proof.rs",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/crates/chaoscontrol-explore/examples/raft_lineage_proof.rs",
         "digest": "blake3:80356be5a5d22a030188c57443ca5263138403878920bd2f1c7f3e69ed4ce67b",
         "bytes": 35190
       },
       {
-        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/flake.nix",
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-proof-source/flake.nix",
         "digest": "blake3:733296d79cb8944ce2e6039453729d6b419389f38150db5605ed4c22489a5bce",
         "bytes": 112554
       }
     ],
-    "boundary": "Pre-commit correction evidence only; not clean-source release evidence."
+    "boundary": "Pre-commit correction evidence only; not clean-source release evidence. Source inputs retained as immutable pre-format copies; later clean release source is separate."
   },
   "commands": {
     "authority-validation": {
@@ -770,7 +770,8 @@
         "digest": "blake3:d8687c1f95deba5430fc993db4d88b2de7591b9c83d72d7a5c322932909a27f0",
         "bytes": 1559864
       }
-    }
+    },
+    "replay_class": "snapshot_backed_reproduced"
   },
   "watchdog": {
     "passed": true,
@@ -780,7 +781,7 @@
       "bytes": 4534797
     },
     "executable": {
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build/debug/examples/raft_lineage_proof",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/immutable-raft-lineage-proof",
       "digest": "blake3:4800920000b122ec19c92343c38cfed85f85f0de705115a6e09afce54f8a39d2",
       "bytes": 35107320
     },
@@ -936,7 +937,8 @@
         "unexercised": 1
       }
     },
-    "boundary": "Intentional real POSIX watchdog observation; not a guest bug. Full Rust runtime records remain local."
+    "boundary": "Intentional real POSIX watchdog observation; not a guest bug. Full Rust runtime records remain local.",
+    "original_executable_path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build/debug/examples/raft_lineage_proof"
   },
   "remaining_prerequisites": [
     "Compatible fully gated Cairn producer CLI/export cohort for the original full MCP completion contract.",

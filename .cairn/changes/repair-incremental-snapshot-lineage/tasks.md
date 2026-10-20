@@ -5,7 +5,7 @@
 - [x] [depends:snapshot-lineage-regression] Add pure page-set planning with bounds checks and positive and negative unit tests. r[chaoscontrol.deterministic_snapshots.incremental_core]
 - [x] [depends:snapshot-lineage-core] Route incremental capture and restore through the page set and drain the dirty log around host writes. r[chaoscontrol.deterministic_snapshots.incremental_lineage] r[chaoscontrol.deterministic_snapshots.incremental_revert]
 - [x] [depends:snapshot-lineage-shell] Compare fresh and long-lived controller branch results from the same parent, including the watchdog replacement path. r[chaoscontrol.deterministic_snapshots.incremental_validation]
-- [ ] [depends:snapshot-lineage-shell] Rerun the Raft control and planted-bug campaigns, replay every safety finding at depth three or more, and record overlay sizes per depth. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [x] [depends:snapshot-lineage-shell] Rerun the Raft control and planted-bug campaigns, replay every safety finding at depth three or more, and record overlay sizes per depth. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 - [ ] [depends:snapshot-lineage-campaign] Mark pre-change deep findings diagnostic-only in replay and readiness docs, then run workspace tests, KVM smoke tests, and Cairn validation. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 
 ## Implementation evidence
@@ -403,7 +403,7 @@ readiness criterion, ownership restriction and historical receipt.
 - [x] [depends:snapshot-lineage-shell] Attempt49: isolate shutdown-state tests without suite serialization or production signal changes; exercise actual signal behavior.
 - [x] [depends:snapshot-lineage-shell] Attempt50: repair the Cargo/Octet client integration without changing the pinned compiler/Dylint contract or weakening checks.
 - [x] [depends:snapshot-lineage-shell] Attempt51: trace the inner replay stall and repair its demonstrated cause under the unchanged run and teardown bounds.
-- [ ] [depends:snapshot-lineage-shell] Retain fresh exact-clean-source gate verdicts and Nickel/BLAKE3-bound evidence; publish supported changes without claiming unavailable readiness.
+- [x] [depends:snapshot-lineage-shell] Retain fresh exact-clean-source gate verdicts and Nickel/BLAKE3-bound evidence; publish supported changes without claiming unavailable readiness.
 
 Attempt51's immutable trace reaches round zero but misses its 240-second inner
 deadline; it unmaps 150 guest-memory-sized buffers (about 39 GiB total). Shared
@@ -422,3 +422,30 @@ zero failing and one unexercised site of 45. Controller overlays at depths one
 through four are 7827456, 10162176, 14548992 and 16588800 bytes. These are controller
 proof measurements, not a new campaign or an original planted-finding replay.
 Fresh exact-clean-source gates remain open until their own evidence exists.
+
+The final receipt binds clean `ab006a79ce6de78ca40cbdde60d35efce07513a9` to
+2223 passing workspace tests (zero failed, 16 declared ignored), denied-warning
+Clippy, formatting, 382/382 native coverage with no missing/dangling links, and
+all seven KVM rows. Independent matrix validation is `release-eligible`; all
+138 row artifacts match BLAKE3 and byte length. The formatting-only successor
+has the same normalized Nix parse as `ce4b443`; the earlier formatting failure
+remains retained, not promoted.
+
+Full Nix fails at the actual local multi-hypervisor smoke: Raft passes;
+Rust-workload's six declared attempts all fail during bootstrap with
+`HostWatchdogTimeout`, without a candidate or replay verdict. Native readiness
+still reports `fail` at `mcp_agent_smoke`, despite exit zero. The exact original
+planted-finding initrd and compatible fully gated Cairn producer remain owner
+prerequisites. No new product correction is authorized beyond attempt51.
+
+The completed campaign checkbox above is supported by the retained exact-source
+`b5f0a45` ten-round control/planted campaigns, measured overlays through depth
+four and beyond, and all eight retained depth-three snapshot-backed replays.
+Their bug, verdict and retained-parent artifacts were verified again; they are
+not relabeled as the new release source or as the selected original finding.
+The final release/readiness checkbox remains open. All 37 earlier receipts
+remain byte-identical. Sixteen inaccessible builder-owned failed-Nix diagnostic
+payloads are enumerated without invented identities; all readable reports/logs
+are retained locally. No host permission changes, lifecycle sync/archive or
+production-readiness promotion is supported. The separate Nickel receipt
+computes `blocked` and keeps both missing-input and failed-gate boundaries.

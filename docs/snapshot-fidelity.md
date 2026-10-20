@@ -687,3 +687,31 @@ See `dogfood-results/production-readiness-attempts49-51-20261020/` for commands,
 artifact/configuration identities, trace facts and independent report verdicts.
 No historical receipt or failed matrix row is reclassified by this correction.
 
+The final clean release source is
+`ab006a79ce6de78ca40cbdde60d35efce07513a9`. Workspace all-target tests report
+2223 passed, zero failed and 16 declared ignored; Clippy with warnings denied
+and formatting pass. Native coverage is 382/382 with zero missing or dangling
+references. All seven KVM rows and the independent checker report
+`release-eligible` on that exact clean source, with all 138 row artifacts
+BLAKE3/length verified.
+
+Full Nix remains failed at `local-multi-hypervisor-kvm-smoke`. Raft passes;
+Rust-workload exhausts its six declared seeds with bootstrap
+`HostWatchdogTimeout`, no candidate, and no replay verdict. These are operational
+failures, not safety findings. The focused Octet report is accepted warning-only
+with 3294 warnings and zero errors; both deny-all reports are clean. Their
+nightly compiler/Dylint cohort is unchanged. Native readiness separately reports
+`fail` at MCP smoke, despite command exit zero.
+
+The receipt reuses the already-completed `b5f0a45` control/planted campaigns and
+all eight depth-three replay verdicts with their original source and inputs.
+It does not relabel them as `ab006a7` execution or substitute a fresh probe for
+the selected original planted finding. All 37 historical receipts remain
+byte-identical. Readable failed-Nix reports/logs are retained locally; 16
+builder-owned 0600 payloads in the unregistered failed output are explicitly
+inaccessible, not assigned fabricated digests. The standard Nix daemon archive
+attempt rejects that unregistered path. No permissions or host configuration
+were changed. The required-evidence-retention and production-readiness verdicts
+remain false. All 51 corrective slots are consumed; no additional correction,
+lifecycle archive or readiness promotion is implied.
+

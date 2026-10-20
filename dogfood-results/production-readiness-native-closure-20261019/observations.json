@@ -1,0 +1,153 @@
+{
+  "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
+  "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
+  "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
+  "native_traceability": {
+    "referenced": 382,
+    "requirements": 382,
+    "missing": [],
+    "dangling": [],
+    "valid": true,
+    "verdict": "pass",
+    "input_hash": "179c7407de9ee9c94649cc1229f419155360d963457d846ee4ab4930509a1234",
+    "receipt_hash": "a0d708e0bb2adb3872bcbb9d2e5038520c849e3594a86ca8c332bc785fb726e2",
+    "lifecycle_valid": true
+  },
+  "cargo": {
+    "workspace": {
+      "suites": 168,
+      "passed": 2223,
+      "failed": 0,
+      "ignored": 16
+    },
+    "clippy_exit": 0,
+    "formatting_exit": 0,
+    "fmt_log": {
+      "path": "/tmp/fmt.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    }
+  },
+  "evidence_contracts": {
+    "exit": 0,
+    "log": {
+      "path": "/tmp/evidence-contracts.log",
+      "digest": "blake3:02d7b4a49f2540bb4fe6489d3fc54d2976aa389634f1d849c8b1764c0d5a8dfa",
+      "bytes": 131
+    }
+  },
+  "nickel_cohort_nix": {
+    "exit": 0,
+    "check": "checks.x86_64-linux.nickel-cohort-exact"
+  },
+  "campaign_cutover": {
+    "receipt": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/campaign-cutover/receipt.json",
+      "digest": "blake3:cd9d2482a6ddaf45fd3a176cae2c04665bdeb11a41ffe95374dbe3d65de160e7",
+      "bytes": 1706
+    },
+    "parity_receipt": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/campaign-cutover/frontier-parity-receipt.json",
+      "digest": "blake3:a7fd80f00d750cf6d1b8fcda66af37b892cfbe5901c7ba1be7c7e6f627d2b082",
+      "bytes": 5662
+    },
+    "parity_rounds": [
+      10,
+      10
+    ],
+    "decision_equal": true,
+    "source_revision": "7594be4e034ea757ad5d132596a3b5475b88008d"
+  },
+  "watchdog": {
+    "executed": true,
+    "exit_code": 1,
+    "operational_timeout": false,
+    "proof_present": false,
+    "passed": false,
+    "strict_comparison_fields": {
+      "initial_memory_identities": false,
+      "final_memory_identities": false,
+      "execution_traces": false,
+      "all_admitted_assertion_outcomes": false,
+      "fault_ledger": false,
+      "rounds": false
+    },
+    "watchdog_recovery": null
+  },
+  "nix_flake_check": {
+    "executed": false,
+    "exit_code": null,
+    "operational_timeout": null,
+    "elapsed_seconds": null
+  },
+  "kvm_release_matrix": {
+    "executed": false,
+    "exit_code": null,
+    "operational_timeout": null,
+    "elapsed_seconds": null,
+    "receipt": null
+  },
+  "cairn_release_readiness": {
+    "native_coverage_check": "passed",
+    "preserves_corpus_freshness": "passed",
+    "mcp_agent_smoke": "blocked-upstream: pinned Cairn 695124d has no consumer-independent fixtures/agent-completion; the command requires root-local Cairn self-fixtures, which the accepted boundary forbids copying"
+  },
+  "artifacts": [
+    {
+      "path": "/tmp/ws-tests.log",
+      "digest": "blake3:9a74a29b37ca9913776cccb6e5dd67203d13b08a5d976d460a405d4dea855f0f",
+      "bytes": 4400649
+    },
+    {
+      "path": "/tmp/ws-clippy.log",
+      "digest": "blake3:7f01f54bb9abad228610dd8ff4c1abf5678034616b3b7a51f1172c38e0a0a9cd",
+      "bytes": 567
+    },
+    {
+      "path": "/tmp/fmt.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/tmp/evidence-contracts.log",
+      "digest": "blake3:02d7b4a49f2540bb4fe6489d3fc54d2976aa389634f1d849c8b1764c0d5a8dfa",
+      "bytes": 131
+    },
+    {
+      "path": "/tmp/native-coverage.json",
+      "digest": "blake3:440b02d2607ff5879861a39eeaabd6bba99c22e87b1c7a84738f5966a831aad7",
+      "bytes": 1741
+    },
+    {
+      "path": "/tmp/native-validate.json",
+      "digest": "blake3:2032ed5445f6cc12b43f342c45f3a28f851188207d25127b0f3437d9bc8e5dab",
+      "bytes": 66422
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/campaign-cutover/receipt.json",
+      "digest": "blake3:cd9d2482a6ddaf45fd3a176cae2c04665bdeb11a41ffe95374dbe3d65de160e7",
+      "bytes": 1706
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/campaign-cutover/frontier-parity-receipt.json",
+      "digest": "blake3:a7fd80f00d750cf6d1b8fcda66af37b892cfbe5901c7ba1be7c7e6f627d2b082",
+      "bytes": 5662
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/nickel-toolchain-validation-20261019.ncl",
+      "digest": "blake3:dd44d1c9a3fc7486dc72fd34b4b81e3a9879512a1b16ead0bccd461a6b812f4e",
+      "bytes": 1572
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr49/watchdog-proof/execution.json",
+      "digest": "blake3:db1c9d707697cf17a6ebf7e2308dc5b465789f8eda48cadff920778188fd3048",
+      "bytes": 3052
+    }
+  ],
+  "non_claims": [
+    "Native traceability closure links accepted requirements to current implementation and tests; it does not prove whole-system correctness.",
+    "An operational host timeout is not a guest safety finding.",
+    "The KVM matrix applies only to its listed rows, worker, kernel, initrd, and revision.",
+    "mcp_agent_smoke remains an upstream Cairn applicability prerequisite, not a passing ChaosControl check."
+  ]
+}

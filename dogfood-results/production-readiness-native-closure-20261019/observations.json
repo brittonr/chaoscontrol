@@ -1,7 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
-  "current_source_revision": "6384fdc31e0cdbb122b6a45f70a5192e190254f5",
+  "current_source_revision": "bdfd3bedbae6052bf94ade125844401a68708914",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -179,101 +179,8 @@
     "exit_code": null,
     "operational_timeout": null,
     "elapsed_seconds": null,
-    "receipt": {
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-2/fresh-workload-replay/fresh/accepted-snapshot-verdict-summary.json",
-      "value": {
-        "accepted": true,
-        "accepted_bug": "dogfood-results/raft-fresh-v2-proof-20260809/bug_1.json",
-        "accepted_verdict": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug1.json",
-        "bugs": [
-          {
-            "assertion_id": 2608033797,
-            "file": "bug_0.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 3463273124,
-            "file": "bug_1.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 4077103701,
-            "file": "bug_2.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 976915693,
-            "file": "bug_3.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 1402950483,
-            "file": "bug_4.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 2608033797,
-            "file": "bug_5.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 3463273124,
-            "file": "bug_6.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 4077103701,
-            "file": "bug_7.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 976915693,
-            "file": "bug_8.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          },
-          {
-            "assertion_id": 1402950483,
-            "file": "bug_9.json",
-            "has_assertion_identity": true,
-            "has_snapshot_ref": true,
-            "replay_parent_depth": 1
-          }
-        ],
-        "export_exit_status": 0,
-        "receipt": "dogfood-results/raft-fresh-v2-proof-20260809/proof-receipt.json",
-        "reproduce_exit_status": 0,
-        "run_exit_status": 1,
-        "seed": 0,
-        "snapshot_probe_fail_after": 1,
-        "verdict": {
-          "path": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug1.json",
-          "replay_class": "snapshot_backed_reproduced",
-          "replay_parent_depth": 1,
-          "reproduced": true,
-          "snapshot_status": "valid"
-        },
-        "workload": "raft"
-      }
-    },
-    "blocked_reason": "The admitted-drift, deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed (the drift receipt has two matching controller runs). The fresh-workload-replay row could not fetch https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git, so no complete seven-row verdict exists.",
+    "receipt": null,
+    "blocked_reason": "The admitted-drift, deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed (the drift receipt has two matching controller runs). The Campaign/Choregraph sources were repinned to public Radicle mirrors, but the fresh-workload-replay raft accepted-verdict dogfood ran past its 240-second declared run timeout and was stopped, so no complete seven-row verdict exists.",
     "partial_passing_rows": [
       "admitted-drift",
       "deterministic-smp",
@@ -353,13 +260,13 @@
       "bytes": 1091
     },
     {
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-matrix-2/stderr.log",
-      "digest": "blake3:3b415defca2babb2f40ea066088cb6eb83d14c1e39310a1ee8aaf2ce86018dc0",
-      "bytes": 244
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-matrix-4/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
     },
     {
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-2/admitted-drift/drift/receipt.json",
-      "digest": "blake3:3aa5ee51c4ea5e848746b4c87df37f4c8a57474f100f16fa6fe3bc0ec96bfa3b",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-4/admitted-drift/drift/receipt.json",
+      "digest": "blake3:f0b0da645dfea4aafd2cec9e80c86af564d13efd686f3d2f20cdac8a7c757765",
       "bytes": 2189
     }
   ],

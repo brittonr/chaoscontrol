@@ -1,7 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
-  "current_source_revision": "bdfd3bedbae6052bf94ade125844401a68708914",
+  "current_source_revision": "b3546fb8cac65b490d48be06c2aaf7ef429cef68",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -172,7 +172,7 @@
     "exit_code": 1,
     "operational_timeout": false,
     "elapsed_seconds": 2641.5944260749966,
-    "blocked_reason": "checks.x86_64-linux.local-multi-hypervisor-kvm-smoke failed: the raft run passed, but the rust-workload dogfood aborted with HostWatchdogTimeout on all six attempts on aspen1 and on the local host."
+    "blocked_reason": "The full flake check on 4026e3f failed at local-multi-hypervisor-kvm-smoke. After the jiffies rust-workload profile fix, the standalone check on b3546fb was rerun but both raft and rust-workload dogfoods hit HostWatchdogTimeout under host load ~39. The isolated jiffies diagnostic alone completed the rust-workload run in 36 seconds and found assertion 3143219316."
   },
   "kvm_release_matrix": {
     "executed": false,
@@ -192,6 +192,24 @@
     "native_coverage_check": "passed",
     "preserves_corpus_freshness": "passed",
     "mcp_agent_smoke": "blocked-upstream: pinned Cairn 695124d lacks agent-receipt smoke-mcp; newer Cairn d2c1dd7 implements it but still reads fixtures/agent-completion beneath the consumer root and is incompatible with the current generated policy (missing outcome-machine). A compatible cohort with a consumer-independent downstream selector is required."
+  },
+  "rust_workload_jiffies_diagnostic": {
+    "run_log": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/jiffies-diagnostic/run.log",
+      "digest": "blake3:3dadb0744c75cc92492d4ef19128f1e942fa9991bd01230d98661c69a51fb502",
+      "bytes": 24816
+    },
+    "checkpoint": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/jiffies-diagnostic/checkpoint.json",
+      "digest": "blake3:ec1793314b0ad63bb71b8a349ed7f8147e8af96c2d77da5dc4984e0c649e8220",
+      "bytes": 519434
+    },
+    "report": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/jiffies-diagnostic/report.txt",
+      "digest": "blake3:d89b04c50b8d5e7f86ed81e541ffd4ecf784ce6313f2a7771ae6ca16676da057",
+      "bytes": 5163
+    },
+    "boundary": "A standalone bounded diagnostic, not a gate verdict; it isolates the TSC clock profile as the cause of the rust-workload HostWatchdogTimeout."
   },
   "artifacts": [
     {

@@ -47,6 +47,7 @@ let Ready = NativeReady && CargoReady && WatchdogReady && NixReady && KvmReady
   campaign_cutover_ready = CutoverReady,
   campaign_cutover = O.campaign_cutover,
   watchdog_ready = WatchdogReady,
+  rust_workload_jiffies_diagnostic = O.rust_workload_jiffies_diagnostic,
   watchdog = O.watchdog,
   nix_flake_check_ready = NixReady,
   nix_flake_check = O.nix_flake_check,

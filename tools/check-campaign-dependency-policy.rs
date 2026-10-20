@@ -3,9 +3,7 @@
 use std::{env, fs, path::Path, process::Command};
 
 const ADMITTED_SOURCES: &[&str] = &[
-    "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
     "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN",
-    "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git",
     "rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF",
     "https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git",
     "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",

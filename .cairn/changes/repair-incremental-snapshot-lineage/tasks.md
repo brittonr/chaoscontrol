@@ -346,3 +346,22 @@ unchanged. No overall release, lifecycle sync or archive task is closed.
 The earlier TSC-only diagnosis and claimed 240-second timeout overrun are not
 established: one jiffies success does not prove sole causality, and 3:44 elapsed
 is only 224 seconds. Host load alone is not proof of a timeout's cause.
+
+## Authorized dependency-policy correction (attempt48)
+
+The user explicitly selected "Authorize one additional corrective attempt" after
+the fresh `29329c8` Nix failure and seven-row clean-source KVM pass. The separate
+`production-readiness-attempt48-20261020/attempts.ncl` continues the last numbered
+ledger, consumes exactly this additional slot, and preserves the original scope
+and every earlier receipt. No further corrective slot is implied.
+
+- [x] [depends:snapshot-lineage-shell] Record the failing source-policy control, the exact additional authority and the bounded cutover design before implementation.
+- [x] [depends:snapshot-lineage-shell] Remove obsolete HTTPS source allowances and no-op mutations; pass the actual baseline/source/license policy controls without weakening admission.
+- [ ] [depends:snapshot-lineage-shell] Rerun the full required Nix checks and all seven KVM rows on an exact clean correction revision; retain independent report verdicts and artifacts.
+- [ ] [depends:snapshot-lineage-shell] Publish Nickel/BLAKE3-bound attempt evidence while preserving Cairn MCP smoke and original planted-finding replay prerequisites.
+
+The focused Nix dependency-policy gate passes after removing the two obsolete
+allowances and their mutations. The baseline reports `bans ok, licenses ok,
+sources ok`; all four active source-denial and both license-denial controls pass
+under the unchanged 120-second bound. Full clean-source gate verification remains
+required before recording any broader release pass.

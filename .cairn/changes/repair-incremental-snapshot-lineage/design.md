@@ -152,6 +152,23 @@ traceability still reports 103 missing requirements. Production readiness stays
 blocked; the correction itself, depth-four campaign lineage and retained-finding
 replay are verified.
 
+### 16. Keep dependency-policy denial controls aligned with the Radicle cutover
+
+The clean-source release rerun on `29329c8` passes all seven KVM matrix rows but
+fails the actual Cargo-deny negative controls: Campaign and Choregraph now resolve
+through Radicle, while two historical HTTPS allowances remain. Replacing either
+unused allowance cannot deny the locked graph, so the negative control correctly
+fails instead of manufacturing a denial.
+
+The explicit additional-attempt selection authorizes one cohesive correction:
+remove those obsolete allowances and their no-op mutations. Keep unknown-source
+denial, the four active source mutations, both license-exception mutations, exact
+mutation counts, expected diagnostics and the existing 120-second control bound.
+Run the real Nix dependency-policy gate, then the full Nix check and a fresh
+seven-row matrix on an exact clean revision. Do not weaken a checker, skip a
+control, extend bounds, alter a sibling or reconfigure a host. Historical receipts
+and the missing original replay input remain separate evidence boundaries.
+
 ## Risks
 
 - Overlay size and restore cost grow with lineage depth. Validation records overlay page counts per depth for the Raft and redb workloads.

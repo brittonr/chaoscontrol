@@ -12,7 +12,7 @@ For a listed URL and a complete object ID, Cargo requests that object directly. 
 
 Unlisted URLs keep their previous behavior, including the GitHub fast path. Symbolic or abbreviated requests without a complete locked object ID keep stock resolution. An unlocked default-branch request still requires HEAD.
 
-Cargo and the Nix `campaign-src` input both pin Campaign development revision `e7757a5134f631e1ed410df3cae57e57f887c468` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Cargo and the Nix `campaign-src`/`choregraph-history-src` inputs use the public Radicle mirrors of the same revisions, so acquisition does not depend on the private forge's HEAD advertisement. A workspace `[patch]` maps the transitive `choregraph-history` HTTPS source to its Radicle mirror. The private HTTPS endpoints remain admitted policy entries for historical compatibility, but the current graph resolves through Radicle. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
+Cargo and the Nix `campaign-src` input both pin Campaign development revision `e7757a5134f631e1ed410df3cae57e57f887c468` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Cargo and the Nix `campaign-src`/`choregraph-history-src` inputs use the public Radicle mirrors of the same revisions, so acquisition does not depend on the private forge's HEAD advertisement. A workspace `[patch]` maps the transitive `choregraph-history` HTTPS source to its Radicle mirror. The Cargo-deny allowlist admits the active Radicle sources, not the superseded private HTTPS endpoints. Removing an active source allowance must fail the real source-policy checker; mutating an unused historical allowance is not a denial control. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
 
 ## Why the stock fetch fails
 
@@ -32,6 +32,7 @@ This repair changes metadata handling, not source authority or acquisition. The 
 
 ```sh
 nix build .#checks.x86_64-linux.cargo-exact-revisions
+nix build .#checks.x86_64-linux.dependency-policy --no-link -L
 nix develop -c cargo test -p chaoscontrol-explore --lib --locked
 nix develop -c cargo clippy -p chaoscontrol-explore --lib --tests --locked -- -D warnings
 ```

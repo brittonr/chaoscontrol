@@ -20,6 +20,16 @@ retains the depth-four campaign and retained-finding replay evidence.
 See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)
 for exact sources, measured limits and non-claims.
 
+The [2026-10-20 gate receipt](dogfood-results/production-readiness-gates-20261020/receipt.ncl)
+records all seven KVM release rows passing on clean
+`29329c854338702457eb9967c4830b79487a8901`, with independent receipt validation.
+The full Nix check fails at `dependency-policy`: its negative controls mutate
+obsolete HTTPS source entries after the Radicle repin. Required Nix checks,
+Cairn MCP smoke applicability, and reproduction of the original planted finding
+with its exact historical initrd remain blockers. Fresh probe replay is not a
+substitute for that finding. Later evidence-only commits are not release-tested
+revisions.
+
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >

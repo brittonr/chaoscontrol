@@ -325,3 +325,24 @@ operational host timeouts, not guest findings. The attempt46 proof passed on
 seven-row KVM matrix were not rerun. All 47 authorized corrective attempts are
 consumed; the remaining criteria stay open.
 
+
+## Unchanged-source release verification, 2026-10-20
+
+Clean `29329c854338702457eb9967c4830b79487a8901` passes all seven required KVM
+release-matrix rows with terminal class `release-eligible`. The independent
+matrix checker passes, and all 138 retained row artifacts match their recorded
+BLAKE3 identities and lengths. The fresh Raft seed-zero probe is accepted with
+`snapshot_backed_reproduced`, valid parent depth one and successful export/replay.
+It does not replace the selected original historical planted finding.
+
+The full Nix check fails at `dependency-policy`: the negative controls mutate
+obsolete HTTPS source allowlist entries after the Radicle repin. No new product
+correction is made or authorized by these gate-only runs. Cairn MCP smoke and
+the exact historical initrd remain prerequisites. The separate append-only
+`dogfood-results/production-readiness-gates-20261020/receipt.ncl` records the
+commands, clean source, verdicts and boundaries; historical receipts stay
+unchanged. No overall release, lifecycle sync or archive task is closed.
+
+The earlier TSC-only diagnosis and claimed 240-second timeout overrun are not
+established: one jiffies success does not prove sole causality, and 3:44 elapsed
+is only 224 seconds. Host load alone is not proof of a timeout's cause.

@@ -1,0 +1,498 @@
+{
+  "authority": {
+    "boundary": "No additional corrective attempt inferred from continue; gate-only executions do not consume an implementation attempt.",
+    "last_numbered_ledger": "dogfood-results/production-readiness-attempt47-20261018/attempts.ncl",
+    "last_numbered_ledger_used": 47,
+    "new_corrective_attempts": 0
+  },
+  "boundary": "Fresh evidence is limited to the two gate commands and receipt validation on the recorded source. Prior Cargo, native traceability, campaigns, replay and watchdog observations retain their own revisions; none is rerun or promoted here. No production-readiness claim.",
+  "causal_corrections": [
+    "One successful standalone jiffies run does not isolate TSC as the cause of watchdog failures. The follow-on gate failed for both jiffies-configured workloads; sole causality remains unproven.",
+    "3:44 elapsed is 224 seconds, below a 240-second run limit. The earlier stopped matrix attempt has no authoritative timeout verdict and is not evidence of broken timeout enforcement.",
+    "Host load is a contemporaneous observation, not proof that it caused a particular watchdog timeout. Operational failures remain distinct from guest safety findings."
+  ],
+  "evidence_artifacts": [
+    {
+      "bytes": 1080,
+      "digest": "blake3:1d5aea1fface7029255ce468466a03dd679c72ed770d34a3b30a7a7b2131b0e0",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/nix-flake-check/execution.json"
+    },
+    {
+      "bytes": 1737,
+      "digest": "blake3:b05c95c34ff22562c7644df9de97a772ff08f9ab33e36d2b039b980b5e1ea2a3",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-execution/execution.json"
+    },
+    {
+      "bytes": 36384,
+      "digest": "blake3:bcfaecc19e9603cae19f801b5bb076de0bd0d491343e073637cf1d7c0fafb36c",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/release-receipt.json"
+    },
+    {
+      "bytes": 1919,
+      "digest": "blake3:3dc3c794972de2f39c6fcb3129b808f964c258e0b20ab48dc46ac1f7392eb26d",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-validation/execution.json"
+    },
+    {
+      "bytes": 1241,
+      "digest": "blake3:b09bf09508f524593bfb7ebf59404cfb16e7e9d9522dd6bc5fbe4322cfff2714",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/release-summary.md"
+    },
+    {
+      "bytes": 5269,
+      "digest": "blake3:4f1254e7150d4f31bef7be184c1f716f1aa1d84bc1c3f642d62bab2fd1917b3e",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/kvm-release/matrix.json"
+    },
+    {
+      "bytes": 6239,
+      "digest": "blake3:1bd7f269845cb94b602ecee11a1a99d774a4f77b2ed0d2d1e3a7083c6b0fb88b",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/fresh-workload-proofs/cohort.ncl"
+    },
+    {
+      "bytes": 2675,
+      "digest": "blake3:415d1e2ed25d76e20f9df585505dd3b79e97c32ce737d5dd9e5a06902b0a61b3",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/tools/check-campaign-dependency-policy.rs"
+    },
+    {
+      "bytes": 4074,
+      "digest": "blake3:a7057c50b2da900c942e32bc0c72fc75fce637e7bf6f5a361c71eabd58e93a8f",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/validated-matrix.json"
+    },
+    {
+      "bytes": 3196,
+      "digest": "blake3:d202bd92a8afcfd98bde7a7b9f1c7e4fd6b7501fda6770f07e6ed04ebace06bb",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/fresh-workload-replay/fresh/proof-receipt.json"
+    },
+    {
+      "bytes": 2439,
+      "digest": "blake3:f0326b964712319db74bd11f2a930942994e5f31d249b6b3535a7f39901651f5",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/fresh-workload-replay/fresh/accepted-snapshot-verdict-summary.json"
+    },
+    {
+      "bytes": 5412,
+      "digest": "blake3:177bdf56839d2af9a694a4372341e532ab162a1723dbf8bb128f6180286c2a1b",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/fresh-workload-replay/fresh/replay-verdict-bug1.json"
+    },
+    {
+      "bytes": 4358,
+      "digest": "blake3:48eba5119eaf8a4ac5b9ca2ee0014bb5d2b832d43248ac48b526338a3c03b713",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/fresh-workload-replay/fresh/bug_1.json"
+    },
+    {
+      "bytes": 72979,
+      "digest": "blake3:3147ba2841c6ea4f516168f9c826618f1c2c5d0ceb70b6a21a8287ad07e70569",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/fresh-workload-replay/fresh/assertions.json"
+    },
+    {
+      "bytes": 18320504,
+      "digest": "blake3:42287c026c3602a47e4ea53f1515ed1a4c7c8be2a4488fc7ab1bdbac130fc7d0",
+      "path": "/nix/store/11vda4dfdaf41v422rjfjx5aps5gjd4b-chaoscontrol-0.1.0/bin/chaoscontrol-explore"
+    },
+    {
+      "bytes": 410793408,
+      "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+      "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+    },
+    {
+      "bytes": 477098,
+      "digest": "blake3:2531063a00f72e845261f0689d3c95527e718d0b5a7642003aaa958d62ed7f31",
+      "path": "/nix/store/sm18bbvjqcp3ahx1fvs88f6833wp2w0k-chaoscontrol-initrd-raft"
+    },
+    {
+      "bytes": 0,
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/nix-flake-check/stdout.log"
+    },
+    {
+      "bytes": 94350,
+      "digest": "blake3:d7537837989fb0004c24f051b8ac4d35bedbc0dce461ad31dbe40590c141d33e",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/nix-flake-check/stderr.log"
+    },
+    {
+      "bytes": 135,
+      "digest": "blake3:0a27a9bf96969d10057c407492418b3cae0c90afa98db8636623cb4528c53c52",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-execution/stdout.log"
+    },
+    {
+      "bytes": 0,
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-execution/stderr.log"
+    },
+    {
+      "bytes": 85,
+      "digest": "blake3:5b604d727f2acb2b4d3f9ef6dd20eceaa266ded9463784ad362fae90d808f33b",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-validation/stdout.log"
+    },
+    {
+      "bytes": 0,
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-validation/stderr.log"
+    }
+  ],
+  "exact_commands": {
+    "matrix": {
+      "artifacts": [
+        {
+          "bytes": 135,
+          "digest": "blake3:0a27a9bf96969d10057c407492418b3cae0c90afa98db8636623cb4528c53c52",
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-execution/stdout.log"
+        },
+        {
+          "bytes": 0,
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-execution/stderr.log"
+        }
+      ],
+      "command": [
+        "env",
+        "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/matrix-cargo",
+        "/run/current-system/sw/bin/nix",
+        "run",
+        ".#kvm-release-matrix",
+        "--",
+        "--root",
+        ".",
+        "--matrix",
+        "contracts/kvm-release/matrix.json",
+        "--out",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release",
+        "--expected-revision",
+        "29329c854338702457eb9967c4830b79487a8901"
+      ],
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/matrix-cargo /run/current-system/sw/bin/nix run '.#kvm-release-matrix' -- --root . --matrix contracts/kvm-release/matrix.json --out /home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release --expected-revision 29329c854338702457eb9967c4830b79487a8901",
+      "elapsed_seconds": 313.8863244029926,
+      "exit_code": 0,
+      "finished": "2026-10-20T16:44:35.924284+00:00",
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "operational_timeout": false,
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "started": "2026-10-20T16:39:22.037966+00:00",
+      "timeout_seconds": 14400
+    },
+    "matrix_validation": {
+      "artifacts": [
+        {
+          "bytes": 85,
+          "digest": "blake3:5b604d727f2acb2b4d3f9ef6dd20eceaa266ded9463784ad362fae90d808f33b",
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-validation/stdout.log"
+        },
+        {
+          "bytes": 0,
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/matrix-validation/stderr.log"
+        }
+      ],
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/build-release-binaries/chaoscontrol/bin/check-kvm-release-matrix",
+        "--root",
+        ".",
+        "--matrix",
+        "contracts/kvm-release/matrix.json",
+        "--receipt",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/release-receipt.json",
+        "--expected-revision",
+        "29329c854338702457eb9967c4830b79487a8901",
+        "--curated-out",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/validated-matrix.json"
+      ],
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/build-release-binaries/chaoscontrol/bin/check-kvm-release-matrix --root . --matrix contracts/kvm-release/matrix.json --receipt /home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/kvm-release/release-receipt.json --expected-revision 29329c854338702457eb9967c4830b79487a8901 --curated-out /home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/validated-matrix.json",
+      "elapsed_seconds": 0.16439374804031104,
+      "exit_code": 0,
+      "finished": "2026-10-20T16:44:55.905689+00:00",
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "operational_timeout": false,
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "started": "2026-10-20T16:44:55.741317+00:00",
+      "timeout_seconds": 300
+    },
+    "nix": {
+      "artifacts": [
+        {
+          "bytes": 0,
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/nix-flake-check/stdout.log"
+        },
+        {
+          "bytes": 94350,
+          "digest": "blake3:d7537837989fb0004c24f051b8ac4d35bedbc0dce461ad31dbe40590c141d33e",
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr51/nix-flake-check/stderr.log"
+        }
+      ],
+      "command": [
+        "/run/current-system/sw/bin/nix",
+        "flake",
+        "check",
+        "-L"
+      ],
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "display_command": "/run/current-system/sw/bin/nix flake check -L",
+      "elapsed_seconds": 29.8829186540097,
+      "exit_code": 1,
+      "finished": "2026-10-20T16:39:21.797909+00:00",
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "operational_timeout": false,
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "started": "2026-10-20T16:38:51.914998+00:00",
+      "timeout_seconds": 10800
+    }
+  },
+  "fresh_replay": {
+    "boundary": "Fresh local replay outputs retain cohort logical artifact names and the packaged proof source metadata unchanged. These are not the missing original planted-finding replay.",
+    "bounds": {
+      "bootstrap_ticks": 10000,
+      "branches": 2,
+      "export_timeout_seconds": 300,
+      "max_attempts": 1,
+      "memory_mib": 256,
+      "replay_timeout_seconds": 300,
+      "rounds": 3,
+      "run_timeout_seconds": 240,
+      "snapshot_probe_fail_after": 1,
+      "ticks": 80,
+      "vms": 3
+    },
+    "runtime_artifacts": [
+      {
+        "bytes": 18320504,
+        "digest": "blake3:42287c026c3602a47e4ea53f1515ed1a4c7c8be2a4488fc7ab1bdbac130fc7d0",
+        "path": "/nix/store/11vda4dfdaf41v422rjfjx5aps5gjd4b-chaoscontrol-0.1.0/bin/chaoscontrol-explore"
+      },
+      {
+        "bytes": 410793408,
+        "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux"
+      },
+      {
+        "bytes": 477098,
+        "digest": "blake3:2531063a00f72e845261f0689d3c95527e718d0b5a7642003aaa958d62ed7f31",
+        "path": "/nix/store/sm18bbvjqcp3ahx1fvs88f6833wp2w0k-chaoscontrol-initrd-raft"
+      }
+    ],
+    "source_revision_metadata": "c6e51c072840caf2679e5c6936dcba8e444f73a3",
+    "summary": {
+      "accepted": true,
+      "accepted_bug": "dogfood-results/raft-fresh-v2-proof-20260809/bug_1.json",
+      "accepted_verdict": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug1.json",
+      "bugs": [
+        {
+          "assertion_id": 2608033797,
+          "file": "bug_0.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 3463273124,
+          "file": "bug_1.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 4077103701,
+          "file": "bug_2.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 976915693,
+          "file": "bug_3.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 1402950483,
+          "file": "bug_4.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 2608033797,
+          "file": "bug_5.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 3463273124,
+          "file": "bug_6.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 4077103701,
+          "file": "bug_7.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 976915693,
+          "file": "bug_8.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        },
+        {
+          "assertion_id": 1402950483,
+          "file": "bug_9.json",
+          "has_assertion_identity": true,
+          "has_snapshot_ref": true,
+          "replay_parent_depth": 1
+        }
+      ],
+      "export_exit_status": 0,
+      "receipt": "dogfood-results/raft-fresh-v2-proof-20260809/proof-receipt.json",
+      "reproduce_exit_status": 0,
+      "run_exit_status": 1,
+      "seed": 0,
+      "snapshot_probe_fail_after": 1,
+      "verdict": {
+        "path": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug1.json",
+        "replay_class": "snapshot_backed_reproduced",
+        "replay_parent_depth": 1,
+        "reproduced": true,
+        "snapshot_status": "valid"
+      },
+      "workload": "raft"
+    }
+  },
+  "fresh_replay_ready": true,
+  "historical_receipts": [
+    {
+      "bytes": 3416,
+      "digest": "blake3:d2a9e1319ecb9d8c3bcf253d51a403d766b8aa848f4eb54b73cf67c1b8ea975a",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-native-closure-20261019/receipt.ncl"
+    },
+    {
+      "bytes": 10051,
+      "digest": "blake3:f09000743439baa293eafca9d4ab5b0b1ff3f587a2716d446a66dbfa382dccbd",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt47-20261018/receipt.ncl"
+    },
+    {
+      "bytes": 4770,
+      "digest": "blake3:47752fde317f85812f6581f52d9ada08be38a4ff9386a6ebdeff697b21aa0632",
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/historical-initrd-availability-20261018/receipt.ncl"
+    }
+  ],
+  "independent_validation": {
+    "bounded_claim": "This receipt establishes that the exact source revision passed the required matrix on the recorded admitted worker with the recorded commands, bounds, and artifact identities.",
+    "checked_unix_seconds": 1792514695,
+    "finished_unix_seconds": 1792514675,
+    "full_receipt_identity": "blake3:bcfaecc19e9603cae19f801b5bb076de0bd0d491343e073637cf1d7c0fafb36c",
+    "matrix_identity": "blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0",
+    "matrix_profile": "required-kvm-release-v1",
+    "non_claims": [
+      "The receipt does not prove worker integrity.",
+      "The receipt does not prove all-host equivalence.",
+      "The receipt does not prove universal determinism.",
+      "The receipt does not prove workload correctness.",
+      "The receipt does not prove production availability."
+    ],
+    "raw_receipt_retention": "primary-worktree .pi evidence; raw row artifacts are not committed",
+    "rows": [
+      {
+        "artifact_bytes": 181602328,
+        "artifact_count": 84,
+        "artifact_set_identity": "blake3:20f6bb9f43977b722d2e25013b40840f6a059b673d88edf874324dfbec563616",
+        "command_identity": "blake3:246ecdbd69c4797bf33ea25eca0cf1dc587894e37e40d05f87e132d12c7a6568",
+        "id": "build-release-binaries",
+        "kind": "cohort-binary-build",
+        "status": "passed"
+      },
+      {
+        "artifact_bytes": 477098,
+        "artifact_count": 3,
+        "artifact_set_identity": "blake3:3d4ad298d4cb0bfc530c52adceecb2946a38c4f44f72af76484b2a5aec5dc0cc",
+        "command_identity": "blake3:208aa832269fb3b1ee713827a00e73138eb5bb08194a90f4305f12fab9dc235d",
+        "id": "build-raft-guest",
+        "kind": "cohort-guest-build",
+        "status": "passed"
+      },
+      {
+        "artifact_bytes": 578,
+        "artifact_count": 2,
+        "artifact_set_identity": "blake3:0aff8c7cee58f4469f2f485b608df1cbf5359fe8fbe4e3cb4ea037b31bb8d72d",
+        "command_identity": "blake3:cc65d089fc1e4fc8b5a735fe27e797e00f98374351099e5c256a6a5b1c7116ac",
+        "id": "deterministic-smp",
+        "kind": "deterministic-smp",
+        "status": "passed"
+      },
+      {
+        "artifact_bytes": 432,
+        "artifact_count": 2,
+        "artifact_set_identity": "blake3:1667b45b54b7ac3bdae8910205fdd7c7f21a374f5bb9afcc828b707b2f492cd9",
+        "command_identity": "blake3:0758db17baad94f711089936e5686f5e0a6e90fee0f3df0b5bc5645409d9e909",
+        "id": "serialized-snapshot-replay",
+        "kind": "serialized-snapshot-replay",
+        "status": "passed"
+      },
+      {
+        "artifact_bytes": 426,
+        "artifact_count": 2,
+        "artifact_set_identity": "blake3:0a26a432eeda3b5f20ee64445b3cce0837d1f461b90591a1ed986eabe172825a",
+        "command_identity": "blake3:a2be7bc2ccc018d2221292347c0d85a536fe3c8c6b34ca3fa1bc36cd460db7fd",
+        "id": "virtio-malformed-input",
+        "kind": "virtio-malformed-input",
+        "status": "passed"
+      },
+      {
+        "artifact_bytes": 38644115,
+        "artifact_count": 9,
+        "artifact_set_identity": "blake3:b4918f5f3daeb219a015d98f2f88ad18b0012b59da324e0c9584a9ae8631d6f4",
+        "command_identity": "blake3:8aa3dfc1614052336fa89878e7612af8d424e2532f52c5861d883fc7da3d9f45",
+        "id": "admitted-drift",
+        "kind": "admitted-drift",
+        "status": "passed"
+      },
+      {
+        "artifact_bytes": 116299194,
+        "artifact_count": 36,
+        "artifact_set_identity": "blake3:5cae675c78acac6c7826ebb762f504d3f5c7ea03dd2cdee212b4d4486d33eb30",
+        "command_identity": "blake3:fa364537ff1b194dc46564e542cbc8198cef636e1687487314598b9f56a57826",
+        "id": "fresh-workload-replay",
+        "kind": "fresh-workload-replay",
+        "status": "passed"
+      }
+    ],
+    "runner_revision": "chaoscontrol-evidence-0.1.0@29329c854338702457eb9967c4830b79487a8901",
+    "schema": "chaoscontrol.kvm-release-validation.v1",
+    "source": {
+      "dirty": false,
+      "revision": "29329c854338702457eb9967c4830b79487a8901"
+    },
+    "started_unix_seconds": 1792514364,
+    "terminal_class": "release-eligible",
+    "worker": {
+      "architecture": "x86_64",
+      "capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "kernel_release": "6.18.50",
+      "kvm_api_version": 12
+    }
+  },
+  "kvm_release_matrix_ready": true,
+  "nix_failure": "checks.x86_64-linux.dependency-policy: policy mutation was accepted. Negative controls mutate obsolete HTTPS source allowlist entries following the Radicle repin; the baseline deny check reports those sources unmatched.",
+  "nix_ready": false,
+  "outcome": "blocked",
+  "owner": "chaoscontrol-vmm",
+  "production_ready": false,
+  "remaining_prerequisites": [
+    "All required Nix checks must pass on an exact clean revision; dependency-policy currently fails.",
+    "Compatible Cairn consumer-independent mcp_agent_smoke integration remains required; no sibling change or policy suppression is authorized.",
+    "Recover the exact original planted-finding initrd with BLAKE3 82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e and obtain its snapshot-backed reproduction; a fresh probe is not a substitute."
+  ],
+  "schema": "chaoscontrol.unchanged-source-gate-receipt.v1",
+  "source": {
+    "dirty": false,
+    "revision": "29329c854338702457eb9967c4830b79487a8901"
+  },
+  "verified_row_artifacts": 138
+}

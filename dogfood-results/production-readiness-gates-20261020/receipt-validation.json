@@ -1,0 +1,51 @@
+{
+  "schema": "chaoscontrol.unchanged-source-gate-receipt-validation.v1",
+  "source": {
+    "revision": "29329c854338702457eb9967c4830b79487a8901",
+    "dirty": false
+  },
+  "nickel": {
+    "command": [
+      "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+      "export",
+      "--format",
+      "json",
+      "dogfood-results/production-readiness-gates-20261020/receipt.ncl"
+    ],
+    "exit_code": 0
+  },
+  "unsupported_readiness": {
+    "expected_rejection": true,
+    "exit_code": 1,
+    "diagnostic": "error: contract broken by a value\n   \u250c\u2500 <stdin>:1:158\n   \u2502\n 1 \u2502 let R = import \"/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-gates-20261020/receipt.ncl\" in R.production_ready | std.contract.Equal true\n   \u2502                                                                                                                                                              ^^^^^^^^^^^^^^^^^^   ----------------------- expected type\n   \u2502                                                                                                                                                              \u2502                     \n   \u2502                                                                                                                                                              applied to this expression\n   \u2502\n   \u250c\u2500 /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-gates-20261020/receipt.ncl:43:49\n   \u2502\n43 \u2502   production_ready | std.contract.Equal false = false,\n   \u2502                                                 ----- evaluated to this expression\n\n"
+  },
+  "previous_receipts_unchanged": 3,
+  "row_artifact_verification": {
+    "count": 138,
+    "algorithm": "blake3",
+    "method": "Collector independently compared every row artifact byte count and BLAKE3 with release-receipt.json before publication."
+  },
+  "published_inputs": [
+    {
+      "path": "dogfood-results/production-readiness-gates-20261020/observations.json",
+      "digest": "blake3:a0224c34cca797704baef181d2398f7c0cdc7ff124b780825358d55faa999a20",
+      "bytes": 25305
+    },
+    {
+      "path": "dogfood-results/production-readiness-gates-20261020/validated-matrix.json",
+      "digest": "blake3:a7057c50b2da900c942e32bc0c72fc75fce637e7bf6f5a361c71eabd58e93a8f",
+      "bytes": 4074
+    },
+    {
+      "path": "dogfood-results/production-readiness-gates-20261020/receipt.ncl",
+      "digest": "blake3:5a991bdb29f01be3aaff01f6f330a2fa1a94558f2c4f1c2f64241693632c3cc7",
+      "bytes": 2893
+    },
+    {
+      "path": "dogfood-results/production-readiness-gates-20261020/receipt.json",
+      "digest": "blake3:dbb23fb28471b30b2d55614c629c15b53dc5f5104551861126f30357b8d202a9",
+      "bytes": 22353
+    }
+  ],
+  "boundary": "Gate evidence only; does not add corrective authority, promote old gates to this source, or establish production readiness."
+}

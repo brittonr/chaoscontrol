@@ -2168,6 +2168,7 @@
                   KERNEL=${mkChaosKernel { virtioNet = true; }}/vmlinux \
                     INITRD=${initrd-raft} \
                     OUT=$out \
+                    CHAOSCONTROL_CUTOVER_RECEIPT=${./contracts/campaign-cutover/receipt.json} \
                     ${pkgs.bash}/bin/bash ${./scripts/snapshot-replay-smoke.sh}
                 '';
 

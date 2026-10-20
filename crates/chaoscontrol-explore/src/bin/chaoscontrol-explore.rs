@@ -2982,7 +2982,9 @@ fn admit_committed_campaign_cutover() {
         eprintln!("Error: cannot resolve repository root: {error}");
         std::process::exit(1);
     });
-    let receipt_path = root.join("contracts/campaign-cutover/receipt.json");
+    let receipt_path = std::env::var_os("CHAOSCONTROL_CUTOVER_RECEIPT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root.join("contracts/campaign-cutover/receipt.json"));
     let bytes = std::fs::read(&receipt_path).unwrap_or_else(|error| {
         eprintln!(
             "Error: Campaign cutover receipt is missing at {}: {error}",

@@ -169,6 +169,56 @@ seven-row matrix on an exact clean revision. Do not weaken a checker, skip a
 control, extend bounds, alter a sibling or reconfigure a host. Historical receipts
 and the missing original replay input remain separate evidence boundaries.
 
+### 17. Three separately counted owner-local release corrections
+
+After the attempt48 publication, the user explicitly selected "Authorize three
+additional attempts". The continuing ledger grants a maximum of 51, preserving
+all previous ledgers rather than retroactively changing their authority.
+
+Attempt49 isolates assertions over process-global signal state in independent
+test subprocesses. Keep production atomics and signal semantics unchanged;
+retain the original failing flag test, remove the duplicate test that never ran
+an explorer, and replace installation-only non-crash coverage with observable
+first-signal/second-signal transitions. Do not serialize the workspace suite.
+
+Attempt50 addresses the actual Octet Cargo client route. The failing consumer
+derivation prepends a wrapper for Cargo 1.96.0-nightly, while the existing
+source-client repair is scoped to Cargo 1.98.0. Any integration must retain the
+exact nightly compiler and Dylint ABI and genuine policy checks. Review the
+supported input/consumer API before choosing a scoped repair; no sibling edits.
+
+The pinned helper has no Cargo injection parameter, and the packaged runner
+prefixes its own Cargo path after the check's setup. Use guarded `overrideAttrs`
+on the original runner's wrapper and original check's invocation: prepend the
+already-tested repaired Cargo client within that runtime path, preserving every
+other tool/artifact/argument. Its wrapper appends the stable rustc directory,
+so the original nightly rustc remains first. Match the exact pinned wrapper and
+invocation forms and fail evaluation if the integration seam changes. Exercise
+the real Octet checks; do not replace them with a copied checker or fixtures.
+
+Attempt51 first traces the explorer child around its unchanged 240-second
+deadline and one-second teardown allowance. The outer 3600-second matrix row
+limit is not the observed boundary. A retained frontier stop is not process
+completion, and no discarded captured output or host timeout is a guest verdict.
+Repair only a demonstrated cause; do not increase bounds or suppress errors.
+
+The immutable seed-zero trace reaches round zero and a retained snapshot artifact
+but misses the 240-second deadline. Its explorer unmaps 150 guest-memory-sized
+buffers (about 39 GiB in total). Source inspection identifies full replay-parent
+clones for each failure and even for dashboard counts, followed by repeated
+encoding of the same parent for each checkpoint bug. Share each round's immutable
+replay parent through `Arc`, iterate borrowed bugs for counts/checkpoint creation,
+and encode each shared parent/depth pair once per checkpoint. Pointer identity is
+only a checkpoint-local memo key, never a persisted identity or authority; retain
+the existing canonical encoding, digest, admission and replay checks. Keep depth
+in the key so references cannot alias across lineage depths. Exercise the actual
+launcher under its original deadlines after the repair; the diagnostic trace is
+not a passing release result.
+
+Fresh workspace/Nix/Cairn and seven-row matrix results must bind their exact
+clean source. The original planted finding still requires its original initrd,
+and a supported Cairn CLI/export cohort remains an independent prerequisite.
+
 ## Risks
 
 - Overlay size and restore cost grow with lineage depth. Validation records overlay page counts per depth for the Raft and redb workloads.

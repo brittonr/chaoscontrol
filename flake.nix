@@ -179,6 +179,36 @@
             _final: _prev: { cargo = cargoExactRevisions; }
           );
 
+          # Keep Octet's compiler/Dylint cohort; repair only its Cargo client.
+          mkOctetConsumerCheck =
+            args:
+            let
+              upstreamRunner = octet.packages.${args.system}.cargo-octet;
+              repairedRunner = upstreamRunner.overrideAttrs (previous: {
+                buildCommand =
+                  let
+                    pathPrefix = ''--prefix PATH : "'';
+                  in
+                  assert pkgs.lib.hasInfix pathPrefix previous.buildCommand;
+                  pkgs.lib.replaceStrings
+                    [ pathPrefix ]
+                    [ ''--prefix PATH : "${cargoExactRevisions}/bin:'' ]
+                    previous.buildCommand;
+              });
+              upstreamCheck = octet.lib.mkConsumerCheck args;
+              upstreamCommand = "${upstreamRunner}/bin/cargo-octet";
+            in
+            upstreamCheck.overrideAttrs (previous: {
+              buildCommand =
+                assert
+                  builtins.replaceStrings [ upstreamCommand ] [ "" ] previous.buildCommand
+                  != previous.buildCommand;
+                pkgs.lib.replaceStrings
+                  [ upstreamCommand ]
+                  [ "${repairedRunner}/bin/cargo-octet" ]
+                  previous.buildCommand;
+            });
+
           # Musl-targeting toolchain for statically-linked guest binaries
           muslRustToolchain = pkgs.rust-bin.stable.latest.default.override {
             targets = [ "x86_64-unknown-linux-musl" ];
@@ -2190,7 +2220,7 @@
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = octet.checks.${system}.policy-registry;
             vm-cohort-adapter-octet-deny-all =
-              (octet.lib.mkConsumerCheck {
+              (mkOctetConsumerCheck {
                 inherit system;
                 src = vmCohortAdapterOctetWorkspace;
                 cargoLock = ./checks/vm-cohort-adapter-octet/Cargo.lock;
@@ -2202,7 +2232,7 @@
                   DYLINT_RUSTFLAGS = "--deny warnings";
                 });
             snapshot-descriptor-octet-deny-all =
-              (octet.lib.mkConsumerCheck {
+              (mkOctetConsumerCheck {
                 inherit system;
                 src = tigerstyleSrc;
                 cargoLock = ./Cargo.lock;
@@ -2213,7 +2243,7 @@
                 (_previous: {
                   DYLINT_RUSTFLAGS = "--deny warnings";
                 });
-            tigerstyle-chaoscontrol-focused = octet.lib.mkConsumerCheck {
+            tigerstyle-chaoscontrol-focused = mkOctetConsumerCheck {
               inherit system;
               src = tigerstyleSrc;
               cargoLock = ./Cargo.lock;

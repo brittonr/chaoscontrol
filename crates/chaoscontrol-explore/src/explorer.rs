@@ -468,10 +468,12 @@ impl Explorer {
     }
 
     /// All bugs found: corpus bugs + standalone bugs from zero-coverage branches.
-    fn all_bugs(&self) -> Vec<BugReport> {
-        let mut bugs = self.corpus.bugs();
-        bugs.extend(self.standalone_bugs.iter().cloned());
-        bugs
+    fn all_bugs(&self) -> impl Iterator<Item = &BugReport> {
+        self.corpus
+            .entries()
+            .iter()
+            .flat_map(|entry| entry.bugs_found.iter())
+            .chain(self.standalone_bugs.iter())
     }
 
     /// Set an event sink for dashboard updates.
@@ -504,7 +506,7 @@ impl Explorer {
             total_rounds: self.rounds_completed,
             total_branches: self.total_branches_run,
             total_edges: self.coverage.stats().total_edges,
-            total_bugs: self.all_bugs().len(),
+            total_bugs: self.all_bugs().count(),
             reason: reason.to_string(),
             from_seed: None,
         });
@@ -709,7 +711,7 @@ impl Explorer {
                 new_edges: round_report.new_coverage_edges,
                 cumulative_edges: self.coverage.stats().total_edges,
                 bugs_found: round_report.bugs_found,
-                cumulative_bugs: self.all_bugs().len(),
+                cumulative_bugs: self.all_bugs().count(),
                 frontier_size: round_report.frontier_size,
                 corpus_size: self.corpus.stats().total_entries,
                 restore_ms: round_report.timings.restore_ms,
@@ -1132,7 +1134,7 @@ impl Explorer {
     ) -> Result<(RoundReport, RoundObservation), ExploreError> {
         let (snapshot, base_schedule, parent_depth) = match authorized.selected() {
             Some(entry) => (
-                Some(entry.snapshot.clone()),
+                Some(Arc::new(entry.snapshot.clone())),
                 entry.schedule.clone(),
                 entry.depth,
             ),
@@ -1324,7 +1326,7 @@ impl Explorer {
     /// Run branches sequentially (original path).
     fn run_branches_sequential(
         &mut self,
-        snapshot: &Option<SimulationSnapshot>,
+        snapshot: &Option<Arc<SimulationSnapshot>>,
         variants: Vec<(FaultSchedule, Option<ScheduleVariant>)>,
     ) -> Result<Vec<(RecoveredBranchOutcome, FaultSchedule)>, ExploreError> {
         let mut outcomes = Vec::with_capacity(variants.len());
@@ -1358,7 +1360,7 @@ impl Explorer {
 
         let (snapshot, base_schedule, parent_depth) = match authorized.selected() {
             Some(entry) => (
-                Some(entry.snapshot.clone()),
+                Some(Arc::new(entry.snapshot.clone())),
                 entry.schedule.clone(),
                 entry.depth,
             ),
@@ -1653,7 +1655,7 @@ impl Explorer {
     /// errors propagate unchanged.
     fn run_branch_recovering(
         &mut self,
-        snapshot: &Option<SimulationSnapshot>,
+        snapshot: &Option<Arc<SimulationSnapshot>>,
         schedule: &FaultSchedule,
         schedule_variant: Option<&ScheduleVariant>,
         overrides: Option<&[BTreeMap<u64, u64>]>,
@@ -1782,7 +1784,7 @@ impl Explorer {
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     fn run_branch(
         &mut self,
-        snapshot: &Option<SimulationSnapshot>,
+        snapshot: &Option<Arc<SimulationSnapshot>>,
         schedule: FaultSchedule,
         schedule_variant: Option<&ScheduleVariant>,
     ) -> Result<BranchResult, ExploreError> {
@@ -1887,7 +1889,7 @@ impl Explorer {
     /// before running, and clears them after.
     fn run_branch_with_overrides(
         &mut self,
-        snapshot: &Option<SimulationSnapshot>,
+        snapshot: &Option<Arc<SimulationSnapshot>>,
         schedule: FaultSchedule,
         per_vm_overrides: &[BTreeMap<u64, u64>],
     ) -> Result<BranchResult, ExploreError> {
@@ -2050,7 +2052,7 @@ impl Explorer {
         &mut self,
         result: &BranchResult,
         schedule: &FaultSchedule,
-        replay_snapshot: Option<&SimulationSnapshot>,
+        replay_snapshot: Option<&Arc<SimulationSnapshot>>,
         parent_depth: u32,
         marker_context: Option<&crate::marker_branching::MarkerFrontierMetadata>,
     ) -> Result<Vec<BugReport>, ExploreError> {
@@ -2168,7 +2170,7 @@ impl Explorer {
 
                 // Emit BugFound event for dashboard.
                 self.emit_event(crate::dashboard_types::DashboardEvent::BugFound {
-                    bug_index: self.all_bugs().len() + bugs.len(),
+                    bug_index: self.all_bugs().count() + bugs.len(),
                     assertion_id: assertion_id as u64,
                     assertion_message: record.message.clone(),
                     round: self.rounds_completed,
@@ -2471,7 +2473,7 @@ impl Explorer {
 
     /// Generate the final exploration report.
     fn generate_report(&self) -> ExplorationReport {
-        let bugs = self.all_bugs();
+        let bugs = self.all_bugs().cloned().collect();
         let coverage_stats = self.coverage.stats();
         let corpus_stats = self.corpus.stats();
 
@@ -2614,7 +2616,7 @@ impl Explorer {
             rounds: self.rounds_completed,
             branches: self.total_branches_run,
             edges: self.coverage.stats().total_edges,
-            bugs: self.all_bugs().len(),
+            bugs: self.all_bugs().count(),
             frontier_size: self.frontier.len(),
             corpus_size: self.corpus.len(),
         }
@@ -2745,8 +2747,12 @@ impl Explorer {
 
         let snapshot_store = crate::snapshot_store::FileSnapshotStore::new(output_dir);
         let mut bugs = Vec::new();
+        // Memoize only this borrowed checkpoint view. Pointer identity never
+        // escapes into an artifact, and depth remains part of the envelope.
+        let mut replay_parents =
+            BTreeMap::<_, crate::snapshot_store::ReplayParentSnapshotRef>::new();
         for bug in self.all_bugs() {
-            let mut serialized: SerializableBug = (&bug).into();
+            let mut serialized: SerializableBug = bug.into();
             if bug.replay_parent_depth > 0 && serialized.replay_parent_snapshot_ref.is_none() {
                 let snapshot = bug.snapshot.as_ref().ok_or(
                     CheckpointError::MissingRequiredReplayParentSnapshot {
@@ -2754,11 +2760,18 @@ impl Explorer {
                         replay_parent_depth: bug.replay_parent_depth,
                     },
                 )?;
-                let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
-                    &snapshot_store,
-                    snapshot,
-                    bug.replay_parent_depth,
-                )?;
+                let key = (Arc::as_ptr(snapshot), bug.replay_parent_depth);
+                let reference = if let Some(reference) = replay_parents.get(&key) {
+                    reference.clone()
+                } else {
+                    let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
+                        &snapshot_store,
+                        snapshot,
+                        bug.replay_parent_depth,
+                    )?;
+                    replay_parents.insert(key, reference.clone());
+                    reference
+                };
                 serialized.replay_parent_snapshot_ref = Some(reference);
             }
             if bug.replay_parent_depth == 0 {
@@ -4456,20 +4469,5 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_dir_all(&checkpoint_dir);
-    }
-
-    #[test]
-    fn test_shutdown_flag_stops_exploration() {
-        // Reset in case another test set the flag.
-        crate::signal::reset_shutdown();
-
-        // We can't run a real Explorer without KVM, but we can verify
-        // the signal module round-trips correctly and the flag is
-        // checked in the right place (the Explorer::run loop checks
-        // crate::signal::shutdown_requested() after each round).
-        assert!(!crate::signal::shutdown_requested());
-        crate::signal::request_shutdown();
-        assert!(crate::signal::shutdown_requested());
-        crate::signal::reset_shutdown();
     }
 }

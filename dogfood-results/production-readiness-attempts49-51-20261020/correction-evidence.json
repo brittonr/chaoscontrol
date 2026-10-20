@@ -1,0 +1,945 @@
+{
+  "schema": "chaoscontrol.release-corrections-evidence.v1",
+  "owner": "chaoscontrol-vmm",
+  "source_context": {
+    "base_revision": "832326a4df7d268e7632aa68705db0b2a399370e",
+    "dirty": true,
+    "changed_compilation_inputs": [
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/signal.rs",
+        "digest": "blake3:f4bf38f4b635d5784db5a1e7cbec95546eaa733d6f6dda509e8498dc1f1b7d32",
+        "bytes": 4008
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/explorer.rs",
+        "digest": "blake3:83e3d3b8c1f27e6b09de4678b4951d698a26f0a101bda5a5da342359b1d69f14",
+        "bytes": 175932
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/corpus.rs",
+        "digest": "blake3:ad2d545a9efbc10445f6d58c6db1dc0b9d58816d38f9a15272b982c93729f0b5",
+        "bytes": 11772
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/minimizer.rs",
+        "digest": "blake3:961ebf7d7bcf15fa7e78e4db7068118058c1d7aba2914379b10da0feb2f77788",
+        "bytes": 19468
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/src/bin/chaoscontrol-explore.rs",
+        "digest": "blake3:bd0e9a2ed5b5f2eb0ed80a71abef367b94d77b625d8a0d42150da10456a73836",
+        "bytes": 114177
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/crates/chaoscontrol-explore/examples/raft_lineage_proof.rs",
+        "digest": "blake3:80356be5a5d22a030188c57443ca5263138403878920bd2f1c7f3e69ed4ce67b",
+        "bytes": 35190
+      },
+      {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/flake.nix",
+        "digest": "blake3:733296d79cb8944ce2e6039453729d6b419389f38150db5605ed4c22489a5bce",
+        "bytes": 112554
+      }
+    ],
+    "boundary": "Pre-commit correction evidence only; not clean-source release evidence."
+  },
+  "commands": {
+    "authority-validation": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/authority-validation/execution.json",
+        "digest": "blake3:db7132de89bfad2452964061ffc29fe3b8feabeaf9cace68f4db534dfdd43798",
+        "bytes": 1649
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+          "validate",
+          "--root",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+          "--policy",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/generated/cairn-policy.json",
+          "--strict"
+        ],
+        "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn validate --root /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source --policy /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/generated/cairn-policy.json --strict",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T17:43:34.501555+00:00",
+        "finished": "2026-10-20T17:43:34.723513+00:00",
+        "elapsed_seconds": 0.2219072479638271,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/authority-validation/stdout.log",
+            "digest": "blake3:342402f7b9b1cec9fc2807c1439f026ef1654751e53e71f24d0cb9dc0a41b810",
+            "bytes": 77784
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/authority-validation/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    "attempt49-explore-tests": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt49-explore-tests/execution.json",
+        "digest": "blake3:7c035363514a9b7a3dbfe3ce883ba47e0d76ffac12cbe5076ae928a52a4edb3d",
+        "bytes": 1677
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "env",
+          "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build",
+          "CARGO_BUILD_JOBS=2",
+          "CARGO_PROFILE_DEV_DEBUG=0",
+          "CARGO_PROFILE_TEST_DEBUG=0",
+          "CARGO_INCREMENTAL=0",
+          "/run/current-system/sw/bin/nix",
+          "develop",
+          "-c",
+          "cargo",
+          "test",
+          "-p",
+          "chaoscontrol-explore",
+          "--lib",
+          "--locked"
+        ],
+        "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 /run/current-system/sw/bin/nix develop -c cargo test -p chaoscontrol-explore --lib --locked",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T17:45:04.642051+00:00",
+        "finished": "2026-10-20T17:47:45.685063+00:00",
+        "elapsed_seconds": 161.04302010900574,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt49-explore-tests/stdout.log",
+            "digest": "blake3:ada1e3eef77f2cff323ba90604a169622297432030a6df5782b29ecfbc0c6989",
+            "bytes": 35130
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt49-explore-tests/stderr.log",
+            "digest": "blake3:3fbcbe8211fedddcac7bc060b4f299d6eaf25edf38242b451d656e15071472cc",
+            "bytes": 1021
+          }
+        ]
+      }
+    },
+    "attempt50-octet-consumer-checks": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-consumer-checks/execution.json",
+        "digest": "blake3:b7e969856f31810f7bb755ccf4f643162f9325152fafefd4027aca78a54f12ae",
+        "bytes": 1588
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "nix",
+          "build",
+          "--no-link",
+          "-L",
+          "--keep-going",
+          "--max-jobs",
+          "2",
+          "--cores",
+          "2",
+          ".#checks.x86_64-linux.tigerstyle-chaoscontrol-focused",
+          ".#checks.x86_64-linux.snapshot-descriptor-octet-deny-all",
+          ".#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all"
+        ],
+        "display_command": "nix build --no-link -L --keep-going --max-jobs 2 --cores 2 '.#checks.x86_64-linux.tigerstyle-chaoscontrol-focused' '.#checks.x86_64-linux.snapshot-descriptor-octet-deny-all' '.#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all'",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 1,
+        "started": "2026-10-20T17:50:15.743670+00:00",
+        "finished": "2026-10-20T17:50:26.960982+00:00",
+        "elapsed_seconds": 11.217313148954418,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-consumer-checks/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-consumer-checks/stderr.log",
+            "digest": "blake3:415a8db13ff4d63f48943f8ad3de456d54f5cfd2aa7e36069d00c8496d3e9d58",
+            "bytes": 1190
+          }
+        ]
+      }
+    },
+    "attempt50-octet-literal-guard": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-literal-guard/execution.json",
+        "digest": "blake3:0adce0b060d21673acbaf8be83b9e61e96daf0b300d4562b3e43a9abc62b4fd6",
+        "bytes": 1583
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "nix",
+          "build",
+          "--no-link",
+          "-L",
+          "--keep-going",
+          "--max-jobs",
+          "2",
+          "--cores",
+          "2",
+          ".#checks.x86_64-linux.tigerstyle-chaoscontrol-focused",
+          ".#checks.x86_64-linux.snapshot-descriptor-octet-deny-all",
+          ".#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all"
+        ],
+        "display_command": "nix build --no-link -L --keep-going --max-jobs 2 --cores 2 '.#checks.x86_64-linux.tigerstyle-chaoscontrol-focused' '.#checks.x86_64-linux.snapshot-descriptor-octet-deny-all' '.#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all'",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 1,
+        "started": "2026-10-20T17:52:16.627544+00:00",
+        "finished": "2026-10-20T17:52:25.276864+00:00",
+        "elapsed_seconds": 8.649348669976462,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-literal-guard/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-literal-guard/stderr.log",
+            "digest": "blake3:62ad370297402300e12c22c9c1435994ba14d25b3b9f4b665bd21e87b8edddf5",
+            "bytes": 1280
+          }
+        ]
+      }
+    },
+    "attempt50-octet-build-command": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-build-command/execution.json",
+        "digest": "blake3:80256d60bbacec057f06f32a653d88596d0cbfa8d6492469979e7e9c6d1d9ea3",
+        "bytes": 1585
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "nix",
+          "build",
+          "--no-link",
+          "-L",
+          "--keep-going",
+          "--max-jobs",
+          "2",
+          "--cores",
+          "2",
+          ".#checks.x86_64-linux.tigerstyle-chaoscontrol-focused",
+          ".#checks.x86_64-linux.snapshot-descriptor-octet-deny-all",
+          ".#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all"
+        ],
+        "display_command": "nix build --no-link -L --keep-going --max-jobs 2 --cores 2 '.#checks.x86_64-linux.tigerstyle-chaoscontrol-focused' '.#checks.x86_64-linux.snapshot-descriptor-octet-deny-all' '.#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all'",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T17:53:52.058312+00:00",
+        "finished": "2026-10-20T17:54:39.089192+00:00",
+        "elapsed_seconds": 47.0308884360129,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-build-command/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-build-command/stderr.log",
+            "digest": "blake3:eaf70258de28174ea72420538097920b2d802b8fe6638c1af167ce9628b854fe",
+            "bytes": 3039345
+          }
+        ]
+      }
+    },
+    "attempt50-octet-negative-warning": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-negative-warning/execution.json",
+        "digest": "blake3:d989a22b99c76b8efb7c74b64662802097f01c439de8cb91fdffd0c2c23e989d",
+        "bytes": 1476
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "nix",
+          "build",
+          "--impure",
+          "--no-link",
+          "-L",
+          "--max-jobs",
+          "1",
+          "--cores",
+          "2",
+          "--file",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/octet-negative-control.nix"
+        ],
+        "display_command": "nix build --impure --no-link -L --max-jobs 1 --cores 2 --file /home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/octet-negative-control.nix",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 1,
+        "started": "2026-10-20T17:54:26.127809+00:00",
+        "finished": "2026-10-20T17:54:41.549891+00:00",
+        "elapsed_seconds": 15.422093124012463,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-negative-warning/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt50-octet-negative-warning/stderr.log",
+            "digest": "blake3:d265946b48aa95409dcdcf50901b75fad128a2612f46a2ea5815bb3de31b213e",
+            "bytes": 12136
+          }
+        ]
+      }
+    },
+    "attempt51-immutable-replay-trace": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-immutable-replay-trace/execution.json",
+        "digest": "blake3:73833c472cd79b977da1f0b6875fd91a77dd5d7e2967598300c551429b98bd29",
+        "bytes": 2161
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "/run/current-system/sw/bin/strace",
+          "-ff",
+          "-ttt",
+          "-T",
+          "-s",
+          "256",
+          "-e",
+          "trace=%process,%signal,futex,write,fsync,fdatasync,munmap",
+          "-o",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/syscalls",
+          "/nix/store/nzgcfysznb15k4q8ckb83m27x8wq3zr6-raft-accepted-verdict-dogfood/bin/raft-accepted-verdict-dogfood",
+          "--output",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/fresh",
+          "--max-attempts",
+          "1",
+          "--start-seed",
+          "0"
+        ],
+        "display_command": "/run/current-system/sw/bin/strace -ff -ttt -T -s 256 -e trace=%process,%signal,futex,write,fsync,fdatasync,munmap -o /home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/syscalls /nix/store/nzgcfysznb15k4q8ckb83m27x8wq3zr6-raft-accepted-verdict-dogfood/bin/raft-accepted-verdict-dogfood --output /home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/fresh --max-attempts 1 --start-seed 0",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 2,
+        "started": "2026-10-20T17:55:36.324729+00:00",
+        "finished": "2026-10-20T17:59:40.129851+00:00",
+        "elapsed_seconds": 243.80523948796326,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-immutable-replay-trace/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-immutable-replay-trace/stderr.log",
+            "digest": "blake3:5dbbfc6e0639629ac061a0a566300b43f7bef3bb9d1115adad0a69d200cc2eb8",
+            "bytes": 53
+          }
+        ]
+      }
+    },
+    "attempt51-explore-tests": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-explore-tests/execution.json",
+        "digest": "blake3:d085c83c664f795c1f13bc810539b5a36d96cb49b12026d5663d6387cfc1b2e1",
+        "bytes": 1691
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "env",
+          "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build",
+          "CARGO_BUILD_JOBS=2",
+          "CARGO_PROFILE_DEV_DEBUG=0",
+          "CARGO_PROFILE_TEST_DEBUG=0",
+          "CARGO_INCREMENTAL=0",
+          "/run/current-system/sw/bin/nix",
+          "develop",
+          "-c",
+          "cargo",
+          "test",
+          "-p",
+          "chaoscontrol-explore",
+          "--all-targets",
+          "--locked"
+        ],
+        "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 /run/current-system/sw/bin/nix develop -c cargo test -p chaoscontrol-explore --all-targets --locked",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:08:37.788626+00:00",
+        "finished": "2026-10-20T18:10:21.048166+00:00",
+        "elapsed_seconds": 103.259556030971,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-explore-tests/stdout.log",
+            "digest": "blake3:94a63f815e5dfe0ab5616bfa0a13ed18ab7f085502d7a1e0236bc10df436e5d9",
+            "bytes": 37834
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-explore-tests/stderr.log",
+            "digest": "blake3:34fe6b9b1b649cb8c387cc1d081176a0b287994c0ad0c77f6fbdbf5892c22c82",
+            "bytes": 1872
+          }
+        ]
+      }
+    },
+    "attempt51-source-format": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-source-format/execution.json",
+        "digest": "blake3:c0f3690fb4e043533ddb4902bd32a0a61af10ed59b06d6b67dffc2db856aa766",
+        "bytes": 1582
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "env",
+          "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build",
+          "CARGO_BUILD_JOBS=2",
+          "CARGO_PROFILE_DEV_DEBUG=0",
+          "CARGO_PROFILE_TEST_DEBUG=0",
+          "CARGO_INCREMENTAL=0",
+          "/run/current-system/sw/bin/nix",
+          "develop",
+          "-c",
+          "cargo",
+          "fmt",
+          "--all"
+        ],
+        "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 /run/current-system/sw/bin/nix develop -c cargo fmt --all",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:10:39.218741+00:00",
+        "finished": "2026-10-20T18:10:53.422475+00:00",
+        "elapsed_seconds": 14.203732247988228,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-source-format/stdout.log",
+            "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+            "bytes": 882
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-source-format/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    "attempt51-build-actual-launcher": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-build-actual-launcher/execution.json",
+        "digest": "blake3:96f2687733d0198534cb98e4bdb9bdf64bee204352874fc699b3a66326cb4fd8",
+        "bytes": 1238
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "nix",
+          "build",
+          ".#raft-accepted-verdict-dogfood",
+          "--no-link",
+          "--print-out-paths",
+          "-L"
+        ],
+        "display_command": "nix build '.#raft-accepted-verdict-dogfood' --no-link --print-out-paths -L",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:10:57.605324+00:00",
+        "finished": "2026-10-20T18:12:05.419199+00:00",
+        "elapsed_seconds": 67.8138795029954,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-build-actual-launcher/stdout.log",
+            "digest": "blake3:ff13951b8c0818533e4200a2a8dce1d7a9dacaec306088daf0036b8f0791cf4b",
+            "bytes": 74
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-build-actual-launcher/stderr.log",
+            "digest": "blake3:07208c0baa22e3b7bbb493341ceac1140ce9e9c7ee33bb157e94ca7d1684722a",
+            "bytes": 49785
+          }
+        ]
+      }
+    },
+    "attempt51-actual-fresh-replay": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-actual-fresh-replay/execution.json",
+        "digest": "blake3:57f8e0457dc882b105940b15c7f6a45fba20224570cbc23e6ff2950969b8dc1d",
+        "bytes": 1612
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "/nix/store/3rknsi0iifbk7vp2zghnic2gvl8ma6js-raft-accepted-verdict-dogfood/bin/raft-accepted-verdict-dogfood",
+          "--output",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-fresh-artifacts",
+          "--max-attempts",
+          "1",
+          "--start-seed",
+          "0"
+        ],
+        "display_command": "/nix/store/3rknsi0iifbk7vp2zghnic2gvl8ma6js-raft-accepted-verdict-dogfood/bin/raft-accepted-verdict-dogfood --output /home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-fresh-artifacts --max-attempts 1 --start-seed 0",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:13:17.372099+00:00",
+        "finished": "2026-10-20T18:16:37.484241+00:00",
+        "elapsed_seconds": 200.11216200201306,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-actual-fresh-replay/stdout.log",
+            "digest": "blake3:b7e4f05589af1101cd32a27179702baf9bda582a5a5ff68ac42cc231df328746",
+            "bytes": 170
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-actual-fresh-replay/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    "attempt51-watchdog-proof": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-proof/execution.json",
+        "digest": "blake3:6f38047eaced468f89cec7e4d00f1c2a83a6fb3d332a4eeffed727203d948bc8",
+        "bytes": 2422
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "env",
+          "CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build",
+          "CARGO_BUILD_JOBS=2",
+          "CARGO_PROFILE_DEV_DEBUG=0",
+          "CARGO_PROFILE_TEST_DEBUG=0",
+          "CARGO_INCREMENTAL=0",
+          "/run/current-system/sw/bin/nix",
+          "develop",
+          "-c",
+          "cargo",
+          "run",
+          "--locked",
+          "-p",
+          "chaoscontrol-explore",
+          "--example",
+          "raft_lineage_proof",
+          "--",
+          "--kernel",
+          "/nix/store/q48ll0ar6fxw4r562yyral95ha6glsad-linux-6.19-dev/vmlinux",
+          "--initrd",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/corrected-cohort/immutable-inputs/current-initrd-raft",
+          "--output",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-artifacts"
+        ],
+        "display_command": "env CARGO_TARGET_DIR=/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0 /run/current-system/sw/bin/nix develop -c cargo run --locked -p chaoscontrol-explore --example raft_lineage_proof -- --kernel /nix/store/q48ll0ar6fxw4r562yyral95ha6glsad-linux-6.19-dev/vmlinux --initrd /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/corrected-cohort/immutable-inputs/current-initrd-raft --output /home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-artifacts",
+        "timeout_seconds": 600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:17:32.926698+00:00",
+        "finished": "2026-10-20T18:23:28.400751+00:00",
+        "elapsed_seconds": 355.47407231101533,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-proof/stdout.log",
+            "digest": "blake3:a019263e88fcd3993a599f7d283444fc9aa1933d7776453730384ee623446484",
+            "bytes": 187240
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-proof/stderr.log",
+            "digest": "blake3:4eae8764884031837a79f7861e68c1b2d1b0865a79c6d50ee5a7995ded5d6e16",
+            "bytes": 636
+          }
+        ]
+      }
+    },
+    "attempt51-identical-input-replay": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-replay/execution.json",
+        "digest": "blake3:43a641eb5092efdbbde0eae17a278da75cc5200b20893ed6ba1132716e83ae65",
+        "bytes": 3288
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "/nix/store/2hj5d730labw53aaz1k21z66s91fzlxm-chaoscontrol-0.1.0/bin/accepted-snapshot-verdict-dogfood",
+          "--workload",
+          "raft",
+          "--cohort",
+          "/nix/store/8i94difyb410yafv4p5sykp8ksx3p9md-cohort.json",
+          "--evidence-prefix",
+          "dogfood-results/raft-fresh-v2-proof-20260809",
+          "--run-timeout",
+          "240",
+          "--export-timeout",
+          "300",
+          "--repro-timeout",
+          "300",
+          "--explore",
+          "/nix/store/2hj5d730labw53aaz1k21z66s91fzlxm-chaoscontrol-0.1.0/bin/chaoscontrol-explore",
+          "--kernel",
+          "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+          "--initrd",
+          "/nix/store/8pmk6w1x62wk1h4djrnqkwpsnqbrfijf-chaoscontrol-initrd-raft",
+          "--assertion-id",
+          "3463273124",
+          "--cmdline-template",
+          "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc",
+          "--vms",
+          "3",
+          "--rounds",
+          "3",
+          "--branches",
+          "2",
+          "--ticks",
+          "80",
+          "--memory-mb",
+          "256",
+          "--fail-after-values",
+          "1",
+          "--max-attempts",
+          "1",
+          "--output",
+          "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-artifacts",
+          "--max-attempts",
+          "1",
+          "--start-seed",
+          "0"
+        ],
+        "display_command": "/nix/store/2hj5d730labw53aaz1k21z66s91fzlxm-chaoscontrol-0.1.0/bin/accepted-snapshot-verdict-dogfood --workload raft --cohort /nix/store/8i94difyb410yafv4p5sykp8ksx3p9md-cohort.json --evidence-prefix dogfood-results/raft-fresh-v2-proof-20260809 --run-timeout 240 --export-timeout 300 --repro-timeout 300 --explore /nix/store/2hj5d730labw53aaz1k21z66s91fzlxm-chaoscontrol-0.1.0/bin/chaoscontrol-explore --kernel /nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/8pmk6w1x62wk1h4djrnqkwpsnqbrfijf-chaoscontrol-initrd-raft --assertion-id 3463273124 --cmdline-template 'raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc' --vms 3 --rounds 3 --branches 2 --ticks 80 --memory-mb 256 --fail-after-values 1 --max-attempts 1 --output /home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-artifacts --max-attempts 1 --start-seed 0",
+        "timeout_seconds": 3600,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:23:28.707055+00:00",
+        "finished": "2026-10-20T18:26:50.542055+00:00",
+        "elapsed_seconds": 201.83498221595073,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-replay/stdout.log",
+            "digest": "blake3:b932a2e02050f45ca61aa892c6ce0d7474932be4f9f6bfa59991c450f459b596",
+            "bytes": 180
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-replay/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    "cairn-current-refs": {
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/cairn-current-refs/execution.json",
+        "digest": "blake3:a8484f40aa0bc3c821a938ee8124c463a93d82ec571697a1b6f63df58c083cd1",
+        "bytes": 1309
+      },
+      "record": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "command": [
+          "git",
+          "ls-remote",
+          "git@github.com:OnixResearch/cairn.git",
+          "refs/heads/main",
+          "refs/heads/change/chaoscontrol-producer-readiness-20261017"
+        ],
+        "display_command": "git ls-remote git@github.com:OnixResearch/cairn.git refs/heads/main refs/heads/change/chaoscontrol-producer-readiness-20261017",
+        "timeout_seconds": 120,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-20T18:11:55.912045+00:00",
+        "finished": "2026-10-20T18:11:56.477885+00:00",
+        "elapsed_seconds": 0.5658278079936281,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/cairn-current-refs/stdout.log",
+            "digest": "blake3:d92204f1ac5c8f555d22c3d85969b9072cf58257fd62b8853ef1a26af738f4b7",
+            "bytes": 157
+          },
+          {
+            "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/cairn-current-refs/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      }
+    }
+  },
+  "test_inventory": {
+    "passed": 444,
+    "failed": 0,
+    "ignored": 1
+  },
+  "fresh_probe": {
+    "accepted": true,
+    "summary": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-fresh-artifacts/accepted-snapshot-verdict-summary.json",
+      "digest": "blake3:f0326b964712319db74bd11f2a930942994e5f31d249b6b3535a7f39901651f5",
+      "bytes": 2439
+    },
+    "verdict": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-fresh-artifacts/replay-verdict-bug1.json",
+      "digest": "blake3:0d5ed067eb762d01dc969b7796079050bd22b10830bc2d30a16dd37bc3788013",
+      "bytes": 5426
+    },
+    "elapsed_seconds": 200.11216200201306,
+    "replay_class": "snapshot_backed_reproduced",
+    "parent_depth": 1,
+    "boundary": "Rebuilt current guest; not the selected historical planted finding."
+  },
+  "controlled_probe": {
+    "accepted": true,
+    "summary": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-artifacts/accepted-snapshot-verdict-summary.json",
+      "digest": "blake3:f0326b964712319db74bd11f2a930942994e5f31d249b6b3535a7f39901651f5",
+      "bytes": 2439
+    },
+    "verdict": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-identical-input-artifacts/replay-verdict-bug1.json",
+      "digest": "blake3:66be865cf1f426e26af7d63080a48a5724d1acdefd56bd00d8571df408c0b3a7",
+      "bytes": 5436
+    },
+    "elapsed_seconds": 201.83498221595073,
+    "original_inputs": [
+      {
+        "path": "/nix/store/8i94difyb410yafv4p5sykp8ksx3p9md-cohort.json",
+        "digest": "blake3:87a82c8942c11182736d2fbfb23c4fff5898401413620f706b3c68781e347588",
+        "bytes": 6620
+      },
+      {
+        "path": "/nix/store/bv30bckqdvkp7w7sc0frfy30iz3rzyfa-chaoscontrol-vmlinux/vmlinux",
+        "digest": "blake3:51b571a44f01a46ba4e4e63b4e9dd26c93b301a2b6feac51ef7455111ec2fa2b",
+        "bytes": 410793408
+      },
+      {
+        "path": "/nix/store/8pmk6w1x62wk1h4djrnqkwpsnqbrfijf-chaoscontrol-initrd-raft",
+        "digest": "blake3:69d26a2741cada28d153e2a835d3b4ae029c7f89353b4d2a227be570beb18228",
+        "bytes": 477106
+      }
+    ],
+    "changed_argument": "--explore executable only; the supervising executable is BLAKE3-identical before and after.",
+    "boundary": "Same original immutable VM inputs and declared bounds as the traced failure; not the original selected planted finding.",
+    "supervisor_byte_identity": {
+      "identical": true,
+      "original": {
+        "path": "/nix/store/l8i278ihrk8adfcjnfxjdw38hvdx0fc0-chaoscontrol-0.1.0/bin/accepted-snapshot-verdict-dogfood",
+        "digest": "blake3:d8687c1f95deba5430fc993db4d88b2de7591b9c83d72d7a5c322932909a27f0",
+        "bytes": 1559864
+      },
+      "corrected": {
+        "path": "/nix/store/2hj5d730labw53aaz1k21z66s91fzlxm-chaoscontrol-0.1.0/bin/accepted-snapshot-verdict-dogfood",
+        "digest": "blake3:d8687c1f95deba5430fc993db4d88b2de7591b9c83d72d7a5c322932909a27f0",
+        "bytes": 1559864
+      }
+    }
+  },
+  "watchdog": {
+    "passed": true,
+    "proof": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-artifacts/runtime-proof.json",
+      "digest": "blake3:66ee8f3a422351eab24bfc3a635aa04ad67562ddeb692eec967b34e0f7e4981e",
+      "bytes": 4534797
+    },
+    "executable": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr46/build/debug/examples/raft_lineage_proof",
+      "digest": "blake3:4800920000b122ec19c92343c38cfed85f85f0de705115a6e09afce54f8a39d2",
+      "bytes": 35107320
+    },
+    "profile": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-watchdog-artifacts/profile.json",
+      "digest": "blake3:8d4a4cae55e6be0ab8a10a12be609e092aa54b66b1b12e523a6161774f5c6056",
+      "bytes": 1162
+    },
+    "strict_comparisons": {
+      "initial_memory_identities": true,
+      "final_memory_identities": true,
+      "execution_traces": true,
+      "all_admitted_assertion_outcomes": true,
+      "fault_ledger": true,
+      "rounds": true
+    },
+    "event": {
+      "attempts_made": 1,
+      "bootstrap_base_memory_equal": true,
+      "bootstrap_memory_identities": [
+        "blake3:cb1edbb604fe37f7a5a99a480396bc521ee6caa2addcc4871396991a2e034ddd",
+        "blake3:750278669ad80ae0324888e2ff6553cedea790c011ab72529bbf54ffb933b643",
+        "blake3:7b0769161008cf0e0366c09e4dbc1a8e79c0438c9cbaf16a3245ca6b1bee0665"
+      ],
+      "classification": "operational-host-watchdog-timeout",
+      "configured_watchdog_milliseconds": 100,
+      "elapsed_nanoseconds": 100176166,
+      "error": "Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+      "guest_bug": false,
+      "immediate_incremental_recapture": {
+        "dirty_pages": 4050,
+        "memory_equal": true,
+        "memory_identities": [
+          "blake3:5fa068b84ca015fe4cd0b6c3139d910fd9ff1853167b09c8d0bab6e2ca568d0b",
+          "blake3:d778d17c48ed1bc65c3456c4add64ee0cd1a4055971a6b14d9dbd8563b7d97c8",
+          "blake3:8fe5538992ec964d40f4dd4d399c337ddfc8c8ce672c1d79bf3a89952de09e3a"
+        ]
+      },
+      "max_branch_watchdog_attempts": 3,
+      "max_probe_rounds": 1,
+      "passed": true,
+      "poison_enforced": true,
+      "poison_rejections": [
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "step_round",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "run",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "snapshot_all",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "snapshot_all_incremental",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "restore_all",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "restore_all_incremental",
+          "rejected": true
+        }
+      ],
+      "poisoned_controller_dropped": true,
+      "probe": {
+        "admitted_to_guest_evidence": false,
+        "bytes": [
+          250,
+          235,
+          254
+        ],
+        "cpu_state": "VMM pre-boot CPU; RIP redirected to probe",
+        "guest_physical_address": 4096,
+        "guest_virtual_address": 4096,
+        "intentional": true,
+        "page_tables": "GuestMemoryManager::setup_page_tables boot identity map",
+        "vcpu": 0,
+        "vm": 0
+      },
+      "replacement_api": "RecoverySnapshot::rebuild_controller",
+      "replacement_created": true,
+      "restored_parent_memory_equal": true,
+      "restored_parent_memory_identities": [
+        "blake3:5fa068b84ca015fe4cd0b6c3139d910fd9ff1853167b09c8d0bab6e2ca568d0b",
+        "blake3:d778d17c48ed1bc65c3456c4add64ee0cd1a4055971a6b14d9dbd8563b7d97c8",
+        "blake3:8fe5538992ec964d40f4dd4d399c337ddfc8c8ce672c1d79bf3a89952de09e3a"
+      ],
+      "retained_parent_memory_identities": [
+        "blake3:5fa068b84ca015fe4cd0b6c3139d910fd9ff1853167b09c8d0bab6e2ca568d0b",
+        "blake3:d778d17c48ed1bc65c3456c4add64ee0cd1a4055971a6b14d9dbd8563b7d97c8",
+        "blake3:8fe5538992ec964d40f4dd4d399c337ddfc8c8ce672c1d79bf3a89952de09e3a"
+      ],
+      "retained_parent_tick": 3174,
+      "schema": "chaoscontrol.watchdog-recovery-event.v1",
+      "timer_signal_code": "SI_TIMER",
+      "timer_signals_observed": 1,
+      "watchdog_observed": true
+    },
+    "overlay_sizes": [
+      {
+        "depth": 1,
+        "dirty_pages": 1911,
+        "overlay_payload_bytes": 7827456,
+        "full_reference_memory_equal": true
+      },
+      {
+        "depth": 2,
+        "dirty_pages": 2481,
+        "overlay_payload_bytes": 10162176,
+        "full_reference_memory_equal": true
+      },
+      {
+        "depth": 3,
+        "dirty_pages": 3552,
+        "overlay_payload_bytes": 14548992,
+        "full_reference_memory_equal": true
+      },
+      {
+        "depth": 4,
+        "dirty_pages": 4050,
+        "overlay_payload_bytes": 16588800,
+        "full_reference_memory_equal": true
+      }
+    ],
+    "assertion_coverage": {
+      "long-lived-incremental": {
+        "catalog_size": 45,
+        "failed": 0,
+        "passed": 44,
+        "unexercised": 1
+      },
+      "fresh-full": {
+        "catalog_size": 45,
+        "failed": 0,
+        "passed": 44,
+        "unexercised": 1
+      },
+      "watchdog-replacement-incremental": {
+        "catalog_size": 45,
+        "failed": 0,
+        "passed": 44,
+        "unexercised": 1
+      }
+    },
+    "boundary": "Intentional real POSIX watchdog observation; not a guest bug. Full Rust runtime records remain local."
+  },
+  "remaining_prerequisites": [
+    "Compatible fully gated Cairn producer CLI/export cohort for the original full MCP completion contract.",
+    "Exact original planted-finding initrd BLAKE3 82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e and snapshot-backed reproduction."
+  ]
+}

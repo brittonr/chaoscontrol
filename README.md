@@ -12,9 +12,9 @@ Production readiness remains blocked. Native Cairn traceability now passes
 `7594be4e034ea757ad5d132596a3b5475b88008d`; the
 [native closure receipt](dogfood-results/production-readiness-native-closure-20261019/receipt.ncl)
 binds the current Cargo, evidence, cutover, and release-gate observations.
-The remaining upstream blocker is `mcp_agent_smoke`: the pinned Cairn cohort
-requires consumer-root Cairn self-fixtures, which the accepted boundary forbids
-copying. The current
+The upstream blocker is `mcp_agent_smoke`: the pinned Cairn producer cannot
+complete the required Nix/dependency contract. Its newer mechanism branch is not
+a fully gated compatible CLI/export cohort; copying self-fixtures is not a remedy. The
 [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
 retains the depth-four campaign and retained-finding replay evidence.
 See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)
@@ -28,13 +28,21 @@ verifies the obsolete-allowlist correction on clean
 `17b8abdbb294f7fdb4da7e680a05e74c8e0542a0`. Native coverage remains 382/382;
 Clippy and formatting pass. The complete no-fail-fast workspace run passes
 2224 tests, but the initial shutdown-flag test failure remains recorded.
-Full Nix checks now fail at the Octet nightly Cargo integration. The correction's
-matrix passes six rows; fresh replay fails with a direct-child teardown timeout,
-an operational failure rather than a guest bug. The earlier seven-row pass is
-not a pass on this correction revision. Cairn MCP smoke applicability and the
+On that correction revision, full Nix checks fail at the Octet nightly Cargo
+integration and the matrix passes six rows; fresh replay fails with a direct-child
+teardown timeout, an operational failure rather than a guest bug. The earlier
+seven-row pass is not a pass on that revision. Cairn MCP smoke applicability and the
 original planted-finding replay with its exact historical initrd remain blockers.
 Fresh probe replay is not a substitute. Later evidence-only commits are not
 release-tested revisions.
+
+The authorized attempts49–51 isolate shutdown-state tests, retain the exact
+Octet nightly compiler/Dylint cohort while selecting the repaired Cargo client,
+and remove repeated replay-parent copies/encodes. The actual fresh probe now
+reproduces from a persisted parent under unchanged bounds. See the
+[shared-parent retention notes](docs/snapshot-fidelity.md#shared-replay-parent-retention-attempt51)
+and `dogfood-results/production-readiness-attempts49-51-20261020/` for the new
+command/artifact evidence. Scoped correction proof is not production readiness.
 
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.

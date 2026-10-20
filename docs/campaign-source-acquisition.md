@@ -1,6 +1,6 @@
 # Campaign source acquisition
 
-The development shell uses a scoped Cargo 1.98.0 transport repair for Campaign acquisition. The same Cargo also supports explicit package names for pathless source URLs. Host and musl Crane builds use this Cargo. The Rust compilers and Nix vendored-input path stay unchanged.
+The development shell uses a scoped Cargo 1.98.0 transport repair for Campaign acquisition. The same Cargo also supports explicit package names for pathless source URLs. Host and musl Crane builds use this Cargo. The first-party Octet consumer checks select this repaired Cargo client while retaining Octet's exact nightly compiler and Dylint artifacts. Rust compilers and Nix vendored-input paths stay unchanged.
 
 ## Transport contract
 
@@ -55,3 +55,23 @@ Source repository: `rust-lang/cargo`, as shipped in the official Rust 1.98.0 sou
 Nix requires SHA-256 SRI for this fetch. Git object IDs retain their protocol algorithm. These identities do not replace stack-owned BLAKE3 content receipts.
 
 The upstream source retains its MIT OR Apache-2.0 notices. ChaosControl maintainers own this consumer-specific patch and its exact-URL configuration. A compiler version change fails the package assertion and requires a source review. Remove the patch after the pinned upstream Cargo satisfies the same positive and negative controls.
+
+## Octet consumer client integration
+
+The pinned `mkConsumerCheck` helper has no Cargo-client injection parameter.
+Its packaged runner prepends its own runtime path, so changing the enclosing
+check's `PATH` does not replace Cargo. `mkOctetConsumerCheck` in `flake.nix`
+uses guarded derivation overrides to prepend the repaired Cargo-only directory
+within the original runner's runtime path and selects that runner in the original
+first-party check. Evaluation fails if either expected integration seam changes.
+The repaired Cargo wrapper only appends its stable compiler directory; the
+original nightly compiler stays earlier in `PATH`. Driver/library identities,
+toolchain name, policy, package scopes, arguments and verdict handling are retained.
+
+The actual deny-all descriptor and VM Cohort checks report `clean`; the focused
+check reports `warning-only` with 3293 warnings and zero errors under the unchanged
+Octet policy. That policy accepts `clean` and `warning-only`, not
+`integration-failure`. A genuine compiler-warning control still fails through
+`-D warnings`. These observations verify client integration, not zero style debt,
+full release readiness or a passing clean-source KVM matrix.
+

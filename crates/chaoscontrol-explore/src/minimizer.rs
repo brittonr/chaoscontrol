@@ -388,7 +388,9 @@ impl Minimizer {
         Ok(snapshot)
     }
 
-    fn replay_start_snapshot(&mut self) -> Result<SimulationSnapshot, ExploreError> {
+    fn replay_start_snapshot(
+        &mut self,
+    ) -> Result<std::sync::Arc<SimulationSnapshot>, ExploreError> {
         if let Some(snapshot) = self.bug.snapshot.clone() {
             info!(
                 "Using saved replay parent snapshot at depth {}",
@@ -397,7 +399,7 @@ impl Minimizer {
             return Ok(snapshot);
         }
 
-        self.bootstrap()
+        self.bootstrap().map(std::sync::Arc::new)
     }
 }
 
@@ -452,7 +454,7 @@ mod tests {
             marker_context: None,
             assertion_location: "assertion".into(),
             schedule: FaultSchedule::new(),
-            snapshot,
+            snapshot: snapshot.map(std::sync::Arc::new),
             tick: 123,
             replay_parent_depth: 2,
             replay_parent_snapshot_ref: None,

@@ -1,0 +1,71 @@
+let Prior = import "../production-readiness-attempt48-20261020/attempts.ncl" in
+let Attempt = {
+  number | Number,
+  correction | String,
+  status | [| 'planned, 'passed, 'failed, 'blocked |],
+  evidence | Array String,
+} in
+{
+  schema = "chaoscontrol.production-readiness-attempts49-51.v1",
+  owner = "chaoscontrol-vmm",
+  starting_revision = "832326a4df7d268e7632aa68705db0b2a399370e",
+  previous_ledger = "dogfood-results/production-readiness-attempt48-20261020/attempts.ncl",
+  previous_used_attempts | std.contract.Equal 48 = Prior.used_implementation_attempts,
+  original_maximum_implementation_attempts = Prior.original_maximum_implementation_attempts,
+  maximum_implementation_attempts | std.contract.Equal 51 = Prior.maximum_implementation_attempts + 3,
+  authorization = {
+    selection = "Authorize three additional attempts",
+    additional_attempts | std.contract.Equal 3 = 3,
+    scope = [
+      "Shutdown-test isolation without workspace serialization or production signal changes",
+      "Scoped Cargo/Octet integration preserving the exact nightly compiler/Dylint contract",
+      "Traced replay diagnosis and cause-specific repair without changing declared bounds",
+    ],
+    unchanged_boundaries = [
+      "Every original readiness criterion and independent passing-report verdict remains required",
+      "No sibling edits, host reconfiguration, manual credential access, deployment or unrelated corrections",
+      "Preserve historical receipts and local raw logs/VM artifacts; BLAKE3 for new evidence identities",
+      "Commit verified changes and push main without force; no fourth corrective attempt is implied",
+    ],
+  },
+  counting_rule = Prior.counting_rule,
+  attempts | Array Attempt = [{
+    number = 49,
+    correction = "Execute process-global shutdown assertions in isolated test subprocesses, remove the duplicate non-exploration test, and replace bare installation non-crash coverage with actual signal transitions.",
+    status = 'passed,
+    evidence = [
+      "Retained attempt48 failure is ground truth; no redundant pre-fix rerun is used.",
+      "Both retained flag tests and the explorer duplicate share process-global AtomicBool/AtomicU32 state. They reset/read/write without isolation; production signal handling is not being changed.",
+      "The actual explorer library suite passes: 417 passed, zero failed, one declared ignored, zero filtered; the original signal::tests::shutdown_flag_initially_false remains present and passes.",
+      "Separate test subprocesses exercise initial state, manual shutdown and actual first/second SIGTERM behavior. The duplicate explorer test never ran exploration and was removed; production signal code is unchanged except removal of the obsolete test-only reset helper.",
+    ],
+  }, {
+    number = 50,
+    correction = "Use the existing repaired Cargo client inside all first-party Octet consumer checks through guarded Nix derivation overrides, retaining their exact compiler, Dylint artifacts, arguments, sources and verdict handling.",
+    status = 'passed,
+    evidence = [
+      "The pinned first-party consumer helper has no Cargo-injection parameter. Its packaged runner prefixes a separate Cargo 1.96.0-nightly runtime path, so an outer PATH change cannot select the repaired client.",
+      "The repaired Cargo 1.98.0 wrapper only appends its stable compiler directory. Prefixing its cargo-only bin directory inside the original Octet runtime preserves the nightly rustc already earlier in PATH.",
+      "The first evaluation rejects lib.hasInfix with a store-context-bearing command string. Replace that regex-based presence check with a literal replacement/equality guard, preserving Nix source context and the fail-closed seam check; retain the failed evaluation separately.",
+      "The next evaluation establishes that symlinkJoin folds its postBuild parameter into the derivation buildCommand; postBuild is not an overrideAttrs input attribute. Apply the same guarded wrapper-path substitution at buildCommand and retain this failed shape probe independently.",
+      "All three actual first-party consumer derivations build after the scoped repair. The two deny-all checks report clean with zero findings. The focused check reports warning-only, 3293 warnings, zero errors; the pinned Octet RunStatus explicitly accepts clean and warning-only. This is not a zero-warning claim.",
+      "An actual non-snake-case compiler-warning fixture is rejected through the original deny-all consumer check: -D non-snake-case is implied by -D warnings, with two compilation errors and a failed build. No failed command is promoted to a passing checker verdict; this is the expected negative control.",
+      "Every real report retains nightly-2026-03-21-x86_64-unknown-linux-gnu. The compiler, driver, lint library, package scope, arguments and policy hashes remain the original first-party cohort; only the selected Cargo client changes.",
+    ],
+  }, {
+    number = 51,
+    correction = "Share immutable replay parents, borrow count/checkpoint bug traversal, and encode each shared parent/depth once per checkpoint or final output; preserve replay admission and declared bounds.",
+    status = 'passed,
+    evidence = [
+      "The retained row fails after 246 seconds; its exact launcher enforces a 240-second exploration deadline and a 1000ms direct-child teardown allowance. The outer matrix bound remains 3600 seconds.",
+      "Retain process/signal/futex/write syscall traces for the actual immutable launcher and original input artifacts. Tracing changes timing and is diagnostic only, never a substitute passing matrix or historical planted-finding replay.",
+      "The explorer trace records 150 guest-memory-sized unmaps, about 39 GiB total, after round zero; source inspection finds per-bug full-parent copies, count-only copies and repeated encoding.",
+      "All explorer targets pass: 444 tests, zero failures, one declared ignored. The actual rebuilt launcher accepts a valid digest-verified depth-one snapshot-backed reproduction in 200.112 seconds.",
+      "A controlled run changes only the explorer executable while retaining the original immutable kernel, initrd, cohort, seed and every declared bound. It accepts snapshot_backed_reproduced in 201.835 seconds; the rebuilt guest is not used as causal isolation evidence.",
+      "The unchanged raft_lineage_proof completes in 355.474 seconds. One actual SI_TIMER watchdog signal causes HostWatchdogTimeout, poison rejection and production controller replacement. Restored memory and immediate incremental recapture match; all three continuations match memory, exact execution records, every admitted assertion outcome, fault ledgers and rounds. This deliberate host watchdog is not a guest bug.",
+      "The fresh probe is not the selected original planted finding. Fresh clean-source Cargo/Nix/native/matrix gates remain separately required; the original historical initrd and compatible Cairn producer cohort remain prerequisites.",
+    ],
+  }],
+  used_implementation_attempts = previous_used_attempts + std.array.length attempts,
+  within_limit | std.contract.Equal true = used_implementation_attempts <= maximum_implementation_attempts,
+}

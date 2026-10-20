@@ -649,3 +649,41 @@ the unsupported-readiness rejection and strict delivery-metadata verdict.
 Successful export validates the computed **blocked** outcome, not readiness;
 later evidence/documentation commits are not the clean implementation tested.
 
+## Shared replay-parent retention (attempt51)
+
+`BugReport::snapshot` now holds an `Arc<SimulationSnapshot>`. Failures from the
+same round share its immutable parent; final reports and minimization retain that
+ownership rather than copying guest RAM. Count-only and checkpoint consumers
+iterate borrowed bug reports. Checkpoint and final-output persistence encode a
+shared parent/depth pair only once per operation. These local pointer keys are
+not serialized identities, and lineage depth remains part of each cache key.
+The snapshot format, digest, parent validation, assertion admission and configured
+execution/teardown bounds are unchanged.
+
+The retained immutable pre-fix launcher reached round zero but exceeded its
+240-second exploration bound. Its syscall trace records 150 guest-memory-sized
+unmaps, about 39 GiB in total. Source inspection found repeated full-parent
+copies for bug retention and counts, followed by per-bug encoding of the same
+parent. The corrected actual fresh-probe launcher completes in 200.1 seconds
+and emits `snapshot_backed_reproduced` with a valid digest-verified depth-one
+parent. This initial proof uses the rebuilt guest artifact and is not evidence
+that the exact original planted finding reproduced. The separate receipt records
+the controlled original-input run, clean-source gates and remaining prerequisites.
+
+The controlled run retaining the original immutable kernel, initrd, cohort, seed
+and bounds also accepts snapshot-backed reproduction, in 201.835 seconds. The
+unchanged strict watchdog proof completes in 355.474 seconds, observing one real
+SI_TIMER timeout, permanent poison rejection and production replacement. All
+three continuations match parent/recaptured memory, execution identities, every
+admitted assertion outcome, fault ledgers and rounds: 44 passing, zero failing,
+one unexercised site of 45 each. Controller overlay payloads at depths one through
+four are 7827456, 10162176, 14548992 and 16588800 bytes. The deliberate watchdog
+timeout remains operational, never a guest finding.
+
+ChaosControl's VMM/explorer maintainers own this shared-parent retention path.
+Reproduce through `nix run .#raft-accepted-verdict-dogfood -- --output NEW_DIR
+--max-attempts 1 --start-seed 0`; the wrapper retains its declared inner bounds.
+See `dogfood-results/production-readiness-attempts49-51-20261020/` for commands,
+artifact/configuration identities, trace facts and independent report verdicts.
+No historical receipt or failed matrix row is reclassified by this correction.
+

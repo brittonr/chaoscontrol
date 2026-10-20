@@ -22,13 +22,6 @@ pub fn request_shutdown() {
     SHUTDOWN.store(true, Ordering::Relaxed);
 }
 
-/// Reset shutdown state (for testing only — not safe in production).
-#[cfg(test)]
-pub fn reset_shutdown() {
-    SHUTDOWN.store(false, Ordering::Relaxed);
-    SIGNAL_COUNT.store(0, Ordering::Relaxed);
-}
-
 /// Install signal handlers for SIGINT and SIGTERM.
 ///
 /// First signal: sets the `SHUTDOWN` flag so the explorer can finish
@@ -73,26 +66,53 @@ extern "C" fn signal_handler(
 mod tests {
     use super::*;
 
-    #[test]
-    fn shutdown_flag_initially_false() {
-        // Note: other tests may have set it, so we reset first.
-        reset_shutdown();
-        assert!(!shutdown_requested());
+    fn isolated(test: &str, expected_exit: i32, scenario: impl FnOnce()) {
+        const CHILD_TEST: &str = "CHAOSCONTROL_SIGNAL_TEST_CHILD";
+        if std::env::var(CHILD_TEST).as_deref() == Ok(test) {
+            scenario();
+            return;
+        }
+
+        let output = std::process::Command::new(std::env::current_exe().expect("test executable"))
+            .args(["--exact", &format!("signal::tests::{test}")])
+            .env(CHILD_TEST, test)
+            .output()
+            .expect("isolated signal test process");
+        assert_eq!(
+            output.status.code(),
+            Some(expected_exit),
+            "isolated signal test {test}: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
     }
 
     #[test]
-    fn double_install_is_safe() {
-        install_signal_handlers();
-        install_signal_handlers();
-        // No crash = pass.
+    fn shutdown_flag_initially_false() {
+        isolated("shutdown_flag_initially_false", 0, || {
+            assert!(!shutdown_requested());
+        });
     }
 
     #[test]
     fn manual_request_sets_flag() {
-        reset_shutdown();
-        assert!(!shutdown_requested());
-        request_shutdown();
-        assert!(shutdown_requested());
-        reset_shutdown();
+        isolated("manual_request_sets_flag", 0, || {
+            assert!(!shutdown_requested());
+            request_shutdown();
+            assert!(shutdown_requested());
+        });
+    }
+
+    #[test]
+    fn signals_request_shutdown_then_force_exit() {
+        isolated("signals_request_shutdown_then_force_exit", 1, || {
+            install_signal_handlers();
+            install_signal_handlers();
+            assert!(!shutdown_requested());
+            assert_eq!(unsafe { libc::raise(libc::SIGTERM) }, 0);
+            assert!(shutdown_requested());
+            unsafe { libc::raise(libc::SIGTERM) };
+            panic!("second signal did not force process exit");
+        });
     }
 }

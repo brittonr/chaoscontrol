@@ -391,3 +391,34 @@ failures; raw logs and VM artifacts stay local under `target/pr52/`.
 Attempt48's validated receipt and supporting evidence were published to `main`
 at `8154c4f` without force-push. Publication does not close the original release
 acceptance criteria; the correction-source receipt remains `blocked`.
+
+## Authorized release corrections (attempts49-51)
+
+The user explicitly selected "Authorize three additional attempts". The
+continuing `production-readiness-attempts49-51-20261020/attempts.ncl` ledger
+raises the recorded maximum from 48 to 51 and preserves every original bound,
+readiness criterion, ownership restriction and historical receipt.
+
+- [x] [depends:snapshot-lineage-shell] Record the explicit additional scope and three-attempt ceiling before corrective implementation.
+- [x] [depends:snapshot-lineage-shell] Attempt49: isolate shutdown-state tests without suite serialization or production signal changes; exercise actual signal behavior.
+- [x] [depends:snapshot-lineage-shell] Attempt50: repair the Cargo/Octet client integration without changing the pinned compiler/Dylint contract or weakening checks.
+- [x] [depends:snapshot-lineage-shell] Attempt51: trace the inner replay stall and repair its demonstrated cause under the unchanged run and teardown bounds.
+- [ ] [depends:snapshot-lineage-shell] Retain fresh exact-clean-source gate verdicts and Nickel/BLAKE3-bound evidence; publish supported changes without claiming unavailable readiness.
+
+Attempt51's immutable trace reaches round zero but misses its 240-second inner
+deadline; it unmaps 150 guest-memory-sized buffers (about 39 GiB total). Shared
+immutable replay-parent ownership, borrowed bug traversal and per-parent/depth
+encoding remove the duplicate work without changing the envelope, assertion
+admission or bounds. The actual rebuilt fresh probe passes in 200.112 seconds;
+a controlled run retaining the original kernel/initrd/cohort/seed passes in
+201.835 seconds, both with valid depth-one `snapshot_backed_reproduced` verdicts.
+
+The unchanged strict watchdog proof passes in 355.474 seconds: one real SI_TIMER
+timeout, permanent poison rejection and production controller replacement are
+observed. Parent memory, immediate incremental recapture, initial/final memory,
+strict execution records, every admitted assertion outcome, fault ledgers and
+rounds match across all three continuations. Each continuation reports 44 passing,
+zero failing and one unexercised site of 45. Controller overlays at depths one
+through four are 7827456, 10162176, 14548992 and 16588800 bytes. These are controller
+proof measurements, not a new campaign or an original planted-finding replay.
+Fresh exact-clean-source gates remain open until their own evidence exists.

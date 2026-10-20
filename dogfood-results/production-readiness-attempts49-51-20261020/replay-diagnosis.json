@@ -1,0 +1,63 @@
+{
+  "schema": "chaoscontrol.replay-stall-diagnosis.v1",
+  "evidence_class": "diagnostic-only",
+  "original_bounds": {
+    "run_seconds": 240,
+    "direct_child_teardown_ms": 1000,
+    "outer_row_seconds": 3600
+  },
+  "traced_execution": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-immutable-replay-trace/execution.json",
+    "digest": "blake3:73833c472cd79b977da1f0b6875fd91a77dd5d7e2967598300c551429b98bd29",
+    "bytes": 2161
+  },
+  "explorer_trace": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/syscalls.2399530",
+    "digest": "blake3:786d50c216e5637f1a1de9c3463ca5631e9f17981f1fa0ab74814e083df337cc",
+    "bytes": 3238939
+  },
+  "launcher_trace": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/syscalls.2399506",
+    "digest": "blake3:6ac1868c904ad6881ebcf656a094d593a15013e6263e0dcb3dcc446667c629fd",
+    "bytes": 1800519
+  },
+  "frontier_trace": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/fresh/attempts/attempt-01/frontier-trace.jsonl",
+    "digest": "blake3:1e3bbcd41964265c0190eee458c0254dbf005b4f55003b69ff39f1a019860a0a",
+    "bytes": 1006
+  },
+  "retained_snapshot": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/readiness-attempts49-51-20261020/attempt51-replay-trace/fresh/attempts/attempt-01/snapshots/ed2e8bda7777553598e39c068e9507e8dac7cc2f5b2b2f7b185ac05fcfbb0eef.snapshot.bin",
+    "digest": "blake3:1c2d20a6d980cfda5fab2249e189a362a4c6bf4a7e59caef7804fe87b1bc2341",
+    "bytes": 57606706
+  },
+  "observed": {
+    "munmap_calls": 157,
+    "unmapped_bytes": 41849634816,
+    "guest_memory_sized_unmaps": 150,
+    "guest_memory_sized_mapping_bytes": 268439552,
+    "munmap_seconds": 4.312782,
+    "last_completed_round": 0,
+    "checkpoint_present": false,
+    "trace_guest_bug": false
+  },
+  "identified_source_work": [
+    "Each BugReport retained a deep-cloned SimulationSnapshot.",
+    "Count-only all_bugs calls deep-cloned every retained bug and its snapshot.",
+    "Checkpoint and final output serialized the same immutable parent separately for each bug."
+  ],
+  "correction": [
+    "Share each round parent through Arc, including minimizer/CLI ownership cutover.",
+    "Traverse borrowed retained bugs for counts and checkpoints.",
+    "Memoize encoding by shared parent pointer and lineage depth only for the duration of each checkpoint or final output."
+  ],
+  "unchanged": [
+    "run and teardown bounds",
+    "snapshot envelope/codec/digest",
+    "assertion identity admission",
+    "parent depth",
+    "faults, guest and campaign profile",
+    "controller recovery semantics"
+  ],
+  "non_claim": "Syscall tracing changes timing. Allocation churn and the observed operational timeout are not guest findings or a passing release row."
+}

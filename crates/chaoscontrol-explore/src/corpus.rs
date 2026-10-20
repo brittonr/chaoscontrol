@@ -6,6 +6,7 @@ use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
+use std::sync::Arc;
 
 /// A bug report produced during exploration.
 #[derive(Debug, Clone)]
@@ -26,8 +27,8 @@ pub struct BugReport {
     pub assertion_location: String,
     /// The fault schedule that triggered it.
     pub schedule: FaultSchedule,
-    /// Parent snapshot used to start the failing branch (for reproduction).
-    pub snapshot: Option<SimulationSnapshot>,
+    /// Immutable parent shared by failures from the same round (for reproduction).
+    pub snapshot: Option<Arc<SimulationSnapshot>>,
     /// Tick when the bug was found.
     pub tick: u64,
     /// Depth of the frontier parent snapshot used to start the failing branch.

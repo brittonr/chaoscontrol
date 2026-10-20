@@ -1644,6 +1644,10 @@ fn persist_exploration_outputs(
     }
 
     let mut bug_outputs = Vec::with_capacity(report.bugs.len());
+    let mut replay_parents = std::collections::BTreeMap::<
+        _,
+        chaoscontrol_explore::snapshot_store::ReplayParentSnapshotRef,
+    >::new();
     for bug in &report.bugs {
         let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
         if bug.replay_parent_depth > 0 && serialized.replay_parent_snapshot_ref.is_none() {
@@ -1651,13 +1655,19 @@ fn persist_exploration_outputs(
                 .snapshot
                 .as_ref()
                 .ok_or_else(|| format!("bug {} has no replay parent snapshot", bug.bug_id))?;
-            serialized.replay_parent_snapshot_ref = Some(
-                snapshot_store
+            let key = (std::sync::Arc::as_ptr(snapshot), bug.replay_parent_depth);
+            let reference = if let Some(reference) = replay_parents.get(&key) {
+                reference.clone()
+            } else {
+                let reference = snapshot_store
                     .put_snapshot(snapshot, bug.replay_parent_depth)
                     .map_err(|error| {
                         format!("bug {} snapshot persistence failed: {error}", bug.bug_id)
-                    })?,
-            );
+                    })?;
+                replay_parents.insert(key, reference.clone());
+                reference
+            };
+            serialized.replay_parent_snapshot_ref = Some(reference);
         }
         if bug.replay_parent_depth == 0 {
             serialized.replay_parent_snapshot_ref = None;
@@ -2297,7 +2307,7 @@ fn cmd_minimize(
             std::process::exit(EXIT_ERROR);
         }
     };
-    bug.snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug);
+    bug.snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug).map(std::sync::Arc::new);
 
     // Parse scheduling strategy
     let scheduling_strategy = match scheduling.as_str() {

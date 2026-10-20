@@ -8,12 +8,13 @@ distributed systems where reproducibility is essential.
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
 Production readiness remains blocked. The current
-[focused attempt46 receipt](dogfood-results/production-readiness-attempt46-20261018/receipt.ncl)
-separates completed bounded campaigns and deep-probe replays from the still-required
-depth-four campaign, historical replay/retention, native and release criteria.
-The [correction ledger](dogfood-results/production-readiness-attempt46-20261018/attempts.ncl)
-records the one additional authorized attempt and the resulting 46-attempt ceiling.
-See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-staged-prefix-correction-attempt46)
+[focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
+records completed depth-four campaign lineage and complete replay of every
+retained deep safety finding, while native, watchdog, Nix, KVM-matrix, historical
+replay and retention criteria remain nonpassing.
+The [correction ledger](dogfood-results/production-readiness-attempt47-20261018/attempts.ncl)
+records the one additional authorized attempt and the resulting 47-attempt ceiling.
+See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)
 for exact sources, measured limits and non-claims.
 
 <!-- product-scope-facts:start -->

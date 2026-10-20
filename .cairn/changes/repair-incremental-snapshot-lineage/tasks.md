@@ -295,7 +295,7 @@ rank/admission/publication semantics. This note is authorization, not a gate pas
 
 - [x] [depends:snapshot-lineage-shell] Record focused attempt47 authority and the read-only depth-retention diagnosis before implementation.
 - [x] [depends:snapshot-lineage-shell] Correct logical-marker proposal multiplicity with consumer regression evidence and unchanged Campaign parity.
-- [ ] [depends:snapshot-lineage-campaign] Complete unchanged-bound depth-four campaigns, record overlays and replay every retained deep safety finding.
+- [x] [depends:snapshot-lineage-campaign] Complete unchanged-bound depth-four campaigns, record overlays and replay every retained deep safety finding.
 - [ ] [depends:snapshot-lineage-campaign] Retain exact-source Cargo/watchdog and Nickel/BLAKE3 evidence; preserve independent readiness blockers and publish verified changes without force.
 
 The bounded-frontier regression failed before the correction: Campaign selected
@@ -303,5 +303,25 @@ depth1 instead of the distinct depth2 child. After normalization, both new
 regressions and the complete explorer library passed (418 passed, zero failed,
 one ignored), including the existing Campaign/legacy parity corpus. Distinct
 logical keys and owners retain their own exact context; every observed hit still
-contributes to rarity decay. Runtime campaigns and release criteria remain open.
+contributes to rarity decay.
+
+Clean `b5f0a4550f86cfa3f5b9f45206a57d4087225182` completed the unchanged
+ten-round, twenty-branch control, planted and deliberate-probe profiles in
+280.479, 283.577 and 307.813 seconds under 600-second bounds. Maximum admitted
+depths are 8, 8 and 4; every campaign has twenty aligned overlay captures with
+depth-one-through-four payload measurements. All eight retained depth-three
+safety findings reproduced with valid retained parents and
+`snapshot_backed_reproduced` verdicts. The selected original planted finding
+still lacks a current-source snapshot-backed replay because its exact historical
+initrd is unavailable.
+
+Fresh exact-source workspace tests passed 2206 with zero failures and 16
+ignored; denied-warning Clippy and formatting passed. Native traceability still
+reports 103 missing requirements, zero dangling references and verdict `fail`.
+Three fresh strict watchdog attempts exited 1 with
+`HostWatchdogTimeout { vcpu: 0 }` under host load of 34–44 on 32 CPUs; these are
+operational host timeouts, not guest findings. The attempt46 proof passed on
+`ad7e892` and remains separate prior evidence, not a fresh pass. Nix and the
+seven-row KVM matrix were not rerun. All 47 authorized corrective attempts are
+consumed; the remaining criteria stay open.
 

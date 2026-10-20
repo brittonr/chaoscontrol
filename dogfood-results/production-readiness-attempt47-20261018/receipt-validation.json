@@ -1,0 +1,219 @@
+{
+  "schema": "chaoscontrol.attempt47-independent-receipt-validation.v1",
+  "valid": true,
+  "production_ready": false,
+  "focused_correction_verified": true,
+  "source": {
+    "boundary": "Clean focused logical-marker proposal normalization. Later evidence/documentation commits are not the exact implementation tested.",
+    "dirty": false,
+    "revision": "b5f0a4550f86cfa3f5b9f45206a57d4087225182",
+    "root": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/clean-source"
+  },
+  "identity_algorithm": "blake3",
+  "manifest": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt47-20261018/evidence-manifest.json",
+    "digest": "blake3:8b140ce130fc923c88dc345d7bfeda2691d0ad7235718b318d0e0d1e970dbbf4",
+    "bytes": 119216
+  },
+  "receipt": {
+    "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt47-20261018/receipt.json",
+    "digest": "blake3:6ed69f8da688f8904dd7924ae5b42976b1bb2e781b0db6d9a14b0d77f44b27b5",
+    "bytes": 218130
+  },
+  "artifacts_verified": 267,
+  "historical_receipts_unchanged": 10,
+  "campaigns": [
+    {
+      "id": "control",
+      "completed": true,
+      "depth_four": true,
+      "depth": 8,
+      "captures": 20
+    },
+    {
+      "id": "planted",
+      "completed": true,
+      "depth_four": true,
+      "depth": 8,
+      "captures": 20
+    },
+    {
+      "id": "deep-probe",
+      "completed": true,
+      "depth_four": true,
+      "depth": 4,
+      "captures": 20
+    }
+  ],
+  "replay_inventory_complete": true,
+  "deep_replays": 8,
+  "all_deep_replays_passed": true,
+  "strict_comparison_fields": {
+    "initial_memory_identities": false,
+    "final_memory_identities": false,
+    "execution_traces": false,
+    "all_admitted_assertion_outcomes": false,
+    "fault_ledger": false,
+    "rounds": false
+  },
+  "watchdog_current_source_passed": false,
+  "watchdog_attempts": [
+    {
+      "label": "watchdog-proof",
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/watchdog-proof/execution.json",
+        "digest": "blake3:736d210d932bbed944909958acbb05429088e872071c46c6b42d8e73a7495283",
+        "bytes": 11507
+      },
+      "output_dir": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/cohort/lineage-artifacts",
+      "proof_present": false,
+      "proof": null,
+      "error": "Error: HostWatchdogTimeout { vcpu: 0 }",
+      "classification": "operational-host-timeout",
+      "passed": false,
+      "strict_comparison_fields": {
+        "initial_memory_identities": false,
+        "final_memory_identities": false,
+        "execution_traces": false,
+        "all_admitted_assertion_outcomes": false,
+        "fault_ledger": false,
+        "rounds": false
+      }
+    },
+    {
+      "label": "watchdog-proof-rerun",
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/watchdog-proof-rerun/execution.json",
+        "digest": "blake3:134e47f296409d7084ee60ed1203fcb98bb3a77fecf1998865af9795ec572457",
+        "bytes": 2009
+      },
+      "output_dir": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/cohort/lineage-artifacts-rerun",
+      "proof_present": false,
+      "proof": null,
+      "error": "Error: HostWatchdogTimeout { vcpu: 0 }",
+      "classification": "operational-host-timeout",
+      "passed": false,
+      "strict_comparison_fields": {
+        "initial_memory_identities": false,
+        "final_memory_identities": false,
+        "execution_traces": false,
+        "all_admitted_assertion_outcomes": false,
+        "fault_ledger": false,
+        "rounds": false
+      }
+    },
+    {
+      "label": "watchdog-proof-rerun2",
+      "observation": {
+        "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/watchdog-proof-rerun2/execution.json",
+        "digest": "blake3:4e48fe06791a9b3967acea27956c2af2d40f6d1506ebb7657a75401e39c24888",
+        "bytes": 11534
+      },
+      "output_dir": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/cohort/lineage-artifacts-rerun2",
+      "proof_present": false,
+      "proof": null,
+      "error": "Error: HostWatchdogTimeout { vcpu: 0 }",
+      "classification": "operational-host-timeout",
+      "passed": false,
+      "strict_comparison_fields": {
+        "initial_memory_identities": false,
+        "final_memory_identities": false,
+        "execution_traces": false,
+        "all_admitted_assertion_outcomes": false,
+        "fault_ledger": false,
+        "rounds": false
+      }
+    }
+  ],
+  "unsupported_readiness_rejected": true,
+  "negative_control": {
+    "observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "command": [
+        "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel",
+        "export",
+        "--format",
+        "json",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt47-20261018/unsupported-readiness.ncl"
+      ],
+      "display_command": "/nix/store/ck3a4k9az87z5rjwgy8nmpcs34xp9cc5-nickel-lang-rev-fixup-1.17.0/bin/nickel export --format json /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/dogfood-results/production-readiness-attempt47-20261018/unsupported-readiness.ncl",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-20T02:30:26.768833+00:00",
+      "finished": "2026-10-20T02:30:26.832827+00:00",
+      "elapsed_seconds": 0.06399018905358389,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/receipt-unsupported-readiness/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/receipt-unsupported-readiness/stderr.log",
+          "digest": "blake3:143aa17cb8d87b097f81896ab196bce71256ad5549cdbdba63e43b9bf4ad5313",
+          "bytes": 498
+        }
+      ]
+    },
+    "stdout": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/receipt-unsupported-readiness/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    "stderr": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/receipt-unsupported-readiness/stderr.log",
+      "digest": "blake3:143aa17cb8d87b097f81896ab196bce71256ad5549cdbdba63e43b9bf4ad5313",
+      "bytes": 498
+    }
+  },
+  "delivery_metadata": {
+    "valid": true,
+    "observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+      "command": [
+        "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn",
+        "validate",
+        "--root",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source",
+        "--policy",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/generated/cairn-policy.json",
+        "--strict"
+      ],
+      "display_command": "/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn validate --root /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source --policy /home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/cairn-policy/generated/cairn-policy.json --strict",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-20T02:31:20.132708+00:00",
+      "finished": "2026-10-20T02:31:20.249605+00:00",
+      "elapsed_seconds": 0.11690106696914881,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/delivery-metadata-validation-after-docs/stdout.log",
+          "digest": "blake3:74b3329910dfe144ebb31767c88ef5c0a80a1b90060e8e4b2d0f9ccc2c05c258",
+          "bytes": 77782
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/delivery-metadata-validation-after-docs/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    "stdout": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/delivery-metadata-validation-after-docs/stdout.log",
+      "digest": "blake3:74b3329910dfe144ebb31767c88ef5c0a80a1b90060e8e4b2d0f9ccc2c05c258",
+      "bytes": 77782
+    },
+    "stderr": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/delivery-metadata-validation-after-docs/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    }
+  },
+  "boundary": "Validation establishes bounded fact/identity consistency and rejection of an unsupported readiness claim, not a passing production release."
+}

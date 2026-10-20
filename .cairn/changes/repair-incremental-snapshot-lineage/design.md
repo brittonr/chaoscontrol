@@ -139,6 +139,19 @@ Campaign parity contracts remain required. Run the actual unchanged campaigns
 and replay every retained safety finding whose parent depth is at least three;
 do not substitute new probes for the selected historical finding.
 
+Measured outcome on clean `b5f0a4550f86cfa3f5b9f45206a57d4087225182`: the
+unchanged control, planted and deliberate-probe profiles completed ten rounds and
+twenty branches in 280.479, 283.577 and 307.813 seconds, reaching maximum admitted
+depths 8, 8 and 4. All eight retained depth-three safety findings reproduced with
+valid retained parents and `snapshot_backed_reproduced` verdicts. Three fresh
+strict watchdog attempts failed only as operational `HostWatchdogTimeout` results
+under host load of 34–44 on 32 CPUs; the unchanged proof still passes on its
+attempt46 source `ad7e892`. The selected original planted finding remains
+unavailable because its exact historical initrd is missing. Fresh native
+traceability still reports 103 missing requirements. Production readiness stays
+blocked; the correction itself, depth-four campaign lineage and retained-finding
+replay are verified.
+
 ## Risks
 
 - Overlay size and restore cost grow with lineage depth. Validation records overlay page counts per depth for the Raft and redb workloads.

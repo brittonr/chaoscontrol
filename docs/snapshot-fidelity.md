@@ -578,3 +578,74 @@ the unsupported-readiness rejection and strict delivery-metadata verdict.
 Successful export validates the computed **blocked** outcome, not readiness;
 later evidence/documentation commits are not the clean implementation tested.
 
+## Focused logical-marker correction (attempt47)
+
+`Explorer::entry_proposals` now emits one ranked proposal per distinct logical
+marker/owner for a completed branch snapshot. Every observed instance still
+updates hit counts and rarity; the first, highest-novelty instance supplies the
+retained context. Campaign and legacy-diagnostic backends share this
+normalization. Rank conversion, candidate admission, capacity pruning,
+publication, entropy and declared bounds are unchanged.
+
+The bounded-frontier regression failed before the correction: Campaign retained
+depth one instead of a distinct depth-two child under repeated marker aliases.
+After normalization, both new regressions and the complete explorer library
+passed (418 passed, zero failed, one ignored), including the existing
+Campaign/legacy parity corpus.
+
+The final implementation is clean
+`b5f0a4550f86cfa3f5b9f45206a57d4087225182`. All three original profiles
+completed ten rounds and twenty branches under their unchanged 600-second bounds:
+
+| Campaign | Wall seconds | Maximum admitted depth | Retained findings |
+| --- | ---: | ---: | ---: |
+| Control (`raft_bug=none`) | 280.479 | 8 | 0 |
+| Planted (`raft_bug=fig8_commit`) | 283.577 | 8 | 0 |
+| Deliberate deep snapshot probe | 307.813 | 4 | 8 safety findings |
+
+Control and planted catalogs were Accepted with 44 passing, zero failing and one
+unexercised site of 45. The deliberate probe reported its expected safety
+assertion failure; its exit 1 is distinct from an operational timeout. Each
+campaign has twenty aligned per-VM dirty-page captures. This cohort therefore
+measures campaign snapshot lineage beyond the required depth four:
+
+| Depth | Control bytes | Planted bytes | Deliberate probe bytes |
+| --- | ---: | ---: | ---: |
+| 1 | 7757824–7831552 | 7852032–7901184 | 7548928 |
+| 2 | 10125312–10133504 | 9752576–10104832 | 9601024–9773056 |
+| 3 | 12677120–13729792 | 12795904–13676544 | 11075584–11153408 |
+| 4 | 15130624–18477056 | 15679488–16932864 | 11153408–11161600 |
+| 5 | 16740352–16891904 | 17502208–17784832 | not observed |
+| 6 | 19554304–20373504 | 19791872–20131840 | not observed |
+| 7 | 22450176–23547904 | 23220224–23269376 | not observed |
+| 8 | 24530944–24760320 | 25116672–25153536 | not observed |
+
+All eight retained depth-three safety findings reproduced with
+`snapshot_backed_reproduced`, matching bug, assertion and parent identities and
+valid, present, digest-verified retained snapshots. Control and planted retained
+no findings; neither liveness failure nor operational timeout was reclassified
+as a safety finding.
+
+Three fresh strict watchdog attempts exited 1 with
+`HostWatchdogTimeout { vcpu: 0 }` while host load averaged 34–44 on 32 CPUs.
+Those are operational host timeouts, not guest findings. The unchanged proof
+passed in attempt46 on `ad7e892`; that remains separate prior evidence for an
+unchanged code path, not a fresh `b5f0a45` pass.
+
+The same clean implementation passed workspace all-target tests (2206 passed,
+zero failed, 16 ignored), denied-warning workspace Clippy and formatting. Fresh
+exact-source native traceability still reports 103 missing requirements, zero
+dangling references and verdict `fail`. Nix and the seven-row KVM matrix were not
+rerun; their prior nonpassing observations keep their original source. The
+selected original planted finding still lacks an accepted current-source
+snapshot-backed replay because its exact historical initrd remains unavailable.
+All 47 authorized attempts are consumed; no further product correction, sibling
+edit or host change is authorized.
+
+Validate this scoped receipt with `nickel export --format json
+dogfood-results/production-readiness-attempt47-20261018/receipt.ncl`.
+The adjacent `receipt-validation.json` retains independent BLAKE3/length checks,
+the unsupported-readiness rejection and strict delivery-metadata verdict.
+Successful export validates the computed **blocked** outcome, not readiness;
+later evidence/documentation commits are not the clean implementation tested.
+

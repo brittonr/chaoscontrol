@@ -715,3 +715,44 @@ were changed. The required-evidence-retention and production-readiness verdicts
 remain false. All 51 corrective slots are consumed; no additional correction,
 lifecycle archive or readiness promotion is implied.
 
+## Kernel-only Rust-workload bootstrap correction (attempt52)
+
+The user explicitly authorized exactly one further corrective attempt. The
+continuing `dogfood-results/production-readiness-attempt52-20261020/attempts.ncl`
+ledger preserves every original acceptance criterion and raises the ceiling to
+52; no attempt53 is implied.
+
+Actual guest-register samples from the failing profile interrupted KCOV hooks
+called by `get_symbol_offset`. Linux 6.19's ftrace boot worker validates every
+function record with `kallsyms_lookup`, which expands an unused symbol name.
+The repository-owned `nix/linux-ftrace-offset-validation.patch` uses the existing
+offset-only lookup for built-in addresses. Both paths use `get_symbol_pos`;
+non-built-in addresses keep the original lookup and its module/BPF/ftrace
+fallbacks. Lookup failure and the weak-function offset rejection are unchanged.
+KCOV full instrumentation/comparisons and ftrace remain enabled. The complete
+313532-byte kernel configuration is byte-identical before and after.
+
+The controlled original Rust-workload command changes only the kernel artifact
+and output directory. Its original executable, initrd, seed 42, 128 MiB memory,
+single vCPU, workload inputs, 10000 bootstrap ticks, 240-second run envelope and
+100000-microsecond KVM_RUN watchdog remain unchanged. It boots, retains two
+intended probe findings, and completes in 32.660 seconds. Exit 1 denotes those
+findings, not process success or a timeout. All six admitted sites are exercised:
+five pass and only deliberate assertion 3143219316 fails. Both findings then
+produce `snapshot_backed_reproduced` with a valid digest-verified depth-one
+parent, in about 2.868 seconds each.
+
+`correction-evidence.json` retains the exact commands, input comparison, assertion
+outcomes, findings, parent artifact and both replay verdicts. Its BLAKE3 bindings
+include the unchanged original executable/initrd. A four-core kernel build hit
+its one-hour deadline during module compilation; the same derivation completed
+with 24 compile cores under that same deadline. Both results remain recorded.
+
+ChaosControl guest-kernel/VMM maintainers own the common kernel patch. Repeat
+the packaged path with `nix run .#rust-workload-accepted-verdict-dogfood --
+--output NEW_DIR`; preserve the cohort's declared bounds. These controlled
+results are not fresh clean-source release gates or the original selected Raft
+finding. Full Nix, native readiness and the seven-row matrix require independent
+current-source verdicts. The Cairn producer and exact historical input remain
+separate prerequisites; production readiness is not promoted.
+

@@ -1,0 +1,42 @@
+From: ChaosControl maintainers
+Subject: [PATCH] ftrace: avoid unused built-in symbol names during record validation
+
+The boot-time weak-function validation worker visits every fentry record.
+It only uses lookup success and the symbol offset, but kallsyms_lookup also
+scans the compressed name stream and expands an unused name for each record.
+Full KCOV instrumentation magnifies that avoidable boot work.
+
+For built-in addresses, use the existing offset-only lookup. Both paths
+use get_symbol_pos and the same built-in-address predicate. Preserve the
+original name lookup for all other addresses, including module/ftrace
+fallbacks. Keep weak-record rejection and every tracing/coverage feature.
+No watchdog or operational bound changes are involved.
+
+--- a/kernel/trace/ftrace.c
++++ b/kernel/trace/ftrace.c
+@@ -4325,14 +4325,20 @@
+  */
+ static int test_for_valid_rec(struct dyn_ftrace *rec)
+ {
+-	char str[KSYM_SYMBOL_LEN];
+ 	unsigned long offset;
+-	const char *ret;
+-
+-	ret = kallsyms_lookup(rec->ip, NULL, &offset, NULL, str);
++	bool valid;
++
++	/* Built-in records need an offset, not a decompressed symbol name. */
++	if (is_ksym_addr(rec->ip)) {
++		valid = kallsyms_lookup_size_offset(rec->ip, NULL, &offset);
++	} else {
++		char str[KSYM_SYMBOL_LEN];
++
++		valid = kallsyms_lookup(rec->ip, NULL, &offset, NULL, str) != NULL;
++	}
+ 
+ 	/* Weak functions can cause invalid addresses */
+-	if (!ret || offset > FTRACE_MCOUNT_MAX_OFFSET) {
++	if (!valid || offset > FTRACE_MCOUNT_MAX_OFFSET) {
+ 		rec->flags |= FTRACE_FL_DISABLED;
+ 		return 0;
+ 	}

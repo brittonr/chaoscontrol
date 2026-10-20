@@ -219,6 +219,33 @@ Fresh workspace/Nix/Cairn and seven-row matrix results must bind their exact
 clean source. The original planted finding still requires its original initrd,
 and a supported Cairn CLI/export cohort remains an independent prerequisite.
 
+### 18. One cause-specific Rust-workload bootstrap correction
+
+The user explicitly selected "Authorize attempt52", granting exactly one further
+correction. Retained full-Nix runs fail before Rust-workload setup, while Raft
+passes. Actual guest-register samples interrupt KCOV hooks called from
+`get_symbol_offset`; captured stack words include kallsyms lookup and ftrace
+record validation. A stack-word scan is not an unwind or a causal proof.
+
+Trace the kernel initialization work and its selected configuration before
+choosing the repair. Keep the 100000-microsecond single-vCPU KVM_RUN watchdog,
+outer bounds, KCOV coverage contract, assertion inventory, and runtime timeout
+classification unchanged. Remove only a demonstrated unnecessary or erroneous
+cause; do not select a less demanding workload/kernel or suppress failures.
+Exercise the original profile and require fresh exact-clean-source release
+gates. Preserve the separate upstream-producer and historical-input blockers.
+
+The selected kernel source repair avoids unused name decompression in ftrace's
+weak-function record validation. For `is_ksym_addr` addresses, both the original
+name lookup and `kallsyms_lookup_size_offset` obtain the same offset through
+`get_symbol_pos`; use the latter. Keep the original name lookup for every other
+address, preserving module, BPF and ftrace-specific fallbacks. Preserve the
+lookup-success and `FTRACE_MCOUNT_MAX_OFFSET` rejection conditions. Apply the
+repository-owned patch through the common kernel builder, without disabling
+KCOV comparisons, full coverage instrumentation, ftrace, or weak-record checks.
+The causal smoke changes only the kernel artifact in the retained first-seed
+command; its original executable, initrd, bounds and workload inputs remain.
+
 ## Risks
 
 - Overlay size and restore cost grow with lineage depth. Validation records overlay page counts per depth for the Raft and redb workloads.

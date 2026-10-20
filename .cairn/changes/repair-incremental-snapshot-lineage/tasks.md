@@ -449,3 +449,20 @@ payloads are enumerated without invented identities; all readable reports/logs
 are retained locally. No host permission changes, lifecycle sync/archive or
 production-readiness promotion is supported. The separate Nickel receipt
 computes `blocked` and keeps both missing-input and failed-gate boundaries.
+
+## Authorized Rust-workload bootstrap correction (attempt52)
+
+The user explicitly selected "Authorize attempt52": exactly one additional
+corrective implementation-and-verification attempt, raising the maximum to 52.
+The continuing `production-readiness-attempt52-20261020/attempts.ncl` ledger
+records this authority before implementation. All original acceptance criteria,
+operational bounds, coverage, and execution boundaries remain unchanged.
+
+- [x] [depends:snapshot-lineage-shell] Record the explicit one-attempt extension and cause-specific native plan before implementation.
+- [x] [depends:snapshot-lineage-shell] Diagnose and correct the Rust-workload bootstrap cause without increasing declared bounds, suppressing operational failures, or weakening admitted coverage/assertions.
+- [ ] [depends:snapshot-lineage-shell] Exercise the original Rust-workload path and exact-clean-source Cargo, Nix, Cairn and all seven KVM release rows; retain every independent verdict.
+- [ ] [depends:snapshot-lineage-shell] Retain Nickel-validated BLAKE3-bound evidence and historical receipts; update supported state, commit and push without force or unsupported readiness promotion.
+
+Cairn producer admission, exact original planted-finding artifacts, and inaccessible
+failed-build payloads remain separate prerequisites. No attempt53 is authorized.
+

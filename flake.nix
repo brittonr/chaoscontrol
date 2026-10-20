@@ -635,6 +635,10 @@
                     name = "runtime-tsc-capability";
                     patch = ./nix/linux-runtime-tsc-capability.patch;
                   }
+                  {
+                    name = "ftrace-offset-validation";
+                    patch = ./nix/linux-ftrace-offset-validation.patch;
+                  }
                 ];
               });
             in

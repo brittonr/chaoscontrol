@@ -1,0 +1,42 @@
+let Prior = import "../production-readiness-attempts49-51-20261020/attempts.ncl" in
+{
+  schema = "chaoscontrol.production-readiness-attempt52.v1",
+  owner = "chaoscontrol-vmm",
+  starting_revision = "e5de3722cd6468798a537ec58a2e7c42dfabda14",
+  previous_ledger = "dogfood-results/production-readiness-attempts49-51-20261020/attempts.ncl",
+  previous_used_attempts | std.contract.Equal 51 = Prior.used_implementation_attempts,
+  original_maximum_implementation_attempts = Prior.original_maximum_implementation_attempts,
+  maximum_implementation_attempts | std.contract.Equal 52 = Prior.maximum_implementation_attempts + 1,
+  authorization = {
+    selection = "Authorize attempt52",
+    additional_attempts | std.contract.Equal 1 = 1,
+    scope = "Exactly one corrective implementation-and-verification attempt for the Rust-workload bootstrap failure",
+    unchanged_boundaries = [
+      "Preserve declared operational bounds, every original readiness criterion and independent passing-report verdict",
+      "No sibling edits, host reconfiguration, manual credential access, deployment or unrelated corrections",
+      "Retain admitted coverage and assertion semantics; no copied fixtures, suppressed failures or skipped checks",
+      "Cairn producer and exact historical replay inputs remain separate prerequisites",
+      "Preserve historical receipts and local raw artifacts; BLAKE3 for new evidence identities",
+      "Commit verified changes and push main without force; no attempt53 is implied",
+    ],
+  },
+  counting_rule = Prior.counting_rule,
+  attempts = [{
+    number = 52,
+    correction = "Diagnose and correct the Rust-workload bootstrap cause under unchanged operational bounds and admitted coverage, then exercise the actual path and exact-clean-source required gates",
+    status = 'passed,
+    evidence = [
+      "The retained six full-Nix Rust-workload bootstrap HostWatchdogTimeout failures are ground truth; no redundant failing-before rerun is required",
+      "Read-only actual-register samples implicate KCOV hooks called from get_symbol_offset; captured stack words include kallsyms and ftrace. This is diagnostic evidence, not a proven cause or passing run",
+      "The single-vCPU KVM_RUN operational watchdog remains 100000 microseconds; kernel instrumentation and ftrace initialization require cause-specific review before choosing a repair",
+      "The weak-record validator decompresses a name it never uses. Built-in records now use the existing offset-only lookup with the same get_symbol_pos semantics; all other addresses retain the original lookup and fallback behavior",
+      "The complete 313532-byte kernel configuration is identical before/after (BLAKE3 872360253cefd90ceed4b36aa710eb3e5b3bd98b20b0ba390bbb162ac32ab8a9). Only the new source patch and derived configuration locator differ in kernel structured attributes",
+      "The first four-core kernel build hit its 3600-second deadline during module compilation. The identical derivation built with 24 cores in 1479.857 seconds under that same deadline; retain both observations",
+      "The controlled original first-seed command changes only kernel/output. It boots and completes in 32.660 seconds with exit 1 for two intended probe findings, not a timeout. All six assertion sites are exercised; five pass and only the deliberate probe fails",
+      "Both controlled findings reproduce from the valid digest-verified depth-one parent in 2.868 seconds each, with snapshot_backed_reproduced. No fresh probe substitutes for the original selected Raft finding",
+      "correction-evidence.json binds exact commands, kernel inputs, observed assertion outcomes, findings, snapshots and replay verdicts. Exact-clean-source full release gate evidence remains separate",
+    ],
+  }],
+  used_implementation_attempts | std.contract.Equal 52 = previous_used_attempts + std.array.length attempts,
+  within_limit | std.contract.Equal true = used_implementation_attempts <= maximum_implementation_attempts,
+}

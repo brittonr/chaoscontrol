@@ -262,8 +262,10 @@
               for _pass in 1 2 3 4; do
                 while IFS= read -r link; do
                   target="$(readlink -f "$link")"
+                  chmod u+w "$(dirname "$link")"
                   rm "$link"
                   cp -a "$target" "$link"
+                  chmod -R u+w "$link"
                 done < <(find "$out" -type l)
               done
               mkdir -p "$out/config/generated"

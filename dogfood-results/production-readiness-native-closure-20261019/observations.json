@@ -1,6 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
+  "current_source_revision": "7056211a77174c5ef9627538ca9d25a360f42b08",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -60,19 +61,111 @@
   },
   "watchdog": {
     "executed": true,
-    "exit_code": 1,
+    "exit_code": 0,
     "operational_timeout": false,
-    "proof_present": false,
-    "passed": false,
+    "proof_present": true,
+    "passed": true,
     "strict_comparison_fields": {
-      "initial_memory_identities": false,
-      "final_memory_identities": false,
-      "execution_traces": false,
-      "all_admitted_assertion_outcomes": false,
-      "fault_ledger": false,
-      "rounds": false
+      "initial_memory_identities": true,
+      "final_memory_identities": true,
+      "execution_traces": true,
+      "all_admitted_assertion_outcomes": true,
+      "fault_ledger": true,
+      "rounds": true
     },
-    "watchdog_recovery": null
+    "watchdog_recovery": {
+      "attempts_made": 1,
+      "bootstrap_base_memory_equal": true,
+      "bootstrap_memory_identities": [
+        "blake3:cb1edbb604fe37f7a5a99a480396bc521ee6caa2addcc4871396991a2e034ddd",
+        "blake3:750278669ad80ae0324888e2ff6553cedea790c011ab72529bbf54ffb933b643",
+        "blake3:7b0769161008cf0e0366c09e4dbc1a8e79c0438c9cbaf16a3245ca6b1bee0665"
+      ],
+      "classification": "operational-host-watchdog-timeout",
+      "configured_watchdog_milliseconds": 100,
+      "elapsed_nanoseconds": 100129601,
+      "error": "Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+      "guest_bug": false,
+      "immediate_incremental_recapture": {
+        "dirty_pages": 3946,
+        "memory_equal": true,
+        "memory_identities": [
+          "blake3:5fa068b84ca015fe4cd0b6c3139d910fd9ff1853167b09c8d0bab6e2ca568d0b",
+          "blake3:d778d17c48ed1bc65c3456c4add64ee0cd1a4055971a6b14d9dbd8563b7d97c8",
+          "blake3:8fe5538992ec964d40f4dd4d399c337ddfc8c8ce672c1d79bf3a89952de09e3a"
+        ]
+      },
+      "max_branch_watchdog_attempts": 3,
+      "max_probe_rounds": 1,
+      "passed": true,
+      "poison_enforced": true,
+      "poison_rejections": [
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "step_round",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "run",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "snapshot_all",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "snapshot_all_incremental",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "restore_all",
+          "rejected": true
+        },
+        {
+          "error": "Simulation controller is permanently poisoned by failed round 3175 at tick 3174: Host watchdog interrupted vCPU 0; this is not a guest crash verdict",
+          "operation": "restore_all_incremental",
+          "rejected": true
+        }
+      ],
+      "poisoned_controller_dropped": true,
+      "probe": {
+        "admitted_to_guest_evidence": false,
+        "bytes": [
+          250,
+          235,
+          254
+        ],
+        "cpu_state": "VMM pre-boot CPU; RIP redirected to probe",
+        "guest_physical_address": 4096,
+        "guest_virtual_address": 4096,
+        "intentional": true,
+        "page_tables": "GuestMemoryManager::setup_page_tables boot identity map",
+        "vcpu": 0,
+        "vm": 0
+      },
+      "replacement_api": "RecoverySnapshot::rebuild_controller",
+      "replacement_created": true,
+      "restored_parent_memory_equal": true,
+      "restored_parent_memory_identities": [
+        "blake3:5fa068b84ca015fe4cd0b6c3139d910fd9ff1853167b09c8d0bab6e2ca568d0b",
+        "blake3:d778d17c48ed1bc65c3456c4add64ee0cd1a4055971a6b14d9dbd8563b7d97c8",
+        "blake3:8fe5538992ec964d40f4dd4d399c337ddfc8c8ce672c1d79bf3a89952de09e3a"
+      ],
+      "retained_parent_memory_identities": [
+        "blake3:5fa068b84ca015fe4cd0b6c3139d910fd9ff1853167b09c8d0bab6e2ca568d0b",
+        "blake3:d778d17c48ed1bc65c3456c4add64ee0cd1a4055971a6b14d9dbd8563b7d97c8",
+        "blake3:8fe5538992ec964d40f4dd4d399c337ddfc8c8ce672c1d79bf3a89952de09e3a"
+      ],
+      "retained_parent_tick": 3174,
+      "schema": "chaoscontrol.watchdog-recovery-event.v1",
+      "timer_signal_code": "SI_TIMER",
+      "timer_signals_observed": 1,
+      "watchdog_observed": true
+    }
   },
   "nix_flake_check": {
     "executed": false,
@@ -90,7 +183,7 @@
   "cairn_release_readiness": {
     "native_coverage_check": "passed",
     "preserves_corpus_freshness": "passed",
-    "mcp_agent_smoke": "blocked-upstream: pinned Cairn 695124d has no consumer-independent fixtures/agent-completion; the command requires root-local Cairn self-fixtures, which the accepted boundary forbids copying"
+    "mcp_agent_smoke": "blocked-upstream: pinned Cairn 695124d lacks agent-receipt smoke-mcp; newer Cairn d2c1dd7 implements it but still reads fixtures/agent-completion beneath the consumer root and is incompatible with the current generated policy (missing outcome-machine). A compatible cohort with a consumer-independent downstream selector is required."
   },
   "artifacts": [
     {
@@ -124,6 +217,11 @@
       "bytes": 66422
     },
     {
+      "path": "/tmp/release-readiness.json",
+      "digest": "blake3:62a993fffbc930ca76604e46e5ae83aebeedce1d0cfb4644bf3d28dc8cb37564",
+      "bytes": 8606
+    },
+    {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr40/delivery-source/contracts/campaign-cutover/receipt.json",
       "digest": "blake3:cd9d2482a6ddaf45fd3a176cae2c04665bdeb11a41ffe95374dbe3d65de160e7",
       "bytes": 1706
@@ -139,9 +237,14 @@
       "bytes": 1572
     },
     {
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr49/watchdog-proof/execution.json",
-      "digest": "blake3:db1c9d707697cf17a6ebf7e2308dc5b465789f8eda48cadff920778188fd3048",
-      "bytes": 3052
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr49/watchdog-proof-final/execution.json",
+      "digest": "blake3:dfce1719186c74a15713f2af91cf8e62e9840d7e32d8886fac5117317cbafc96",
+      "bytes": 3090
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr49/watchdog-lineage-final/runtime-proof.json",
+      "digest": "blake3:1a166af7d0082c9ddacbf7a0fcdee17973b070935bb95755a321f98139c13cd5",
+      "bytes": 4534117
     }
   ],
   "non_claims": [

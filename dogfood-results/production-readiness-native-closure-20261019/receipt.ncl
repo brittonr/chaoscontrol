@@ -34,6 +34,7 @@ let Ready = NativeReady && CargoReady && WatchdogReady && NixReady && KvmReady
   schema = "chaoscontrol.production-readiness-native-closure-receipt.v1",
   owner = "chaoscontrol-vmm",
   implementation_revision = O.implementation_revision,
+  current_source_revision = O.current_source_revision,
   evidence_revision = O.evidence_revision,
   production_ready | std.contract.Equal Ready = Ready,
   outcome = if Ready then "ready" else "blocked",

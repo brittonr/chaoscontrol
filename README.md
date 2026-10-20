@@ -7,13 +7,16 @@ distributed systems where reproducibility is essential.
 
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
-Production readiness remains blocked. The current
+Production readiness remains blocked. Native Cairn traceability now passes
+382/382 requirements with zero dangling references on
+`7594be4e034ea757ad5d132596a3b5475b88008d`; the
+[native closure receipt](dogfood-results/production-readiness-native-closure-20261019/receipt.ncl)
+binds the current Cargo, evidence, cutover, and release-gate observations.
+The remaining upstream blocker is `mcp_agent_smoke`: the pinned Cairn cohort
+requires consumer-root Cairn self-fixtures, which the accepted boundary forbids
+copying. The current
 [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
-records completed depth-four campaign lineage and complete replay of every
-retained deep safety finding, while native, watchdog, Nix, KVM-matrix, historical
-replay and retention criteria remain nonpassing.
-The [correction ledger](dogfood-results/production-readiness-attempt47-20261018/attempts.ncl)
-records the one additional authorized attempt and the resulting 47-attempt ceiling.
+retains the depth-four campaign and retained-finding replay evidence.
 See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)
 for exact sources, measured limits and non-claims.
 

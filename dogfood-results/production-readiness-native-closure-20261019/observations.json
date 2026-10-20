@@ -1,7 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
-  "current_source_revision": "4026e3f00348ebb79c7ec22f1e148af9f42f805e",
+  "current_source_revision": "6384fdc31e0cdbb122b6a45f70a5192e190254f5",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -179,9 +179,103 @@
     "exit_code": null,
     "operational_timeout": null,
     "elapsed_seconds": null,
-    "receipt": null,
-    "blocked_reason": "The admitted-drift row could not complete: the private HTTPS source was unreachable and the host Nix daemon remained blocked by GC/CI activity. The campaign flake inputs were moved to public Radicle mirrors, but the host did not become available to rerun the row. deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed; no complete verdict.",
+    "receipt": {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-2/fresh-workload-replay/fresh/accepted-snapshot-verdict-summary.json",
+      "value": {
+        "accepted": true,
+        "accepted_bug": "dogfood-results/raft-fresh-v2-proof-20260809/bug_1.json",
+        "accepted_verdict": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug1.json",
+        "bugs": [
+          {
+            "assertion_id": 2608033797,
+            "file": "bug_0.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 3463273124,
+            "file": "bug_1.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 4077103701,
+            "file": "bug_2.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 976915693,
+            "file": "bug_3.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 1402950483,
+            "file": "bug_4.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 2608033797,
+            "file": "bug_5.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 3463273124,
+            "file": "bug_6.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 4077103701,
+            "file": "bug_7.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 976915693,
+            "file": "bug_8.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          },
+          {
+            "assertion_id": 1402950483,
+            "file": "bug_9.json",
+            "has_assertion_identity": true,
+            "has_snapshot_ref": true,
+            "replay_parent_depth": 1
+          }
+        ],
+        "export_exit_status": 0,
+        "receipt": "dogfood-results/raft-fresh-v2-proof-20260809/proof-receipt.json",
+        "reproduce_exit_status": 0,
+        "run_exit_status": 1,
+        "seed": 0,
+        "snapshot_probe_fail_after": 1,
+        "verdict": {
+          "path": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug1.json",
+          "replay_class": "snapshot_backed_reproduced",
+          "replay_parent_depth": 1,
+          "reproduced": true,
+          "snapshot_status": "valid"
+        },
+        "workload": "raft"
+      }
+    },
+    "blocked_reason": "The admitted-drift, deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed (the drift receipt has two matching controller runs). The fresh-workload-replay row could not fetch https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git, so no complete seven-row verdict exists.",
     "partial_passing_rows": [
+      "admitted-drift",
       "deterministic-smp",
       "serialized-snapshot-replay",
       "virtio-malformed-input"
@@ -257,6 +351,16 @@
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/nix-flake-check-10/execution.json",
       "digest": "blake3:c41f011756d9d4076807360e993ed1a6ed748f045a628e822a6b4705ee1a2ccd",
       "bytes": 1091
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-matrix-2/stderr.log",
+      "digest": "blake3:3b415defca2babb2f40ea066088cb6eb83d14c1e39310a1ee8aaf2ce86018dc0",
+      "bytes": 244
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr50/kvm-release-2/admitted-drift/drift/receipt.json",
+      "digest": "blake3:3aa5ee51c4ea5e848746b4c87df37f4c8a57474f100f16fa6fe3bc0ec96bfa3b",
+      "bytes": 2189
     }
   ],
   "non_claims": [

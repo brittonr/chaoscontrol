@@ -107,6 +107,7 @@ fn bind_changed_bug(bug_path: &Path, bug: &Value, verdict_path: &Path, verdict: 
     write_json(verdict_path, verdict);
 }
 
+// r[verify chaoscontrol.event_branching.evidence_binding]
 #[test]
 fn marker_join_rejects_scope_drift_missing_parent_and_corrupt_parent_bytes() {
     let (temp, verdict_path, bug_path) = fixture();
@@ -151,6 +152,7 @@ fn marker_join_rejects_scope_drift_missing_parent_and_corrupt_parent_bytes() {
     assert!(validate_snapshot_backed_replay_artifact(&verdict_path, &bug_path).is_err());
 }
 
+// r[verify chaoscontrol.schedule_diversity.evidence_identity]
 #[test]
 fn artifact_join_binds_schedule_seed_strategy_quantum_and_policy_digest() {
     use chaoscontrol_replay_evidence_core::dto::{ReplayScheduleVariant, ReplayVerdict};

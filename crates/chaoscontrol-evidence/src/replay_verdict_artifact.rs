@@ -80,6 +80,8 @@ pub fn validate_snapshot_backed_replay_artifact(
     })
 }
 
+// r[impl chaoscontrol.event_branching.evidence_binding]
+// r[impl chaoscontrol.schedule_diversity.evidence_identity]
 fn validate_carrier_bindings(bug: &BugRecord, verdict: &ReplayVerdict) -> EvidenceResult<()> {
     ensure(
         bug.process_instances == verdict.process_instances,

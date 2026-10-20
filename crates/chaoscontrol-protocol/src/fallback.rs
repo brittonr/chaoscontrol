@@ -105,6 +105,7 @@ fn empty_details() -> serde_json::Value {
 }
 
 impl FallbackRecord {
+    // r[impl chaoscontrol.fallback_assertion_transport.record_format]
     pub fn validate_at(&self, expected_sequence: u64) -> Result<(), FallbackErrorKind> {
         if self.schema_version != FALLBACK_RECORD_SCHEMA_VERSION {
             return Err(FallbackErrorKind::InvalidVersion);
@@ -219,6 +220,7 @@ pub struct FallbackAssertionScope {
 }
 
 impl FallbackAssertionScope {
+    // r[impl chaoscontrol.fallback_assertion_transport.evidence_scope]
     pub fn validate_against(
         &self,
         identity: &crate::admission::AssertionEvidenceIdentity,
@@ -267,6 +269,7 @@ impl FallbackSink {
         })
     }
 
+    // r[impl chaoscontrol.fallback_assertion_transport.deterministic_ingestion]
     pub fn admit_line(&mut self, line: &str) -> Result<FallbackSinkEvent, FallbackError> {
         let record_index = u64::try_from(self.records.len())
             .map_err(|_| FallbackError::new(0, None, FallbackErrorKind::RecordCountOverflow))?;
@@ -689,6 +692,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.fallback_assertion_transport.record_format]
+    // r[verify chaoscontrol.fallback_assertion_transport.validation]
     fn accepts_ordered_records_and_recomputes_sink_identity() {
         let mut sink = FallbackSink::new(SINK_LIMIT).expect("sink");
         let first = serde_json::to_string(&record(0, "wal", false)).expect("record");
@@ -727,6 +732,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.fallback_assertion_transport.deterministic_ingestion]
+    // r[verify chaoscontrol.fallback_assertion_transport.validation]
     fn rejects_reordered_and_missing_process_records() {
         let mut sink = FallbackSink::new(SINK_LIMIT).expect("sink");
         let reordered = serde_json::to_string(&record(1, "wal", true)).expect("record");
@@ -777,6 +784,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.fallback_assertion_transport.validation]
     fn emits_overflow_without_corrupting_accepted_prefix() {
         let mut sink = FallbackSink::new(1).expect("sink");
         sink.admit_line(&serde_json::to_string(&record(0, "wal", true)).expect("record line"))
@@ -818,6 +826,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.fallback_assertion_transport.evidence_scope]
+    // r[verify chaoscontrol.fallback_assertion_transport.validation]
     fn reports_catalog_conflict_with_existing_and_candidate_identities() {
         let fallback = record(0, "wal", false);
         let mut sdk_descriptor = fallback

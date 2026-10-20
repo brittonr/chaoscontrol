@@ -1104,6 +1104,9 @@ fn diagnostic_dogfood_uses_live_alias_and_requires_quarantine_status() {
 }
 
 #[test]
+// r[verify chaoscontrol.simulator_campaign_profiles.shared_contracts]
+// r[verify chaoscontrol.simulator_campaign_profiles.fixtures]
+// r[verify chaoscontrol.simulation_kernel.compatibility]
 fn validates_evidence_contract_fixtures_in_rust() {
     check_evidence_contract_fixtures("../..").expect("evidence contract fixtures validate");
 }

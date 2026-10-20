@@ -41,6 +41,7 @@ const REQUIRED_NON_CLAIMS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+// r[impl kernel_bundle_validation.profile]
 pub struct KernelBundleSmokeProfile {
     pub schema_version: u64,
     pub role: String,
@@ -84,6 +85,7 @@ pub struct SmokeRunnerEvidence {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+// r[impl kernel_bundle_validation.boot]
 pub struct BootCase {
     pub observed_architecture: String,
     pub observed_kernel_release: String,
@@ -91,6 +93,7 @@ pub struct BootCase {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+// r[impl kernel_bundle_validation.modules]
 pub struct ModuleCase {
     pub pack_identity: String,
     pub member_path: String,
@@ -101,6 +104,7 @@ pub struct ModuleCase {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+// r[impl kernel_bundle_validation.bpf]
 pub struct BpfCase {
     pub pack_identity: String,
     pub object_path: String,
@@ -247,6 +251,7 @@ pub struct KernelBundleKvmRailReceipt {
     pub receipt_identity_blake3: String,
 }
 
+// r[impl kernel_bundle_validation.admission]
 pub fn validate_kernel_bundle_smoke_profile(
     profile: &KernelBundleSmokeProfile,
 ) -> EvidenceResult<()> {
@@ -268,6 +273,7 @@ pub fn kernel_bundle_smoke_profile_identity(
     domain_hash(PROFILE_DOMAIN, profile)
 }
 
+// r[impl kernel_bundle_validation.evidence]
 pub fn kernel_bundle_smoke_receipt(
     profile: &KernelBundleSmokeProfile,
 ) -> EvidenceResult<KernelBundleSmokeReceipt> {
@@ -363,6 +369,7 @@ pub fn sample_mantle_private_kfunc_receipt() -> EvidenceResult<KernelBundleSmoke
     kernel_bundle_smoke_receipt(&sample_mantle_private_kfunc_profile())
 }
 
+// r[impl kernel_bundle_validation.rails]
 pub fn kernel_bundle_kvm_rail_receipt(
     profile: &KernelBundleSmokeProfile,
     run: &KernelBundleKvmRun,
@@ -1179,6 +1186,7 @@ mod tests {
     use super::*;
 
     #[test]
+    // r[verify kernel_bundle_validation.profile]
     fn exact_mantle_private_kfunc_profile_emits_scoped_receipt() {
         let profile = sample_mantle_private_kfunc_profile();
         let receipt =
@@ -1199,6 +1207,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.admission]
     fn stale_or_role_confused_inputs_fail_before_receipt() {
         let mut profile = sample_mantle_private_kfunc_profile();
         profile.bpf.object_blake3 = profile.mantle.module_blake3.clone();
@@ -1210,6 +1219,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.verification]
     fn cleanup_and_non_claim_gaps_cannot_pass() {
         let mut profile = sample_mantle_private_kfunc_profile();
         profile.module.cleanup_class = "left-loaded".to_string();
@@ -1266,6 +1276,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.rails]
     fn unavailable_kvm_is_blocked_not_passed() {
         let profile = sample_mantle_private_kfunc_profile();
         let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
@@ -1457,6 +1468,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.evidence]
     fn behavior_receipt_cannot_satisfy_broader_evidence_roles() {
         const POSITIVE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 2;
         const FORBIDDEN_USE_COUNT: usize = 6;
@@ -1511,6 +1523,10 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.boot]
+    // r[verify kernel_bundle_validation.modules]
+    // r[verify kernel_bundle_validation.bpf]
+    // r[verify kernel_bundle_validation.verification]
     fn each_negative_scenario_requires_its_exact_failure() {
         const NEGATIVE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 3;
         let profile = sample_mantle_private_kfunc_profile();
@@ -1563,6 +1579,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.modules]
+    // r[verify kernel_bundle_validation.bpf]
     fn additional_boot_module_and_bpf_failure_classes_never_pass() {
         const FAILURE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 5;
         let profile = sample_mantle_private_kfunc_profile();
@@ -1617,6 +1635,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify kernel_bundle_validation.verification]
     fn vm_exit_bound_violation_never_passes() {
         let profile = sample_mantle_private_kfunc_profile();
         let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");

@@ -32,6 +32,8 @@ fn malformed_projection_is_rejected() {
 // r[verify chaoscontrol.nickel_toolchain.cohort]
 // r[verify chaoscontrol.nickel_toolchain.compatibility]
 #[test]
+// r[verify chaoscontrol.nickel_toolchain.cohort.scenario.exact]
+// r[verify chaoscontrol.nickel_toolchain.cohort.scenario.rejected]
 fn evaluator_admission_rejects_unreviewed_cohorts() {
     validate_evaluator_identity(EVALUATOR_IDENTITY).expect("reviewed evaluator");
     for version in [

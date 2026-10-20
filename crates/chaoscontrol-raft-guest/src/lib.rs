@@ -1056,6 +1056,7 @@ mod smr_adapter_tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.adapter]
     fn raft_adapter_projects_only_committed_application_values() {
         let mut node = Node::new(0);
         node.log = vec![

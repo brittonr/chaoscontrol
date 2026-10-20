@@ -99,6 +99,9 @@ fn future(
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_smp.validation.snapshot]
+// r[verify chaoscontrol.deterministic_smp.validation]
+// r[verify chaoscontrol.deterministic_snapshots.validation.continuation]
 fn whole_vm_partial_quantum_restore_and_real_eintr_match_control_future() {
     let mut vm = spin_vm();
     for _ in 0..3 {
@@ -147,6 +150,9 @@ impl Drop for Contender {
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_smp.validation.host_perturbation]
+// r[verify chaoscontrol.deterministic_smp.validation.spurious_interrupts]
+// r[verify chaoscontrol.deterministic_smp.validation]
 fn production_smp_trace_survives_actual_signals_cadence_and_concurrent_cpu_worker() {
     DeterministicVm::install_sigalrm_handler();
     let control = future(&mut spin_vm(), false, Duration::ZERO);
@@ -161,6 +167,7 @@ fn production_smp_trace_survives_actual_signals_cadence_and_concurrent_cpu_worke
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_snapshots.preflight]
 fn pure_preflight_retains_capabilities_and_isolates_topology_rejections() {
     use std::os::fd::{FromRawFd, IntoRawFd};
     let mut vm = spin_vm();
@@ -462,6 +469,7 @@ fn malicious_guest_configuration_and_descriptor_use_full_vm_dispatch_and_shared_
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_snapshots.validation.continuation]
 fn whole_vm_nondefault_state_round_trip_and_all_backend_continuations_match() {
     use crate::devices::virtio_mmio::*;
     fn request(vm: &mut DeterministicVm, device_index: usize, configure: bool) {
@@ -733,6 +741,7 @@ impl Drop for UnavailableKvmDescriptors {
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_snapshots.preflight]
 fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
     let mut vm = spin_vm();
     for _ in 0..3 {

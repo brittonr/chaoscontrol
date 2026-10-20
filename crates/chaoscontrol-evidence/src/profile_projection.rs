@@ -140,6 +140,8 @@ fn evaluate_profile(root: &Path, command: &[String], source: &str) -> EvidenceRe
 
 /// Reject absent or unreviewed evaluators before exporting authored configuration.
 // r[impl chaoscontrol.nickel_toolchain.cohort]
+// r[impl chaoscontrol.nickel_toolchain.cohort.scenario.exact]
+// r[impl chaoscontrol.nickel_toolchain.cohort.scenario.rejected]
 pub fn admit_nickel_evaluator() -> EvidenceResult<()> {
     let output = tempfile::NamedTempFile::new().map_err(|error| {
         EvidenceError::new(format!("evaluator output reservation failed: {error}"))
@@ -161,6 +163,8 @@ pub fn admit_nickel_evaluator() -> EvidenceResult<()> {
     validate_evaluator_identity(version.trim())
 }
 
+// r[impl chaoscontrol.nickel_toolchain.cohort.scenario.exact]
+// r[impl chaoscontrol.nickel_toolchain.cohort.scenario.rejected]
 fn validate_evaluator_identity(version: &str) -> EvidenceResult<()> {
     if version != EVALUATOR_IDENTITY {
         return Err(EvidenceError::new(format!(

@@ -210,6 +210,7 @@ mod tests {
         validate_parent_context(&metadata, &report, OBSERVED_TICK).unwrap();
     }
 
+    // r[verify chaoscontrol.event_branching.validation]
     #[test]
     fn catalog_declaration_without_event_is_a_gap() {
         use chaoscontrol_protocol::admission::{token_for_descriptors, CatalogBuilder};

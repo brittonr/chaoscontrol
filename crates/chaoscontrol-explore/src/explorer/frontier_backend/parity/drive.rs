@@ -111,9 +111,10 @@ pub(crate) struct BranchScript {
 }
 
 impl BranchScript {
-    /// The product retains a branch with new edges and a snapshot.
+    /// The product retains a branch with new edges or a marker proposal and a
+    /// snapshot. Marker-only branches are retained by `should_retain_branch`.
     pub(crate) const fn retained(&self) -> bool {
-        self.new_edges > 0 && self.snapshot
+        self.snapshot && (self.new_edges > 0 || !self.proposals.is_empty())
     }
 }
 

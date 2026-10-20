@@ -416,6 +416,9 @@ pub struct ToolObservation {
     pub stdout: String,
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.profile]
+// r[impl chaoscontrol.spacewasm_mvp.bounds]
+// r[impl chaoscontrol.spacewasm_mvp.functional_core]
 pub fn validate_profile(profile: &DifferentialProfile) -> Result<(), String> {
     if profile.schema != PROFILE_SCHEMA {
         return Err(format!("unsupported profile schema: {}", profile.schema));
@@ -515,6 +518,7 @@ pub fn validate_profile(profile: &DifferentialProfile) -> Result<(), String> {
     validate_bounds(&profile.bounds)
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.execution]
 fn validate_module_abi(abi: &ModuleAbiProfile) -> Result<(), String> {
     let hostless = abi.required_export == REQUIRED_EXPORT
         && abi.parameter_count == 0
@@ -578,6 +582,7 @@ fn validate_bounded_text(field: &str, value: &str) -> Result<(), String> {
     }
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.bounds]
 fn validate_bounds(bounds: &DifferentialBounds) -> Result<(), String> {
     let positive = [
         bounds.maximum_cases as u64,
@@ -641,6 +646,7 @@ fn validate_bounds(bounds: &DifferentialBounds) -> Result<(), String> {
     Ok(())
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.materialization]
 pub fn validate_bundle_manifest(
     profile: &DifferentialProfile,
     manifest: &BundleManifest,
@@ -794,6 +800,7 @@ pub fn validate_bundle_manifest(
 }
 
 /// Binds the profile to the Mantle revision that actually produced the bundle.
+// r[impl chaoscontrol.spacewasm_mvp.admission_refresh]
 pub fn validate_producer_revision(
     profile: &DifferentialProfile,
     observed_mantle_revision: &str,
@@ -813,6 +820,7 @@ pub fn validate_producer_revision(
 }
 
 /// Admits the exact manifest bytes measured for this profile.
+// r[impl chaoscontrol.spacewasm_mvp.admission_refresh]
 pub fn validate_manifest_digest(
     profile: &DifferentialProfile,
     observed_manifest_blake3: &str,
@@ -832,6 +840,7 @@ pub fn validate_manifest_digest(
 /// pinned stable-report grammar with every required test passed, its identity
 /// must recompute from its admitted facts, and the receipt must bind the same
 /// report and command with a passing status.
+// r[impl chaoscontrol.spacewasm_mvp.admission_refresh]
 pub fn validate_stable_evidence(
     manifest: &BundleManifest,
     suite: &StableEvidenceSuite,
@@ -980,6 +989,7 @@ fn is_raw_capture_member(member: &BundleMember) -> bool {
             .any(|suffix| member.path.ends_with(suffix))
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.corpus]
 pub fn generate_mvp_module(
     seed: u64,
     case_index: usize,
@@ -1041,6 +1051,7 @@ fn encode_u32(mut value: u32, output: &mut Vec<u8>) {
     }
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.differential]
 pub fn normalize_spacewasm(
     fixture_id: &str,
     report: &MantleRunnerReport,
@@ -1104,6 +1115,8 @@ pub fn normalize_tool(
     engine_error(engine, "nonzero-exit")
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.differential]
+// r[impl chaoscontrol.spacewasm_mvp.functional_core]
 pub fn compare_case(
     case_id: String,
     case_kind: CaseKind,
@@ -1134,6 +1147,7 @@ pub fn compare_case(
     })
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.shrink]
 pub fn same_mismatch_predicate(left: &CaseComparison, right: &CaseComparison) -> bool {
     match (&left.first_difference, &right.first_difference) {
         (Some(left), Some(right)) => {
@@ -1145,6 +1159,7 @@ pub fn same_mismatch_predicate(left: &CaseComparison, right: &CaseComparison) ->
     }
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.shrink]
 pub fn generated_shrink_candidates(
     seed: u64,
     case_index: usize,
@@ -1177,6 +1192,7 @@ pub fn encode_hex(bytes: &[u8]) -> String {
     output
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.evidence]
 pub fn finalize_report(mut report: DifferentialReport) -> Result<DifferentialReport, String> {
     if report.schema != REPORT_SCHEMA {
         return Err("report schema drift".into());
@@ -1723,6 +1739,10 @@ mod tests {
         assert!(validate_profile(&profile).is_err());
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.profile]
+    // r[verify chaoscontrol.spacewasm_mvp.corpus]
+    // r[verify chaoscontrol.spacewasm_mvp.bounds]
+    // r[verify chaoscontrol.spacewasm_mvp.validation]
     #[test]
     fn valid_profile_and_generated_modules_are_deterministic() {
         let profile = profile();
@@ -1749,6 +1769,7 @@ mod tests {
         assert_eq!(&first[..8], b"\0asm\x01\0\0\0");
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.shrink]
     #[test]
     fn generated_shrink_plan_is_deterministic_and_strictly_smaller() {
         let original = generate_mvp_module(0, 0, MAX_INSTRUCTION_PAIRS);
@@ -1765,6 +1786,9 @@ mod tests {
         );
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.differential]
+    // r[verify chaoscontrol.spacewasm_mvp.execution]
+    // r[verify chaoscontrol.spacewasm_mvp.validation]
     #[test]
     fn invalid_profile_and_mismatch_fail_closed_with_first_difference() {
         let mut invalid = profile();
@@ -1959,6 +1983,8 @@ mod tests {
             .collect()
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.materialization]
+    // r[verify chaoscontrol.spacewasm_mvp.validation]
     #[test]
     fn materialization_rejects_missing_license_and_invalid_parent_graphs() {
         let profile = profile();
@@ -1999,6 +2025,8 @@ mod tests {
             .contains("duplicated"));
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.evidence]
+    // r[verify chaoscontrol.spacewasm_mvp.validation]
     #[test]
     fn bundle_drift_and_evidence_overclaim_are_rejected() {
         let profile = profile();
@@ -2026,6 +2054,7 @@ mod tests {
             .contains("non-claim"));
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.admission_refresh]
     #[test]
     fn pinned_producer_stable_evidence_is_admitted() {
         let profile = profile();
@@ -2054,6 +2083,7 @@ mod tests {
             .all(|test| test.status == MantleStableTestStatus::Passed));
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.admission_refresh]
     #[test]
     fn stale_producer_pin_and_profile_digests_are_rejected() {
         let profile = profile();
@@ -2082,6 +2112,8 @@ mod tests {
         );
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.materialization]
+    // r[verify chaoscontrol.spacewasm_mvp.validation]
     #[test]
     fn tampered_or_missing_stable_reports_are_rejected() {
         let profile = profile();
@@ -2249,6 +2281,7 @@ mod tests {
             .contains("stable report is outside the pinned grammar"));
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.validation]
     #[test]
     fn timeout_and_resource_exhaustion_remain_distinct() {
         let timeout = normalize_tool(
@@ -2355,6 +2388,7 @@ mod tests {
         assert_eq!(first.case_identity_hex, second.case_identity_hex);
     }
 
+    // r[verify chaoscontrol.spacewasm_mvp.differential]
     #[test]
     fn harness_verdicts_preserve_prior_agreement_and_divergence() {
         let (spacewasm, wasmtime) = matched_pair();

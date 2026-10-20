@@ -1022,6 +1022,9 @@ fn cmd_run(
         );
         std::process::exit(1);
     }
+    if !frontier_policy.is_legacy_diagnostic() {
+        admit_committed_campaign_cutover();
+    }
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
@@ -2972,6 +2975,70 @@ fn rollback_minimized_bugs(paths: &[std::path::PathBuf], reason: String) -> Resu
             cleanup_failures.join(", ")
         ))
     }
+}
+
+fn admit_committed_campaign_cutover() {
+    let root = std::env::current_dir().unwrap_or_else(|error| {
+        eprintln!("Error: cannot resolve repository root: {error}");
+        std::process::exit(1);
+    });
+    let receipt_path = root.join("contracts/campaign-cutover/receipt.json");
+    let bytes = std::fs::read(&receipt_path).unwrap_or_else(|error| {
+        eprintln!(
+            "Error: Campaign cutover receipt is missing at {}: {error}",
+            receipt_path.display()
+        );
+        std::process::exit(1);
+    });
+    let receipt: chaoscontrol_evidence::campaign_policy_readiness::CutoverReceipt =
+        serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+            eprintln!("Error: invalid Campaign cutover receipt: {error}");
+            std::process::exit(1);
+        });
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&root)
+        .output()
+        .unwrap_or_else(|error| {
+            eprintln!("Error: cannot resolve source revision: {error}");
+            std::process::exit(1);
+        });
+    let revision = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || revision.is_empty() {
+        eprintln!("Error: git rev-parse HEAD failed");
+        std::process::exit(1);
+    }
+    if receipt.source_revision != revision {
+        let status = std::process::Command::new("git")
+            .args([
+                "merge-base",
+                "--is-ancestor",
+                &receipt.source_revision,
+                &revision,
+            ])
+            .current_dir(&root)
+            .status()
+            .unwrap_or_else(|error| {
+                eprintln!("Error: cannot check cutover ancestry: {error}");
+                std::process::exit(1);
+            });
+        if !status.success() {
+            eprintln!(
+                "Error: Campaign cutover receipt binds {}, which is not an ancestor of {}",
+                receipt.source_revision, revision
+            );
+            std::process::exit(1);
+        }
+    }
+    chaoscontrol_evidence::campaign_policy_readiness::admit_cutover_receipt(
+        &root,
+        &receipt,
+        &receipt.source_revision,
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("Error: Campaign cutover blocked: {error}");
+        std::process::exit(1);
+    });
 }
 
 #[cfg(test)]

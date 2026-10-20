@@ -67,6 +67,7 @@ impl HostBufferAllocator {
         Self::try_from_classes_with(classes, allocate_zeroed_buffer)
     }
 
+    // r[impl chaoscontrol.runtime_capacity.verification]
     fn try_from_classes_with(
         classes: &[ScratchClassLimit],
         mut allocate: impl FnMut(usize) -> Result<Vec<u8>, ResourceViolation>,
@@ -271,6 +272,34 @@ mod tests {
             slots: DEFAULT_SCRATCH_SLOT_COUNT,
         }])
         .expect("scratch pool")
+    }
+
+    // r[verify chaoscontrol.runtime_capacity.verification]
+    #[test]
+    fn steady_state_acquire_and_release_attempt_no_new_allocation() {
+        let attempts = std::cell::Cell::new(0usize);
+        let mut pool = HostBufferAllocator::try_from_classes_with(
+            &[ScratchClassLimit {
+                slot_bytes: TEST_SLOT_BYTES,
+                slots: 2,
+            }],
+            |requested| {
+                attempts.set(attempts.get() + 1);
+                Ok(vec![0; requested])
+            },
+        )
+        .expect("pool");
+        assert_eq!(attempts.get(), 2);
+        let lease = pool
+            .acquire(TEST_REQUEST_BYTES, TEST_SLOT_BYTES)
+            .expect("lease");
+        pool.release(lease).expect("release");
+        let lease = pool
+            .acquire(TEST_REQUEST_BYTES, TEST_SLOT_BYTES)
+            .expect("reused lease");
+        pool.release(lease).expect("release");
+        assert_eq!(attempts.get(), 2, "steady state attempted allocation");
+        assert_eq!(pool.observations().allocated_slots, 2);
     }
 
     #[test]

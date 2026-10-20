@@ -23,6 +23,7 @@ pub enum SharedDeviceKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+// r[impl chaoscontrol.guest_processes.shared_storage]
 pub struct SharedDirectorySpec {
     pub id: String,
     pub path: String,
@@ -112,6 +113,7 @@ pub enum ManifestError {
     DuplicateTransportSlot,
 }
 
+// r[impl chaoscontrol.guest_processes.manifest]
 pub fn admit_manifest(manifest: &ProcessManifest) -> Result<AdmittedManifest, ManifestError> {
     if manifest.schema != PROCESS_MANIFEST_SCHEMA {
         return Err(ManifestError::InvalidSchema);
@@ -165,6 +167,7 @@ pub fn admit_manifest(manifest: &ProcessManifest) -> Result<AdmittedManifest, Ma
         if process.restart.max_restarts > MAX_RESTARTS {
             return Err(ManifestError::InvalidRestartPolicy);
         }
+        // r[impl chaoscontrol.guest_processes.transport_isolation]
         match (process.instrumented, process.transport_slot) {
             (true, Some(slot)) if slots.insert(slot) => {}
             (true, Some(_)) => return Err(ManifestError::DuplicateTransportSlot),
@@ -632,6 +635,7 @@ pub enum ReceiptError {
     ClaimOverreach,
 }
 
+// r[impl chaoscontrol.guest_processes.evidence_scope]
 pub fn validate_receipt(
     manifest: &AdmittedManifest,
     receipt: &MultiprocessReceipt,
@@ -733,6 +737,9 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.guest_processes.manifest]
+    // r[verify chaoscontrol.guest_processes.shared_storage]
+    // r[verify chaoscontrol.guest_processes.validation]
     fn cooperating_processes_restart_without_replacing_shared_state() {
         let admitted = admit_manifest(&manifest()).unwrap();
         let started = SupervisorState::new(&admitted).start_all().unwrap();
@@ -748,6 +755,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.guest_processes.supervisor]
+    // r[verify chaoscontrol.guest_processes.validation]
     fn role_faults_are_targeted_and_pause_resumes_at_exact_tick() {
         let admitted = admit_manifest(&manifest()).unwrap();
         let started = SupervisorState::new(&admitted).start_all().unwrap();
@@ -773,6 +782,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.guest_processes.evidence_scope]
     fn lifecycle_receipt_rejects_another_admitted_roles_identity() {
         let admitted = admit_manifest(&manifest()).unwrap();
         let started = SupervisorState::new(&admitted).start_all().unwrap();
@@ -798,6 +808,9 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.guest_processes.evidence_scope]
+    // r[verify chaoscontrol.guest_processes.validation]
+    // r[verify chaoscontrol.guest_processes.transport_isolation]
     fn invalid_target_transport_collision_and_state_overclaim_fail_closed() {
         let mut invalid = manifest();
         invalid.processes[1].transport_slot = invalid.processes[0].transport_slot;

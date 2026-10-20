@@ -83,6 +83,8 @@ pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'stat
     Ok(EVIDENCE_CONTRACTS_SUCCESS)
 }
 
+// r[impl chaoscontrol.simulator_campaign_profiles.shared_contracts]
+// r[impl chaoscontrol.simulator_campaign_profiles.fixtures]
 pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
     let contracts = root.join("contracts/evidence");

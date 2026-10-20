@@ -135,6 +135,7 @@ pub struct EvidenceTargetConfig {
 }
 
 #[derive(Debug)]
+// r[impl ebpf_trace_evidence.lifecycle]
 pub struct StableTargetHandle {
     pid: u32,
     pidfd: OwnedFd,
@@ -1270,6 +1271,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify ebpf_trace_evidence.lifecycle]
     fn invalid_collector_configuration_fails_before_privileged_effects() {
         let mut zero_pid = TraceCollector::new(0);
         assert!(zero_pid.start().is_err());

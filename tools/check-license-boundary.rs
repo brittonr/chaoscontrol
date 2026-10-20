@@ -45,6 +45,7 @@ fn parse_rule_kind(value: &str) -> Result<RuleKind, String> {
     }
 }
 
+// r[impl chaoscontrol.unified_agpl.authority]
 fn parse_policy(contents: &str) -> Result<Vec<Rule>, String> {
     let mut rules = Vec::new();
     for (line_index, raw_line) in contents.lines().enumerate() {
@@ -178,6 +179,10 @@ fn validate_forbid_any(contents: &str, markers: &str) -> Result<(), String> {
     Ok(())
 }
 
+// r[verify chaoscontrol.unified_agpl.scope]
+// r[verify chaoscontrol.unified_agpl.authority]
+// r[verify chaoscontrol.unified_agpl.metadata]
+// r[verify chaoscontrol.unified_agpl.validation]
 fn run_self_tests() {
     let policy = "package\tCargo.toml\tMPL-2.0\nartifact\tLICENSE\tMozilla Public License";
     let rules = parse_policy(policy).expect("positive policy fixture must parse");
@@ -346,6 +351,7 @@ fn workspace_member_manifests(contents: &str) -> Vec<PathBuf> {
     manifests
 }
 
+// r[impl chaoscontrol.unified_agpl.scope]
 fn validate_workspace_coverage(workspace_manifest: &str, rules: &[Rule]) -> Result<(), String> {
     let manifests = workspace_member_manifests(workspace_manifest);
     for manifest in &manifests {

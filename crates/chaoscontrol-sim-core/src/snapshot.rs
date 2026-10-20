@@ -6,6 +6,7 @@ use std::fmt;
 pub const CORE_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+// r[impl chaoscontrol.simulation_kernel.snapshot_model]
 pub struct SimulationCoreSnapshot {
     pub schema_version: u16,
     pub tick: u64,
@@ -154,11 +155,13 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.snapshot_model]
     fn exact_network_snapshot_shape_is_accepted() {
         snapshot().validate().unwrap();
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.snapshot_model]
     fn wrong_vector_length_and_endpoint_are_rejected() {
         let mut wrong_length = snapshot();
         wrong_length.network.latency.pop();

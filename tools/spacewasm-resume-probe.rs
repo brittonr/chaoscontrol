@@ -130,6 +130,7 @@ struct Partition {
     length: usize,
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.streaming]
 fn validate_partition(parts: &[Partition], byte_count: usize) -> Result<(), &'static str> {
     if parts.is_empty() || parts.len() > MAXIMUM_CHUNKS {
         return Err("chunk-count-bound");
@@ -454,6 +455,7 @@ fn execute_inner(stream: &mut ChunkStream<'_>, mode: ExecutionMode)
     }
 }
 
+// r[impl chaoscontrol.spacewasm_mvp.resume]
 fn execute(bytes: &mut [u8], parts: &[Partition], mode: ExecutionMode, limit: usize)
     -> Result<ExecutionObservation, String> {
     validate_partition(parts, bytes.len()).map_err(String::from)?;
@@ -696,6 +698,7 @@ mod tests {
     ];
 
     #[test]
+    // r[verify chaoscontrol.spacewasm_mvp.streaming]
     fn malformed_partitions_are_denied_before_stream_construction() {
         for kind in ["omit", "overlap", "reorder", "extend"] {
             let parts = generate_partition(kind, DEFAULT_SEED, GLOBAL_MODULE.len()).unwrap();
@@ -707,6 +710,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.spacewasm_mvp.streaming]
     fn ordered_partition_covers_every_byte_and_regenerates() {
         for kind in ["complete", "one-byte", "seeded"] {
             let first = generate_partition(kind, DEFAULT_SEED, GLOBAL_MODULE.len()).unwrap();
@@ -737,6 +741,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.spacewasm_mvp.resume]
     fn globals_and_traps_survive_real_streaming_resume_boundaries() {
         allocation_limit_is_real_and_failed_reallocation_preserves_old_buffer();
         let complete = generate_partition("complete", 0, GLOBAL_MODULE.len()).unwrap();
@@ -834,6 +839,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.spacewasm_mvp.resume]
     fn changed_observable_state_is_a_retained_resume_predicate() {
         let mut left = Terminal::failure("run", "accepted", "finished");
         left.state_observed = true;

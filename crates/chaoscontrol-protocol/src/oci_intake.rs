@@ -115,6 +115,8 @@ pub enum IntakePlanError {
     ConflictingRoot,
 }
 
+// r[impl chaoscontrol.oci_intake.bundle_lowering]
+// r[impl chaoscontrol.oci_intake.nickel_topology]
 pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanError> {
     if topology.schema != OCI_TOPOLOGY_SCHEMA {
         return Err(IntakePlanError::InvalidSchema);
@@ -368,6 +370,8 @@ pub enum IntakeReceiptError {
     ClaimOverreach,
 }
 
+// r[impl chaoscontrol.oci_intake.provenance]
+// r[impl chaoscontrol.oci_intake.claim_boundary]
 pub fn validate_receipt(
     plan: &BundlePlan,
     receipt: &IntakeReceipt,
@@ -458,6 +462,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.oci_intake.bundle_lowering]
+    // r[verify chaoscontrol.oci_intake.nickel_topology]
     fn topology_lowers_to_bound_manifest_and_receipt() {
         let plan = lower_topology(&topology()).unwrap();
         assert_eq!(plan.services.len(), 1);
@@ -481,6 +487,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.oci_intake.provenance]
+    // r[verify chaoscontrol.oci_intake.validation]
     fn unsupported_format_conflicting_role_and_provenance_fail_closed() {
         let mut unsupported = topology();
         unsupported.services[0].source.format = "docker-daemon".to_string();
@@ -517,6 +525,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.oci_intake.nickel_topology]
+    // r[verify chaoscontrol.oci_intake.validation]
     fn topology_requires_explicit_capabilities_and_rejects_overlapping_roots() {
         let mut candidate = topology();
         let admitted = lower_topology(&candidate).unwrap();

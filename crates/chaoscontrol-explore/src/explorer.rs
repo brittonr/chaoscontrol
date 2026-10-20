@@ -3777,6 +3777,7 @@ mod tests {
         );
     }
 
+    // r[verify chaoscontrol.event_branching.validation]
     #[test]
     fn branch_markers_create_identity_bound_novel_frontier_entries() {
         let marker = chaoscontrol_protocol::branch_marker::BranchMarker::new(
@@ -3811,6 +3812,7 @@ mod tests {
         assert!(proposals[0].score >= crate::marker_branching::MARKER_NOVELTY_BONUS);
     }
 
+    // r[verify chaoscontrol.event_branching.validation]
     #[test]
     fn marker_only_branches_remain_selectable_after_marker_budget_exhaustion() {
         use chaoscontrol_protocol::branch_marker::{

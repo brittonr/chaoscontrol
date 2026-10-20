@@ -300,6 +300,7 @@ fn transport_snapshot_restores_negotiation_queue_geometry_and_cursors() {
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_snapshots.virtio_state]
 fn transport_snapshot_restores_nonzero_cursors_and_pending_interrupt() {
     let mem = memory();
     let mut transport = completing_device();
@@ -369,6 +370,7 @@ fn driver_failed_status_excludes_polling_notification_and_activation() {
     assert!(!transport.interrupt_pending());
 }
 
+// r[verify chaoscontrol.virtio_safety.snapshot_state]
 #[test]
 fn snapshot_preserves_failed_post_effect_pending_completion_without_reexecution() {
     use chaoscontrol_vmm::devices::virtio_types::UsedWriteFailurePoint;

@@ -422,6 +422,7 @@ fn bounded_tree_limits() -> EvidenceResult<TreeLimits> {
     .map_err(|error| EvidenceError::new(format!("invalid bounded-tree limits: {error:?}")))
 }
 
+// r[impl chaoscontrol.bounded_tree_adoption.tree_observation]
 fn prepare_bounded_tree(root: &Path) -> EvidenceResult<(tempfile::TempDir, TreePlan)> {
     let source = Dir::open_ambient_dir(root, ambient_authority())?;
     let prepared = prepare_tree(
@@ -954,6 +955,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.bounded_tree_adoption.tree_observation]
     fn newc_writer_records_regular_files_dirs_and_internal_symlinks_deterministically() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path().join("root");
@@ -979,6 +981,40 @@ mod tests {
         assert!(archive.contains(NEWC_TRAILER));
         assert!(entries_written >= 4);
         assert_eq!(bytes_written as usize, output.len());
+    }
+
+    // r[verify chaoscontrol.bounded_tree_adoption.tree_observation]
+    // r[verify chaoscontrol.bounded_tree_adoption.tree_observation]
+    #[test]
+    fn legacy_and_shared_collection_reject_an_overlong_path_with_the_same_class() {
+        const COMPONENT_BYTES: usize = 200;
+        const COMPONENT_COUNT: usize = 3;
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().join("root");
+        let component = "a".repeat(COMPONENT_BYTES);
+        let mut deep = root.clone();
+        for _ in 0..COMPONENT_COUNT {
+            deep.push(&component);
+        }
+        fs::create_dir_all(&deep).expect("mkdir deep tree");
+        fs::write(deep.join("payload"), b"payload").expect("write payload");
+        let legacy = legacy_archive_tree(&root)
+            .expect_err("legacy rejects overlong path")
+            .message()
+            .to_string();
+        let shared = archive_tree(&root)
+            .expect_err("shared rejects overlong path")
+            .message()
+            .to_string();
+        let classify = |message: &str| {
+            if message.contains("size bound") || message.contains("PathBytes") {
+                "path-bound"
+            } else {
+                "other"
+            }
+        };
+        assert_eq!(classify(&legacy), "path-bound", "{legacy}");
+        assert_eq!(classify(&shared), "path-bound", "{shared}");
     }
 
     #[test]

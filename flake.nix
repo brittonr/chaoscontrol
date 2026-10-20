@@ -20,7 +20,7 @@
       flake = false;
     };
     vm-cohort-src = {
-      url = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=0953ab17d2f4e318567a57925dc8fe30669d5b68";
+      url = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149";
       flake = false;
     };
     mantle = {
@@ -73,7 +73,7 @@
             ];
           };
 
-          vmCohortRevision = "0953ab17d2f4e318567a57925dc8fe30669d5b68";
+          vmCohortRevision = "ab123e3673b6dd616b3df5d044026b5e85755149";
           vmCohortDependencyCheck =
             assert pkgs.lib.assertMsg (
               vm-cohort-src.rev == vmCohortRevision

@@ -143,6 +143,7 @@ pub trait ProcessRuntime {
     fn exited(&mut self, identity: &str) -> Result<Option<bool>, RuntimeError>;
 }
 
+// r[impl chaoscontrol.guest_processes.supervisor]
 pub struct Supervisor<R> {
     manifest: AdmittedManifest,
     state: SupervisorState,
@@ -400,6 +401,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.guest_processes.supervisor]
     fn shell_executes_spawn_fault_and_restart_effects() {
         let manifest = admitted();
         let identity = manifest.processes[0].identity.clone();

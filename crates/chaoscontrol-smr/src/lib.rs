@@ -374,6 +374,7 @@ pub struct ProposalAttempt {
     pub outcome: ProposalOutcome,
 }
 
+// r[impl chaoscontrol.smr_chain.indefinite_outcomes]
 pub fn validate_proposal_attempts(
     attempts: &[ProposalAttempt],
     bounds: &WorkloadBounds,
@@ -869,6 +870,7 @@ pub enum TerminalStatus {
 }
 
 /// A semantic consumer contract. Implementations expose application facts only.
+// r[impl chaoscontrol.smr_chain.adapter]
 pub trait SmrConsumerAdapter {
     fn lifecycle(&self) -> LifecycleState;
     fn propose(&mut self, operation_id: &str, command: &[u8]) -> ProposalOutcome;
@@ -914,6 +916,7 @@ pub struct FaultCampaignProfile {
     pub expected_observability: String,
 }
 
+// r[impl chaoscontrol.smr_chain.fault_campaign]
 pub fn validate_fault_campaign(
     campaign: &FaultCampaignProfile,
     bounds: &WorkloadBounds,
@@ -1294,6 +1297,7 @@ pub fn compare_replay_bounded(
     Ok(compare_replay(expected, actual))
 }
 
+// r[impl chaoscontrol.smr_chain.replay]
 pub fn compare_replay(expected: &SemanticRun, actual: &SemanticRun) -> ReplayComparison {
     let checks = [
         (
@@ -1471,6 +1475,7 @@ pub struct SmrEvidenceReceipt {
     pub non_claims: Vec<String>,
 }
 
+// r[impl chaoscontrol.smr_chain.evidence]
 pub fn validate_evidence_receipt(
     receipt: &SmrEvidenceReceipt,
     plan: &SmrWorkloadPlan,
@@ -2065,6 +2070,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn profile_and_framing_are_deterministic_and_fail_closed() {
         let admitted = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let repeated = admit_profile(&profile(ObservationMode::Lossless)).expect("same profile");
@@ -2123,6 +2129,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn transition_property_cases_preserve_position_and_content_identity() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let mut prior = plan.genesis_digest.clone();
@@ -2150,6 +2157,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn history_accepts_lag_and_rejects_divergence_rollback_and_gaps() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let valid = observations(&plan);
@@ -2207,6 +2215,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn sampled_gap_reduces_coverage_without_fabricating_divergence() {
         let plan = admit_profile(&profile(ObservationMode::Sampled)).expect("sampled profile");
         let mut sampled = observations(&plan);
@@ -2222,6 +2231,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.indefinite_outcomes]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn proposal_identity_survives_indefinite_retry() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let command_ref = digest(b"command");
@@ -2272,6 +2283,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn liveness_requires_named_stabilization_and_virtual_progress() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let absent = evaluate_liveness(&plan, None).expect("absence is bounded");
@@ -2333,6 +2345,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.fault_campaign]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn campaigns_retain_choices_and_require_effect_records() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let campaign = FaultCampaignProfile {
@@ -2410,6 +2424,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.replay]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn replay_stops_at_first_mismatch_and_reduction_is_bounded() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let liveness = LivenessReport {
@@ -2465,6 +2481,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.smr_chain.evidence]
+    // r[verify chaoscontrol.smr_chain.validation]
     fn evidence_rejects_missing_non_claim_and_selected_only_promotion() {
         let plan = admit_profile(&profile(ObservationMode::Lossless)).expect("valid profile");
         let history = validate_history(&plan, &observations(&plan)).expect("history");

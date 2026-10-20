@@ -453,6 +453,7 @@ impl VirtQueue {
         })
     }
 
+    // r[impl chaoscontrol.virtio_safety.snapshot_state]
     pub fn live_state(&self) -> QueueLiveState {
         let config = self.validated.map(|config| ValidatedQueueLiveConfig {
             size: config.size(),
@@ -643,6 +644,7 @@ impl VirtioMmioDevice {
         })
     }
 
+    // r[impl chaoscontrol.deterministic_snapshots.virtio_state]
     pub fn validate_snapshot(
         &self,
         snapshot: &VirtioMmioSnapshot,

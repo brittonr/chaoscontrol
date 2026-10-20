@@ -91,6 +91,7 @@ pub type EvidenceResult<T> = Result<T, EvidenceError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+// r[impl ebpf_trace_evidence.ordering]
 pub enum OrderingMode {
     ExactSingleProducer,
     SourcePartialOrder,
@@ -904,6 +905,7 @@ pub struct SequenceReport {
     pub first_error: Option<String>,
 }
 
+// r[impl ebpf_trace_evidence.ordering]
 pub fn validate_source_sequences(events: &[TraceEvent]) -> SequenceReport {
     let mut by_source: BTreeMap<u32, Vec<u64>> = BTreeMap::new();
     for event in events {
@@ -1211,6 +1213,7 @@ pub struct TraceComparisonInput<'a> {
     pub events: &'a [TraceEvent],
 }
 
+// r[impl ebpf_trace_evidence.comparison]
 pub fn compare_complete_traces(
     trace_a: TraceComparisonInput<'_>,
     trace_b: TraceComparisonInput<'_>,
@@ -1460,6 +1463,7 @@ fn artifact_identity<T: Serialize + ?Sized>(
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+// r[impl ebpf_trace_evidence.evidence]
 pub struct TraceManifest {
     pub schema: String,
     pub profile_ref: String,
@@ -1493,6 +1497,7 @@ pub fn trace_manifest_ref(manifest: &TraceManifest) -> EvidenceResult<String> {
     canonical_ref(TRACE_IDENTITY_DOMAIN, manifest)
 }
 
+// r[impl ebpf_trace_evidence.evidence]
 pub fn validate_trace_manifest(manifest: &TraceManifest) -> EvidenceResult<()> {
     if manifest.schema != TRACE_MANIFEST_SCHEMA {
         return Err(EvidenceError::new(
@@ -1740,6 +1745,7 @@ fn manifest_terminal_comparison_status(
     }
 }
 
+// r[impl ebpf_trace_evidence.evidence]
 pub fn verify_comparison_receipt(
     receipt: &ComparisonReceipt,
     profile: &AdmittedCaptureProfile,
@@ -2531,6 +2537,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify ebpf_trace_evidence.comparison]
+    // r[verify ebpf_trace_evidence.verification]
     fn raw_parser_rejects_malformed_version_size_discriminant_and_target() {
         let valid = raw_bytes(
             EventType::KvmExit as u32,
@@ -2683,6 +2691,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify ebpf_trace_evidence.ordering]
+    // r[verify ebpf_trace_evidence.verification]
     fn exact_and_multi_producer_modes_preserve_ordering_limits() {
         let exact_profile = admit_capture_profile(&profile(OrderingMode::ExactSingleProducer, 1))
             .expect("exact profile");
@@ -2745,6 +2755,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify ebpf_trace_evidence.comparison]
+    // r[verify ebpf_trace_evidence.verification]
     fn incompatible_incomplete_and_cleanup_failed_traces_never_match() {
         let admitted =
             admit_capture_profile(&profile(OrderingMode::ExactSingleProducer, 1)).expect("profile");
@@ -2803,6 +2815,9 @@ mod tests {
     }
 
     #[test]
+    // r[verify ebpf_trace_evidence.lifecycle]
+    // r[verify ebpf_trace_evidence.evidence]
+    // r[verify ebpf_trace_evidence.verification]
     fn target_manifest_receipt_and_privileged_preflight_are_claim_scoped() {
         let admitted =
             admit_capture_profile(&profile(OrderingMode::ExactSingleProducer, 1)).expect("profile");

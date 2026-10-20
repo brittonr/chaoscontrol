@@ -219,6 +219,7 @@ pub fn plan_round(input: &RoundInput) -> Result<RoundPlan, SimulationKernelError
 }
 
 /// Validate shell observations and emit a canonical round trace.
+// r[impl chaoscontrol.simulation_kernel.determinism]
 pub fn complete_round(
     input: &RoundInput,
     plan: RoundPlan,
@@ -384,6 +385,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.determinism]
+    // r[verify chaoscontrol.simulation_kernel.validation]
     fn fixed_input_produces_identical_trace_and_identity() {
         let first =
             complete_round(&input(), plan_round(&input()).unwrap(), &observations()).unwrap();
@@ -394,6 +397,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.determinism]
+    // r[verify chaoscontrol.simulation_kernel.validation]
     fn changed_seed_config_or_artifact_has_a_first_trace_divergence() {
         let baseline_input = input();
         let baseline = complete_round(

@@ -192,6 +192,7 @@ impl VcpuScheduler {
     }
 
     /// Produce an exact serializable scheduler snapshot.
+    // r[impl chaoscontrol.deterministic_smp.snapshot_state]
     pub fn snapshot(&self) -> SchedulerSnapshot {
         SchedulerSnapshot {
             schema_version: SCHEDULER_SNAPSHOT_SCHEMA_VERSION,
@@ -356,6 +357,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.deterministic_smp.snapshot_state]
+    // r[verify chaoscontrol.deterministic_smp.validation.snapshot]
     fn snapshot_restore_preserves_identity_and_future() {
         let mut original = scheduler();
         commit_progress(&mut original);
@@ -373,6 +376,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.deterministic_smp.snapshot_state]
+    // r[verify chaoscontrol.deterministic_smp.validation.snapshot]
     fn snapshot_restore_preserves_pmu_exact_remainder_future() {
         let progress_mode = ProgressMode::PmuAccelerated {
             exact_step_margin: 1,

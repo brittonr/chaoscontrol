@@ -536,7 +536,10 @@ fn marker_branching_with_duplicate_metadata_agrees() {
     };
     let marker_branch = |index: u32, scores: &[f64]| BranchScript {
         proposals: scores.iter().copied().map(duplicate).collect(),
-        ..variant(index, &[])
+        new_edges: 0,
+        snapshot: true,
+        new_findings: 0,
+        slot: BranchSlot::Variant(index),
     };
     let rounds = vec![
         round(vec![

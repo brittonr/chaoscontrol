@@ -46,6 +46,7 @@ impl From<std::io::Error> for IntakeShellError {
     }
 }
 
+// r[impl chaoscontrol.oci_intake.bundle_lowering]
 pub fn materialize_bundle(
     topology: &OciTopology,
     output: &Path,
@@ -112,6 +113,8 @@ pub fn materialize_bundle(
 
 /// Re-admit the authored topology and independently remeasure retained output.
 /// A structurally valid receipt alone cannot attest service-root bytes.
+// r[impl chaoscontrol.oci_intake.provenance]
+// r[impl chaoscontrol.oci_intake.claim_boundary]
 pub fn verify_materialized_bundle(
     topology: &OciTopology,
     output: &Path,
@@ -484,6 +487,10 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.oci_intake.bundle_lowering]
+    // r[verify chaoscontrol.oci_intake.provenance]
+    // r[verify chaoscontrol.oci_intake.claim_boundary]
+    // r[verify chaoscontrol.oci_intake.validation]
     fn multi_image_topology_materializes_oci_and_directory_roots() {
         let fixture = tempfile::tempdir().unwrap();
         let image = fixture.path().join("oci");
@@ -669,6 +676,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.oci_intake.validation]
     fn wrong_layer_identity_and_existing_output_fail_closed() {
         let fixture = tempfile::tempdir().unwrap();
         let image = fixture.path().join("oci");

@@ -7,6 +7,7 @@ pub const MAX_BOUNDARY_PAYLOAD_BYTES: usize = 1_048_576;
 /// A machine effect selected by the deterministic core.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+// r[impl chaoscontrol.simulation_kernel.execution_boundary]
 pub enum ExecutionCommand {
     RunVcpu {
         sequence: u64,
@@ -203,6 +204,7 @@ pub fn admit_command(
 }
 
 /// Validate one command/observation pair without changing external state.
+// r[impl chaoscontrol.simulation_kernel.execution_boundary]
 pub fn validate_exchange(
     state: BoundaryState,
     command: ExecutionCommand,
@@ -460,6 +462,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.execution_boundary]
+    // r[verify chaoscontrol.simulation_kernel.validation]
     fn canonical_boot_network_fault_and_snapshot_exchanges_are_accepted() {
         let pairs = [
             (
@@ -523,6 +527,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.execution_boundary]
     fn out_of_order_observation_is_rejected() {
         let error = validate_exchange(
             state(),
@@ -550,6 +555,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.execution_boundary]
     fn malformed_or_unknown_dto_is_rejected_by_serde() {
         let malformed = r#"{"kind":"run_vcpu","sequence":0,"vm_index":"bad"}"#;
         let unknown = r#"{"kind":"unknown_observation","sequence":0}"#;
@@ -558,6 +564,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.simulation_kernel.execution_boundary]
     fn mismatched_command_and_observation_are_rejected() {
         let error = validate_exchange(
             state(),

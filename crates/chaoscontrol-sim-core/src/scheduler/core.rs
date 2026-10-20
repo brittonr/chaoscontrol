@@ -135,6 +135,7 @@ pub enum HostEventKind {
     /// `VcpuExit::Intr` or an `EINTR` error.
     SignalInterrupt,
     /// A wall-clock watchdog expired.
+    // r[impl chaoscontrol.deterministic_smp.watchdog]
     WatchdogExpired,
     /// A host worker or thread became runnable.
     ThreadWake,
@@ -1655,6 +1656,7 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.deterministic_smp.watchdog]
     fn host_events_never_change_schedule_state() {
         let state = exact_state();
         for kind in [
@@ -1823,6 +1825,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.deterministic_smp.snapshot_state]
+    // r[verify chaoscontrol.deterministic_smp.validation]
     fn snapshot_identity_binds_exact_step_and_rng_state() {
         let mut state = ScheduleState::new(
             &config(),
@@ -1872,6 +1876,8 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.deterministic_smp.validation.spurious_interrupts]
+    // r[verify chaoscontrol.deterministic_smp.validation]
     fn arbitrary_host_interrupts_cannot_change_progress_or_selection() {
         let exact = exact_state();
         for _ in 0..QUANTUM {

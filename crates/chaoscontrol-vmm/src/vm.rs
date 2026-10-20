@@ -551,6 +551,7 @@ pub enum VmError {
     },
 
     #[snafu(display("Host watchdog interrupted vCPU {vcpu}; this is not a guest crash verdict"))]
+    // r[impl chaoscontrol.deterministic_smp.watchdog]
     HostWatchdogTimeout { vcpu: usize },
 
     #[snafu(display("KVM reported an internal error for vCPU {vcpu}"))]

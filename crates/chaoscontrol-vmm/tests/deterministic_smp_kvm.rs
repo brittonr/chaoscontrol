@@ -212,6 +212,8 @@ fn apply_host_perturbation(perturbation: HostPerturbation, instruction: usize) {
 }
 
 #[test]
+// r[verify chaoscontrol.deterministic_smp.validation.host_perturbation]
+// r[verify chaoscontrol.deterministic_smp.validation]
 fn exact_spin_loop_trace_survives_host_delay_and_contention() {
     let baseline = ExactSpinHarness::new().run(HostPerturbation::None);
     let delayed = ExactSpinHarness::new().run(HostPerturbation::Delay);

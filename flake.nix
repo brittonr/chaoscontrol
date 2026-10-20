@@ -12,11 +12,11 @@
     octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
     trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
     campaign-src = {
-      url = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=e7757a5134f631e1ed410df3cae57e57f887c468&allRefs=1";
+      url = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=e7757a5134f631e1ed410df3cae57e57f887c468&allRefs=1";
       flake = false;
     };
     choregraph-history-src = {
-      url = "git+https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b&allRefs=1";
+      url = "git+rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b&allRefs=1";
       flake = false;
     };
     vm-cohort-src = {

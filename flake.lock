@@ -268,13 +268,13 @@
         "rev": "e7757a5134f631e1ed410df3cae57e57f887c468",
         "revCount": 88,
         "type": "git",
-        "url": "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
+        "url": "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN"
       },
       "original": {
         "allRefs": true,
         "rev": "e7757a5134f631e1ed410df3cae57e57f887c468",
         "type": "git",
-        "url": "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
+        "url": "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN"
       }
     },
     "choregraph-history-src": {
@@ -287,13 +287,13 @@
         "rev": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
         "revCount": 69,
         "type": "git",
-        "url": "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"
+        "url": "rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF"
       },
       "original": {
         "allRefs": true,
         "rev": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
         "type": "git",
-        "url": "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"
+        "url": "rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF"
       }
     },
     "crane": {

@@ -190,9 +190,7 @@
                     pathPrefix = ''--prefix PATH : "'';
                   in
                   assert pkgs.lib.hasInfix pathPrefix previous.buildCommand;
-                  pkgs.lib.replaceStrings
-                    [ pathPrefix ]
-                    [ ''--prefix PATH : "${cargoExactRevisions}/bin:'' ]
+                  pkgs.lib.replaceStrings [ pathPrefix ] [ ''--prefix PATH : "${cargoExactRevisions}/bin:'' ]
                     previous.buildCommand;
               });
               upstreamCheck = octet.lib.mkConsumerCheck args;
@@ -201,11 +199,8 @@
             upstreamCheck.overrideAttrs (previous: {
               buildCommand =
                 assert
-                  builtins.replaceStrings [ upstreamCommand ] [ "" ] previous.buildCommand
-                  != previous.buildCommand;
-                pkgs.lib.replaceStrings
-                  [ upstreamCommand ]
-                  [ "${repairedRunner}/bin/cargo-octet" ]
+                  builtins.replaceStrings [ upstreamCommand ] [ "" ] previous.buildCommand != previous.buildCommand;
+                pkgs.lib.replaceStrings [ upstreamCommand ] [ "${repairedRunner}/bin/cargo-octet" ]
                   previous.buildCommand;
             });
 

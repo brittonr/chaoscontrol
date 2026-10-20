@@ -144,7 +144,7 @@ let FreshWorkloadProofProfile = import "profile.ncl" in
         { role = "guest-kernel", nix_output = "chaoscontrol-kernel-kcov", digest_policy = "sha256-runtime-observation" },
         { role = "guest-initrd", nix_output = "initrd-rust-workload", digest_policy = "sha256-runtime-observation" },
       ],
-      cmdline_template = "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}",
+      cmdline_template = "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after} clocksource=jiffies notsc",
       bounds = {
         max_attempts = 6,
         vms = 1,

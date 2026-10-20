@@ -1,7 +1,7 @@
 {
   "schema": "chaoscontrol.production-readiness-native-closure-observations.v1",
   "implementation_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
-  "current_source_revision": "7056211a77174c5ef9627538ca9d25a360f42b08",
+  "current_source_revision": "102a6387f1825f0f39f69bfcd4398e1a6f798006",
   "evidence_revision": "886f95b527e2f72d68f0cd35e472710b57a7e565",
   "native_traceability": {
     "referenced": 382,
@@ -171,14 +171,21 @@
     "executed": false,
     "exit_code": null,
     "operational_timeout": null,
-    "elapsed_seconds": null
+    "elapsed_seconds": null,
+    "blocked_reason": "The host Nix daemon/GC path and an invalid Mantle source path prevented the full flake check from completing; the attempt was killed after 20 minutes."
   },
   "kvm_release_matrix": {
     "executed": false,
     "exit_code": null,
     "operational_timeout": null,
     "elapsed_seconds": null,
-    "receipt": null
+    "receipt": null,
+    "blocked_reason": "The admitted-drift row could not fetch https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git (repository not found), while deterministic-smp, serialized-snapshot-replay, and virtio-malformed-input row tests passed. The matrix therefore has no complete clean-source verdict.",
+    "partial_passing_rows": [
+      "deterministic-smp",
+      "serialized-snapshot-replay",
+      "virtio-malformed-input"
+    ]
   },
   "cairn_release_readiness": {
     "native_coverage_check": "passed",

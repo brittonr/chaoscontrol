@@ -254,7 +254,7 @@
   },
   "evidence_verification": {
     "all_verified": true,
-    "artifacts_checked": 104,
+    "artifacts_checked": 111,
     "identity_mismatches": []
   },
   "artifacts": [
@@ -777,6 +777,41 @@
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/nix-retry-03/stdout.log",
       "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
       "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/historical-initrd-recovery.json",
+      "digest": "blake3:5ce36dafdeff29ba36c34ee0855a646604e425733a5825a9d666615606b60328",
+      "bytes": 1460
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/lineage-initrd-rebuild/execution.json",
+      "digest": "blake3:0b454df68a515c73613d9fd33817826fdaadf3babc3a308da5e511937cad293d",
+      "bytes": 1473
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/lineage-initrd-rebuild/stderr.log",
+      "digest": "blake3:90f5d11ea608a63000d473a1dc289cc159b8d43e9e59071524d50d4ac7b7bffa",
+      "bytes": 613
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/lineage-initrd-rebuild/stdout.log",
+      "digest": "blake3:a2bcc283545878dd870886cc8ddc4a8ffb1b69a56020b06a6052256f35532df0",
+      "bytes": 69
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/lineage-initrd-repro-check/execution.json",
+      "digest": "blake3:b6e0663b4cabc56260c070fecf0638ba244e0eccd51fef784037436f1db9fc9d",
+      "bytes": 1460
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/lineage-initrd-repro-check/stderr.log",
+      "digest": "blake3:35f293fbc189f170dcf669818dd3b61d0326eba541109bfe4a79d39501167e6e",
+      "bytes": 133
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/lineage-initrd-repro-check/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
     }
   ],
   "historical_preservation": {
@@ -785,8 +820,8 @@
   },
   "remaining_blockers": [
     {
-      "owner": "Historical artifact retention and ChaosControl replay admission",
-      "required": "Recover exact original Raft initrd BLAKE3 82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e and obtain accepted current-source snapshot-backed reproduction of the selected original finding; fresh probes are not substitutes"
+      "owner": "Historical artifact retention (retained copy or cache), not ChaosControl source repair",
+      "required": "A retained byte-identical copy of Raft initrd BLAKE3 82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e. The original store path is absent, no surviving derivation references it, and configured substituters have no copy. Rebuilding source revision 4137132 succeeds but yields c39738052f8ed08a4074968d2bc01a4c2f1d869b24db2c6bc3277fb9364ac2fd because the cpio/gzip initrd builder is not byte-reproducible; substitutes remain rejected. The exact matching kernel b21d78e8 is still present."
     },
     {
       "owner": "Failed-build artifact availability within existing host permissions",

@@ -19,7 +19,7 @@ let Prior = import "../production-readiness-attempt52-20261020/attempts.ncl" in
   attempts = [{
     number = 53,
     correction = "Fix Cairn downstream MCP input selection and exact policy propagation; reuse bounded dependency/native Nix support and admit the actual full portable consumer commands",
-    status = 'in_progress,
+    status = 'verified,
     source_plan = "Cairn .cairn/changes/fix-downstream-mcp-readiness and ChaosControl .cairn/changes/refresh-vendored-cairn-policy",
     evidence_boundary = "The immutable producer cohort, policy migration, full consumer completion, original CLI/MCP verdicts, native readiness and independent KVM matrix bind this correction; unchanged historical and inaccessible-payload blockers remain",
   }],

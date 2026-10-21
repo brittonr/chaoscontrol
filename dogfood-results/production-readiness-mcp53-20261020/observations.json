@@ -1,0 +1,858 @@
+{
+  "source": {
+    "revision": "ef778be7ecc0467f176857dac779a262b9b741d1",
+    "dirty": false,
+    "all_gate_source_checks_unchanged_and_clean": true
+  },
+  "cairn_cohort": {
+    "revision": "a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127",
+    "published": true,
+    "remote_head_verified": true,
+    "gate_rows": [
+      {
+        "name": "workspace-tests",
+        "exit_code": 0
+      },
+      {
+        "name": "clippy",
+        "exit_code": 0
+      },
+      {
+        "name": "formatting",
+        "exit_code": 0
+      },
+      {
+        "name": "package",
+        "exit_code": 0
+      },
+      {
+        "name": "policy-freshness",
+        "exit_code": 0
+      },
+      {
+        "name": "native-validation",
+        "exit_code": 0
+      },
+      {
+        "name": "native-traceability",
+        "exit_code": 0
+      },
+      {
+        "name": "octet",
+        "exit_code": 0
+      },
+      {
+        "name": "nix-octet",
+        "exit_code": 0
+      },
+      {
+        "name": "nix-checks",
+        "exit_code": 0
+      }
+    ],
+    "validation_valid": true,
+    "traceability_valid": true,
+    "traceability_verdict": "pass",
+    "traceability_missing": 0,
+    "traceability_dangling": 0,
+    "octet_error_findings": 0,
+    "nix_checks_passed": true,
+    "workspace_failed_tests": 0,
+    "formatting_passed": true,
+    "clippy_passed": true,
+    "package_cli_verified": true
+  },
+  "policy_migration": {
+    "imports": [
+      {
+        "upstream_revision": "a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127",
+        "destination_identity_verified": true
+      },
+      {
+        "upstream_revision": "a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127",
+        "destination_identity_verified": true
+      },
+      {
+        "upstream_revision": "a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127",
+        "destination_identity_verified": true
+      },
+      {
+        "upstream_revision": "a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127",
+        "destination_identity_verified": true
+      }
+    ],
+    "typed_selection_active": true,
+    "name_and_refresh_preserved": true,
+    "policy_fresh": true,
+    "adaptation_is_annotation_only": true
+  },
+  "consumer_completion": {
+    "valid": true,
+    "complete": true,
+    "rows": [
+      {
+        "check_id": "clean-clippy",
+        "status": "passed",
+        "execution_observed": true,
+        "teardown_complete": true
+      },
+      {
+        "check_id": "clean-formatting",
+        "status": "passed",
+        "execution_observed": true,
+        "teardown_complete": true
+      },
+      {
+        "check_id": "clean-nix-flake-check",
+        "status": "passed",
+        "execution_observed": true,
+        "teardown_complete": true
+      },
+      {
+        "check_id": "clean-workspace-tests",
+        "status": "passed",
+        "execution_observed": true,
+        "teardown_complete": true
+      }
+    ],
+    "manifest_verified": true,
+    "process_exit_is_not_the_verdict": true,
+    "declared_bounds_unchanged": true,
+    "commands_match_registry": true,
+    "dependency_identity_count": 29,
+    "ignored_dependency_identities": [],
+    "ignored_command_identities": []
+  },
+  "cli_mcp": {
+    "completion_valid": true,
+    "completion_verdict": "valid",
+    "mcp_valid": true,
+    "mcp_verdict": "pass",
+    "real_failed_check_row": "failed",
+    "failed_check_completion_valid": false,
+    "failed_check_consumer_verdict": "fail",
+    "invalid_selections_rejected": 3,
+    "missing_results_rejected": true,
+    "stale_source_rejected": true,
+    "selected_policy_used_without_fallback": true
+  },
+  "native": {
+    "validation_valid": true,
+    "coverage_valid": true,
+    "coverage_verdict": "pass",
+    "coverage_referenced": 382,
+    "coverage_requirements": 382,
+    "coverage_missing": 0,
+    "coverage_dangling": 0,
+    "readiness_valid": true,
+    "readiness_verdict": "pass",
+    "readiness_onix_release_ready": false,
+    "readiness_checks": [
+      {
+        "name": "cairn_validate",
+        "passed": true
+      },
+      {
+        "name": "traceability_coverage",
+        "passed": true
+      },
+      {
+        "name": "mcp_agent_smoke",
+        "passed": true
+      },
+      {
+        "name": "determinism_coverage_audit",
+        "passed": true
+      },
+      {
+        "name": "release_evidence_index_freshness",
+        "passed": true
+      },
+      {
+        "name": "preserves_corpus_freshness",
+        "passed": true
+      },
+      {
+        "name": "semantic_review_ledger",
+        "passed": true
+      },
+      {
+        "name": "stack_provenance",
+        "passed": true
+      },
+      {
+        "name": "function_address",
+        "passed": true
+      },
+      {
+        "name": "stack-provenance_authentication",
+        "passed": true
+      },
+      {
+        "name": "function-address_authentication",
+        "passed": true
+      },
+      {
+        "name": "authenticated_evidence_release_profile",
+        "passed": true
+      },
+      {
+        "name": "workspace_contract_matrix",
+        "passed": true
+      },
+      {
+        "name": "repository_gate_selection",
+        "passed": true
+      },
+      {
+        "name": "repository_gate_policy_listed",
+        "passed": true
+      }
+    ],
+    "preserves_corpus_fresh": true,
+    "preserves_stale_rejected": true
+  },
+  "kvm": {
+    "run_exit_code": 0,
+    "operational_timeout": false,
+    "terminal_class": "release-eligible",
+    "independent_terminal_class": "release-eligible",
+    "source_revision": "ef778be7ecc0467f176857dac779a262b9b741d1",
+    "source_dirty": false,
+    "rows": [
+      {
+        "id": "build-release-binaries",
+        "status": "passed"
+      },
+      {
+        "id": "build-raft-guest",
+        "status": "passed"
+      },
+      {
+        "id": "deterministic-smp",
+        "status": "passed"
+      },
+      {
+        "id": "serialized-snapshot-replay",
+        "status": "passed"
+      },
+      {
+        "id": "virtio-malformed-input",
+        "status": "passed"
+      },
+      {
+        "id": "admitted-drift",
+        "status": "passed"
+      },
+      {
+        "id": "fresh-workload-replay",
+        "status": "passed"
+      }
+    ],
+    "artifact_verification_all_verified": true,
+    "independent_validation_exit_code": 0
+  },
+  "evidence_verification": {
+    "all_verified": true,
+    "artifacts_checked": 104,
+    "identity_mismatches": []
+  },
+  "artifacts": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/published-cohort-identity.json",
+      "digest": "blake3:50f74e6e943094407acb4627a50e3a9969a688fe7928d2e757fe3115cb18472f",
+      "bytes": 2972
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/consumer-import-identities-final.json",
+      "digest": "blake3:9a783d68b2a9117b0d897a174c64926fed1a4c84e210ad2b9ef66b1cc7cdebcb",
+      "bytes": 1806
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-plan.json",
+      "digest": "blake3:ee45d33ebf3899205ac5a4c98f0cea4c548597f9abecf70db8cc95ad7b4508fe",
+      "bytes": 38501
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-source-inventory.json",
+      "digest": "blake3:746e9bf7c3a48b30e3cd5c1c95eb57268d53fdd0b7b8f6dbef98f65e50516f3b",
+      "bytes": 167868
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-observe-source/execution.json",
+      "digest": "blake3:91ddf757170d74face4f22138e832445b1bceb92e183fb8c5bc8033103c7577e",
+      "bytes": 1355
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-observe-source/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-observe-source/stdout.log",
+      "digest": "blake3:56bbdcbc9f896d6d2a0f0b0c3861fed04e40bf2c300fca41f6a12e4f31e74a56",
+      "bytes": 352
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-observe-dependencies/execution.json",
+      "digest": "blake3:6ede282e2e95d907493cd201f7535fe7855027252d2d10b80d1617d8a72d9e45",
+      "bytes": 1386
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-observe-dependencies/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-observe-dependencies/stdout.log",
+      "digest": "blake3:b5748695ba8c76b1562f4e2cab2dca4fd02b78835d7df4af7bf4d1ee9c9bf953",
+      "bytes": 2451
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-bindings/execution.json",
+      "digest": "blake3:6394a03f848f6b26a300cc5ac607f2bb8dd4e8000b85071e4dfb488b40166b2d",
+      "bytes": 1396
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-bindings/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-bindings/stdout.log",
+      "digest": "blake3:b2b2d5c5bbd802e671fb04c3f895eb1b4f696e049c3d8b74aa5b4262db217cab",
+      "bytes": 18198
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-consumer-execution/execution.json",
+      "digest": "blake3:b1582af9f71d0ef9c7cafbad5f1f080f432099d23f4adedb604da0d188d31725",
+      "bytes": 2550
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-consumer-execution/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-consumer-execution/stdout.log",
+      "digest": "blake3:eed658cd150d9f57baf3356c656b71cf84055e2ecd02b14a3937c517096d99a1",
+      "bytes": 5226
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-agent-completion/execution.json",
+      "digest": "blake3:43dbcc2d6063f54fd113787faf4250b48c27b55154933b831ca9248409df4b2a",
+      "bytes": 1719
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-agent-completion/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-agent-completion/stdout.log",
+      "digest": "blake3:e976d2c69b0cf57dcb3f6c16be949f324c290ae13bf8fb6f600a35e9f351c880",
+      "bytes": 2243
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-agent-mcp/execution.json",
+      "digest": "blake3:f6fe42f7633a14295fdd9131bf2c8bbd6d7f0581dc7554f018d42a6f41fea14f",
+      "bytes": 1331
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-agent-mcp/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-agent-mcp/stdout.log",
+      "digest": "blake3:a21be3b6bb1e5f35e3be793c2df26ab1528da260c72d55114ce11b5fdf09afb8",
+      "bytes": 1507
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-validation/execution.json",
+      "digest": "blake3:e7ca1484c45ca6283ed09a8294bbb7ae529bbe023ff83cc7051b26ed7297af27",
+      "bytes": 1336
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-validation/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-validation/stdout.log",
+      "digest": "blake3:6c87363ccf1b2d422d142a01fe19d772abc2dec0da41f355213938fe7080b4ae",
+      "bytes": 66740
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-traceability/execution.json",
+      "digest": "blake3:957bbd8dc87bf678f4f142100a1956030d7fd5927f00222d876fe3fd934744ce",
+      "bytes": 1368
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-traceability/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-traceability/stdout.log",
+      "digest": "blake3:e4f9df4ad2450e97321a1761a43e562105127ac494ca75a722cd98471552ebfe",
+      "bytes": 1741
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-readiness/execution.json",
+      "digest": "blake3:7f9140c8a6ebe021ac1972c93ec6ae45ebdc78a6f89cf4e0e9fe439b1f249d9b",
+      "bytes": 1326
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-readiness/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-native-readiness/stdout.log",
+      "digest": "blake3:aff04e28e13d492c40ac1012e79847ae6d75b0b1a2ec44201b63eacd955f832d",
+      "bytes": 8891
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-corpus-controls.json",
+      "digest": "blake3:5ad571a88b885c8c5ac41a938e0831458ee72fd10fee7110404151a7d96bddab",
+      "bytes": 6443
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-negative-producer.json",
+      "digest": "blake3:5cf6689f70796a07cdd14fb9c57c8e9dcc8de1187728feb3f3f9f9a2031e6a40",
+      "bytes": 11289
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-selection-controls.json",
+      "digest": "blake3:248a5106895286857b895b02f968bd282a38aa6f4d7124a9bc64cf69e14b2cf7",
+      "bytes": 7757
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-drift-control.json",
+      "digest": "blake3:50440b85029569fc027ef745ba7bc83aa4d2657b3c9f0463715746d823a8e671",
+      "bytes": 2837
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-execution/execution.json",
+      "digest": "blake3:6c7d4dccfdaa41f31e289efa682a14b0cf59fc2b4c7f8c0deaa69df9289224b8",
+      "bytes": 2023
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-execution/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-execution/stdout.log",
+      "digest": "blake3:674babe2444126569812e1520f4de2710925be91d3d3c23313f5c54fe90e2295",
+      "bytes": 154
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-independent-validation/execution.json",
+      "digest": "blake3:7d43958d22f8d9aaee9144e9fecfc2178aa45f4b420982bcf59ba516cf09a077",
+      "bytes": 2417
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-independent-validation/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-independent-validation/stdout.log",
+      "digest": "blake3:2b3e319f5b86f952984961ae96e01f2280d5fd600c3e79e9947e95ea023d44bc",
+      "bytes": 967
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-validated.json",
+      "digest": "blake3:1d49401a35862d0c6e43cc318bdb12ee4e05d63690f33c8fe5a42cafdb21ed8d",
+      "bytes": 4074
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/dlogs/controller-3vm-2vcpu-run-1/vm_0.dlog",
+      "digest": "blake3:fb8673a756a16f8ad7940ec8fed36f896fb06885500f3411a7ef1e70fcbd5bd6",
+      "bytes": 6432640
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/dlogs/controller-3vm-2vcpu-run-1/vm_1.dlog",
+      "digest": "blake3:eb1d72284ad01be0788805c17f470f0109b64731b5f705afb4103aa9daa4cb67",
+      "bytes": 6432640
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/dlogs/controller-3vm-2vcpu-run-1/vm_2.dlog",
+      "digest": "blake3:15a09cca079d88344352c9c5b15c49c88c4c848816d739876f14addf9512fb9d",
+      "bytes": 6432640
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/dlogs/controller-3vm-2vcpu-run-2/vm_0.dlog",
+      "digest": "blake3:fb8673a756a16f8ad7940ec8fed36f896fb06885500f3411a7ef1e70fcbd5bd6",
+      "bytes": 6432640
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/dlogs/controller-3vm-2vcpu-run-2/vm_1.dlog",
+      "digest": "blake3:eb1d72284ad01be0788805c17f470f0109b64731b5f705afb4103aa9daa4cb67",
+      "bytes": 6432640
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/dlogs/controller-3vm-2vcpu-run-2/vm_2.dlog",
+      "digest": "blake3:15a09cca079d88344352c9c5b15c49c88c4c848816d739876f14addf9512fb9d",
+      "bytes": 6432640
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/drift/receipt.json",
+      "digest": "blake3:2528817ee3ed0c570466b5d6d35e621456504ae8b0181bca292484f415fcb17b",
+      "bytes": 2223
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/admitted-drift/stdout.log",
+      "digest": "blake3:79104aabd1b2fb90917e71db0f33772a041dabe983debb9df440dfeaee35ba40",
+      "bytes": 46129
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/build-raft-guest/initrd-raft",
+      "digest": "blake3:30411f411646d8e396e64e368750a9fa17aae9145371fea812786e02aa845048",
+      "bytes": 477079
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/build-raft-guest/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/build-raft-guest/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/build-release-binaries/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/build-release-binaries/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/deterministic-smp/stderr.log",
+      "digest": "blake3:538695bac7da604ecc28cc98f321b0badd0086a526d30b9dc93ca682b1cd8645",
+      "bytes": 393
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/deterministic-smp/stdout.log",
+      "digest": "blake3:c02d790799c73d4f31e6ea39d8de6a4ca73d5b1749e25ff25129fe1fd0335b89",
+      "bytes": 339
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/accepted-snapshot-verdict-summary.json",
+      "digest": "blake3:f0326b964712319db74bd11f2a930942994e5f31d249b6b3535a7f39901651f5",
+      "bytes": 2439
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/assertions.json",
+      "digest": "blake3:f8c41d04d2017c456aa37ca720f3488abb5cc7045b7102310df6ef43da04de0f",
+      "bytes": 72962
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/assertions.json",
+      "digest": "blake3:f8c41d04d2017c456aa37ca720f3488abb5cc7045b7102310df6ef43da04de0f",
+      "bytes": 72962
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/branch-marker-coverage.json",
+      "digest": "blake3:1d3325b3c2ce1be7d83e9f2cc5178efadf661b90f10255eff52335fb86b02b5c",
+      "bytes": 226
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_0.json",
+      "digest": "blake3:0692bd3b095dc3dc753ef4adcb3216788c2b064896b1b743525222e6a81cff45",
+      "bytes": 4025
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_1.json",
+      "digest": "blake3:a4155be9fd0a3a7b92736fda7c487c76cfab5cb9a0f8b3fde8bc83d54bacc157",
+      "bytes": 4358
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_2.json",
+      "digest": "blake3:5539db40adb8cc00f3db7b23b3fdf08ced998f094baadfc70e960fa7760c61a3",
+      "bytes": 4010
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_3.json",
+      "digest": "blake3:15d6a5a0475f117b2d8295bfe47971d2c1235c02a767139f5c333b4101ff0c57",
+      "bytes": 4071
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_4.json",
+      "digest": "blake3:96cfd8c8a7b41ad90469987fef30b2371a01170e8078757ef492502669ffe483",
+      "bytes": 4116
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_5.json",
+      "digest": "blake3:b777d5b1868ca7e8b58e7579db00b3989da69a06c961b80ebad1bd7bb9795791",
+      "bytes": 3930
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_6.json",
+      "digest": "blake3:cc849f98fd0ea9c7a7ceab35150be076a4b3fba9d2193e2b37f073297f15a876",
+      "bytes": 4264
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_7.json",
+      "digest": "blake3:0805bfadf11e29a5d57abcaa71a2f8564be91883beaf13a85c829cb58a298efc",
+      "bytes": 3916
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_8.json",
+      "digest": "blake3:d720a240faed1e745e505c5365cf3dff4088d4e908955d5b22cb153ca66f56e8",
+      "bytes": 3978
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/bug_9.json",
+      "digest": "blake3:70f729bb7ef07fa59482d2502711a77db7d310e4d3a611ab07d01b69574d2ef3",
+      "bytes": 4022
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/campaign-journal/LOCK",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000000.cbor",
+      "digest": "blake3:5a601e1aaff4294876b97cb56e3bed58519d2cb3c3ac3ad5d5573c1dca4929d4",
+      "bytes": 6140
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000001.cbor",
+      "digest": "blake3:c5df73f9581a4f720b0df65d733084ce4f40ce4b150e67e761604bfaba47c9ab",
+      "bytes": 3394
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000002.cbor",
+      "digest": "blake3:1fa9c9e6db91adb65968408bfcb280967a923e8e02f30ee5255fddc0f01f6d2f",
+      "bytes": 8805
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000003.cbor",
+      "digest": "blake3:ed9208fe9c9438e4d822ca656e624ba4f3c17f2aa129db0fe113afbc12a6fe78",
+      "bytes": 1017
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/checkpoint.json",
+      "digest": "blake3:90262e1d8a166fd1460b2805788eceef28076ac556015a5fcfc2975e791333f2",
+      "bytes": 759310
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/export-bugs.log",
+      "digest": "blake3:f8b9cad99db1b3e12ee981541a65215f03cf2b42eb269a4d2de94ed744d745e4",
+      "bytes": 247
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/frontier-trace.jsonl",
+      "digest": "blake3:ab9bb922d467f9b5ed7f7377f4a7e8905eee1da081d8bb92d338fc2bf161d5c6",
+      "bytes": 1062
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/replay-verdict-bug1.json",
+      "digest": "blake3:eda8f92770e616f7d32c44a84afc2fe56883057845483a02dbe41b7ad65110aa",
+      "bytes": 5795
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/report.txt",
+      "digest": "blake3:3bfaf3153b6311077a8a127f72acef92cbaf715e533d81c3bda819dbb9f9925d",
+      "bytes": 9451
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/reproduce.log",
+      "digest": "blake3:33717da2994834624c99029be3b7ff54fafb461ad33b7142e4ff21d3df2e3aae",
+      "bytes": 12122
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/run.log",
+      "digest": "blake3:86c01e93b801a66232c1899f0e2b9a4e746fced27f4e5b03321b9d6a35107c0a",
+      "bytes": 66604
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/attempts/attempt-01/snapshots/8cdf45bcec4a3a24ac75f75c84d720427b941cff414ea0a5ca161567d01a3582.snapshot.bin",
+      "digest": "blake3:27e604653b3adac65f2846939c7038ad10b58d8a97dbb95f7cf1b817776c0d32",
+      "bytes": 57610509
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/bug_1.json",
+      "digest": "blake3:a4155be9fd0a3a7b92736fda7c487c76cfab5cb9a0f8b3fde8bc83d54bacc157",
+      "bytes": 4358
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/proof-receipt.json",
+      "digest": "blake3:3c23b0a8db595e8a12989b57064d1b2f30035a918d912d9f4f59dd1348db4ac3",
+      "bytes": 3196
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/replay-verdict-bug1.json",
+      "digest": "blake3:2d1bdf27692f2f528a1519ac04b2c480150733a1dad69d3210b55169fec1d959",
+      "bytes": 5431
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/snapshots/8cdf45bcec4a3a24ac75f75c84d720427b941cff414ea0a5ca161567d01a3582.snapshot.bin.chunks.json",
+      "digest": "blake3:c5a403f7fe32daee55b03fa063ca22d5cbe399a9940ab90f90c8b7d9a9a46631",
+      "bytes": 958
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/snapshots/8cdf45bcec4a3a24ac75f75c84d720427b941cff414ea0a5ca161567d01a3582.snapshot.bin.part00",
+      "digest": "blake3:0b125946ddff694c0ec2fb1bf14f85b25f445c3c2ba46fbcf555d57e4df756c6",
+      "bytes": 20971520
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/snapshots/8cdf45bcec4a3a24ac75f75c84d720427b941cff414ea0a5ca161567d01a3582.snapshot.bin.part01",
+      "digest": "blake3:104240a377e1f008545a7078989b591490eba9a8c6c5f2c26bd0e9560b661700",
+      "bytes": 20971520
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/fresh/snapshots/8cdf45bcec4a3a24ac75f75c84d720427b941cff414ea0a5ca161567d01a3582.snapshot.bin.part02",
+      "digest": "blake3:aaa92811b442107b9825c741a3182a777bcbecfada3116629c564df6f1f0899f",
+      "bytes": 15667469
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/fresh-workload-replay/stdout.log",
+      "digest": "blake3:a97689e15fcf7eb9ba9ff3b1d5efe7cea2338a3e48b344c26d11e213ad89c57a",
+      "bytes": 175
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/release-receipt.json",
+      "digest": "blake3:789ad89d676c92f7df94c8d4e9c8ed5735d1c07f79da1b822903dd44ff8deee7",
+      "bytes": 36460
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/release-summary.md",
+      "digest": "blake3:79587ad1eef81a79c4466a4ad816c040fc8070e9417d70e078946bd3f6f7ccaa",
+      "bytes": 1241
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/serialized-snapshot-replay/stderr.log",
+      "digest": "blake3:693f11c95f6bca885cdd18665963f2c3f746e7deea66b1f75def55e640adfe5e",
+      "bytes": 387
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/serialized-snapshot-replay/stdout.log",
+      "digest": "blake3:a8874ef17a0df501e5e61e3a5404b851b1e02dd8bef73259a7e74e745f05803f",
+      "bytes": 199
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/virtio-malformed-input/stderr.log",
+      "digest": "blake3:e6ba30f1e1897d7c34d321b983734b5f2d4438ecfd164a43a3dd86a0647ff0ce",
+      "bytes": 487
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/final-kvm-release/virtio-malformed-input/stdout.log",
+      "digest": "blake3:c52d78de24d7936cd2e49972b98b577621b5198f3300438dc0667b9d4b8191aa",
+      "bytes": 197
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/nix-retry-loop.json",
+      "digest": "blake3:62395817ebf73e57834a2e02ea3f483c6b2c9eeaf74dbead97e2896bde247f61",
+      "bytes": 7737
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/nix-retry-03/execution.json",
+      "digest": "blake3:e27cd507dbe659924dc15eebb2083fef6377bdded6d575990a3731efaab5b24f",
+      "bytes": 15171
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/nix-retry-03/stderr.log",
+      "digest": "blake3:8b34801b9baf83b8c6bd2e772ad2fe44b6c922582bf54ecb4d235ee56cdae82e",
+      "bytes": 16189
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/cairn-mcp53-proof/nix-retry-03/stdout.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    }
+  ],
+  "historical_preservation": {
+    "all_unchanged": true,
+    "raw_artifacts_local": true
+  },
+  "remaining_blockers": [
+    {
+      "owner": "Historical artifact retention and ChaosControl replay admission",
+      "required": "Recover exact original Raft initrd BLAKE3 82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e and obtain accepted current-source snapshot-backed reproduction of the selected original finding; fresh probes are not substitutes"
+    },
+    {
+      "owner": "Failed-build artifact availability within existing host permissions",
+      "required": "Sixteen historical builder-owned 0600 payloads remain inaccessible; no permission changes, manual credentials or invented identities are authorized"
+    }
+  ],
+  "commands": [
+    {
+      "check_id": "clean-clippy",
+      "command": [
+        "/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin/cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "command_hash": "d11055bcb476c2b8c2bea00109679e326f7a7ae9e0814e44282bcc05302d903f",
+      "prerequisites": []
+    },
+    {
+      "check_id": "clean-formatting",
+      "command": [
+        "/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin/cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "command_hash": "34ad78907e199f9d42aedcd38e9a07d827baafa929326c16bfa5c3cdb9a84426",
+      "prerequisites": []
+    },
+    {
+      "check_id": "clean-nix-flake-check",
+      "command": [
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "flake",
+        "check",
+        "-L"
+      ],
+      "command_hash": "a1e6d8b676465232a8067b44ffc718d618eabf380833d80c738d5faf90e9b6db",
+      "prerequisites": []
+    },
+    {
+      "check_id": "clean-workspace-tests",
+      "command": [
+        "/nix/store/m3xm05j6i5p9h9qngrvswydjad22rnml-cargo-exact-revisions-1.98.0/bin/cargo",
+        "test",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--no-fail-fast"
+      ],
+      "command_hash": "72bdbe9b7df17ea3f344a1e5852ae5d803d67b0269736f8b1af7f7852b807603",
+      "prerequisites": []
+    }
+  ],
+  "maintenance_owner": "chaoscontrol-vmm",
+  "immediate_outcome": "Cairn MCP completion executes the full consumer command set and reports passing verdicts; unrelated historical blockers remain",
+  "non_claims": [
+    "A gated producer cohort and a passing consumer contract do not prove whole-system correctness or release eligibility.",
+    "Passing process checks do not prove test-oracle truth, sandboxing, or host equivalence.",
+    "The KVM matrix applies only to its exact source revision, worker, commands, bounds, and artifacts.",
+    "Historical replay findings, inaccessible failed-build payloads, and remaining product evidence stay independent and unresolved.",
+    "Cairn MCP completion is not recursive readiness; native validation, traceability, readiness, and the KVM rail are separate obligations."
+  ]
+}

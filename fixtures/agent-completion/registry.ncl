@@ -18,6 +18,8 @@
       tool = "cargo",
       args = ["test", "--workspace", "--all-targets", "--locked", "--no-fail-fast"],
       deadline_ms = 3600000,
+      stdout_bytes = 8388608,
+      stderr_bytes = 8388608,
     },
     {
       check_id = "clean-clippy",
@@ -25,6 +27,8 @@
       tool = "cargo",
       args = ["clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
       deadline_ms = 3600000,
+      stdout_bytes = 1048576,
+      stderr_bytes = 8388608,
     },
     {
       check_id = "clean-formatting",
@@ -32,6 +36,8 @@
       tool = "cargo",
       args = ["fmt", "--all", "--", "--check"],
       deadline_ms = 300000,
+      stdout_bytes = 1048576,
+      stderr_bytes = 1048576,
     },
     {
       check_id = "clean-nix-flake-check",
@@ -39,6 +45,8 @@
       tool = "nix",
       args = ["flake", "check", "-L"],
       deadline_ms = 10800000,
+      stdout_bytes = 1048576,
+      stderr_bytes = 67108864,
     },
   ],
   # These are NOT waived by portable completion and are NOT fabricated rows.

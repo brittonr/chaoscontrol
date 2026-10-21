@@ -57,8 +57,8 @@ let Commands = std.array.map (fun check => {
       id = "%{check.check_id}-bounds-v1",
       deadline_ms = check.deadline_ms,
       teardown_ms = 60000,
-      stdout_bytes = 1048576,
-      stderr_bytes = 1048576,
+      stdout_bytes = check.stdout_bytes,
+      stderr_bytes = check.stderr_bytes,
     },
   }) Registry.checks,
   applicability = {

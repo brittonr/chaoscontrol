@@ -95,14 +95,16 @@ The old `repository_gate_policy_listed` report inherited Cairn's self-host comma
 
 `fixtures/agent-completion/registry.ncl` preserves the four full portable commands:
 
-| Consumer check | Exact arguments after measured executable | Deadline |
-| --- | --- | --- |
-| `clean-workspace-tests` | `test --workspace --all-targets --locked --no-fail-fast` | 3,600 s |
-| `clean-clippy` | `clippy --workspace --all-targets --locked -- -D warnings` | 3,600 s |
-| `clean-formatting` | `fmt --all -- --check` | 300 s |
-| `clean-nix-flake-check` | `flake check -L` | 10,800 s |
+| Consumer check | Exact arguments after measured executable | Deadline | Stdout / stderr bound |
+| --- | --- | --- | --- |
+| `clean-workspace-tests` | `test --workspace --all-targets --locked --no-fail-fast` | 3,600 s | 8 MiB / 8 MiB |
+| `clean-clippy` | `clippy --workspace --all-targets --locked -- -D warnings` | 3,600 s | 1 MiB / 8 MiB |
+| `clean-formatting` | `fmt --all -- --check` | 300 s | 1 MiB / 1 MiB |
+| `clean-nix-flake-check` | `flake check -L` | 10,800 s | 1 MiB / 64 MiB |
 
 The closed producer kinds are respectively `cargo_workspace_test`, `cargo_clippy`, `cargo_fmt`, and `nix_flake_check`. The old `cargo_test` injects extra target/offline/default-feature restrictions and omits `--no-fail-fast`; the old Nix expression grammar cannot substitute for a full flake check. The corrected cohort must admit the exact kinds, commands, bounds and nonempty observed dependencies. Only the new flake kind gets the separately named 10,800,000 ms maximum; the existing producer kinds retain their safety bounds. Formatting/lint/flake process-role observations have zero executed-test coverage. Their process status is not KVM evidence or release eligibility.
+
+Stream bounds are explicit per-check registry inputs, not the old uniform 1 MiB defaults. The retained full workspace stdout and flake stderr exceed that old limit; source preparation therefore uses the reviewed new-kind bounds above. The producer must admit them with separately named new-kind maxima, leaving legacy caps unchanged. Output overflow, truncation or incomplete payload admission remains nonpassing; larger finite bounds are not evidence that a command passed.
 
 `inputs.ncl` is a parameterized Nickel authoring function, not a receipt. Bind actual Nix-store Cargo/Nix executable paths, BLAKE3 executable bytes, reviewed tool-cohort identities and the explicit admitted development-shell environments. Preserve the clean plan's Cargo environment (`CARGO_BUILD_JOBS=2`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0`, and an explicitly reviewed `CARGO_TARGET_DIR`) alongside the required tool/transport environment. Preserve the flake child's exact `NIX_CONFIG` value `min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n`; this sets only the child environment and does not edit host settings. Do not substitute an ambient shell wrapper for an executable identity.
 

@@ -12,9 +12,12 @@ Production readiness remains blocked. Native Cairn traceability now passes
 `7594be4e034ea757ad5d132596a3b5475b88008d`; the
 [native closure receipt](dogfood-results/production-readiness-native-closure-20261019/receipt.ncl)
 binds the current Cargo, evidence, cutover, and release-gate observations.
-The upstream blocker is `mcp_agent_smoke`: the pinned Cairn producer cannot
-complete the required Nix/dependency contract. Its newer mechanism branch is not
-a fully gated compatible CLI/export cohort; copying self-fixtures is not a remedy. The
+The MCP integration selects verified Cairn cohort
+`4d98c4b564569a62541e2968bc0998a744e8ee20` through the
+[repository-owned update procedure](cairn-policy/UPSTREAM.md#verified-mcp-cohort-cutover).
+Its consumer-owned completion contract retains all four full portable commands;
+actual CLI/MCP completion verdicts remain required, independently of KVM evidence.
+Copying upstream self-fixtures or accepting process exit zero is not a remedy. The
 [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
 retains the depth-four campaign and retained-finding replay evidence.
 See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)

@@ -1,5 +1,5 @@
-# Consumer-owned selection, activated only with the verified compatible cohort.
-# Import this record into default.ncl's release_readiness_policy after migration.
+# Consumer-owned selection for the verified compatible cohort.
+# default.ncl activates this record through the typed release_readiness_policy.
 let Registry = import "../fixtures/agent-completion/registry.ncl" in
 {
   id = "chaoscontrol-required-checks-v1",

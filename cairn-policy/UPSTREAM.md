@@ -1,6 +1,6 @@
 # Cairn Policy Source
 
-The policy source files come from [OnixResearch/cairn](https://github.com/OnixResearch/cairn) at revision `b6759012db4dab0158936e995b7bad39ac10465b`.
+The current policy source files come from [OnixResearch/cairn](https://github.com/OnixResearch/cairn) at verified revision `4d98c4b564569a62541e2968bc0998a744e8ee20`. The dated audits below retain their original cohort boundaries; the verified MCP cutover supersedes their migration blockers, not historical runtime findings.
 
 Imported files:
 
@@ -21,7 +21,7 @@ This record proves source identity only. It does not prove policy correctness, c
 
 ## Consumer-owned adaptation and compatibility boundary
 
-`cairn-policy/contracts.ncl` is a ChaosControl-owned adapted copy of the recorded upstream file: it omits only the upstream implementation-marker comment for `cairn.lifecycle_directory.hidden_default`. That identifier belongs to Cairn's accepted specifications, not ChaosControl's requirements. The `SafeRelativePath` predicate and all other imported bytes remain unchanged. The other three imported files remain unmodified upstream-owned copies. This is not a substitute local requirement and does not alter traceability admission or policy evaluation.
+Two imported files have consumer-owned annotation-only adaptations: `contracts.ncl` omits `# r[impl cairn.lifecycle_directory.hidden_default]`, and `upstream-default.ncl` omits `# r[impl cairn.outcome_machine_profile.selection]`. Those identifiers belong to Cairn's accepted specifications, not ChaosControl's requirements. Every policy expression remains unchanged. `lifecycle-store-contracts.ncl` and `nominal-evidence-identities.ncl` are byte-identical upstream-owned copies. Original and adapted BLAKE3 identities are retained in the MCP cutover receipt; no consumer requirement, checker or policy obligation is removed.
 
 The 2026-10-15 closure audit measured the four original imported files against the retained source for the recorded revision. All four matched byte for byte before this comment-only adaptation. The retained compatible CLI is `/nix/store/bwjb9hzl3xrndwxbg48ck624pdyakf3p-cairn-0.1.0/bin/cairn`; that store path is a local evidence locator, not a portable dependency source.
 
@@ -89,7 +89,7 @@ Attempt 29 retained its intermediate imported bytes locally and restored the two
 
 ### Direct MCP correction: consumer-owned source preparation, 2026-10-20
 
-The new direct user request is **"fix cairn mcp"**. Its scope is the genuine MCP producer/consumer correction and necessary immutable policy/selection cohort. Historical replay, unavailable payloads and unmet product evidence remain open. This section prepares inputs and invocation; it is not a passing execution record or a new upstream pin. The recorded four-file revision above, current overlay and committed policy remain selected until the parent verifies and installs the replacement cohort.
+The new direct user request is **"fix cairn mcp"**. Its scope is the genuine MCP producer/consumer correction and necessary immutable policy/selection cohort. Historical replay, unavailable payloads and unmet product evidence remain open. The preparation below records the supported input and invocation design; the verified cutover section records the subsequently installed immutable cohort. Neither source preparation nor cohort verification substitutes for actual consumer execution.
 
 The old `repository_gate_policy_listed` report inherited Cairn's self-host command list. Its `.#checks.x86_64-linux.slotcar` installable is not a ChaosControl gate. It is not the authority for a ChaosControl completion contract. The actual consumer sources are `AGENTS.md`, the build/release sections of `README.md`, `.github/workflows/ci.yml`, and `contracts/kvm-release/{matrix,profile}.ncl`; the retained operational mapping is `target/readiness-attempt52-20261020/clean-gate-plan.json`. That retained plan's source, output and executable locators remain historical observations, not portable configuration.
 
@@ -148,3 +148,13 @@ Require admitted complete publication, all four genuine result rows, passing ori
 #### Required independent release obligations
 
 The completion contract covers the four portable external checks, not recursive readiness. Native strict validation, traceability, policy freshness and readiness remain required independent rails. The separate KVM commands remain `nix run .#kvm-release-matrix -- --root . --matrix contracts/kvm-release/matrix.json --out "$MATRIX_OUT" --expected-revision "$CLEAN_REVISION"` and the Rust-owned `check-kvm-release-matrix` receipt validation against that same matrix, source revision and output. Preserve the operational 14,400-second outer matrix bound and 300-second validator bound; require `release-eligible`, all seven required row outcomes and artifact identity admission, not process success. The matrix retains its release-binary/guest builds, exact SMP, serialized snapshot replay, malformed virtio survival, admitted drift and fresh-workload replay rows unchanged. Portable MCP completion cannot close historical retention/replay, unavailable payload or remaining product-evidence tasks.
+
+### Verified MCP cohort cutover
+
+The complete immutable Cairn cohort `4d98c4b564569a62541e2968bc0998a744e8ee20` passed workspace tests, denied-warning Clippy, formatting, packaged CLI construction, matching policy freshness, strict native validation, native traceability, direct canonical JSON Octet, the packaged full-scope Octet check and the full Nix flake check. Native coverage reports 2,349 requirements with no missing or dangling IDs. Octet retains its existing warning policy and reports zero error findings; this is not a warning-free or correctness claim. The verified branch was published and the exact commit fetched again through the existing Git transport before consumer installation.
+
+The four imports, typed `release_readiness_policy` activation and preserved consumer name, refresh command and traceability profiles now select that one compatible cohort. The matching packaged wrapper owns export and independent freshness. A changed policy invalidates old policy-bound completion even without an explicit consumer selector; passing provenance components cannot override stale MCP evidence. Do not rebind retained result hashes or copy Cairn self-fixtures.
+
+For the portable completion source projection, the one mutable refresh-change `tasks.md` and this correction's receipt-output directory are post-execution lifecycle/evidence records, not Cargo/Nix source inputs. They remain subject to independent native validation. The product-scope check observes active change directory names, so the refresh change must remain active through this run; do not archive it or alter the active directory set after the source freeze. Include its design, proposal, metadata and accepted specifications as reviewed inputs. All other reviewed source/check files remain observed; historical VM payloads retain independent artifact identities. These explicit exclusions do not waive native gates or establish complete dependency closure.
+
+Actual consumer completion still requires all four full registry commands to execute through the bounded producer, final-manifest verification and passing original CLI/MCP JSON verdicts. Source compatibility, exporter success and a gated upstream cohort are not substitutes. Historical replay, inaccessible diagnostic payloads and production-readiness blockers remain independent.

@@ -16,6 +16,7 @@ let ChaosControlTraceabilityProfile = {
 } in
 Upstream & {
   name | force = "chaoscontrol-default",
+  release_readiness_policy | force = import "release-readiness-selection.ncl",
   policy_schema_compatibility | force = Upstream.policy_schema_compatibility & {
     refresh_command | force = "nix run path:$CAIRN_SOURCE#cairn -- policy export --source cairn-policy/default.ncl --output cairn-policy/generated/cairn-policy.json",
   },

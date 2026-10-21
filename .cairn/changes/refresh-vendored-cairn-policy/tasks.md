@@ -1,10 +1,10 @@
 ## Tasks
 
 - [x] [serial] Reproduce the `outcome-machine` parse failure and confirm that a probe export from current Cairn policy sources lets `cairn validate` run. r[chaoscontrol.cairn_policy_sync.validation]
-- [ ] [depends:policy-sync-baseline] Pin one Cairn revision and import `contracts.ncl` and `default.ncl` from it. Update `cairn-policy/UPSTREAM.md`. r[chaoscontrol.cairn_policy_sync.pinned_import]
-- [ ] [depends:policy-sync-import] Check the import closure against the pinned revision. r[chaoscontrol.cairn_policy_sync.pinned_import]
-- [ ] [depends:policy-sync-import] Regenerate `cairn-policy/generated/cairn-policy.json` with the pinned Cairn build and confirm that a fresh export matches. r[chaoscontrol.cairn_policy_sync.projection]
-- [ ] [depends:policy-sync-projection] Run `cairn validate --root .` and fix or record every finding on active changes. r[chaoscontrol.cairn_policy_sync.validation]
+- [x] [depends:policy-sync-baseline] Pin one Cairn revision and import `contracts.ncl` and `default.ncl` from it. Update `cairn-policy/UPSTREAM.md`. r[chaoscontrol.cairn_policy_sync.pinned_import]
+- [x] [depends:policy-sync-import] Check the import closure against the pinned revision. r[chaoscontrol.cairn_policy_sync.pinned_import]
+- [x] [depends:policy-sync-import] Regenerate `cairn-policy/generated/cairn-policy.json` with the pinned Cairn build and confirm that a fresh export matches. r[chaoscontrol.cairn_policy_sync.projection]
+- [x] [depends:policy-sync-projection] Run `cairn validate --root .` and fix or record every finding on active changes. r[chaoscontrol.cairn_policy_sync.validation]
 
 ## Closure audit on 2026-10-15
 
@@ -37,3 +37,9 @@ Source preparation now owns `fixtures/agent-completion/{registry,inputs,projecti
 The existing producer cannot represent these full commands with its old `cargo_test`/`nix_check` grammars. The bounded producer correction requires the four closed kinds in the registry, the maintained 10,800-second flake deadline and exact child-only four-line `NIX_CONFIG`. The consumer factory remains inactive until the verified immutable producer/CLI/export cohort is integrated; no pin, default overlay or generated policy was changed by preparation.
 
 Remaining integration work is the design's complete four-file cutover, typed overlay activation, source/dependency observation, measured identity binding and Nickel export, reviewed producer plan/run/manifest verification, original CLI/MCP positive and negative admission, and all unchanged native verdict checks. `UPSTREAM.md` records supported invocation shapes and required verdicts. No migration or runtime task is newly marked complete; no completion JSON/result row was fabricated or published.
+
+## Verified cohort migration
+
+The published immutable Cairn revision `4d98c4b564569a62541e2968bc0998a744e8ee20` passed its complete ten-command gate cohort, including full Nix checks. Its matching packaged CLI installed the four-file source closure with the two upstream-only annotation adaptations explicitly owned in `UPSTREAM.md`. The typed consumer selection is activated without changing policy name, refresh command or traceability profiles. Independent export freshness passes. Actual consumer strict native validation reports `valid=true`; native traceability reports `valid=true`, `verdict=pass`, 382 requirements and zero missing or dangling IDs. Local command observations and exact import BLAKE3 identities are retained under `target/cairn-mcp53-proof/`.
+
+These observed migration tasks are now complete. The change remains active while full four-command consumer completion, final manifest verification, original CLI/MCP verdicts and independent readiness are exercised. Those runtime verdicts are not implied by the completed migration checkboxes; historical replay and inaccessible-payload blockers remain separate.

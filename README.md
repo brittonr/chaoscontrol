@@ -15,9 +15,18 @@ binds the current Cargo, evidence, cutover, and release-gate observations.
 The MCP integration selects verified Cairn cohort
 `a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127` through the
 [repository-owned update procedure](cairn-policy/UPSTREAM.md#verified-mcp-cohort-cutover).
-Its consumer-owned completion contract retains all four full portable commands;
-actual CLI/MCP completion verdicts remain required, independently of KVM evidence.
-Copying upstream self-fixtures or accepting process exit zero is not a remedy. The
+Its consumer-owned completion contract retains all four full portable commands. On a
+clean source revision, all four execute through the bounded producer under unchanged
+bounds; the original completion and read-only MCP verdicts pass, and selected-policy
+readiness passes every check it declares. The authenticated release profile is
+optional and absent, so `onix_release_ready` remains false; that is not a failed
+check. The seven-row KVM matrix and its Rust validator report `release-eligible` on
+the exact tested revision. The
+[MCP correction receipt](dogfood-results/production-readiness-mcp53-20261020/receipt.ncl)
+binds the cohort, source, dependency, command, result and matrix identities.
+Copying upstream self-fixtures or accepting process exit zero is not a remedy.
+Production readiness still waits on the retained historical replay and inaccessible
+failed-build payload prerequisites. The
 [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
 retains the depth-four campaign and retained-finding replay evidence.
 See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)

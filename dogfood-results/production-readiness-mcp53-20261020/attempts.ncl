@@ -21,8 +21,19 @@ let Prior = import "../production-readiness-attempt52-20261020/attempts.ncl" in
     correction = "Fix Cairn downstream MCP input selection and exact policy propagation; reuse bounded dependency/native Nix support and admit the actual full portable consumer commands",
     status = 'in_progress,
     source_plan = "Cairn .cairn/changes/fix-downstream-mcp-readiness and ChaosControl .cairn/changes/refresh-vendored-cairn-policy",
-    evidence_boundary = "Preparation is not a passing MCP, cohort, or production-readiness verdict",
+    evidence_boundary = "The immutable producer cohort, policy migration, full consumer completion, original CLI/MCP verdicts, native readiness and independent KVM matrix bind this correction; unchanged historical and inaccessible-payload blockers remain",
   }],
   used_implementation_attempts | std.contract.Equal 53 = previous_used_attempts + std.array.length attempts,
   within_limit | std.contract.Equal true = used_implementation_attempts <= maximum_implementation_attempts,
+  execution_attempts = {
+    note = "Operational repetitions of the same attempt are not new corrective attempt numbers; failed and unsupported observations remain retained and nonpassing.",
+    retained_nonpassing = [
+      "Cohort 4d98c4b consumer completion: Cargo linking failed after the measured environment dropped Nix host-role selectors",
+      "Cohort 03c513c/consumer runs: global and checkout temporary filesystems exhausted; command recorder and three gates failed on quota",
+      "Consumer completion at 9ad22fb: Nix smoke produced HostWatchdogTimeout for both probes; classified operational, not guest evidence",
+      "Consumer completion at be2ef3a: Nix smoke produced HostWatchdogTimeout for the rust-workload probe only; raft passed with snapshot-backed reproduction",
+    ],
+    passing_repetitions_are_independently_identified = true,
+    result_hashes_rebound = false,
+  },
 }

@@ -108,6 +108,8 @@ Stream bounds are explicit per-check registry inputs, not the old uniform 1 MiB 
 
 `inputs.ncl` is a parameterized Nickel authoring function, not a receipt. Bind actual Nix-store Cargo/Nix executable paths, BLAKE3 executable bytes, reviewed tool-cohort identities and the explicit admitted development-shell environments. Preserve the clean plan's Cargo environment (`CARGO_BUILD_JOBS=2`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0`, and an explicitly reviewed `CARGO_TARGET_DIR`) alongside the required tool/transport environment. Preserve the flake child's exact `NIX_CONFIG` value `min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n`; this sets only the child environment and does not edit host settings. Do not substitute an ambient shell wrapper for an executable identity.
 
+The measured development-shell `PATH` may contain duplicate inherited entries and exceed the producer's unchanged 4,096-byte value bound. Remove duplicate entries in first-occurrence order; preserve every distinct entry and command lookup precedence. Bind that reviewed value explicitly rather than raising the legacy bound, dropping required tools, or inheriting an unrecorded ambient environment. Tool-cohort manifests bind the actual executable bytes, reported version, selected lock identity and explicit environment; their BLAKE3 file identities are runtime bindings, not portable defaults.
+
 Apply `projection.ncl` to a reviewed sorted unique inventory of repository-relative regular source/check inputs. Include the complete build/check closure, all workspace manifests, locks, `.cargo/config.toml`, `flake.nix`, the selected policy and these authoring sources. Its `dependencies` projection includes both locks, all projected workspace manifests and the build/transport declarations. Native observation must admit the full nonempty set (at most 64 dependency files). Explicitly review exclusions for outputs, cancellation controls, measured-binding drivers, generated completion JSON and historical VM payload blobs. Do not include generated contract/profiles/applicability/results in the source subject: those bind the subject and would introduce an identity cycle. Source-projection review does not repair inaccessible retained payloads or prove closure completeness.
 
 After the immutable cohort is verified, import all four mapped policy files from that one revision and preserve the documented consumer-owned comment adaptation if still applicable. Activate `cairn-policy/release-readiness-selection.ncl` through the typed `release_readiness_policy` field in `default.ncl`, preserving the name, refresh command and both traceability profiles. It selects genuine consumer contract/results and the existing four-case Preserves corpus. Record exact upstream/source identities here only after verification, regenerate the policy with the matching packaged exporter, and independently check freshness. No placeholder revision is supplied by these sources.
@@ -117,27 +119,27 @@ After the immutable cohort is verified, import all four mapped policy files from
 Use the explicitly verified CLI as `$CAIRN`, the consumer root as `$ROOT`, and the absolute selected projection as `$POLICY`. `$PROJECTION_DRIVER` is a local Nickel expression applying `projection.ncl` to the reviewed inventory; `$INPUT_DRIVER` applies `inputs.ncl` to actual measured bindings. They are operator-owned inputs outside the observed source projection, not committed fake identity data. Use the reviewed exact Nickel evaluator to export:
 
 ```text
-nickel export --format json "$PROJECTION_DRIVER" --field source --output fixtures/agent-completion/projection.json
-nickel export --format json "$PROJECTION_DRIVER" --field dependencies --output fixtures/agent-completion/dependencies.json
-"$CAIRN" check-evidence source --root "$ROOT" --projection fixtures/agent-completion/projection.json
-"$CAIRN" check-evidence dependencies --root "$ROOT" --projection fixtures/agent-completion/dependencies.json
+nickel export --format json "$PROJECTION_DRIVER" --field source --output target/cairn-completion-inputs/projection.json
+nickel export --format json "$PROJECTION_DRIVER" --field dependencies --output target/cairn-completion-inputs/dependencies.json
+"$CAIRN" check-evidence source --root "$ROOT" --projection target/cairn-completion-inputs/projection.json
+"$CAIRN" check-evidence dependencies --root "$ROOT" --projection target/cairn-completion-inputs/dependencies.json
 ```
 
 Take `subject_hash`/`source_projection_hash` and the sorted `dependency_hashes` directly from those Rust observations. Use Cairn's original `canonical_json_hash` for the selected parsed policy and exported registry; use `authoritative_command_hash` on each exact full executable-plus-args vector and `authoritative_selection_hash` on the complete required-check rows. Bind the measured values as `subject_hash`, `source_projection_hash`, `policy_hash`, `registry_hash`, `selection_hash`, `command_hashes`, `dependency_hashes`, `cargo` and `nix` in the input function. Do not substitute raw policy-file bytes for its canonical JSON identity, silently sort a changed check set, reuse old subject identities, or implement a second hash convention.
 
 ```text
-nickel export --format json "$INPUT_DRIVER" --field contract --output fixtures/agent-completion/contract.json
-nickel export --format json "$INPUT_DRIVER" --field profiles --output fixtures/agent-completion/profiles.json
-nickel export --format json "$INPUT_DRIVER" --field applicability --output fixtures/agent-completion/applicability.json
-"$CAIRN" check-evidence plan --root "$ROOT" --policy "$POLICY" --contract fixtures/agent-completion/contract.json --profiles fixtures/agent-completion/profiles.json --applicability fixtures/agent-completion/applicability.json
+nickel export --format json "$INPUT_DRIVER" --field contract --output target/cairn-completion-inputs/contract.json
+nickel export --format json "$INPUT_DRIVER" --field profiles --output target/cairn-completion-inputs/profiles.json
+nickel export --format json "$INPUT_DRIVER" --field applicability --output target/cairn-completion-inputs/applicability.json
+"$CAIRN" check-evidence plan --root "$ROOT" --policy "$POLICY" --contract target/cairn-completion-inputs/contract.json --profiles target/cairn-completion-inputs/profiles.json --applicability target/cairn-completion-inputs/applicability.json
 ```
 
-Review the returned exact plan and its hash. With explicit execution authority, create a new empty `target/cairn-completion` output directory and a root-relative one-byte `0` cancellation control. `$PLAN_HASH` and `$ATTEMPT_BLAKE3` are the reviewed plan identity and fresh real BLAKE3 attempt identity, not literal tokens to put into evidence. Then execute once:
+Review the returned exact plan and its hash. With explicit execution authority, create a new empty `target/cairn-completion` output directory and the root-relative one-byte `0` cancellation control `target/cairn-completion-cancel`. Measured inputs and cancellation controls stay under the already-ignored `target/` tree; they must not dirty the clean release source. `$PLAN_HASH` and `$ATTEMPT_BLAKE3` are the reviewed plan identity and fresh real BLAKE3 attempt identity, not literal tokens to put into evidence. Then execute once:
 
 ```text
-"$CAIRN" check-evidence run --execute --root "$ROOT" --policy "$POLICY" --contract fixtures/agent-completion/contract.json --profiles fixtures/agent-completion/profiles.json --applicability fixtures/agent-completion/applicability.json --projection fixtures/agent-completion/projection.json --dependencies fixtures/agent-completion/dependencies.json --plan-hash "$PLAN_HASH" --attempt "$ATTEMPT_BLAKE3" --cancel-file cairn-completion-cancel --out target/cairn-completion
-"$CAIRN" check-evidence verify --root "$ROOT" --policy "$POLICY" --contract fixtures/agent-completion/contract.json --profiles fixtures/agent-completion/profiles.json --applicability fixtures/agent-completion/applicability.json --projection fixtures/agent-completion/projection.json --dependencies fixtures/agent-completion/dependencies.json --plan-hash "$PLAN_HASH" --attempt "$ATTEMPT_BLAKE3" --out target/cairn-completion
-"$CAIRN" agent-receipt complete --policy "$POLICY" --contract fixtures/agent-completion/contract.json --results target/cairn-completion/results.json --subject-hash "$SUBJECT_HASH"
+"$CAIRN" check-evidence run --execute --root "$ROOT" --policy "$POLICY" --contract target/cairn-completion-inputs/contract.json --profiles target/cairn-completion-inputs/profiles.json --applicability target/cairn-completion-inputs/applicability.json --projection target/cairn-completion-inputs/projection.json --dependencies target/cairn-completion-inputs/dependencies.json --plan-hash "$PLAN_HASH" --attempt "$ATTEMPT_BLAKE3" --cancel-file target/cairn-completion-cancel --out target/cairn-completion
+"$CAIRN" check-evidence verify --root "$ROOT" --policy "$POLICY" --contract target/cairn-completion-inputs/contract.json --profiles target/cairn-completion-inputs/profiles.json --applicability target/cairn-completion-inputs/applicability.json --projection target/cairn-completion-inputs/projection.json --dependencies target/cairn-completion-inputs/dependencies.json --plan-hash "$PLAN_HASH" --attempt "$ATTEMPT_BLAKE3" --out target/cairn-completion
+"$CAIRN" agent-receipt complete --policy "$POLICY" --contract target/cairn-completion-inputs/contract.json --results target/cairn-completion/results.json --subject-hash "$SUBJECT_HASH"
 "$CAIRN" agent-receipt smoke-mcp --root "$ROOT" --policy "$POLICY"
 ```
 

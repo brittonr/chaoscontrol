@@ -26,3 +26,11 @@ failed to parse policy cairn-policy/generated/cairn-policy.json: cairn.workflow.
 
 - No change to the ChaosControl overlay's traceability profile or policy name.
 - No claim of policy correctness beyond source identity and successful validation.
+
+## Direct MCP correction request, 2026-10-20
+
+The user explicitly requested **"fix cairn mcp"** after readiness remained honestly blocked. This authorizes the bounded producer/consumer MCP correction and its necessary compatible policy selection, not another historical replay or inaccessible-payload repair campaign. Historical receipts remain unchanged; missing payload recovery and unmet product/replay acceptance remain open.
+
+ChaosControl owns the four portable completion obligations in `fixtures/agent-completion/registry.ncl`: the complete locked workspace/all-target test command, denied-warning Clippy, all-workspace formatting, and full Nix flake checks. The inherited Cairn `repository_gate_summary` is not a ChaosControl completion contract: its `slotcar` installable does not exist here and MUST NOT be installed as a foreign consumer obligation. This is explicit consumer selection, not disabling a genuine ChaosControl check. The separate seven-row KVM matrix, Rust receipt validation, native gates and remaining release criteria stay required.
+
+Human-authored Nickel input factories and `cairn-policy/release-readiness-selection.ncl` prepare the consumer boundary. Measured identities, generated completion inputs and real Rust-produced results must come from one verified immutable Cairn cohort. No completion rows, passing receipts, fake source pin, copied self-fixtures or runtime-complete claim are authorized by this source preparation.

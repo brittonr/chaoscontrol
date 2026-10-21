@@ -35,3 +35,25 @@ r[chaoscontrol.cairn_policy_sync.validation] The pinned Cairn build MUST load th
 - GIVEN a projection that lacks a workflow profile the pinned build requires
 - WHEN any policy-loading command runs
 - THEN the command MUST fail, and this change MUST NOT be marked complete.
+
+### Requirement: Consumer MCP completion preserves genuine obligations
+
+r[chaoscontrol.cairn_policy_sync.consumer_mcp] The compatible cohort MUST support ChaosControl-owned completion contract, profiles, source projection, nonempty observed dependency identities and explicit typed readiness selection. The contract MUST preserve every portable command in `fixtures/agent-completion/registry.ncl` with its exact command identity. Rust MUST produce execution-result rows; authored passing rows or copied Cairn self-fixtures MUST NOT substitute. Independent native and seven-row KVM release gates, historical retention and replay acceptance MUST remain required.
+
+#### Scenario: A foreign self-host gate is inherited
+
+- GIVEN Cairn's default gate summary names its own `slotcar` installable and ChaosControl has no such gate
+- WHEN the consumer selects its reviewed typed readiness policy
+- THEN the report MUST name the selected consumer identity and complete genuine portable command list, without treating the foreign installable as a ChaosControl obligation or suppressing a genuine required check.
+
+#### Scenario: Producer cannot represent a maintained command
+
+- GIVEN a required command, dependency identity set, explicit environment or execution bound that the selected producer grammar cannot admit
+- WHEN preparation or planning runs
+- THEN completion MUST remain nonpassing with the exact mismatch recorded, rather than substituting a smaller Cargo smoke, omitting identities or fabricating a result.
+
+#### Scenario: MCP process exits zero with a failed report
+
+- GIVEN real failed or stale producer rows, or an invalid present consumer selection
+- WHEN read-only MCP or native readiness validates those inputs
+- THEN the failure verdict MUST remain authoritative regardless of process exit status, with the exact selected policy applied and no fallback to self-host defaults.

@@ -86,3 +86,61 @@ That mechanism evidence does not establish the full ChaosControl required comple
 Attempt 29 retained its intermediate imported bytes locally and restored the two changed imports to the existing consumer HEAD. The four-file recorded `b6759012db4dab0158936e995b7bad39ac10465b` cohort, its consumer overlay, dependency pins and committed projection remain selected. No half-migrated policy is installed. A supported update still requires the procedure above with one compatible immutable CLI/export cohort and every required consumer verdict; no check is skipped and no genuine missing product requirement is relabeled as annotation debt.
 
 `dogfood-results/production-readiness-cairn-20261017/receipt.ncl` binds the producer source/artifact identities, exact commands, actual positive/negative reports, all eight Cairn gate outcomes, the blocked import probe, residual requirement audit and unchanged release blockers. Its 30-attempt ledger is a separate authorized extension; prior ledgers and receipts remain unchanged. Maintainers: Cairn owns producer/gate prerequisites; ChaosControl owns its full completion inputs, residual product evidence and clean-source release acceptance.
+
+### Direct MCP correction: consumer-owned source preparation, 2026-10-20
+
+The new direct user request is **"fix cairn mcp"**. Its scope is the genuine MCP producer/consumer correction and necessary immutable policy/selection cohort. Historical replay, unavailable payloads and unmet product evidence remain open. This section prepares inputs and invocation; it is not a passing execution record or a new upstream pin. The recorded four-file revision above, current overlay and committed policy remain selected until the parent verifies and installs the replacement cohort.
+
+The old `repository_gate_policy_listed` report inherited Cairn's self-host command list. Its `.#checks.x86_64-linux.slotcar` installable is not a ChaosControl gate. It is not the authority for a ChaosControl completion contract. The actual consumer sources are `AGENTS.md`, the build/release sections of `README.md`, `.github/workflows/ci.yml`, and `contracts/kvm-release/{matrix,profile}.ncl`; the retained operational mapping is `target/readiness-attempt52-20261020/clean-gate-plan.json`. That retained plan's source, output and executable locators remain historical observations, not portable configuration.
+
+`fixtures/agent-completion/registry.ncl` preserves the four full portable commands:
+
+| Consumer check | Exact arguments after measured executable | Deadline |
+| --- | --- | --- |
+| `clean-workspace-tests` | `test --workspace --all-targets --locked --no-fail-fast` | 3,600 s |
+| `clean-clippy` | `clippy --workspace --all-targets --locked -- -D warnings` | 3,600 s |
+| `clean-formatting` | `fmt --all -- --check` | 300 s |
+| `clean-nix-flake-check` | `flake check -L` | 10,800 s |
+
+The closed producer kinds are respectively `cargo_workspace_test`, `cargo_clippy`, `cargo_fmt`, and `nix_flake_check`. The old `cargo_test` injects extra target/offline/default-feature restrictions and omits `--no-fail-fast`; the old Nix expression grammar cannot substitute for a full flake check. The corrected cohort must admit the exact kinds, commands, bounds and nonempty observed dependencies. Only the new flake kind gets the separately named 10,800,000 ms maximum; the existing producer kinds retain their safety bounds. Formatting/lint/flake process-role observations have zero executed-test coverage. Their process status is not KVM evidence or release eligibility.
+
+`inputs.ncl` is a parameterized Nickel authoring function, not a receipt. Bind actual Nix-store Cargo/Nix executable paths, BLAKE3 executable bytes, reviewed tool-cohort identities and the explicit admitted development-shell environments. Preserve the clean plan's Cargo environment (`CARGO_BUILD_JOBS=2`, `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0`, and an explicitly reviewed `CARGO_TARGET_DIR`) alongside the required tool/transport environment. Preserve the flake child's exact `NIX_CONFIG` value `min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n`; this sets only the child environment and does not edit host settings. Do not substitute an ambient shell wrapper for an executable identity.
+
+Apply `projection.ncl` to a reviewed sorted unique inventory of repository-relative regular source/check inputs. Include the complete build/check closure, all workspace manifests, locks, `.cargo/config.toml`, `flake.nix`, the selected policy and these authoring sources. Its `dependencies` projection includes both locks, all projected workspace manifests and the build/transport declarations. Native observation must admit the full nonempty set (at most 64 dependency files). Explicitly review exclusions for outputs, cancellation controls, measured-binding drivers, generated completion JSON and historical VM payload blobs. Do not include generated contract/profiles/applicability/results in the source subject: those bind the subject and would introduce an identity cycle. Source-projection review does not repair inaccessible retained payloads or prove closure completeness.
+
+After the immutable cohort is verified, import all four mapped policy files from that one revision and preserve the documented consumer-owned comment adaptation if still applicable. Activate `cairn-policy/release-readiness-selection.ncl` through the typed `release_readiness_policy` field in `default.ncl`, preserving the name, refresh command and both traceability profiles. It selects genuine consumer contract/results and the existing four-case Preserves corpus. Record exact upstream/source identities here only after verification, regenerate the policy with the matching packaged exporter, and independently check freshness. No placeholder revision is supplied by these sources.
+
+#### Measured export and execution sequence
+
+Use the explicitly verified CLI as `$CAIRN`, the consumer root as `$ROOT`, and the absolute selected projection as `$POLICY`. `$PROJECTION_DRIVER` is a local Nickel expression applying `projection.ncl` to the reviewed inventory; `$INPUT_DRIVER` applies `inputs.ncl` to actual measured bindings. They are operator-owned inputs outside the observed source projection, not committed fake identity data. Use the reviewed exact Nickel evaluator to export:
+
+```text
+nickel export --format json "$PROJECTION_DRIVER" --field source --output fixtures/agent-completion/projection.json
+nickel export --format json "$PROJECTION_DRIVER" --field dependencies --output fixtures/agent-completion/dependencies.json
+"$CAIRN" check-evidence source --root "$ROOT" --projection fixtures/agent-completion/projection.json
+"$CAIRN" check-evidence dependencies --root "$ROOT" --projection fixtures/agent-completion/dependencies.json
+```
+
+Take `subject_hash`/`source_projection_hash` and the sorted `dependency_hashes` directly from those Rust observations. Use Cairn's original `canonical_json_hash` for the selected parsed policy and exported registry; use `authoritative_command_hash` on each exact full executable-plus-args vector and `authoritative_selection_hash` on the complete required-check rows. Bind the measured values as `subject_hash`, `source_projection_hash`, `policy_hash`, `registry_hash`, `selection_hash`, `command_hashes`, `dependency_hashes`, `cargo` and `nix` in the input function. Do not substitute raw policy-file bytes for its canonical JSON identity, silently sort a changed check set, reuse old subject identities, or implement a second hash convention.
+
+```text
+nickel export --format json "$INPUT_DRIVER" --field contract --output fixtures/agent-completion/contract.json
+nickel export --format json "$INPUT_DRIVER" --field profiles --output fixtures/agent-completion/profiles.json
+nickel export --format json "$INPUT_DRIVER" --field applicability --output fixtures/agent-completion/applicability.json
+"$CAIRN" check-evidence plan --root "$ROOT" --policy "$POLICY" --contract fixtures/agent-completion/contract.json --profiles fixtures/agent-completion/profiles.json --applicability fixtures/agent-completion/applicability.json
+```
+
+Review the returned exact plan and its hash. With explicit execution authority, create a new empty `target/cairn-completion` output directory and a root-relative one-byte `0` cancellation control. `$PLAN_HASH` and `$ATTEMPT_BLAKE3` are the reviewed plan identity and fresh real BLAKE3 attempt identity, not literal tokens to put into evidence. Then execute once:
+
+```text
+"$CAIRN" check-evidence run --execute --root "$ROOT" --policy "$POLICY" --contract fixtures/agent-completion/contract.json --profiles fixtures/agent-completion/profiles.json --applicability fixtures/agent-completion/applicability.json --projection fixtures/agent-completion/projection.json --dependencies fixtures/agent-completion/dependencies.json --plan-hash "$PLAN_HASH" --attempt "$ATTEMPT_BLAKE3" --cancel-file cairn-completion-cancel --out target/cairn-completion
+"$CAIRN" check-evidence verify --root "$ROOT" --policy "$POLICY" --contract fixtures/agent-completion/contract.json --profiles fixtures/agent-completion/profiles.json --applicability fixtures/agent-completion/applicability.json --projection fixtures/agent-completion/projection.json --dependencies fixtures/agent-completion/dependencies.json --plan-hash "$PLAN_HASH" --attempt "$ATTEMPT_BLAKE3" --out target/cairn-completion
+"$CAIRN" agent-receipt complete --policy "$POLICY" --contract fixtures/agent-completion/contract.json --results target/cairn-completion/results.json --subject-hash "$SUBJECT_HASH"
+"$CAIRN" agent-receipt smoke-mcp --root "$ROOT" --policy "$POLICY"
+```
+
+Require admitted complete publication, all four genuine result rows, passing original completion and MCP JSON verdicts, and no ignored dependency/command identities. Keep failed/timeout attempts intact and nonpassing. Read-only MCP executes no checks; process exit zero is insufficient. Parent must also run real failed-command/drift controls and invalid-present-selection rejection with the same selected policy (no fallback), then strict native validation, native coverage, policy freshness and full readiness. Require every original check's actual passing report fields; do not archive this change or mark runtime evidence complete from source preparation.
+
+#### Required independent release obligations
+
+The completion contract covers the four portable external checks, not recursive readiness. Native strict validation, traceability, policy freshness and readiness remain required independent rails. The separate KVM commands remain `nix run .#kvm-release-matrix -- --root . --matrix contracts/kvm-release/matrix.json --out "$MATRIX_OUT" --expected-revision "$CLEAN_REVISION"` and the Rust-owned `check-kvm-release-matrix` receipt validation against that same matrix, source revision and output. Preserve the operational 14,400-second outer matrix bound and 300-second validator bound; require `release-eligible`, all seven required row outcomes and artifact identity admission, not process success. The matrix retains its release-binary/guest builds, exact SMP, serialized snapshot replay, malformed virtio survival, admitted drift and fresh-workload replay rows unchanged. Portable MCP completion cannot close historical retention/replay, unavailable payload or remaining product-evidence tasks.

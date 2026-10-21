@@ -461,7 +461,7 @@ operational bounds, coverage, and execution boundaries remain unchanged.
 - [x] [depends:snapshot-lineage-shell] Record the explicit one-attempt extension and cause-specific native plan before implementation.
 - [x] [depends:snapshot-lineage-shell] Diagnose and correct the Rust-workload bootstrap cause without increasing declared bounds, suppressing operational failures, or weakening admitted coverage/assertions.
 - [x] [depends:snapshot-lineage-shell] Exercise the original Rust-workload path and exact-clean-source Cargo, Nix, Cairn and all seven KVM release rows; retain every independent verdict.
-- [ ] [depends:snapshot-lineage-shell] Retain Nickel-validated BLAKE3-bound evidence and historical receipts; update supported state, commit and push without force or unsupported readiness promotion.
+- [x] [depends:snapshot-lineage-shell] Retain Nickel-validated BLAKE3-bound evidence and historical receipts; update supported state, commit and push without force or unsupported readiness promotion.
 
 Cairn producer admission, exact original planted-finding artifacts, and inaccessible
 failed-build payloads remain separate prerequisites. No attempt53 is authorized.
@@ -493,4 +493,12 @@ producer, exact historical input/current-source original replay and 16
 inaccessible historical failed-build payloads remain prerequisites. The final
 release/readiness task remains unchecked; no lifecycle sync, archive or
 production-readiness promotion is supported.
+
+Evidence delivery `18ec29a` was pushed to `main` without force after successful
+Nickel export, rejection of forced production-readiness, independent BLAKE3/size
+verification of 279 unique current/historical/retained-input files, and native
+metadata validation, passing coverage and policy freshness. The clean release
+source remains `19d2ecd42160eefc2bca0abb2d30c70f490bdea5`; this evidence-only
+delivery and task closure do not relabel the tested revision or close the
+remaining production-readiness prerequisites.
 

@@ -319,7 +319,7 @@ let WorkflowRequiredNonClaims = [
         "assurance profile conformance does not prove risk-analysis truth, test sufficiency, code correctness, or release eligibility",
       ],
     },
-    {
+        {
       schema_version = "cairn.workflow-schema.v1",
       id = "outcome-machine",
       profile_version = 1,

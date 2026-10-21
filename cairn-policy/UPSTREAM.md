@@ -1,6 +1,6 @@
 # Cairn Policy Source
 
-The current policy source files come from [OnixResearch/cairn](https://github.com/OnixResearch/cairn) at verified revision `4d98c4b564569a62541e2968bc0998a744e8ee20`. The dated audits below retain their original cohort boundaries; the verified MCP cutover supersedes their migration blockers, not historical runtime findings.
+The current policy source files come from [OnixResearch/cairn](https://github.com/OnixResearch/cairn) at verified revision `a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127`. The dated audits below retain their original cohort boundaries; the verified MCP cutover supersedes their migration blockers, not historical runtime findings.
 
 Imported files:
 
@@ -151,7 +151,9 @@ The completion contract covers the four portable external checks, not recursive 
 
 ### Verified MCP cohort cutover
 
-The complete immutable Cairn cohort `4d98c4b564569a62541e2968bc0998a744e8ee20` passed workspace tests, denied-warning Clippy, formatting, packaged CLI construction, matching policy freshness, strict native validation, native traceability, direct canonical JSON Octet, the packaged full-scope Octet check and the full Nix flake check. Native coverage reports 2,349 requirements with no missing or dangling IDs. Octet retains its existing warning policy and reports zero error findings; this is not a warning-free or correctness claim. The verified branch was published and the exact commit fetched again through the existing Git transport before consumer installation.
+The complete immutable Cairn cohort `a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127` passed workspace tests, denied-warning Clippy, formatting, packaged CLI construction, matching policy freshness, strict native validation, native traceability, direct canonical JSON Octet, the packaged full-scope Octet check and the full Nix flake check. Native coverage reports 2,349 requirements with no missing or dangling IDs. Octet retains its existing warning policy and reports zero error findings; this is not a warning-free or correctness claim. The verified branch was published and the exact commit fetched again through the existing Git transport before consumer installation.
+
+That cohort also corrected two genuine gaps found only by the full consumer execution: maintained-consumer environment admission now preserves Nix's case-sensitive host-role selectors, and real producer fixtures bind their own temporary scratch storage. The earlier cohort `4d98c4b564569a62541e2968bc0998a744e8ee20` remains a historical verified boundary for its own command set; it is not selected, and its missing-role behavior is not evidence of consumer success.
 
 The four imports, typed `release_readiness_policy` activation and preserved consumer name, refresh command and traceability profiles now select that one compatible cohort. The matching packaged wrapper owns export and independent freshness. A changed policy invalidates old policy-bound completion even without an explicit consumer selector; passing provenance components cannot override stale MCP evidence. Do not rebind retained result hashes or copy Cairn self-fixtures.
 

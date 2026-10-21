@@ -13,7 +13,7 @@ Production readiness remains blocked. Native Cairn traceability now passes
 [native closure receipt](dogfood-results/production-readiness-native-closure-20261019/receipt.ncl)
 binds the current Cargo, evidence, cutover, and release-gate observations.
 The MCP integration selects verified Cairn cohort
-`4d98c4b564569a62541e2968bc0998a744e8ee20` through the
+`a1e8a0d2d0af0b8b10f63e70fe4a674f5885b127` through the
 [repository-owned update procedure](cairn-policy/UPSTREAM.md#verified-mcp-cohort-cutover).
 Its consumer-owned completion contract retains all four full portable commands;
 actual CLI/MCP completion verdicts remain required, independently of KVM evidence.

@@ -751,8 +751,46 @@ with 24 compile cores under that same deadline. Both results remain recorded.
 ChaosControl guest-kernel/VMM maintainers own the common kernel patch. Repeat
 the packaged path with `nix run .#rust-workload-accepted-verdict-dogfood --
 --output NEW_DIR`; preserve the cohort's declared bounds. These controlled
-results are not fresh clean-source release gates or the original selected Raft
-finding. Full Nix, native readiness and the seven-row matrix require independent
-current-source verdicts. The Cairn producer and exact historical input remain
-separate prerequisites; production readiness is not promoted.
+results remain distinct from the independent clean-source release gates below
+and do not reproduce the original selected Raft finding.
+
+The complete release gate run binds clean source
+`19d2ecd42160eefc2bca0abb2d30c70f490bdea5`, not a later evidence-only commit.
+Workspace all-target tests report 2223 passed, zero failed and 16 declared
+ignored; denied-warning Clippy and formatting pass. Full `nix flake check -L`
+passes, including both actual local multi-hypervisor workloads. Each workload
+has a passing typed readiness report, all 13 static gates, an accepted
+snapshot-backed reproduction and a matched expectation. The seven-row KVM
+matrix and independent checker both report `release-eligible`; all 138 row
+artifacts match their recorded BLAKE3 identities and lengths. Native coverage
+is 382/382 with no missing or dangling links. Native readiness still reports
+`fail` at `mcp_agent_smoke`; command exit zero does not make that gate pass.
+
+The strict current-kernel watchdog proof completes in 296.974 seconds. A real
+100-millisecond SI_TIMER interruption poisons the controller, replacement
+restores the retained parent, and immediate incremental recapture matches.
+Initial/final memory identities, strict execution records, every admitted
+assertion outcome, fault ledgers and rounds match across long-lived, fresh-full
+and replacement continuations. Each reports 44 passing, zero failing and one
+unexercised site of 45. Depth-one through depth-four overlay payloads are
+7991296, 10420224, 14163968 and 16244736 bytes. This remains an operational
+watchdog event, not a guest finding or a new deep campaign.
+
+The Nickel receipt in `production-readiness-attempt52-20261020/` binds these
+commands, current inputs, complete outcomes and locally retained artifacts.
+Independent verification checks all 239 current manifest entries and all 40
+historical receipt files without changes. The receipt reuses the completed
+`b5f0a45` depth-four campaigns and eight deep replay verdicts under their original
+identities; no newly retained finding has parent depth three or greater. A
+negative Nickel check rejects forcing `production_ready=true`.
+
+Production readiness remains false. Required prerequisites are a compatible
+fully gated Cairn CLI/export cohort admitted through the repository-owned
+four-import migration and unchanged full MCP contract; the exact historical
+Raft initrd `blake3:82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e`
+and accepted current-source reproduction of the original selected finding; and
+the 16 inaccessible builder-owned failed-Nix payloads. Fresh probes do not
+substitute for that finding. No permissions, acceptance criteria, historical
+receipts or failed verdicts are changed. All 52 authorized corrective attempts
+are consumed; no attempt53, lifecycle archive or readiness promotion is implied.
 

@@ -460,9 +460,37 @@ operational bounds, coverage, and execution boundaries remain unchanged.
 
 - [x] [depends:snapshot-lineage-shell] Record the explicit one-attempt extension and cause-specific native plan before implementation.
 - [x] [depends:snapshot-lineage-shell] Diagnose and correct the Rust-workload bootstrap cause without increasing declared bounds, suppressing operational failures, or weakening admitted coverage/assertions.
-- [ ] [depends:snapshot-lineage-shell] Exercise the original Rust-workload path and exact-clean-source Cargo, Nix, Cairn and all seven KVM release rows; retain every independent verdict.
+- [x] [depends:snapshot-lineage-shell] Exercise the original Rust-workload path and exact-clean-source Cargo, Nix, Cairn and all seven KVM release rows; retain every independent verdict.
 - [ ] [depends:snapshot-lineage-shell] Retain Nickel-validated BLAKE3-bound evidence and historical receipts; update supported state, commit and push without force or unsupported readiness promotion.
 
 Cairn producer admission, exact original planted-finding artifacts, and inaccessible
 failed-build payloads remain separate prerequisites. No attempt53 is authorized.
+
+Clean source `19d2ecd42160eefc2bca0abb2d30c70f490bdea5` passes all-target workspace
+tests (2223 passed, zero failed, 16 declared ignored), denied-warning Clippy,
+formatting and full Nix checks. Both actual local multi-hypervisor workloads
+have passing typed reports, all 13 static gates and accepted snapshot-backed
+reproduction. All seven KVM rows and independent matrix validation are
+`release-eligible`; all 138 row artifact identities and lengths match.
+Native coverage passes at 382/382 with no missing or dangling links. Native
+readiness remains `fail` at `mcp_agent_smoke`, despite command exit zero.
+
+The current-kernel strict watchdog proof observes an actual 100-millisecond
+SI_TIMER event, poisoned-controller replacement, exact parent restoration and
+matching immediate incremental recapture. All six strict comparison fields,
+including every admitted assertion outcome, match across long-lived, fresh-full
+and replacement continuations. Each reports 44 passing, zero failing and one
+unexercised site of 45. Depth-one through depth-four overlay payloads are
+7991296, 10420224, 14163968 and 16244736 bytes. This is an operational watchdog
+event, not a guest finding, new deep campaign or original planted-finding replay.
+
+The separate attempt52 Nickel receipt validates 239 current manifest entries;
+all 40 historical receipt files remain unchanged. Completed `b5f0a45` depth-four
+campaigns and all eight deep replays retain their original source boundaries.
+No new retained finding has parent depth three or greater. The receipt computes
+`blocked` and rejects a forced production-ready contract. The supported Cairn
+producer, exact historical input/current-source original replay and 16
+inaccessible historical failed-build payloads remain prerequisites. The final
+release/readiness task remains unchecked; no lifecycle sync, archive or
+production-readiness promotion is supported.
 

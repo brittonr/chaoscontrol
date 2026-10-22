@@ -272,6 +272,9 @@ fn main() {
             initrd_path: Some(initrd.to_string()),
             seed: 42,
             quantum: 5000,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             ..Default::default()
         };
 
@@ -294,6 +297,9 @@ fn main() {
             initrd_path: Some(initrd.to_string()),
             seed: 42,
             quantum: 5000,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             ..Default::default()
         };
 
@@ -334,6 +340,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -386,6 +395,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -426,6 +438,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -468,6 +483,9 @@ fn main() {
             initrd_path: Some(initrd.to_string()),
             seed: 99,
             quantum: 5000,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             ..Default::default()
         };
 
@@ -505,6 +523,9 @@ fn main() {
             initrd_path: Some(initrd.to_string()),
             seed: 42,
             quantum: 5000,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             ..Default::default()
         };
 
@@ -563,6 +584,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -645,6 +669,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -714,6 +741,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -812,6 +842,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -915,6 +948,9 @@ fn main() {
                 disk_image_path: None,
                 base_core: None,
                 dlog_dir: None,
+                // This harness asserts undisturbed system behaviour; the explicit
+                // opt-out keeps it free of the default fault injection.
+                random_faults: false,
                 bootstrap_budget: None,
             }
         };
@@ -1042,6 +1078,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -1137,6 +1176,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -1250,6 +1292,9 @@ fn main() {
                 disk_image_path: None,
                 base_core: None,
                 dlog_dir: None,
+                // This harness asserts undisturbed system behaviour; the explicit
+                // opt-out keeps it free of the default fault injection.
+                random_faults: false,
                 bootstrap_budget: None,
             };
 
@@ -1381,6 +1426,9 @@ fn main() {
                 disk_image_path: None,
                 base_core: None,
                 dlog_dir: None,
+                // This harness asserts undisturbed system behaviour; the explicit
+                // opt-out keeps it free of the default fault injection.
+                random_faults: false,
                 bootstrap_budget: None,
             };
 
@@ -1481,6 +1529,9 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             bootstrap_budget: None,
         };
 
@@ -1881,6 +1932,9 @@ fn main() {
             initrd_path: Some(initrd.to_string()),
             seed: 42,
             quantum: 100,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             ..Default::default()
         };
         let mut ctrl = SimulationController::new(sim_config).expect("create controller");
@@ -2144,6 +2198,9 @@ fn main() {
             initrd_path: Some(initrd.to_string()),
             seed: 42,
             quantum: 100,
+            // This harness asserts undisturbed system behaviour; the explicit
+            // opt-out keeps it free of the default fault injection.
+            random_faults: false,
             ..Default::default()
         };
         let mut ctrl = SimulationController::new(sim_config).expect("create controller");

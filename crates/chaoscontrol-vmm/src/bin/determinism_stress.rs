@@ -323,6 +323,9 @@ fn run_controller(
         base_core: None,
         dlog_dir,
         bootstrap_budget: None,
+        // A determinism stress run wants the default coverage: the repeated
+        // runs must match under fault injection, not only on a quiet system.
+        random_faults: true,
     };
 
     let mut ctrl = SimulationController::new(config).expect("create controller");

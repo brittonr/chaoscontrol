@@ -24,6 +24,13 @@ The VMM exposes the current ceiling through `chaoscontrol_sdk::resources::memory
 
 The ceiling is an observation and policy surface. It does not change mapped guest memory or guarantee an allocation failure.
 
+## System runs inject faults by default
+
+A system run configures its fault engine with `random_faults` set, and the default is on.
+The engine derives the injected faults from the run's master seed, so the same seed and configuration inject the same faults on every repetition.
+A run that needs a quiet system sets `random_faults: false` explicitly; the opt-out is a visible choice, not an omission.
+The fault engine's own library default stays off, so a caller that builds an engine directly is unaffected.
+
 ## Evidence and replay
 
 Each accepted effect records `Selected`, `Applicable`, `Applied`, and `Observed` stages. Invalid windows and unsupported profiles record typed rejections.

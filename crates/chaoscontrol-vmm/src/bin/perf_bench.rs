@@ -113,6 +113,9 @@ fn bench_controller(kernel: &str, initrd: &str) {
         initrd_path: Some(initrd.to_string()),
         seed: 42,
         quantum: 100,
+        // This harness asserts undisturbed system behaviour; the explicit
+        // opt-out keeps it free of the default fault injection.
+        random_faults: false,
         ..Default::default()
     };
     let mut ctrl = SimulationController::new(sim_config).expect("create controller");

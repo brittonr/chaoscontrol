@@ -132,6 +132,31 @@ pub struct SimulationConfig {
     /// `<dlog_dir>/vm_<i>.dlog`. Use `dlog_diff` to compare
     /// two runs of the same seed.
     pub dlog_dir: Option<std::path::PathBuf>,
+
+    /// Whether this run injects random faults in addition to its schedule.
+    ///
+    /// A system run that injects no fault does not exercise the failure
+    /// paths it claims to cover, so the default is on. The flag is the
+    /// explicit opt-out for a run that needs a clean system, such as a
+    /// harness that asserts on an undisturbed boot.
+    ///
+    /// The injection is derived from the master seed, so a run stays
+    /// deterministic under a fixed seed.
+    pub random_faults: bool,
+}
+
+/// Build the fault engine configuration for one system run.
+///
+/// The engine keeps its own library default; this mapping is where the system
+/// run's explicit choice reaches it.
+fn fault_engine_config(config: &SimulationConfig) -> EngineConfig {
+    EngineConfig {
+        seed: config.seed,
+        num_vms: config.num_vms,
+        schedule: Some(config.schedule.clone()),
+        random_faults: config.random_faults,
+        ..EngineConfig::default()
+    }
 }
 
 impl Default for SimulationConfig {
@@ -148,6 +173,7 @@ impl Default for SimulationConfig {
             bootstrap_budget: None,
             base_core: None,
             dlog_dir: None,
+            random_faults: true,
         }
     }
 }
@@ -520,13 +546,7 @@ impl SimulationController {
         }
 
         // Create fault engine with shared seed and num_vms
-        let engine_config = EngineConfig {
-            seed: config.seed,
-            num_vms: config.num_vms,
-            schedule: Some(config.schedule.clone()),
-            random_faults: false,
-            ..EngineConfig::default()
-        };
+        let engine_config = fault_engine_config(&config);
         let mut fault_engine = FaultEngine::new(engine_config);
         fault_engine.begin_run();
 
@@ -3101,6 +3121,31 @@ mod tests {
         FaultApplicationFailureReason, FaultOutcomeLedger,
     };
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
+
+    #[test]
+    fn system_runs_inject_faults_by_default() {
+        let config = SimulationConfig::default();
+        assert!(config.random_faults);
+        assert!(fault_engine_config(&config).random_faults);
+    }
+
+    #[test]
+    fn the_fault_injection_opt_out_is_honoured() {
+        let config = SimulationConfig {
+            random_faults: false,
+            ..SimulationConfig::default()
+        };
+        assert!(!fault_engine_config(&config).random_faults);
+    }
+
+    #[test]
+    fn the_fault_engine_keeps_the_run_seed() {
+        let config = SimulationConfig {
+            seed: 4242,
+            ..SimulationConfig::default()
+        };
+        assert_eq!(fault_engine_config(&config).seed, 4242);
+    }
 
     #[test]
     fn setup_completion_requires_every_vm() {

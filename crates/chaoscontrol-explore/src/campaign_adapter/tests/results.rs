@@ -25,7 +25,7 @@ fn child_moments_and_findings_settle_and_extend_the_frontier() {
     };
     let observation = session.settle(&selection, &facts);
     assert_eq!(observation.children.len(), 1);
-    assert_eq!(session.state.findings, vec![finding]);
+    assert_eq!(session.state.findings(), vec![finding]);
     assert_eq!(session.state.known_moment_depth(child.moment_id), Some(1));
     let grandchild = candidate_record(
         &session.identity,

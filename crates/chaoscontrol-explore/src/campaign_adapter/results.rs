@@ -88,11 +88,11 @@ pub fn finding_ref(
 
 fn is_known_selection(state: &FrontierState, selection_id: Id) -> bool {
     state
-        .outstanding
+        .outstanding()
         .iter()
         .any(|outstanding| outstanding.selection_id == selection_id)
         || state
-            .settled
+            .settled()
             .iter()
             .any(|settled| settled.selection_id == selection_id)
 }
@@ -112,7 +112,7 @@ pub fn result_observation(
     selection: &SelectionDecision,
     facts: &ResultFacts,
 ) -> Result<ResultObservation, AdapterError> {
-    if selection.campaign_id != state.admission.campaign_id {
+    if selection.campaign_id != state.admission().campaign_id {
         return Err(AdapterError::CrossedCampaign);
     }
     if !is_known_selection(state, selection.selection_id) {

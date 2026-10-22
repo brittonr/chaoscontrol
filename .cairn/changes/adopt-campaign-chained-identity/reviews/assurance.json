@@ -1,0 +1,42 @@
+{
+  "decision": "unknown",
+  "findings": [
+    {
+      "category": "omission",
+      "id": "CAIRN_PLACEHOLDER",
+      "severity": "high"
+    }
+  ],
+  "review_kind": "plan",
+  "reviewed_inputs": [
+    {
+      "hash": "CAIRN_PLACEHOLDER",
+      "path": "proposal.md"
+    },
+    {
+      "hash": "CAIRN_PLACEHOLDER",
+      "path": "specs"
+    },
+    {
+      "hash": "CAIRN_PLACEHOLDER",
+      "path": "design.md"
+    },
+    {
+      "hash": "CAIRN_PLACEHOLDER",
+      "path": "risk.md"
+    },
+    {
+      "hash": "CAIRN_PLACEHOLDER",
+      "path": "tasks.md"
+    },
+    {
+      "hash": "CAIRN_PLACEHOLDER",
+      "path": "verification.md"
+    }
+  ],
+  "reviewer": {
+    "id": "CAIRN_PLACEHOLDER",
+    "source": "manual"
+  },
+  "schema_version": "cairn.semantic-review.review-receipt.v1"
+}

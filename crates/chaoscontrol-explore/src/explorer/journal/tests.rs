@@ -1350,3 +1350,46 @@ fn open_rejects_missing_output_and_non_directory_journal() {
         Err(JournalError::JournalNotDirectory { .. })
     ));
 }
+
+/// Durable appends timed per case by [`durable_append_cost_by_records_per_segment`].
+const COST_APPENDS: usize = 200;
+/// Payload bytes of one timed record, the order of one encoded Campaign control record.
+const COST_RECORD_BYTES: usize = 512;
+/// Records per timed segment: one control event per segment, and the largest segment of the
+/// 2026-10-21 KVM smoke's Campaign journal (a settlement segment of seven records).
+const COST_RECORDS_PER_SEGMENT: [usize; 2] = [1, 7];
+
+/// Evidence for a later `ControlSession` decision, not a regression check: the latency of one
+/// durable segment append (staged write, file sync, no-replace rename, directory sync) for each
+/// segment size. Set `CHAOSCONTROL_APPEND_COST_DIR` to time a chosen filesystem.
+#[test]
+#[ignore = "benchmark: run with --ignored --nocapture"]
+fn durable_append_cost_by_records_per_segment() {
+    let base = std::env::var_os("CHAOSCONTROL_APPEND_COST_DIR")
+        .map_or_else(std::env::temp_dir, PathBuf::from);
+    for records_per_segment in COST_RECORDS_PER_SEGMENT {
+        let dir = tempfile::tempdir_in(&base).expect("benchmark directory");
+        let (mut journal, _) = CampaignJournal::open(dir.path()).expect("open journal");
+        journal.begin_epoch().expect("begin epoch");
+        let segment =
+            vec![JournalRecord::new(TEST_KIND, vec![0xA5; COST_RECORD_BYTES]); records_per_segment];
+        let mut samples = Vec::with_capacity(COST_APPENDS);
+        for _ in 0..COST_APPENDS {
+            let start = std::time::Instant::now();
+            journal.append(&segment).expect("durable append");
+            samples.push(start.elapsed());
+        }
+        samples.sort_unstable();
+        let total: std::time::Duration = samples.iter().sum();
+        let count = u32::try_from(COST_APPENDS).expect("append count fits u32");
+        println!(
+            "records_per_segment={records_per_segment} appends={COST_APPENDS} record_bytes={COST_RECORD_BYTES} \
+             mean={:?} median={:?} p90={:?} max={:?}",
+            total / count,
+            samples[COST_APPENDS / 2],
+            samples[COST_APPENDS * 9 / 10],
+            samples[COST_APPENDS - 1],
+        );
+        assert_eq!(samples.len(), COST_APPENDS);
+    }
+}

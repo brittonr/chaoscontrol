@@ -57,6 +57,17 @@ allow = ["AGPL-3.0-or-later"]
 crate = "choregraph-history"
 allow = ["AGPL-3.0-or-later"]
 
+# Campaign is AGPL-3.0-or-later from its revision 6dc0c59a (Campaign change
+# prepare-public-source); earlier pins were MIT OR Apache-2.0. The license
+# check skips dev-dependencies, so campaign-conformance needs no exception.
+[[licenses.exceptions]]
+crate = "campaign-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "campaign-choregraph"
+allow = ["AGPL-3.0-or-later"]
+
 [[licenses.exceptions]]
 crate = "chaoscontrol-guest-net"
 allow = ["AGPL-3.0-or-later"]
@@ -169,7 +180,7 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
   "https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git",
   "https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git",
-  "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
+  "https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
   "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git",
   "https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git",
   "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",

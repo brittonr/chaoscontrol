@@ -1,10 +1,10 @@
 # Campaign source acquisition
 
-The development shell uses a scoped Cargo 1.98.0 transport repair for Campaign acquisition. The same Cargo also supports explicit package names for pathless source URLs. Host and musl Crane builds use this Cargo. The Rust compilers and Nix vendored-input path stay unchanged.
+The development shell uses a scoped Cargo 1.98.0 transport repair for exact-revision acquisition from the private VM Cohort source. The same Cargo also supports explicit package names for pathless source URLs. Host and musl Crane builds use this Cargo. The Rust compilers and Nix vendored-input path stay unchanged. Campaign itself no longer needs the transport repair (see below).
 
 ## Transport contract
 
-`.cargo/config.toml` lists the exact Campaign HTTPS URL and private VM Cohort Radicle URL under `net.git-fetch-exact-revisions`. This list selects transport behavior. It is not repository authorization.
+`.cargo/config.toml` lists the private VM Cohort Radicle URL under `net.git-fetch-exact-revisions`. This list selects transport behavior. It is not repository authorization.
 
 The VM Cohort packaging repair uses a published signed branch without moving the default branch before consumer verification. Its root URL supports exact-object fetches. The declared transport capability avoids a cache preload or namespace-HEAD mutation.
 
@@ -12,11 +12,11 @@ For a listed URL and a complete object ID, Cargo requests that object directly. 
 
 Unlisted URLs keep their previous behavior, including the GitHub fast path. Symbolic or abbreviated requests without a complete locked object ID keep stock resolution. An unlocked default-branch request still requires HEAD.
 
-Cargo and the Nix `campaign-src` input both pin Campaign development revision `e7757a5134f631e1ed410df3cae57e57f887c468` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Both use the ordinary Campaign HTTPS endpoint. The forge answered HTTP 530 when this pin landed, so Cargo resolved the revision offline from its preloaded Git database and `nix flake update campaign-src` locked it from the local Nix Git cache; fresh acquisition from the live endpoint was not observed for this revision. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
+Cargo and the Nix `campaign-src` input both pin Campaign revision `4a669eadaeac50b48efd77383219372be122f692` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Both fetch from Campaign's public Radicle seed, `https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git`, which advertises `HEAD` and `refs/heads/main` at that revision, so stock resolution finds it and the URL is not in the exact-revision list. The former `git.onix.computer` Campaign endpoint answers "repository not found". Fresh acquisition from the seed was observed on 2026-10-21: `cargo update -p campaign-core -p campaign-choregraph -p campaign-conformance` fetched the seed's `main` and `HEAD`, and `nix flake update campaign-src` locked the same revision from the seed (narHash `sha256-L468HoGcG1ZkOvYsJcjN9LBfKxL4HEEq6I5tBstp+fs=`). Choregraph history `b3e08e19750f53bdbcae970cdf58a47a791ed20b` still comes from its `git.onix.computer` endpoint, which serves it with `HEAD`. This is a Campaign development revision, not a release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
 
 ## Why the stock fetch fails
 
-Stock Cargo fetches ordinary branches, tags, and HEAD for this non-GitHub revision. The ordinary forge view stores the checkpoint under a publisher namespace. The namespace view exposes the branch but lacks HEAD.
+This section records why the repair was introduced, for the earlier Campaign forge endpoint; the VM Cohort source still relies on the repair. Stock Cargo fetches ordinary branches, tags, and HEAD for a non-GitHub revision. That forge view stored the checkpoint under a publisher namespace. The namespace view exposed the branch but lacked HEAD.
 
 An isolated Git fixture reproduces that missing HEAD. A synthetic namespace HEAD makes Git advertise HEAD, but Radicle requires qualified, signed namespace references. The repair therefore belongs in client transport selection, not live Radicle storage.
 

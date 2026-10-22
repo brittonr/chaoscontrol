@@ -56,7 +56,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         context: RoundContext,
     ) -> Result<RoundBegin, FrontierError> {
         self.ensure_live()?;
-        if self.session()?.state().stopped.is_some() {
+        if self.session()?.state().stopped().is_some() {
             return Err(FrontierError::Sequence("round after the campaign stopped"));
         }
         // `max_rounds == 0` admits no selection: stop before drawing or planning.
@@ -101,7 +101,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         Ok(self
             .session()?
             .state()
-            .candidates
+            .candidates()
             .iter()
             .filter(|candidate| candidate.status == CandidateStatus::Retained)
             .count())
@@ -134,7 +134,11 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             candidates_examined: plan.work.candidates_examined,
             eligible_candidates: plan.work.eligible_candidates,
         };
-        match round_decision(&self.identity, plan, session.state().admission.campaign_id)? {
+        match round_decision(
+            &self.identity,
+            plan,
+            session.state().admission().campaign_id,
+        )? {
             RoundDecision::Execute(selection) => {
                 if !self.entries.contains_key(&selection.candidate_id) {
                     return Err(FrontierError::UnknownCandidate);
@@ -264,7 +268,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         draws: LegacyDraws,
     ) -> Result<CampaignPlan, FrontierError> {
         let recovered = self.journal.resynchronize()?;
-        let current = self.session()?.state().state_id;
+        let current = self.session()?.state().state_id();
         let rebuilt = recovered
             .epochs()
             .last()
@@ -272,7 +276,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             .transpose()?
             .flatten()
             .and_then(|epoch| epoch.session)
-            .map(|session| session.state().state_id);
+            .map(|session| session.state().state_id());
         if rebuilt != Some(current) {
             self.halted = true;
             return Err(FrontierError::StaleControlBranch);
@@ -432,7 +436,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         let selection = published.selection;
         let base_set_id = self.snapshot_context()?.base_set_id;
         let mut staged = self.session()?.clone();
-        let campaign_id = staged.state().admission.campaign_id;
+        let campaign_id = staged.state().admission().campaign_id;
         let parent_event = staged
             .moment_event(selection.parent_moment_id)
             .ok_or(FrontierError::UnknownCandidate)?;

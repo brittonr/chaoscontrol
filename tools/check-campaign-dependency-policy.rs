@@ -3,12 +3,17 @@
 use std::{env, fs, path::Path, process::Command};
 
 const ADMITTED_SOURCES: &[&str] = &[
-    "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
+    "https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
     "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git",
     "https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git",
     "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",
 ];
-const LICENSE_EXCEPTIONS: &[&str] = &["chaoscontrol-guest-determinism-probe", "choregraph-history"];
+const LICENSE_EXCEPTIONS: &[&str] = &[
+    "chaoscontrol-guest-determinism-probe",
+    "choregraph-history",
+    "campaign-core",
+    "campaign-choregraph",
+];
 const REPLACEMENT_SOURCE: &str = "https://unadmitted.invalid/repository.git";
 const REPLACEMENT_CRATE: &str = "unadmitted-license-fixture";
 
@@ -39,6 +44,11 @@ fn main() {
     let root = env::temp_dir().join(format!("campaign-deny-{}", std::process::id()));
     fs::create_dir(&root).expect("fresh fixture directory");
     let fixture = root.join("deny.toml");
+    // Each admitted source is load-bearing: removing it from `deny.toml` must fail the source
+    // check. For Campaign this checks that `cargo deny` admits the declared seed endpoint and
+    // that any other endpoint fails; the fetch itself is recorded acquisition evidence.
+    // r[verify chaoscontrol.campaign_policy.source_pins.invalid]
+    // r[verify chaoscontrol.campaign_policy.source_pins.acquirable]
     for source in ADMITTED_SOURCES {
         mutation(
             &policy,

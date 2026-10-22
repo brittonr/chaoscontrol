@@ -287,19 +287,19 @@ pub fn selection_request(
     let counter = ticket_counter(state)?;
     let ticket: EntropyTicket = entropy_ticket(
         identity,
-        state.admission.campaign_id,
-        state.state_id,
+        state.admission().campaign_id,
+        state.state_id(),
         profile.selection_profile.profile_id,
         counter,
         draws,
     )?;
     Ok(SelectionRequest {
         request_id: FrameWriter::new(IdKind::Request, REQUEST_LABEL)
-            .id(state.state_id)
+            .id(state.state_id())
             .u64(counter)
             .finish(IdKind::Request),
-        campaign_id: state.admission.campaign_id,
-        state_id: state.state_id,
+        campaign_id: state.admission().campaign_id,
+        state_id: state.state_id(),
         profile: profile.selection_profile.clone(),
         entropy: Some(ticket),
         expected_generation: projection.generation,
@@ -315,8 +315,8 @@ pub fn retention_plan_request(
     state: &FrontierState,
 ) -> RetentionPlanRequest {
     RetentionPlanRequest {
-        campaign_id: state.admission.campaign_id,
-        state_id: state.state_id,
+        campaign_id: state.admission().campaign_id,
+        state_id: state.state_id(),
         retention_profile_id: identity.retention_profile_id,
         rank_order: RETENTION_RANK_ORDER.to_vec(),
         reason_id: identity.reason_id(AdapterReason::RetentionPrune),

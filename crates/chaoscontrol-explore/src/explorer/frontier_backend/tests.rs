@@ -375,7 +375,7 @@ fn a_stale_selection_sequence_replans_once_with_the_same_draws() {
         expected_rng.next_u64(),
         "the replan never redraws"
     );
-    assert_eq!(frontier.state().unwrap().outstanding.len(), 1);
+    assert_eq!(frontier.state().unwrap().outstanding().len(), 1);
     frontier
         .finish_round(round, &observation(1, &[None, None]))
         .unwrap();
@@ -518,9 +518,9 @@ fn an_unrestorable_snapshot_after_publication_closes_and_retires() {
         Authorization::Execute(_) => panic!("executed without a restorable snapshot"),
     };
     let state = frontier.state().unwrap();
-    assert!(state.outstanding.is_empty());
+    assert!(state.outstanding().is_empty());
     let retired = state
-        .candidates
+        .candidates()
         .iter()
         .filter(|candidate| matches!(candidate.status, CandidateStatus::Retired { .. }))
         .count();
@@ -542,7 +542,7 @@ fn an_unrestorable_snapshot_after_publication_closes_and_retires() {
         .record_stop(ProductStop::FrontierExhausted)
         .unwrap();
     assert_eq!(
-        frontier.state().unwrap().stopped.as_ref().unwrap().reason,
+        frontier.state().unwrap().stopped().unwrap().reason,
         StopReason::FrontierExhausted
     );
 }
@@ -596,13 +596,13 @@ fn product_stops_record_structural_classes_only() {
         let dir = tempfile::tempdir().unwrap();
         let mut frontier = open_campaign(dir.path(), ScriptedIo::default());
         frontier.record_stop(stop).unwrap();
-        let recorded = frontier.state().unwrap().stopped.clone().unwrap();
+        let recorded = frontier.state().unwrap().stopped().cloned().unwrap();
         assert_eq!(recorded.reason, expected);
         assert!(recorded.incomplete_search_acknowledged);
         // A second stop is idempotent for the product.
         frontier.record_stop(ProductStop::Interrupted).unwrap();
         assert_eq!(
-            frontier.state().unwrap().stopped.clone().unwrap().reason,
+            frontier.state().unwrap().stopped().cloned().unwrap().reason,
             expected
         );
     }
@@ -630,12 +630,12 @@ fn zero_rounds_complete_without_selection() {
         .unwrap();
     let identity = AdapterIdentity::for_seed(SEED);
     assert_eq!(
-        frontier.state().unwrap().stopped.clone().unwrap().reason,
+        frontier.state().unwrap().stopped().cloned().unwrap().reason,
         StopReason::ConsumerRequested {
             reason_id: identity.reason_id(AdapterReason::CompletedWithoutSelection),
         }
     );
-    assert_eq!(frontier.state().unwrap().selection_count, 0);
+    assert_eq!(frontier.state().unwrap().selection_count(), 0);
 }
 
 /// Genesis control lineage of [`open_campaign`]: admission, the root candidate
@@ -687,8 +687,8 @@ fn a_tight_projection_bound_ends_the_run_with_the_capacity_stop() {
         .finish_round(round, &observation(1, &[Some(vec![1.5]), None]))
         .unwrap();
     let state = frontier.state().unwrap();
-    assert!(state.outstanding.is_empty());
-    assert_eq!(state.selection_count, 1);
+    assert!(state.outstanding().is_empty());
+    assert_eq!(state.selection_count(), 1);
     // The second does not: the backend stops before drawing or publishing.
     let mut expected_rng = rng.clone();
     let stop = match frontier.begin_round(&mut rng, context(1)).unwrap() {
@@ -704,10 +704,10 @@ fn a_tight_projection_bound_ends_the_run_with_the_capacity_stop() {
         serde_json::json!("control_capacity_exhausted")
     );
     frontier.record_stop(product_stop(class)).unwrap();
-    let recorded = frontier.state().unwrap().stopped.clone().unwrap();
+    let recorded = frontier.state().unwrap().stopped().cloned().unwrap();
     assert_eq!(recorded.reason, capacity_reason());
     assert!(recorded.incomplete_search_acknowledged);
-    assert_eq!(frontier.state().unwrap().selection_count, 1);
+    assert_eq!(frontier.state().unwrap().selection_count(), 1);
     drop(frontier);
 
     // The journal replays the stopped epoch: nothing to close.
@@ -736,8 +736,8 @@ fn one_event_short_of_a_whole_round_stops_before_the_first_selection() {
         .record_stop(ProductStop::ControlCapacityExhausted)
         .unwrap();
     let state = frontier.state().unwrap();
-    assert_eq!(state.selection_count, 0);
-    assert_eq!(state.stopped.as_ref().unwrap().reason, capacity_reason());
+    assert_eq!(state.selection_count(), 0);
+    assert_eq!(state.stopped().unwrap().reason, capacity_reason());
 }
 
 // r[verify chaoscontrol.campaign_policy.stop.invalid]
@@ -755,14 +755,14 @@ fn a_retirement_the_host_capacity_refuses_becomes_the_capacity_stop() {
     // The refused retirement was never staged, and the backend stays live.
     let state = frontier.state().unwrap();
     assert!(state
-        .candidates
+        .candidates()
         .iter()
         .all(|candidate| candidate.status == CandidateStatus::Retained));
     frontier
         .record_stop(ProductStop::ControlCapacityExhausted)
         .unwrap();
     assert_eq!(
-        frontier.state().unwrap().stopped.as_ref().unwrap().reason,
+        frontier.state().unwrap().stopped().unwrap().reason,
         capacity_reason()
     );
 }
@@ -826,8 +826,8 @@ fn a_tight_graph_bound_ends_the_run_with_the_capacity_stop() {
         .unwrap();
     assert_reserve_free(&frontier);
     let state = frontier.state().unwrap();
-    assert!(state.outstanding.is_empty());
-    assert_eq!(state.selection_count, 1);
+    assert!(state.outstanding().is_empty());
+    assert_eq!(state.selection_count(), 1);
     assert!(graph_room(&frontier) < demand.history_events);
     // The second does not fit the graph: the backend stops before drawing.
     let mut expected_rng = rng.clone();
@@ -839,7 +839,7 @@ fn a_tight_graph_bound_ends_the_run_with_the_capacity_stop() {
     frontier
         .record_stop(ProductStop::ControlCapacityExhausted)
         .unwrap();
-    let recorded = frontier.state().unwrap().stopped.clone().unwrap();
+    let recorded = frontier.state().unwrap().stopped().cloned().unwrap();
     assert_eq!(recorded.reason, capacity_reason());
     assert!(recorded.incomplete_search_acknowledged);
     let held = frontier.projection().unwrap();
@@ -872,8 +872,8 @@ fn one_graph_event_short_of_a_whole_round_stops_before_the_first_selection() {
         .record_stop(ProductStop::ControlCapacityExhausted)
         .unwrap();
     let state = frontier.state().unwrap();
-    assert_eq!(state.selection_count, 0);
-    assert_eq!(state.stopped.as_ref().unwrap().reason, capacity_reason());
+    assert_eq!(state.selection_count(), 0);
+    assert_eq!(state.stopped().unwrap().reason, capacity_reason());
 }
 
 // r[verify chaoscontrol.campaign_policy.stop.invalid]
@@ -890,14 +890,14 @@ fn a_retirement_the_graph_bound_refuses_becomes_the_capacity_stop() {
     ));
     let state = frontier.state().unwrap();
     assert!(state
-        .candidates
+        .candidates()
         .iter()
         .all(|candidate| candidate.status == CandidateStatus::Retained));
     frontier
         .record_stop(ProductStop::ControlCapacityExhausted)
         .unwrap();
     assert_eq!(
-        frontier.state().unwrap().stopped.as_ref().unwrap().reason,
+        frontier.state().unwrap().stopped().unwrap().reason,
         capacity_reason()
     );
 }
@@ -935,6 +935,7 @@ fn a_genesis_without_room_for_its_stop_is_refused_before_the_journal() {
 // Recovery.
 
 // r[verify chaoscontrol.campaign_policy.history.valid]
+// r[verify chaoscontrol.campaign_policy.journal_framing.valid]
 #[test]
 fn recovery_closes_the_outstanding_selection_and_starts_a_new_epoch() {
     let dir = tempfile::tempdir().unwrap();
@@ -1039,6 +1040,84 @@ fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
         .exists());
 }
 
+/// An epoch whose genesis names Campaign's earlier whole-state framing, or any other unknown
+/// schema, fails recovery at its genesis record, before any moment or control record replays,
+/// and recovery writes nothing.
+// r[verify chaoscontrol.campaign_policy.journal_framing.invalid]
+#[test]
+fn an_epoch_recorded_before_the_chained_state_identity_fails_recovery_at_its_genesis() {
+    // Recovery refuses the schema before it reads the epoch's history bound.
+    const UNREAD_HISTORY_BOUND: u64 = 64;
+    let cases = [
+        (
+            super::records::EARLIER_FRAMING_GENESIS_SCHEMA,
+            ReplayFailure::EarlierStateFraming,
+        ),
+        (
+            "chaoscontrol.campaign-genesis.v0",
+            ReplayFailure::UnknownSchema,
+        ),
+    ];
+    for (schema, failure) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let (mut journal, _) = CampaignJournal::open(dir.path()).unwrap();
+            assert_eq!(journal.begin_epoch().unwrap(), 0);
+            let genesis = super::records::GenesisRecord {
+                schema: schema.to_owned(),
+                epoch: 0,
+                seed: SEED,
+                max_history_events: UNREAD_HISTORY_BOUND,
+                previous_epoch_digest: None,
+            };
+            let record = super::records::encode(super::records::GENESIS, &genesis).unwrap();
+            journal.append(&[record]).unwrap();
+        }
+        let before = segment_count(dir.path(), 0);
+        let config = config(FrontierPolicy::Campaign, dir.path());
+        match CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default()) {
+            Err(FrontierError::Replay(error)) => {
+                assert_eq!((error.epoch, error.record), (0, 0));
+                assert_eq!(error.failure, failure);
+            }
+            Err(other) => panic!("unexpected {other}"),
+            Ok(_) => panic!("{schema} replayed"),
+        }
+        assert_eq!(segment_count(dir.path(), 0), before);
+        assert!(!dir
+            .path()
+            .join(JOURNAL_DIRECTORY_NAME)
+            .join(crate::explorer::journal::epoch_directory_name(1))
+            .exists());
+    }
+}
+
+/// Campaign state identities of one fixed journal: after the genesis segment and after the
+/// first published selection. Every recorded control event names such identities, so a
+/// Campaign or adapter change that moves either one leaves earlier journals unable to replay:
+/// bump `GENESIS_SCHEMA`, refuse the previous schema, and re-pin both values.
+// r[verify chaoscontrol.campaign_policy.journal_framing]
+#[test]
+fn the_genesis_schema_names_the_pinned_state_identities() {
+    const GENESIS_STATE: &str =
+        "State:06e4a5cb6cd1e1fbc240629b14d471b4776601e963e1c9097c4a1e9a7b117dbb";
+    const SELECTED_STATE: &str =
+        "State:619708f8dd7a42266714a64d7e496bc823f71ad1a7b9df181eb0abdeea744eec";
+    let dir = tempfile::tempdir().unwrap();
+    let mut frontier = open_campaign(dir.path(), ScriptedIo::default());
+    let genesis = frontier.state().unwrap().state_id().to_string();
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    let plan = planned(&mut frontier, &mut rng, 0);
+    let _round = executable(frontier.authorize(plan).unwrap());
+    let selected = frontier.state().unwrap().state_id().to_string();
+    assert_ne!(genesis, selected);
+    assert_eq!(
+        (genesis.as_str(), selected.as_str()),
+        (GENESIS_STATE, SELECTED_STATE),
+        "journal state identities moved: bump GENESIS_SCHEMA before re-pinning"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // One campaign per graph; the current graph; no control drafts (Campaign D82-D84).
 
@@ -1054,7 +1133,8 @@ fn assert_current_graph_without_drafts(frontier: &CampaignFrontier<ScriptedIo>) 
     assert_eq!(projection.state(), session.state());
     assert_eq!(projection.control_events().len(), session.payloads().len());
     let state = projection.state();
-    let owed = u32::try_from(state.outstanding.len()).unwrap() + u32::from(state.stopped.is_none());
+    let owed =
+        u32::try_from(state.outstanding().len()).unwrap() + u32::from(state.stopped().is_none());
     assert_eq!(projection.reserved_control_events(), owed);
     assert_eq!(projection.reserved_graph_events(), owed);
 }
@@ -1088,12 +1168,12 @@ fn every_commit_presents_the_current_graph_and_leaves_no_control_draft() {
         assert_current_graph_without_drafts(&frontier);
         let authorized = executable(frontier.authorize(plan).unwrap());
         assert_current_graph_without_drafts(&frontier);
-        assert_eq!(frontier.state().unwrap().outstanding.len(), 1);
+        assert_eq!(frontier.state().unwrap().outstanding().len(), 1);
         frontier
             .finish_round(authorized, &observation(1, &branches))
             .unwrap();
         assert_current_graph_without_drafts(&frontier);
-        assert!(frontier.state().unwrap().outstanding.is_empty());
+        assert!(frontier.state().unwrap().outstanding().is_empty());
     }
     let session = frontier.control_session().unwrap();
     // Child moments are graph events outside the control lineage.

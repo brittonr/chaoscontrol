@@ -137,7 +137,7 @@ pub fn candidate_record(
         .ok_or(AdapterError::BoundOverflow)?;
     build_candidate(
         identity,
-        state.admission.campaign_id,
+        state.admission().campaign_id,
         entry.parent_moment_id,
         depth,
         operation_profile_id(entry.mode, entry.entry_seq, entry.marker_digest),
@@ -158,7 +158,7 @@ pub fn validate_candidate(
     generation_profile_id: Id,
     record: &CandidateRecord,
 ) -> Result<(), AdapterError> {
-    if record.campaign_id != state.admission.campaign_id {
+    if record.campaign_id != state.admission().campaign_id {
         return Err(AdapterError::CrossedCampaign);
     }
     let expected = candidate_record(identity, state, entry, generation_profile_id)?;

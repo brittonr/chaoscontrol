@@ -137,7 +137,7 @@ pub fn selection_mode(identity: &AdapterIdentity) -> SelectionMode {
 /// Returns `ArithmeticOverflow` when the selection count is exhausted.
 pub fn ticket_counter(state: &FrontierState) -> Result<u64, AdapterError> {
     state
-        .selection_count
+        .selection_count()
         .checked_add(1)
         .ok_or(AdapterError::Campaign(
             campaign_core::CampaignError::ArithmeticOverflow,

@@ -167,8 +167,8 @@ pub fn ineligible_retirement(
     reason: IneligibleReason,
 ) -> RetirementRequest {
     RetirementRequest {
-        campaign_id: state.admission.campaign_id,
-        state_id: state.state_id,
+        campaign_id: state.admission().campaign_id,
+        state_id: state.state_id(),
         policy_id: identity.policy_id,
         adapter_id: identity.adapter_id,
         candidate_id,

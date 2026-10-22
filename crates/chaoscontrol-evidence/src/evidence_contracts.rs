@@ -72,6 +72,9 @@ const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
 /// Optional run-config key naming the frontier policy; absent means Campaign.
 pub(crate) const RUN_CONFIG_FRONTIER_POLICY_KEY: &str =
     crate::frontier_policy_gate::FRONTIER_POLICY_KEY;
+/// Optional run-config key carrying the run's recorded random-fault setting;
+/// absent for checkpoints written before the setting existed.
+pub(crate) const RUN_CONFIG_RANDOM_FAULTS_KEY: &str = "random_faults";
 
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
@@ -100,6 +103,9 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     let valid = contracts.join("fixtures/valid");
     validate_run_config(&load_json(&valid.join("run-config.valid.json"))?)?;
     validate_run_config(&load_json(&valid.join("run-config.campaign.valid.json"))?)?;
+    validate_run_config(&load_json(
+        &valid.join("run-config.random-faults.valid.json"),
+    )?)?;
     let simulator_profile = serde_json::from_value::<crate::simulator_profile::SimulatorProfile>(
         load_json(&valid.join("simulator-profile.valid.json"))?,
     )
@@ -163,6 +169,10 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     )?;
     expect_invalid(
         &invalid.join("run-config.retired-legacy-policy.invalid.json"),
+        validate_run_config,
+    )?;
+    expect_invalid(
+        &invalid.join("run-config.non-boolean-random-faults.invalid.json"),
         validate_run_config,
     )?;
     // r[verify chaoscontrol.campaign_policy.rollback.valid]
@@ -514,7 +524,19 @@ pub fn validate_run_config(value: &Value) -> EvidenceResult<()> {
     if let Some(policy) = value.get(RUN_CONFIG_FRONTIER_POLICY_KEY) {
         validate_run_config_frontier_policy(policy)?;
     }
+    if let Some(random_faults) = value.get(RUN_CONFIG_RANDOM_FAULTS_KEY) {
+        validate_run_config_random_faults(random_faults)?;
+    }
     Ok(())
+}
+
+/// Checks a present run-config `random_faults` value: the run's recorded
+/// setting is an explicit boolean.
+pub(crate) fn validate_run_config_random_faults(random_faults: &Value) -> EvidenceResult<()> {
+    ensure(
+        random_faults.is_boolean(),
+        "run-config.random_faults: expected boolean",
+    )
 }
 
 /// Checks a present run-config `frontier_policy` value; an absent key means

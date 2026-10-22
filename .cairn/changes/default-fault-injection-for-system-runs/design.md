@@ -89,7 +89,9 @@ opt-out on the main path.
 **Choice:** Checkpoints, campaign progress, bug reports, and replay recordings
 always write the setting as an explicit boolean. Resumption takes it from the
 checkpoint or progress file, and the minimizer, `reproduce`, and replay take
-it from the bug or recording. They offer no override.
+it from the bug or recording. They offer no override. The dogfood
+`run-config.json` projection carries the checkpoint's recorded value and keeps
+the legacy shape when the checkpoint predates the setting.
 
 **Rationale:** A bug found under random injection reproduces only under the
 same setting, and an override would invite a replay of a different run. An

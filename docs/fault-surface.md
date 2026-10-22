@@ -38,7 +38,7 @@ The explorer, its workers, and the auto-minimizer build every system run with th
 The run records the value it used, always as an explicit boolean, in `checkpoint.json`, `campaign_progress.json`, and every bug report; replay recordings carry it too.
 `resume`, `campaign-resume`, `minimize`, `reproduce`, and replay use the recorded value, so a bug is reproduced under the setting that found it.
 Records written before the setting existed carry no value and load as off, because those runs built their fault engine with random injection hard-coded off.
-The dogfood `run-config.json` projection does not carry the setting.
+The dogfood `run-config.json` projection carries the setting whenever the checkpoint records it, and keeps the legacy shape for checkpoints that predate it.
 
 ## Evidence and replay
 

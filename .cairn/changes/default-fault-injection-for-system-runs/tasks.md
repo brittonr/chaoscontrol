@@ -10,6 +10,7 @@
 - [x] [serial] T6 Record the setting in checkpoints, campaign progress, bug reports, and replay recordings, rebuild resumed, minimized, reproduced, and replayed runs from the record, and load records that predate the setting as off. r[chaoscontrol.system_runs.fault_injection.exploration] r[chaoscontrol.system_runs.fault_injection.scenario.recorded]
 - [x] [parallel] T7 Give the networking harness the explicit opt-out. r[chaoscontrol.system_runs.fault_injection.scenario.opt_out]
 - [x] [parallel] T8 Add positive and negative tests and Nickel fixtures for the flag, the run profile, the bug-report contract, every record, and the legacy load. r[chaoscontrol.system_runs.fault_injection.scenario.exploration] r[chaoscontrol.system_runs.fault_injection.scenario.recorded]
+- [x] [serial] T9 Carry a recorded setting into the dogfood `run-config.json` projection and admit it only as a boolean, keep the legacy shape for checkpoints that predate it, and register the setting's fixtures in the evidence contract registry. r[chaoscontrol.system_runs.fault_injection.scenario.recorded]
 
 ## Phase 2: Verification and completion evidence
 

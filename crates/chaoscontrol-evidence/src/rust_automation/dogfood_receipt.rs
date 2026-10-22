@@ -6,7 +6,8 @@
 use serde_json::{json, Value};
 
 use crate::evidence_contracts::{
-    validate_run_config_frontier_policy, RUN_CONFIG_FRONTIER_POLICY_KEY,
+    validate_run_config_frontier_policy, validate_run_config_random_faults,
+    RUN_CONFIG_FRONTIER_POLICY_KEY, RUN_CONFIG_RANDOM_FAULTS_KEY,
 };
 use crate::frontier_policy_gate::{admit_checkpoint, ReleaseGate};
 
@@ -71,6 +72,13 @@ pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, 
             .map_err(|error| format!("checkpoint config {}", error.message()))?;
         run_config[RUN_CONFIG_FRONTIER_POLICY_KEY] = policy.clone();
     }
+    // Checkpoints written before the random-fault setting existed omit it, so
+    // their run configs keep the legacy shape; a recorded setting is carried.
+    if let Some(random_faults) = config.get(RUN_CONFIG_RANDOM_FAULTS_KEY) {
+        validate_run_config_random_faults(random_faults)
+            .map_err(|error| format!("checkpoint config {}", error.message()))?;
+        run_config[RUN_CONFIG_RANDOM_FAULTS_KEY] = random_faults.clone();
+    }
     Ok(run_config)
 }
 
@@ -112,6 +120,14 @@ pub fn encode_run_config_compat(config: &Value) -> Result<Vec<u8>, String> {
             serde_json::to_string(RUN_CONFIG_FRONTIER_POLICY_KEY)
                 .map_err(|error| error.to_string())?,
             serde_json::to_string(frontier_policy).map_err(|error| error.to_string())?,
+        ));
+    }
+    if let Some(random_faults) = object.get(RUN_CONFIG_RANDOM_FAULTS_KEY) {
+        lines.push(format!(
+            "  {}: {},",
+            serde_json::to_string(RUN_CONFIG_RANDOM_FAULTS_KEY)
+                .map_err(|error| error.to_string())?,
+            serde_json::to_string(random_faults).map_err(|error| error.to_string())?,
         ));
     }
     let policy = object
@@ -340,6 +356,37 @@ mod tests {
             assert!(
                 build_run_config("run", &checkpoint).is_err(),
                 "policy {policy} must be rejected"
+            );
+        }
+    }
+
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+    #[test]
+    fn recorded_random_faults_is_carried_and_legacy_checkpoints_keep_the_shape() {
+        let config = build_run_config("run", &checkpoint()).expect("config");
+        assert!(config.get("random_faults").is_none());
+        let encoded =
+            String::from_utf8(encode_run_config_compat(&config).expect("encoding")).expect("UTF-8");
+        assert!(!encoded.contains("random_faults"));
+
+        for recorded in [true, false] {
+            let mut checkpoint = checkpoint();
+            checkpoint["config"]["random_faults"] = json!(recorded);
+            let config = build_run_config("run", &checkpoint).expect("config");
+            assert_eq!(config["random_faults"], json!(recorded));
+            let encoded = encode_run_config_compat(&config).expect("encoding");
+            let reparsed: serde_json::Value =
+                serde_json::from_slice(&encoded).expect("encoded JSON");
+            assert_eq!(reparsed, config);
+            crate::validate_run_config(&reparsed).expect("recorded run config validates");
+        }
+
+        for malformed in [json!("true"), json!(1), serde_json::Value::Null] {
+            let mut checkpoint = checkpoint();
+            checkpoint["config"]["random_faults"] = malformed.clone();
+            assert!(
+                build_run_config("run", &checkpoint).is_err(),
+                "{malformed} must be rejected"
             );
         }
     }

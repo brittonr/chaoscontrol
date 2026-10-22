@@ -34,8 +34,9 @@ unused.
   integration, networking, and benchmark opt-outs, the explorer configuration,
   CLI, worker, minimizer, checkpoint, campaign progress, and bug records, the
   run profile and its Nickel contract and trusted identity, the bug-report
-  evidence contract, the replay recording, the fault surface and profile
-  documentation, and the lifecycle package.
+  evidence contract, the dogfood run-config projection, the replay recording,
+  the evidence contract registry, the fault surface and profile documentation,
+  and the lifecycle package.
 - **Compatibility:** a system run now injects seed-derived faults unless it
   opts out. The injection is deterministic under a fixed seed, so a run's
   behaviour is reproducible; what changes is that the default is no longer a

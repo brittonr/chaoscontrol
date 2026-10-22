@@ -287,6 +287,13 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["Campaign structural receipts do not prove VM correctness or release readiness.", "ChaosControl retains execution and persistence authority."],
     },
     {
+      change = "adopt-campaign-chained-identity",
+      owner = "chaoscontrol-explore",
+      target_state = "experimental",
+      evidence_prerequisite = "Fresh acquisition of the pinned Campaign revision from its public seed, the Campaign conformance suite with its pinned digests, typed refusal of earlier-framing journals, and cross-pin replay parity of a bounded KVM smoke must pass.",
+      non_claims = ["Zero-drift replay over one bounded run per policy and pin does not prove that every exploration decision is unchanged.", "Campaign structural receipts do not prove VM correctness or release readiness."],
+    },
+    {
       change = "benchmark-bug-corpus",
       owner = "chaoscontrol-explore",
       target_state = "experimental",

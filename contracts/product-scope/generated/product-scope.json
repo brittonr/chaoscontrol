@@ -380,6 +380,16 @@
       "target_state": "experimental"
     },
     {
+      "change": "default-fault-injection-for-system-runs",
+      "evidence_prerequisite": "Tests for the default-on setting, the explicit opt-out, seed-derived injection, explicit-boolean admission, and recorded-setting resumption, minimization, reproduction, and replay, plus the KVM smoke checks with the default on, must pass.",
+      "non_claims": [
+        "Default random injection does not prove that a run exercises every failure path.",
+        "No change to fault-engine semantics, the schedule model, the fault catalogue, or the exploration mode."
+      ],
+      "owner": "chaoscontrol-vmm",
+      "target_state": "experimental"
+    },
+    {
       "change": "establish-bounded-input-repository",
       "evidence_prerequisite": "A published bounded-input contract and positive and negative parity for capability-relative reads, JSON limits, and bounded decompression must pass.",
       "non_claims": [

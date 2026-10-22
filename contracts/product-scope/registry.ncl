@@ -301,6 +301,13 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["Corpus rarity does not establish production likelihood.", "Fault and verdict semantics remain unchanged."],
     },
     {
+      change = "default-fault-injection-for-system-runs",
+      owner = "chaoscontrol-vmm",
+      target_state = "experimental",
+      evidence_prerequisite = "Tests for the default-on setting, the explicit opt-out, seed-derived injection, explicit-boolean admission, and recorded-setting resumption, minimization, reproduction, and replay, plus the KVM smoke checks with the default on, must pass.",
+      non_claims = ["Default random injection does not prove that a run exercises every failure path.", "No change to fault-engine semantics, the schedule model, the fault catalogue, or the exploration mode."],
+    },
+    {
       change = "establish-bounded-input-repository",
       owner = "chaoscontrol-evidence",
       target_state = "experimental",

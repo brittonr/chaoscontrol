@@ -1,42 +1,145 @@
 {
-  "decision": "unknown",
+  "schema_version": "cairn.semantic-review.review-receipt.v1",
+  "review_kind": "plan",
+  "decision": "approved",
   "findings": [
     {
+      "category": "incoherent",
+      "id": "ab-smoke-trace-equality-unattainable",
+      "severity": "high",
+      "summary": "Rest unchanged decisions on deterministic cross-pin trace replay, not on live traces repeating; record trace digests and the legacy-diagnostic control as observations."
+    },
+    {
       "category": "omission",
-      "id": "CAIRN_PLACEHOLDER",
-      "severity": "high"
+      "id": "journal-schema-no-framing-tripwire",
+      "severity": "medium",
+      "summary": "Pin the journal's state identities in a test so a later framing change forces a genesis schema bump."
+    },
+    {
+      "category": "incoherent",
+      "id": "traceability-task-unattainable",
+      "severity": "medium",
+      "summary": "Add source_pins verify markers to the dependency-policy controls and narrow the post-sync traceability task."
+    },
+    {
+      "category": "omission",
+      "id": "durability-probe-undefined",
+      "severity": "medium",
+      "summary": "Keep the append probe as a documented ignored benchmark with named sizes and record its environment and statistics."
+    },
+    {
+      "category": "incoherent",
+      "id": "decision-invariance-rationale",
+      "severity": "low",
+      "summary": "Ground unchanged decisions in the unique insertion rank dimension rather than in unchanged candidate identities."
+    },
+    {
+      "category": "incoherent",
+      "id": "conformance-default-profile-stale",
+      "severity": "low",
+      "summary": "Align the conformance test's default-profile bounds with Campaign 4a669ead."
+    },
+    {
+      "category": "incoherent",
+      "id": "license-change-writeup",
+      "severity": "low",
+      "summary": "Correct the counts, name prepare-public-source, and cite the unified AGPL dependency policy."
+    },
+    {
+      "category": "incoherent",
+      "id": "cargo-nix-agreement-overclaim",
+      "severity": "low",
+      "summary": "State that only Nix asserts its own pin and restore the Cargo/Nix agreement residual risk."
+    },
+    {
+      "category": "omission",
+      "id": "acquirable-precondition-unrecorded",
+      "severity": "low",
+      "summary": "Record acquisition from an empty Cargo home and a refreshed Nix fetch."
+    },
+    {
+      "category": "omission",
+      "id": "source-pins-invalid-missing-endpoint-case",
+      "severity": "low",
+      "summary": "Add the unservable-endpoint case to the source-pins negative scenario."
+    },
+    {
+      "category": "incoherent",
+      "id": "old-binary-resume-overclaim",
+      "severity": "low",
+      "summary": "Qualify that only a kept earlier binary or cache can resume earlier-framing journals."
+    },
+    {
+      "category": "incoherent",
+      "id": "journal-task-checked-without-evidence",
+      "severity": "low",
+      "summary": "Record the journal-framing test runs before checking the task."
+    },
+    {
+      "category": "incoherent",
+      "id": "census-stale-vs-clean-smoke",
+      "severity": "medium",
+      "summary": "Recount the clean smoke journal and size the benchmark from it."
+    },
+    {
+      "category": "incoherent",
+      "id": "cross-pin-replay-scope",
+      "severity": "low",
+      "summary": "Limit the cross-pin replay claim to each pin's legacy-run observations."
+    },
+    {
+      "category": "incoherent",
+      "id": "stale-equal-trace-nonclaim",
+      "severity": "low",
+      "summary": "Replace the equal-trace non-claim with the zero-drift receipt wording."
+    },
+    {
+      "category": "incoherent",
+      "id": "benchmark-record-size-claim",
+      "severity": "low",
+      "summary": "Size benchmark records from the census and cite the measured payload range."
+    },
+    {
+      "category": "incoherent",
+      "id": "slowdown-causal-claim",
+      "severity": "low",
+      "summary": "Narrow the slowdown claim, bind the control binaries, and record a residual risk."
+    },
+    {
+      "category": "omission",
+      "id": "receipts-not-committed",
+      "severity": "low",
+      "summary": "Commit the two distinct parity receipts as evidence."
     }
   ],
-  "review_kind": "plan",
   "reviewed_inputs": [
     {
-      "hash": "CAIRN_PLACEHOLDER",
-      "path": "proposal.md"
+      "path": "proposal.md",
+      "hash": "abf8c0f6ab7c873802b76b036f316913e03c40dd2c616e16dafbb402d6faaaae"
     },
     {
-      "hash": "CAIRN_PLACEHOLDER",
-      "path": "specs"
+      "path": "specs/campaign-core-adoption/spec.md",
+      "hash": "5f7b10dfa6bf619ec38129d1f2c3a231e47184381296f298ac24aa6300cf9ba6"
     },
     {
-      "hash": "CAIRN_PLACEHOLDER",
-      "path": "design.md"
+      "path": "design.md",
+      "hash": "3a38216767dd59a6d6d1be450d6a1d2f8cb76084d29ec386246a621ee223f631"
     },
     {
-      "hash": "CAIRN_PLACEHOLDER",
-      "path": "risk.md"
+      "path": "risk.md",
+      "hash": "d07a58959d48bc3a0ae8c522143578113f9132dfffb03cdd0619768a27470cdd"
     },
     {
-      "hash": "CAIRN_PLACEHOLDER",
-      "path": "tasks.md"
+      "path": "tasks.md",
+      "hash": "06a2a9e24c04cfb6a10c66ff8400d01a81cff2c3963563ef2c4ee09260162f4a"
     },
     {
-      "hash": "CAIRN_PLACEHOLDER",
-      "path": "verification.md"
+      "path": "verification.md",
+      "hash": "645692e03d431cf2d57d1ba558f31292709a67654c7941a07941f5ca392a8e1b"
     }
   ],
   "reviewer": {
-    "id": "CAIRN_PLACEHOLDER",
-    "source": "manual"
-  },
-  "schema_version": "cairn.semantic-review.review-receipt.v1"
+    "source": "agentic",
+    "id": "chaoscontrol-adopt-campaign-chained-identity-plan-review-20261021"
+  }
 }

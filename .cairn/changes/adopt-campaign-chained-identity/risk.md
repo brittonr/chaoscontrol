@@ -30,9 +30,10 @@
 | `ControlSession` stays unadopted, so ChaosControl's own session can drift from Campaign's reusable one; the measurement prices only appends, not crash recovery of split settlement segments. | ChaosControl maintainers |
 | The Choregraph history dependency still comes from `git.onix.computer`, which serves it today. | ChaosControl maintainers |
 | No check compares the Cargo and Nix Campaign revisions; their agreement rests on reviewed records. | ChaosControl maintainers |
+| Live exploration on this host does not repeat, and a minutes-long idle-guest slowdown occurs at both pins at a rate that varies with the explorer binary for reasons not yet explained. | ChaosControl maintainers |
 
 ## Non-claims
 
-- Passing tests and an equal smoke trace do not prove that every exploration decision is unchanged.
+- Passing tests and zero-drift parity receipts over one bounded run per policy and pin do not prove that every exploration decision is unchanged.
 - The append measurement does not prove crash safety of a per-event journal layout.
 - Fresh acquisition on this host does not prove availability from other networks.

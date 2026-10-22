@@ -1,0 +1,197 @@
+{
+  "schema": "chaoscontrol.frontier-parity-receipt.v1",
+  "inputs": [
+    {
+      "role": "legacy",
+      "path": "legacy-diagnostic/frontier-trace.jsonl",
+      "blake3": "e62c3149e8d720088b3012c0a4ee14ff836ca10d42b514b237dce19868b3797d",
+      "records": 8,
+      "policy": "legacy-diagnostic"
+    },
+    {
+      "role": "campaign",
+      "path": "campaign/frontier-trace.jsonl",
+      "blake3": "9d195abfefd1560ac225a7d17feecf472e3b1af079c1ff00373fe5623b004eab",
+      "records": 8,
+      "policy": "campaign"
+    }
+  ],
+  "config": {
+    "seed": 42,
+    "max_rounds": 5,
+    "max_frontier": 50,
+    "branch_factor": 4,
+    "mode": "fault-schedule",
+    "stale_round_limit": 10
+  },
+  "runs": [
+    {
+      "recorded_policy": "legacy-diagnostic",
+      "replayed_through": "campaign",
+      "report": {
+        "schema": "chaoscontrol.frontier-parity-report.v1",
+        "case": "legacy-run-replayed-through-campaign",
+        "left": {
+          "policy": "legacy-diagnostic",
+          "role": "recorded"
+        },
+        "right": {
+          "policy": "campaign",
+          "role": "replayed"
+        },
+        "rounds_compared": 5,
+        "fields_compared": [
+          "root_retained",
+          "round_count",
+          "mode",
+          "outcome",
+          "draws",
+          "selected_entry",
+          "explore_flag",
+          "parent_moment",
+          "admitted",
+          "pruned",
+          "retained_set",
+          "selection_counts",
+          "retained_scores",
+          "selection_use",
+          "stop_class",
+          "rounds_completed",
+          "backend_failure"
+        ],
+        "decision_fields": {
+          "equal": true,
+          "drift_count": 0,
+          "drifts": []
+        },
+        "semantic_work": {
+          "answer": {
+            "status": "measured",
+            "equal": true
+          },
+          "facts": [
+            {
+              "quantity": "candidates_examined",
+              "left_total": 15,
+              "right_total": 15,
+              "rounds_measured": 5,
+              "differing_rounds": 0,
+              "first_differing_round": null,
+              "equal": true
+            },
+            {
+              "quantity": "eligible_candidates",
+              "left_total": 15,
+              "right_total": 15,
+              "rounds_measured": 5,
+              "differing_rounds": 0,
+              "first_differing_round": null,
+              "equal": true
+            }
+          ]
+        },
+        "time": {
+          "status": "not_measured"
+        },
+        "memory": {
+          "status": "not_measured"
+        }
+      }
+    },
+    {
+      "recorded_policy": "campaign",
+      "replayed_through": "legacy-diagnostic",
+      "report": {
+        "schema": "chaoscontrol.frontier-parity-report.v1",
+        "case": "campaign-run-replayed-through-legacy",
+        "left": {
+          "policy": "campaign",
+          "role": "recorded"
+        },
+        "right": {
+          "policy": "legacy-diagnostic",
+          "role": "replayed"
+        },
+        "rounds_compared": 5,
+        "fields_compared": [
+          "root_retained",
+          "round_count",
+          "mode",
+          "outcome",
+          "draws",
+          "selected_entry",
+          "explore_flag",
+          "parent_moment",
+          "admitted",
+          "pruned",
+          "retained_set",
+          "selection_counts",
+          "retained_scores",
+          "selection_use",
+          "stop_class",
+          "rounds_completed",
+          "backend_failure"
+        ],
+        "decision_fields": {
+          "equal": true,
+          "drift_count": 0,
+          "drifts": []
+        },
+        "semantic_work": {
+          "answer": {
+            "status": "measured",
+            "equal": true
+          },
+          "facts": [
+            {
+              "quantity": "candidates_examined",
+              "left_total": 15,
+              "right_total": 15,
+              "rounds_measured": 5,
+              "differing_rounds": 0,
+              "first_differing_round": null,
+              "equal": true
+            },
+            {
+              "quantity": "eligible_candidates",
+              "left_total": 15,
+              "right_total": 15,
+              "rounds_measured": 5,
+              "differing_rounds": 0,
+              "first_differing_round": null,
+              "equal": true
+            }
+          ]
+        },
+        "time": {
+          "status": "not_measured"
+        },
+        "memory": {
+          "status": "not_measured"
+        }
+      }
+    }
+  ],
+  "decision_fields_equal": true,
+  "semantic_work": {
+    "status": "measured",
+    "equal": true
+  },
+  "time": {
+    "status": "not_measured"
+  },
+  "memory": {
+    "status": "not_measured"
+  },
+  "cutover_ready": true,
+  "non_claims": [
+    "live coverage drift between the two runs is not compared; each run is replayed only against its own recorded observations",
+    "time and memory are not measured",
+    "structural frontier decisions only; not VM, fault, assertion, finding, replay, minimization, or release evidence",
+    "the replayed Campaign backend writes a scratch journal without fsync; publication durability is not exercised",
+    "legacy corpus recycling and the empty-frontier live-controller continuation are not replayed",
+    "the operator signal is taken from the recorded stop, not re-observed",
+    "input-tree alternative draws are not replayed; only selection draws are",
+    "resumed runs (a trace with more than one header) are not supported"
+  ]
+}

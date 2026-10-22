@@ -12,7 +12,7 @@ Planned checks come first; observed results are added under "Observed results" o
 | Fresh acquisition | `cargo fetch --locked` with a new, empty `CARGO_HOME`; `nix flake prefetch --refresh` of the `campaign-src` URL | Cargo fetches `4a669ead` from the seed without changing `Cargo.lock`, with the same Git tree as Campaign's own `4a669ead`; Nix's refreshed fetch has the `flake.lock` narHash. |
 | Journal state identities | `the_genesis_schema_names_the_pinned_state_identities` | The pinned identities hold at this change, and the same test at `a154ddd` yields other identities. |
 | A/B KVM smoke | Release explorers built from clean trees at `a154ddd` and at this change's committed head; one bounded run per frontier policy per explorer against one kernel and one initrd built from a committed tree; each pin's `check-frontier-parity` over both pins' run pairs | Every run exits 0, and all four parity receipts report every decision field equal. Trace digests across the pins and the legacy-diagnostic repeatability control are observations only. |
-| Durable append cost | `cargo test -p chaoscontrol-explore --lib --release -- journal::tests::durable_append_cost_by_records_per_segment --ignored --nocapture` with `CHAOSCONTROL_APPEND_COST_DIR` on the repository filesystem, and a census of the smoke journal's records per segment | Mean, median, 90th-percentile, and maximum latency of 200 appends of 512-byte records for one and seven records per segment; the number of segments and control records in the smoke journal. |
+| Durable append cost | `cargo test -p chaoscontrol-explore --lib --release -- journal::tests::durable_append_cost_by_records_per_segment --ignored --nocapture` with `CHAOSCONTROL_APPEND_COST_DIR` on the repository filesystem, and a census of the smoke journal's records per segment | Mean, median, 90th-percentile, and maximum latency of 200 appends of 2,048-byte records for one and thirteen records per segment; the number of segments and control records in the smoke journal. |
 | Cairn | `cairn validate`, `cairn gate proposal|design|tasks`, traceability after sync | Pass; `journal_framing` and its scenarios, `source_pins.invalid`, and `source_pins.acquirable` are referenced. |
 | Full gate | `nix flake check -L` | Pass, or each check that cannot run on this host is named. |
 
@@ -70,14 +70,57 @@ On the tree with every code change, in a private target directory:
 - `cargo test -p chaoscontrol-explore --lib --locked --offline`: 410 passed, 2 ignored (412 listed tests: the baseline's 409, the two journal tests, and the ignored append benchmark), tests finished in 31.53 s under a load average near 39.
 - `cargo clippy -p chaoscontrol-explore --lib --tests --locked --offline -- -D warnings`: no findings.
 - `cargo check --workspace --all-targets --locked --offline` (before the journal tests): passed with no warnings.
+- After the benchmark was resized from the clean census (constants and doc comment of the ignored benchmark only), the three checks ran again on the final tree: formatting clean; 410 passed, 2 ignored, tests finished in 47.75 s under a load average near 57; Clippy without findings.
 
 ### Durable append cost
 
-Host filesystem: ZFS dataset `datapool/git` (`sync=standard`, `compression=lz4`, `recordsize=128K`, `logbias=latency`), load average 39 during the run. `CHAOSCONTROL_APPEND_COST_DIR=target/adopt/append-cost cargo test -p chaoscontrol-explore --lib --locked --offline --release -- journal::tests::durable_append_cost_by_records_per_segment --ignored --nocapture`, 200 appends of 512-byte records per case:
+Census of the clean A/B smoke's Campaign journals (decoded segment by segment; both pins have the same layout): one epoch of 12 segments holding 29 control records. The genesis segment holds the genesis, the root moment, 3 control records, and an entry; five selection segments hold one control record and a selection record each (about 3.4 KB); three settlement segments hold a moment, 4 control records, an entry, and a round (about 6.9 KB); one holds 2 control records and a round; the largest, `seg-00000008`, holds 3 moments, 6 control records, 3 entries, and a round in 13,531 bytes; the stop segment holds one control record in 931 bytes. Control record payloads range from 724 to 3,703 bytes (median 1,436). An earlier run's journal (12 segments, 21 control records, largest segment 7 records) is superseded by this census.
+
+Host filesystem: ZFS dataset `datapool/git` (`sync=standard`, `compression=lz4`, `recordsize=128K`, `logbias=latency`), load average 57 during the run. `CHAOSCONTROL_APPEND_COST_DIR=target/adopt/append-cost cargo test -p chaoscontrol-explore --lib --locked --offline --release -- journal::tests::durable_append_cost_by_records_per_segment --ignored --nocapture`, 200 appends of 2,048-byte records per case:
 
 | Records per segment | Mean | Median | 90th percentile | Maximum |
 | --- | --- | --- | --- | --- |
-| 1 | 1.92 ms | 2.04 ms | 2.28 ms | 3.34 ms |
-| 7 | 1.84 ms | 2.03 ms | 2.19 ms | 3.09 ms |
+| 1 | 1.80 ms | 1.92 ms | 2.18 ms | 2.95 ms |
+| 13 | 2.09 ms | 2.14 ms | 2.46 ms | 6.56 ms |
 
-A throwaway census of the Campaign journal of the KVM smoke's Campaign run (5 rounds; recorded with an explorer built before the final commit, read from a copy) found one epoch of 12 segments holding 21 control records: the genesis segment (genesis, root moment, 3 control records, entry), five selection segments of one control record each, the first settlement segment (moment, 4 control records, entry, round) with 7 records, four settlement segments of 2 control records each, and a stop segment of 1. One segment per control event would therefore publish 21 segments instead of 12, adding 9 appends, about 17 ms at the measured mean, to a run whose rounds take seconds. The per-append cost does not depend on the record count up to seven; crash recovery of a split settlement is not measured.
+One segment per control event would publish 29 segments instead of 12 in this 5-round run, adding 17 appends, about 31 ms at the one-record mean, to a run whose rounds take seconds. The append cost grows little with the segment size up to the largest observed segment. Crash recovery of a split settlement is not measured.
+
+### A/B KVM smoke
+
+Evidence class: execution evidence for the recorded inputs only; the decision claim rests on deterministic trace replay.
+
+- Explorers, built with `cargo build --release --offline --locked -p chaoscontrol-explore --bins` in private target directories from clean trees: `a154ddd` (a clean detached worktree; buildable only offline, because `e7757a51` is served only from a preserved Cargo Git cache) and `6cfe25fd42296f20411381569598e90431ec366a` (this change's committed code).
+
+| Binary | BLAKE3 |
+| --- | --- |
+| `a154ddd` `chaoscontrol-explore` | `5828b5b2f5f8a8c0385d01c5c56e8e39a47d83fe8c381c0a0785f4bd0c1ac74c` |
+| `a154ddd` `check-frontier-parity` | `66d6c74acfb5ed3d6e25537dc7fcc29fa119ec498694927ae95cdcf5915127bd` |
+| `6cfe25fd` `chaoscontrol-explore` | `f5ca69cbb446c8e37787d84553a4bff3d62b242a47b89c06854fccfabebc25a5` |
+| `6cfe25fd` `check-frontier-parity` | `97897177ef04f376294c43e1c97067cbbc8c9bfa42367ea2bb62d5a7cf52a120` |
+
+- Kernel: `.#kcov-vmlinux` = `/nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux`, the same store path as the 2026-09-26 smoke, rebuilt here; its `vmlinux` has the recorded BLAKE3 `3c0823c6c9480670479bdaf7916a57885c89315a560456c6191197ef7b469b7b`.
+- Initrd: `.#initrd-rust-workload` built from the clean `6cfe25fd` tree = `/nix/store/lj4y2f812g9mi9fkznxljmaki676yc5f-chaoscontrol-initrd-rust-workload` (390,750 bytes, BLAKE3 `33adeba1974db86d1adadd2392decda3a5f352b8c8add79631bed349d4920fe7`).
+- Each explorer ran `run --kernel <kernel>/vmlinux --initrd <initrd> --vms 1 --rounds 5 --branches 4 --ticks 500 --seed 42 --mode fault-schedule --memory-mb 128 --frontier-policy <policy>` with `RUST_LOG=info,chaoscontrol_explore=debug`, once with `legacy-diagnostic` and once with `campaign`, sequentially on 2026-10-21 between 21:52 and 21:59 EDT (load average 16 to 30). The runs went through the agent's background job runner rather than pueue, because a pueue daemon started from the agent shell does not survive the shell's process-group cleanup.
+
+| Run | Exit | Selected entries per round | Explore draws | Pruned | Wall clock | `frontier-trace.jsonl` BLAKE3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `a154ddd` legacy-diagnostic | 0 | 0, 1, 1, 2, 3 | none | none | 16.6 s | `e62c3149e8d720088b3012c0a4ee14ff836ca10d42b514b237dce19868b3797d` |
+| `a154ddd` campaign | 0 | 0, 1, 1, 2, 3 | none | none | 17.1 s | `9d195abfefd1560ac225a7d17feecf472e3b1af079c1ff00373fe5623b004eab` |
+| `6cfe25fd` legacy-diagnostic | 0 | 0, 1, 1, 1, 1 | none | none | 5 min 41 s | `106c5373c6989e34ba8125f9ccc826c3267a9a999c14de5413ec36e5ca0de6a3` |
+| `6cfe25fd` campaign | 0 | 0, 1, 2, 1, 3 | none | none | 16.3 s | `2cb7098995b219a5af1376a90de17b3bf2f1d33c89aab8bdc27d5f7350b3e968` |
+
+Parity, each run pair checked by each pin's `check-frontier-parity` (every check printed `legacy-run-replayed-through-campaign: 5 rounds, decision fields equal, semantic work Measured { equal: true }`, the same line for `campaign-run-replayed-through-legacy`, and `frontier parity ok`, exit 0):
+
+| Checker | Run pair | Receipt BLAKE3 |
+| --- | --- | --- |
+| `a154ddd` | `a154ddd` | `a0c4c7ea2d0792006b59d0e539a219567b92b0b38a77b4fa5f15558e371dfec9` |
+| `6cfe25fd` | `a154ddd` | `a0c4c7ea2d0792006b59d0e539a219567b92b0b38a77b4fa5f15558e371dfec9` |
+| `6cfe25fd` | `6cfe25fd` | `687d7bce4656620caa0e83b5e91fcb91bc1f2be9ccdce3f521b7df0e87440e5f` |
+| `a154ddd` | `6cfe25fd` | `687d7bce4656620caa0e83b5e91fcb91bc1f2be9ccdce3f521b7df0e87440e5f` |
+
+Each run pair's receipt is byte-identical under both checkers. Replay drives only the policy a run is replayed through, so the Campaign backends run only on the legacy-run observations: on each pin's legacy-run observations and draws, the `e7757a51` and `4a669ead` Campaign backends make the legacy policy's decisions, with the same semantic planning work, and so each other's. The campaign-run direction exercises the legacy policy, identical at both pins. The two distinct receipts are committed as `evidence/kvm-smoke-2026-10-21-a154ddd-frontier-parity-receipt.json` (`a0c4c7ea…`) and `evidence/kvm-smoke-2026-10-21-6cfe25fd-frontier-parity-receipt.json` (`687d7bce…`); traces, journals, and run logs stay local.
+
+Observations, not claims:
+
+- The live traces differ across the pins and also between the two legacy-diagnostic runs, which run identical code, so live exploration does not repeat on this host, as the 2026-09-25 record found.
+- Some runs spend minutes in round 1: the restored guest stops making SDK calls, and each branch runs until the 50,000-exit idle detector halts it, with the explorer mostly blocked (16 % CPU and about 14,000 voluntary context switches, against 95 % and about 100 in a fast run). Across seven runs of the `6cfe25fd` explorer this happened six times, and across the first seven runs of the `a154ddd` explorer never. It is not caused by this change's Campaign code: the slow `6cfe25fd` run in the table above is a legacy-diagnostic run, which runs none of the changed Campaign code, and a control reproduced the slowdown with the unchanged `a154ddd` explorer (BLAKE3 `5828b5b2…`, 10 min 16 s, 8 idle branches) and with an `a154ddd` explorer rebuilt with four codegen units (BLAKE3 `cdec72893a7cac84f883c490edb67680235c49aefe6c8864120870e50c3ec7ba`, 29 min 13 s with 4 idle branches; a second run of that binary took 18.5 s). Why its rate varies with the explorer binary, and why it was higher at `6cfe25fd`, is not explained; `risk.md` records it as a residual risk. Two of the `6cfe25fd` runs belong to an earlier session whose explorer, built from an uncommitted tree, has the same release binary hash; that session's own-pin and cross-pin parity checks also passed.

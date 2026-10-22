@@ -1353,11 +1353,12 @@ fn open_rejects_missing_output_and_non_directory_journal() {
 
 /// Durable appends timed per case by [`durable_append_cost_by_records_per_segment`].
 const COST_APPENDS: usize = 200;
-/// Payload bytes of one timed record, the order of one encoded Campaign control record.
-const COST_RECORD_BYTES: usize = 512;
-/// Records per timed segment: one control event per segment, and the largest segment of the
-/// 2026-10-21 KVM smoke's Campaign journal (a settlement segment of seven records).
-const COST_RECORDS_PER_SEGMENT: [usize; 2] = [1, 7];
+/// Payload bytes of one timed record: the 2026-10-21 KVM smoke's Campaign journal holds control
+/// records of 724 to 3,703 bytes (median 1,436).
+const COST_RECORD_BYTES: usize = 2048;
+/// Records per timed segment: one control event per segment, and the largest segment of that
+/// journal (a settlement segment of 13 records).
+const COST_RECORDS_PER_SEGMENT: [usize; 2] = [1, 13];
 
 /// Evidence for a later `ControlSession` decision, not a regression check: the latency of one
 /// durable segment append (staged write, file sync, no-replace rename, directory sync) for each

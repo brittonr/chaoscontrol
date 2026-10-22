@@ -172,5 +172,5 @@ fn a_binding_from_before_a_moment_admission_is_stale() {
     });
     assert!(planned.is_err());
     session.publish(event);
-    assert_eq!(session.state.outstanding.len(), 0);
+    assert_eq!(session.state.outstanding().len(), 0);
 }

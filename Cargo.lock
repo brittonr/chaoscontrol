@@ -289,7 +289,7 @@ dependencies = [
 [[package]]
 name = "campaign-choregraph"
 version = "0.1.0"
-source = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=e7757a5134f631e1ed410df3cae57e57f887c468#e7757a5134f631e1ed410df3cae57e57f887c468"
+source = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=4a669eadaeac50b48efd77383219372be122f692#4a669eadaeac50b48efd77383219372be122f692"
 dependencies = [
  "campaign-core",
  "choregraph-history",
@@ -298,7 +298,7 @@ dependencies = [
 [[package]]
 name = "campaign-conformance"
 version = "0.1.0"
-source = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=e7757a5134f631e1ed410df3cae57e57f887c468#e7757a5134f631e1ed410df3cae57e57f887c468"
+source = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=4a669eadaeac50b48efd77383219372be122f692#4a669eadaeac50b48efd77383219372be122f692"
 dependencies = [
  "campaign-choregraph",
  "campaign-core",
@@ -307,7 +307,7 @@ dependencies = [
 [[package]]
 name = "campaign-core"
 version = "0.1.0"
-source = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=e7757a5134f631e1ed410df3cae57e57f887c468#e7757a5134f631e1ed410df3cae57e57f887c468"
+source = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=4a669eadaeac50b48efd77383219372be122f692#4a669eadaeac50b48efd77383219372be122f692"
 dependencies = [
  "blake3",
 ]

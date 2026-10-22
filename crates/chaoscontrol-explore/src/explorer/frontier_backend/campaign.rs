@@ -231,14 +231,14 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         session: ControlSession,
         epoch: u32,
     ) -> Result<(), FrontierError> {
-        if session.state().stopped.is_some() {
+        if session.state().stopped().is_some() {
             return Ok(());
         }
         let mut staged = session;
         let mut records = Vec::new();
         let outstanding: Vec<Id> = staged
             .state()
-            .outstanding
+            .outstanding()
             .iter()
             .map(|selection| selection.selection_id)
             .collect();
@@ -394,7 +394,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             self.identity.coalescing_policy_id,
         )?;
         publish(staged, records, batch)?;
-        let campaign_id = staged.state().admission.campaign_id;
+        let campaign_id = staged.state().admission().campaign_id;
         for (candidate_id, entry) in &admitted {
             let guidance = guidance_record(
                 &self.identity,
@@ -426,7 +426,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         };
         let retained: BTreeMap<Id, ()> = session
             .state()
-            .candidates
+            .candidates()
             .iter()
             .filter(|candidate| candidate.status == CandidateStatus::Retained)
             .map(|candidate| (candidate.candidate.candidate_id, ()))
@@ -700,7 +700,7 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
     fn record_stop(&mut self, stop: ProductStop) -> Result<(), FrontierError> {
         self.ensure_live()?;
         let session = self.session()?;
-        if session.state().stopped.is_some() {
+        if session.state().stopped().is_some() {
             return Ok(());
         }
         let reason = self.stop_reason_for(stop)?;
@@ -736,9 +736,9 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
         };
         let state = session.state();
         SelectionUse {
-            selections: state.selection_count,
+            selections: state.selection_count(),
             budget_units: state
-                .reserved_resources
+                .reserved_resources()
                 .iter()
                 .filter(|reserved| reserved.dimension_id == self.identity.resource_dimension_id)
                 .map(|reserved| reserved.amount)

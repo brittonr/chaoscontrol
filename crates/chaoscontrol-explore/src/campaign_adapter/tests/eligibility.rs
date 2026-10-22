@@ -146,6 +146,6 @@ fn a_published_selection_without_a_snapshot_closes_unobserved() {
     assert!(closure.uncertainty_acknowledged);
     let event = campaign_core::close_unobserved(&session.state, closure).unwrap();
     session.publish(event);
-    assert!(session.state.outstanding.is_empty());
-    assert!(session.state.accepted_results.is_empty());
+    assert!(session.state.outstanding().is_empty());
+    assert!(session.state.accepted_results().is_empty());
 }

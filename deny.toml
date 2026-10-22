@@ -57,6 +57,17 @@ allow = ["AGPL-3.0-or-later"]
 crate = "choregraph-history"
 allow = ["AGPL-3.0-or-later"]
 
+# Campaign is AGPL-3.0-or-later from its revision 6dc0c59a (Campaign change
+# prepare-public-source); earlier pins were MIT OR Apache-2.0. The license
+# check skips dev-dependencies, so campaign-conformance needs no exception.
+[[licenses.exceptions]]
+crate = "campaign-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "campaign-choregraph"
+allow = ["AGPL-3.0-or-later"]
+
 [[licenses.exceptions]]
 crate = "chaoscontrol-guest-net"
 allow = ["AGPL-3.0-or-later"]

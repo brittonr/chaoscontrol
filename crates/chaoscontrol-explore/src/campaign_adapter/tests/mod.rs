@@ -195,7 +195,7 @@ impl Session {
     }
 
     pub fn campaign_id(&self) -> Id {
-        self.state.admission.campaign_id
+        self.state.admission().campaign_id
     }
 
     pub fn binding(&self) -> ProjectionBinding {
@@ -335,7 +335,7 @@ impl Session {
 
     pub fn retained(&self) -> usize {
         self.state
-            .candidates
+            .candidates()
             .iter()
             .filter(|candidate| {
                 matches!(candidate.status, campaign_core::CandidateStatus::Retained)

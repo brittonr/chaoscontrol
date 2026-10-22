@@ -74,7 +74,7 @@ fn ticket_bytes_carry_both_draws_little_endian() {
     let ticket = entropy_ticket(
         &identity,
         session.campaign_id(),
-        session.state.state_id,
+        session.state.state_id(),
         session.profile.selection_profile.profile_id,
         1,
         draws,
@@ -97,7 +97,7 @@ fn the_ticket_decides_campaigns_explore_branch() {
         entropy_ticket(
             &identity,
             session.campaign_id(),
-            session.state.state_id,
+            session.state.state_id(),
             session.profile.selection_profile.profile_id,
             1,
             EntropyDraws {

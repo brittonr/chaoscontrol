@@ -1,22 +1,22 @@
 {
-  "source_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
+  "source_revision": "db3c6a92b880a073ac2cf19bd2e7449be9150a59",
   "baseline": {
-    "source_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
+    "source_revision": "db3c6a92b880a073ac2cf19bd2e7449be9150a59",
     "commands": [
-      "cargo test --workspace --all-targets --no-fail-fast",
-      "cargo clippy --workspace --all-targets -- -D warnings",
+      "cargo test -p chaoscontrol-explore --lib --locked --offline",
+      "cargo clippy -p chaoscontrol-explore --lib --tests --locked --offline -- -D warnings",
       "cargo fmt --all -- --check",
-      "check-frontier-parity --legacy target/pr48/legacy-parity-artifacts/frontier-trace.jsonl --campaign target/pr47/final/cohort/control-artifacts/frontier-trace.jsonl --receipt target/pr48/frontier-parity-receipt.json"
+      "check-frontier-parity --legacy legacy-diagnostic/frontier-trace.jsonl --campaign campaign/frontier-trace.jsonl --receipt frontier-parity-receipt.json"
     ],
     "positive_results": 2,
     "negative_results": 1
   },
   "kvm_parity": {
-    "source_revision": "7594be4e034ea757ad5d132596a3b5475b88008d",
+    "source_revision": "db3c6a92b880a073ac2cf19bd2e7449be9150a59",
     "policy": "campaign",
     "seed": 42,
-    "legacy_digest": "b3:00ff5a6428f82979b00a67d9ffd0887e992a8f62d066d7f1ca167950fa1e3799",
-    "campaign_digest": "b3:00ff5a6428f82979b00a67d9ffd0887e992a8f62d066d7f1ca167950fa1e3799",
+    "legacy_digest": "b3:687d7bce4656620caa0e83b5e91fcb91bc1f2be9ccdce3f521b7df0e87440e5f",
+    "campaign_digest": "b3:687d7bce4656620caa0e83b5e91fcb91bc1f2be9ccdce3f521b7df0e87440e5f",
     "passed": true
   },
   "conformance": true,

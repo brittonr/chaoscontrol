@@ -130,7 +130,7 @@ fn the_host_capacity_stop_maps_to_its_own_product_class() {
     let admitted = campaign_core::admit_stop(&stopped.state, stop).unwrap();
     assert!(stopped.publication_within(admitted.clone(), tight).is_ok());
     stopped.publish(admitted);
-    assert!(stopped.projection_within(tight).state().stopped.is_some());
+    assert!(stopped.projection_within(tight).state().stopped().is_some());
 
     // At the bound, the selection plans and publishes.
     assert!(matches!(
@@ -223,7 +223,7 @@ fn the_graph_event_limit_plans_and_publishes_the_capacity_stop() {
     assert_eq!(stopped.graph.len(), ONE_ENTRY_GRAPH + 1);
     let reloaded = stopped.projection();
     assert_eq!(
-        product_stop(&reloaded.state().stopped.as_ref().unwrap().reason),
+        product_stop(&reloaded.state().stopped().unwrap().reason),
         Ok(ProductStop::ControlCapacityExhausted)
     );
 

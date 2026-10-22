@@ -3,25 +3,25 @@
   "inputs": [
     {
       "role": "legacy",
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr48/legacy-parity-artifacts/frontier-trace.jsonl",
-      "blake3": "596e81f7b08865a6e64c19986bba05ed6509682dccc8054ffec33226735d2306",
-      "records": 13,
+      "path": "legacy-diagnostic/frontier-trace.jsonl",
+      "blake3": "106c5373c6989e34ba8125f9ccc826c3267a9a999c14de5413ec36e5ca0de6a3",
+      "records": 8,
       "policy": "legacy-diagnostic"
     },
     {
       "role": "campaign",
-      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/pr47/final/cohort/control-artifacts/frontier-trace.jsonl",
-      "blake3": "260d05cd5a8bf13b047c5324fc76ae9665d1d0deded2e6b255ec097200a7cd4a",
-      "records": 13,
+      "path": "campaign/frontier-trace.jsonl",
+      "blake3": "2cb7098995b219a5af1376a90de17b3bf2f1d33c89aab8bdc27d5f7350b3e968",
+      "records": 8,
       "policy": "campaign"
     }
   ],
   "config": {
     "seed": 42,
-    "max_rounds": 10,
+    "max_rounds": 5,
     "max_frontier": 50,
-    "branch_factor": 2,
-    "mode": "hybrid",
+    "branch_factor": 4,
+    "mode": "fault-schedule",
     "stale_round_limit": 10
   },
   "runs": [
@@ -39,7 +39,7 @@
           "policy": "campaign",
           "role": "replayed"
         },
-        "rounds_compared": 10,
+        "rounds_compared": 5,
         "fields_compared": [
           "root_retained",
           "round_count",
@@ -72,18 +72,18 @@
           "facts": [
             {
               "quantity": "candidates_examined",
-              "left_total": 100,
-              "right_total": 100,
-              "rounds_measured": 10,
+              "left_total": 9,
+              "right_total": 9,
+              "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
               "equal": true
             },
             {
               "quantity": "eligible_candidates",
-              "left_total": 100,
-              "right_total": 100,
-              "rounds_measured": 10,
+              "left_total": 9,
+              "right_total": 9,
+              "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
               "equal": true
@@ -112,7 +112,7 @@
           "policy": "legacy-diagnostic",
           "role": "replayed"
         },
-        "rounds_compared": 10,
+        "rounds_compared": 5,
         "fields_compared": [
           "root_retained",
           "round_count",
@@ -145,18 +145,18 @@
           "facts": [
             {
               "quantity": "candidates_examined",
-              "left_total": 100,
-              "right_total": 100,
-              "rounds_measured": 10,
+              "left_total": 15,
+              "right_total": 15,
+              "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
               "equal": true
             },
             {
               "quantity": "eligible_candidates",
-              "left_total": 100,
-              "right_total": 100,
-              "rounds_measured": 10,
+              "left_total": 15,
+              "right_total": 15,
+              "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
               "equal": true

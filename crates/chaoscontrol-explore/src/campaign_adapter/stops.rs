@@ -164,7 +164,7 @@ impl HostCapacity {
             reserved_control_events: projection.reserved_control_events(),
             maximum_events: projection.maximum_events(),
             graph_room: projection.graph_room(),
-            admitted_generation: projection.state().admission.projection.generation,
+            admitted_generation: projection.state().admission().projection.generation,
         })
     }
 }

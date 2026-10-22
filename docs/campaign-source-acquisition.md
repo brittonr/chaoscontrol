@@ -4,7 +4,7 @@ The development shell uses a scoped Cargo 1.98.0 transport repair for Campaign a
 
 ## Transport contract
 
-`.cargo/config.toml` lists the exact Campaign HTTPS URL and private VM Cohort Radicle URL under `net.git-fetch-exact-revisions`. This list selects transport behavior. It is not repository authorization.
+`.cargo/config.toml` lists the Campaign and private VM Cohort Radicle URLs under `net.git-fetch-exact-revisions`. This list selects transport behavior. It is not repository authorization.
 
 The VM Cohort packaging repair uses a published signed branch without moving the default branch before consumer verification. Its root URL supports exact-object fetches. The declared transport capability avoids a cache preload or namespace-HEAD mutation.
 
@@ -12,7 +12,7 @@ For a listed URL and a complete object ID, Cargo requests that object directly. 
 
 Unlisted URLs keep their previous behavior, including the GitHub fast path. Symbolic or abbreviated requests without a complete locked object ID keep stock resolution. An unlocked default-branch request still requires HEAD.
 
-Cargo and the Nix `campaign-src` input both pin Campaign development revision `e7757a5134f631e1ed410df3cae57e57f887c468` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Cargo and the Nix `campaign-src`/`choregraph-history-src` inputs use the public Radicle mirrors of the same revisions, so acquisition does not depend on the private forge's HEAD advertisement. A workspace `[patch]` maps the transitive `choregraph-history` HTTPS source to its Radicle mirror. The Cargo-deny allowlist admits the active Radicle sources, not the superseded private HTTPS endpoints. Removing an active source allowance must fail the real source-policy checker; mutating an unused historical allowance is not a denial control. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
+Cargo and the Nix `campaign-src` input both pin Campaign development revision `4a669eadaeac50b48efd77383219372be122f692` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Cargo and the Nix `campaign-src`/`choregraph-history-src` inputs use the public Radicle mirrors of the pinned revisions, so acquisition does not depend on the private forge's HEAD advertisement; the former `git.onix.computer` Campaign endpoint answers "repository not found". A workspace `[patch]` maps the transitive `choregraph-history` HTTPS source to its Radicle mirror. The Cargo-deny allowlist admits the active Radicle sources, not the superseded private HTTPS endpoints. Removing an active source allowance must fail the real source-policy checker; mutating an unused historical allowance is not a denial control. The archived `adopt-campaign-chained-identity` change moved the revision from `e7757a51` and was verified against Campaign's public HTTPS seed, `https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git`, which serves the same revision; its merge into main kept main's Radicle transport. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
 
 ## Why the stock fetch fails
 

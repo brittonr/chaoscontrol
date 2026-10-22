@@ -38,15 +38,15 @@ use crate::explorer::{ExplorationMode, ExplorerConfig};
 
 /// Seed of the conformance adapter's entropy source.
 const CONFORMANCE_SEED: u64 = 0x00c0_ffee;
-/// Campaign default profile values (`campaign-profile` `default.json`).
+/// Campaign default profile values (`campaign-profile` `default.json` at Campaign `4a669ead`).
 const DEFAULT_THRESHOLD_PARTS_PER_MILLION: u64 = 100_000;
 const DEFAULT_EXPLORATION_ORDER: [u32; 1] = [0];
 const DEFAULT_RETENTION_RANK_ORDER: [u32; 1] = [0];
 const DEFAULT_MAX_ROOTS: u64 = 256;
-const DEFAULT_MAX_CANDIDATES: u64 = 65_536;
+const DEFAULT_MAX_CANDIDATES: u64 = 32_768;
 const DEFAULT_MAX_CANDIDATE_BATCH: u64 = 256;
 const DEFAULT_MAX_RETAINED_CANDIDATES: u64 = 4096;
-const DEFAULT_MAX_SELECTIONS: u64 = 65_536;
+const DEFAULT_MAX_SELECTIONS: u64 = 32_768;
 const DEFAULT_MAX_GUIDANCE_RECORDS: u64 = 65_536;
 const DEFAULT_MAX_OUTSTANDING: u64 = 256;
 const DEFAULT_MAX_DEPTH: u64 = 4096;
@@ -445,7 +445,7 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `e7757a51`).
+/// Fixture count of the pinned Campaign conformance suite (Campaign `4a669ead`).
 const PINNED_FIXTURE_COUNT: usize = 80;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
@@ -584,7 +584,7 @@ impl RecordMapping for BrokenAdapter {
         let mut observation = self.inner.result(outcome, context)?;
         let other = context
             .state
-            .outstanding
+            .outstanding()
             .iter()
             .find(|outstanding| outstanding.selection_id != context.selection.selection_id);
         if let (Breakage::CrossedIdentities, Some(other)) = (self.breakage, other) {

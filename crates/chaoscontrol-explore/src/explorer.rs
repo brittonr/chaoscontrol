@@ -22,7 +22,9 @@ use crate::worker::{BranchWork, WorkerPool};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
-use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
+use chaoscontrol_vmm::controller::{
+    SimulationConfig, SimulationController, SimulationSnapshot, DEFAULT_RANDOM_FAULTS,
+};
 use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulingStrategy};
 use chaoscontrol_vmm::vm::VmConfig;
 use log::{debug, info, warn};
@@ -208,6 +210,13 @@ pub struct ExplorerConfig {
     pub metrics_file: Option<std::path::PathBuf>,
     /// Frontier policy that selects each round's expansion.
     pub frontier_policy: FrontierPolicy,
+    /// Whether every system run of this exploration injects seed-derived
+    /// random faults in addition to its schedule.
+    ///
+    /// Defaults to the system-run default, which is on. The run records the
+    /// value in its checkpoint and in each bug it finds, so resumption,
+    /// minimization, and reproduction use the setting the run used.
+    pub random_faults: bool,
 }
 
 impl Default for ExplorerConfig {
@@ -244,6 +253,7 @@ impl Default for ExplorerConfig {
             emit_metrics: false,
             metrics_file: None,
             frontier_policy: FrontierPolicy::default(),
+            random_faults: DEFAULT_RANDOM_FAULTS,
         }
     }
 }
@@ -1635,6 +1645,7 @@ impl Explorer {
             base_core: None,
             bootstrap_budget: Some(self.config.bootstrap_budget),
             dlog_dir: self.config.dlog_dir.clone(),
+            random_faults: self.config.random_faults,
         }
     }
 
@@ -2166,6 +2177,7 @@ impl Explorer {
                     schedule_variant: result.schedule_variant.clone(),
                     scenario_config: self.config.scenario.clone(),
                     scenario_summary: self.scenario_summary.clone(),
+                    random_faults: self.config.random_faults,
                 };
 
                 // Emit BugFound event for dashboard.
@@ -2743,6 +2755,7 @@ impl Explorer {
             havoc_mutations: Some(self.config.havoc_mutations),
             scenario: self.config.scenario.clone(),
             frontier_policy: self.config.frontier_policy,
+            random_faults: self.config.random_faults,
         };
 
         let snapshot_store = crate::snapshot_store::FileSnapshotStore::new(output_dir);
@@ -2852,6 +2865,7 @@ impl Explorer {
             emit_metrics: false,
             metrics_file: None,
             frontier_policy: checkpoint.config.frontier_policy,
+            random_faults: checkpoint.config.random_faults,
         };
 
         let frontier = ExplorerFrontier::for_config(&config);
@@ -3374,6 +3388,26 @@ mod tests {
             .expect("campaign checkpoint");
         let resumed = Explorer::from_checkpoint(fresh, None, None, None).expect("resume");
         assert!(resumed.release_eligible());
+    }
+
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.exploration]
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+    #[test]
+    fn exploration_runs_carry_their_random_fault_setting_through_resume() {
+        let directory = tempfile::tempdir().expect("test directory");
+        let output = directory.path().display().to_string();
+        assert!(ExplorerConfig::default().random_faults);
+        for random_faults in [true, false] {
+            let explorer = Explorer::new(ExplorerConfig {
+                random_faults,
+                ..ExplorerConfig::default()
+            });
+            assert_eq!(explorer.simulation_config().random_faults, random_faults);
+            let checkpoint = explorer.create_checkpoint(&output).expect("checkpoint");
+            assert_eq!(checkpoint.config.random_faults, random_faults);
+            let resumed = Explorer::from_checkpoint(checkpoint, None, None, None).expect("resume");
+            assert_eq!(resumed.simulation_config().random_faults, random_faults);
+        }
     }
 
     const TEST_ALIAS: u32 = 42;

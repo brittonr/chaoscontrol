@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{checked_usize, valid_identifier, ArtifactReference};
 use crate::explorer::{ExplorationMode, ExplorerConfig, FrontierPolicy};
 use crate::mutator::MutationConfig;
+use chaoscontrol_vmm::controller::DEFAULT_RANDOM_FAULTS;
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
 
@@ -80,6 +81,23 @@ pub struct ExplorationProfile {
     /// are rejected.
     #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
     pub frontier_policy: FrontierPolicy,
+    /// Whether every system run injects seed-derived random faults. Absent
+    /// means the system-run default, which is on; `false` is the explicit
+    /// opt-out and is the only value written back.
+    #[serde(
+        default = "default_random_faults",
+        skip_serializing_if = "is_default_random_faults"
+    )]
+    pub random_faults: bool,
+}
+
+const fn default_random_faults() -> bool {
+    DEFAULT_RANDOM_FAULTS
+}
+
+/// `skip_serializing_if` predicate (serde passes a reference).
+const fn is_default_random_faults(random_faults: &bool) -> bool {
+    *random_faults == DEFAULT_RANDOM_FAULTS
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -195,6 +213,7 @@ impl RunProfile {
             stale_round_limit: self.exploration.stale_round_limit,
             schedule_diversity: self.topology.scheduling.diversity,
             frontier_policy: self.exploration.frontier_policy,
+            random_faults: self.exploration.random_faults,
             ..ExplorerConfig::default()
         })
     }

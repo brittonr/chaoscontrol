@@ -36,6 +36,9 @@ let BugReportShape = {
   schedule_variant | Dyn,
   scenario_config | Dyn,
   scenario_summary | Dyn,
+  # Setting of the run that found the bug; reproduction uses it. Absent only in
+  # reports written before the setting existed, whose runs injected none.
+  random_faults | Bool | optional,
 } in
 let AliasBinding = fun value =>
   if !std.record.has_field "assertion_identity" value then true

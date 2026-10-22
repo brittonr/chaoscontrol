@@ -89,6 +89,12 @@ fn route_network_packet(
 //  Configuration
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Default of [`SimulationConfig::random_faults`] for every system run.
+///
+/// Run configurations above the controller, such as the explorer's, take
+/// their default from here so that the system-run default has one owner.
+pub const DEFAULT_RANDOM_FAULTS: bool = true;
+
 /// Configuration for a multi-VM simulation.
 #[derive(Debug, Clone)]
 pub struct SimulationConfig {
@@ -173,7 +179,7 @@ impl Default for SimulationConfig {
             bootstrap_budget: None,
             base_core: None,
             dlog_dir: None,
-            random_faults: true,
+            random_faults: DEFAULT_RANDOM_FAULTS,
         }
     }
 }

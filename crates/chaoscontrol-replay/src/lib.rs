@@ -32,6 +32,7 @@
 //!     quantum: 100,
 //!     checkpoint_interval: 1000, // Checkpoint every 1000 ticks
 //!     disk_image_path: None,
+//!     random_faults: true, // Recorded setting of the run; replay uses it
 //! };
 //!
 //! let schedule = FaultSchedule::new();
@@ -199,6 +200,7 @@ mod tests {
             quantum: 100,
             checkpoint_interval: 1000,
             disk_image_path: None,
+            random_faults: false,
         };
 
         // EventFilter
@@ -221,6 +223,7 @@ mod tests {
             quantum: 100,
             checkpoint_interval: 1000,
             disk_image_path: None,
+            random_faults: false,
         };
 
         let schedule = FaultSchedule::new();

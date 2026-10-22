@@ -466,6 +466,7 @@ mod tests {
                 havoc_mutations: None,
                 scenario: None,
                 frontier_policy: crate::explorer::FrontierPolicy::default(),
+                random_faults: false,
             },
             global_coverage: vec![1, 2, 3],
             bugs: vec![SerializableBug {
@@ -484,6 +485,7 @@ mod tests {
                 schedule_variant: None,
                 scenario_config: None,
                 scenario_summary: None,
+                random_faults: false,
             }],
             assertion_report: Some(assertion_report),
             rounds_completed: 10,

@@ -649,6 +649,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         };
         let bug_path = dir.path().join("bug_0.json");
         fs::write(&bug_path, serde_json::to_vec_pretty(&bug).unwrap()).unwrap();

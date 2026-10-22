@@ -47,6 +47,9 @@ pub struct BugReport {
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
     /// Materialized phase summary (if a scenario was used).
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
+    /// Whether the run that found this bug injected seed-derived random
+    /// faults. Reproduction and minimization must use the same setting.
+    pub random_faults: bool,
 }
 
 /// An entry in the corpus — a schedule that found new coverage or bugs.
@@ -216,6 +219,7 @@ mod tests {
                 schedule_variant: None,
                 scenario_config: None,
                 scenario_summary: None,
+                random_faults: false,
             });
         }
 
@@ -358,6 +362,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         };
 
         assert_eq!(bug.bug_id, 42);

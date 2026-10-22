@@ -188,10 +188,22 @@ pub struct CheckpointConfig {
     /// so checkpoints written before the field existed load as Campaign.
     #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
     pub frontier_policy: FrontierPolicy,
+    /// Whether the run injected seed-derived random faults. Always written,
+    /// so an opt-out is recorded as an explicit `false`.
+    #[serde(default = "legacy_random_faults")]
+    pub random_faults: bool,
 }
 
 fn default_bootstrap_budget() -> u64 {
     10_000
+}
+
+/// `random_faults` of a record written before the setting existed.
+///
+/// Those runs built their fault engine with random injection hard-coded off,
+/// so their records load as off and replay the way the run executed.
+const fn legacy_random_faults() -> bool {
+    false
 }
 
 /// Serializable fault representation.
@@ -724,6 +736,10 @@ pub struct SerializableBug {
     /// Materialized phase summary (if a scenario was used).
     #[serde(default)]
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
+    /// Whether the run that found this bug injected seed-derived random
+    /// faults. Always written; reproduction and minimization use this value.
+    #[serde(default = "legacy_random_faults")]
+    pub random_faults: bool,
 }
 
 fn no_assertion_identity() -> Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
@@ -842,6 +858,7 @@ impl From<&BugReport> for SerializableBug {
             schedule_variant: bug.schedule_variant.clone(),
             scenario_config: bug.scenario_config.clone(),
             scenario_summary: bug.scenario_summary.clone(),
+            random_faults: bug.random_faults,
         }
     }
 }
@@ -874,6 +891,7 @@ impl TryFrom<&SerializableBug> for BugReport {
             schedule_variant: bug.schedule_variant.clone(),
             scenario_config: bug.scenario_config.clone(),
             scenario_summary: bug.scenario_summary.clone(),
+            random_faults: bug.random_faults,
         })
     }
 }
@@ -1296,6 +1314,7 @@ mod tests {
                 havoc_mutations: None,
                 scenario: None,
                 frontier_policy: crate::explorer::FrontierPolicy::default(),
+                random_faults: false,
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -1350,6 +1369,7 @@ mod tests {
                 havoc_mutations: None,
                 scenario: None,
                 frontier_policy: crate::explorer::FrontierPolicy::default(),
+                random_faults: false,
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],
@@ -1440,6 +1460,7 @@ mod tests {
                 havoc_mutations: None,
                 scenario: None,
                 frontier_policy: crate::explorer::FrontierPolicy::default(),
+                random_faults: false,
             },
             global_coverage: vec![],
             bugs: vec![],
@@ -1554,6 +1575,7 @@ mod tests {
                 havoc_mutations: None,
                 scenario: Some(sc_config.clone()),
                 frontier_policy: crate::explorer::FrontierPolicy::default(),
+                random_faults: false,
             },
             global_coverage: vec![],
             bugs: vec![SerializableBug {
@@ -1572,6 +1594,7 @@ mod tests {
                 schedule_variant: None,
                 scenario_config: Some(sc_config.clone()),
                 scenario_summary: Some(materialized.summary.clone()),
+                random_faults: false,
             }],
             assertion_report: None,
             rounds_completed: 5,
@@ -1634,6 +1657,47 @@ mod tests {
         assert!(checkpoint.scenario.is_none());
         assert!(checkpoint.scenario_summary.is_none());
         assert!(checkpoint.config.scenario.is_none());
+    }
+
+    const RANDOM_FAULTS_KEY: &str = "random_faults";
+
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+    #[test]
+    fn records_write_random_faults_explicitly_and_legacy_records_load_as_off() {
+        for random_faults in [true, false] {
+            let mut bug = minimal_bug(1);
+            bug.random_faults = random_faults;
+            let mut checkpoint = minimal_checkpoint_with_bugs(vec![bug]);
+            checkpoint.config.random_faults = random_faults;
+
+            let value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+            let recorded = serde_json::json!(random_faults);
+            assert_eq!(value["config"][RANDOM_FAULTS_KEY], recorded);
+            assert_eq!(value["bugs"][0][RANDOM_FAULTS_KEY], recorded);
+
+            let loaded: ExplorationCheckpoint =
+                serde_json::from_value(value).expect("recorded checkpoint");
+            assert_eq!(loaded.config.random_faults, random_faults);
+            assert_eq!(loaded.bugs[0].random_faults, random_faults);
+            let replayed = BugReport::try_from(&loaded.bugs[0]).expect("replay bug");
+            assert_eq!(replayed.random_faults, random_faults);
+        }
+
+        let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
+        checkpoint.config.random_faults = true;
+        checkpoint.bugs[0].random_faults = true;
+        let mut legacy = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+        for pointer in ["/config", "/bugs/0"] {
+            legacy
+                .pointer_mut(pointer)
+                .and_then(serde_json::Value::as_object_mut)
+                .expect("record object")
+                .remove(RANDOM_FAULTS_KEY);
+        }
+        let loaded: ExplorationCheckpoint =
+            serde_json::from_value(legacy).expect("legacy checkpoint");
+        assert!(!loaded.config.random_faults);
+        assert!(!loaded.bugs[0].random_faults);
     }
 
     const FRONTIER_POLICY_KEY: &str = "frontier_policy";
@@ -1906,6 +1970,7 @@ mod tests {
                 havoc_mutations: None,
                 scenario: None,
                 frontier_policy: crate::explorer::FrontierPolicy::default(),
+                random_faults: false,
             },
             global_coverage: vec![],
             bugs,
@@ -1948,6 +2013,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         }
     }
 

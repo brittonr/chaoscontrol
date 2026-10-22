@@ -253,6 +253,11 @@ pub struct SerializableCampaignConfig {
     /// policy, so progress files written before the field load as Campaign.
     #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
     pub frontier_policy: FrontierPolicy,
+    /// Whether every seed injects seed-derived random faults. Always
+    /// written; progress files written before the field existed come from
+    /// campaigns that injected none and load as off.
+    #[serde(default)]
+    pub random_faults: bool,
 }
 
 impl SerializableCampaignConfig {
@@ -277,6 +282,7 @@ impl SerializableCampaignConfig {
             num_vcpus: cfg.vm_config.num_vcpus,
             scenario: cfg.scenario.clone(),
             frontier_policy: cfg.frontier_policy,
+            random_faults: cfg.random_faults,
         }
     }
 }
@@ -1011,6 +1017,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         }
     }
 
@@ -1108,6 +1115,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         }
     }
 
@@ -1536,6 +1544,7 @@ mod tests {
                     schedule_variant: None,
                     scenario_config: None,
                     scenario_summary: None,
+                    random_faults: false,
                 },
                 found_by_seeds: vec![42],
                 first_seed: 42,
@@ -1672,6 +1681,7 @@ mod tests {
                 num_vcpus: 1,
                 scenario: None,
                 frontier_policy: FrontierPolicy::Campaign,
+                random_faults: false,
             },
             output_dir: "results/".into(),
             completed: BTreeMap::from([(
@@ -1705,6 +1715,39 @@ mod tests {
         assert_eq!(loaded.config.exploration_mode, "hybrid");
     }
 
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+    #[test]
+    fn campaign_progress_records_random_faults_and_legacy_progress_loads_as_off() {
+        const RANDOM_FAULTS_KEY: &str = "random_faults";
+        for random_faults in [true, false] {
+            let config = SerializableCampaignConfig::from_explorer_config(&ExplorerConfig {
+                kernel_path: "vmlinux".into(),
+                random_faults,
+                ..ExplorerConfig::default()
+            });
+            let value = serde_json::to_value(&config).expect("progress config JSON");
+            assert_eq!(value[RANDOM_FAULTS_KEY], serde_json::json!(random_faults));
+            let loaded: SerializableCampaignConfig =
+                serde_json::from_value(value).expect("recorded progress config");
+            assert_eq!(loaded.random_faults, random_faults);
+        }
+
+        let mut legacy = serde_json::to_value(SerializableCampaignConfig::from_explorer_config(
+            &ExplorerConfig {
+                kernel_path: "vmlinux".into(),
+                ..ExplorerConfig::default()
+            },
+        ))
+        .expect("progress config JSON");
+        legacy
+            .as_object_mut()
+            .expect("progress config object")
+            .remove(RANDOM_FAULTS_KEY);
+        let loaded: SerializableCampaignConfig =
+            serde_json::from_value(legacy).expect("legacy progress config");
+        assert!(!loaded.random_faults);
+    }
+
     #[test]
     fn campaign_progress_save_load() {
         let temporary = tempfile::tempdir().expect("temporary directory");
@@ -1728,6 +1771,7 @@ mod tests {
                 num_vcpus: 1,
                 scenario: None,
                 frontier_policy: FrontierPolicy::Campaign,
+                random_faults: false,
             },
             output_dir: dir.to_string_lossy().into_owned(),
             completed: BTreeMap::new(),

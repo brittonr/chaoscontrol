@@ -24,6 +24,10 @@
 //! # Diagnostic rollback to the legacy frontier (default: campaign). Requires
 //! # --output; outputs are marked release-ineligible and gates refuse them.
 //! chaoscontrol-explore run --kernel vmlinux --output diag/ --frontier-policy legacy-diagnostic
+//!
+//! # Every branch injects seed-derived random faults by default; opt out
+//! # explicitly. The checkpoint and every bug record the setting.
+//! chaoscontrol-explore run --kernel vmlinux --random-faults false
 //! ```
 //!
 //! `resume` and `campaign-resume` keep the policy recorded in the checkpoint or
@@ -64,9 +68,10 @@ use chaoscontrol_explore::report::{
 };
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
+use chaoscontrol_vmm::controller::DEFAULT_RANDOM_FAULTS;
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
@@ -280,6 +285,12 @@ enum Commands {
         /// never release eligible).
         #[arg(long, default_value_t = FrontierPolicy::default(), value_parser = FrontierPolicy::from_str)]
         frontier_policy: FrontierPolicy,
+
+        /// Inject seed-derived random faults in every branch in addition to
+        /// its schedule. Defaults to true; `--random-faults false` is the
+        /// explicit opt-out. The checkpoint and every bug record the value.
+        #[arg(long, default_value_t = DEFAULT_RANDOM_FAULTS, action = ArgAction::Set)]
+        random_faults: bool,
     },
 
     /// Minimize a bug-triggering fault schedule.
@@ -560,6 +571,13 @@ enum Commands {
         /// diagnostic rollback "legacy-diagnostic" (never release eligible).
         #[arg(long, default_value_t = FrontierPolicy::default(), value_parser = FrontierPolicy::from_str)]
         frontier_policy: FrontierPolicy,
+
+        /// Inject seed-derived random faults in every seed's branches in
+        /// addition to their schedules. Defaults to true; `--random-faults
+        /// false` is the explicit opt-out. Progress, checkpoints, and bugs
+        /// record the value.
+        #[arg(long, default_value_t = DEFAULT_RANDOM_FAULTS, action = ArgAction::Set)]
+        random_faults: bool,
     },
 
     /// Resume a multi-seed campaign from checkpoint.
@@ -700,6 +718,7 @@ fn main() {
             emit_metrics,
             metrics_file,
             frontier_policy,
+            random_faults,
         } => cmd_run(
             kernel,
             initrd,
@@ -739,6 +758,7 @@ fn main() {
             emit_metrics,
             metrics_file,
             frontier_policy,
+            random_faults,
         ),
         Commands::Reproduce {
             kernel,
@@ -809,6 +829,7 @@ fn main() {
             scenario_turns,
             min_assertion_exercise,
             frontier_policy,
+            random_faults,
         } => cmd_campaign(
             kernel,
             initrd,
@@ -845,6 +866,7 @@ fn main() {
             scenario_turns,
             min_assertion_exercise,
             frontier_policy,
+            random_faults,
         ),
         Commands::CampaignResume {
             corpus,
@@ -1003,6 +1025,7 @@ fn cmd_run(
     emit_metrics: bool,
     metrics_file: Option<String>,
     frontier_policy: FrontierPolicy,
+    random_faults: bool,
 ) {
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
@@ -1138,6 +1161,7 @@ fn cmd_run(
         emit_metrics,
         metrics_file: metrics_file.clone().map(std::path::PathBuf::from),
         frontier_policy,
+        random_faults,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -1160,6 +1184,7 @@ fn cmd_run(
     eprintln!("  Mode:           {}", mode);
     eprintln!("  Max frontier:   {}", max_frontier);
     eprintln!("  Frontier policy: {}", frontier_policy);
+    eprintln!("  Random faults:  {}", random_faults);
     eprintln!("  Bootstrap:      {} ticks", bootstrap_budget);
     if let Some(ref disk_image_path) = disk_image {
         eprintln!("  Disk image:     {}", disk_image_path);
@@ -1349,6 +1374,7 @@ fn cmd_campaign(
     scenario_turns: usize,
     min_assertion_exercise: usize,
     frontier_policy: FrontierPolicy,
+    random_faults: bool,
 ) {
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
@@ -1485,6 +1511,7 @@ fn cmd_campaign(
         emit_metrics: false,
         metrics_file: None,
         frontier_policy,
+        random_faults,
     };
 
     let seed_list = match generate_seeds(seed, campaign_seeds, seeds.as_deref()) {
@@ -1962,6 +1989,7 @@ fn cmd_campaign_resume(
         num_workers: 1,
         output_dir: None,
         frontier_policy,
+        random_faults: cfg.random_faults,
         ..ExplorerConfig::default()
     };
 
@@ -2363,6 +2391,10 @@ fn cmd_minimize(
     eprintln!("  Seed:           {}", seed);
     eprintln!("  Ticks/branch:   {}", ticks);
     eprintln!("  Quantum:        {}", quantum);
+    eprintln!(
+        "  Random faults:  {} (recorded with the bug)",
+        bug.random_faults
+    );
     eprintln!();
     eprintln!("Minimizing...");
     eprintln!();
@@ -2573,6 +2605,10 @@ fn cmd_reproduce(
     eprintln!("  Seed:           {}", seed);
     eprintln!("  Ticks:          {}", ticks);
     eprintln!("  Quantum:        {}", quantum);
+    eprintln!(
+        "  Random faults:  {} (recorded with the bug)",
+        serialized_bug.random_faults
+    );
     if let Some(ref di) = disk_image {
         eprintln!("  Disk image:     {}", di);
     }
@@ -2607,6 +2643,9 @@ fn cmd_reproduce(
         bootstrap_budget: None,
         base_core: None,
         dlog_dir: None,
+        // The bug records the setting of the run that found it; reproducing
+        // under any other setting would replay a different run.
+        random_faults: serialized_bug.random_faults,
     };
 
     let mut controller = match SimulationController::new(sim_config) {
@@ -3114,6 +3153,45 @@ mod tests {
                 frontier_policy, ..
             } => frontier_policy,
             _ => panic!("expected a resume command"),
+        }
+    }
+
+    const RANDOM_FAULTS_FLAG: &str = "--random-faults";
+
+    /// `random_faults` parsed from a `run` or `campaign` command line.
+    fn random_faults(args: &[&str]) -> Result<bool, clap::Error> {
+        match parse(args)?.command {
+            Commands::Run { random_faults, .. } | Commands::Campaign { random_faults, .. } => {
+                Ok(random_faults)
+            }
+            _ => panic!("expected run or campaign"),
+        }
+    }
+
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.exploration]
+    #[test]
+    fn run_and_campaign_inject_random_faults_unless_explicitly_opted_out() {
+        for command in [
+            vec!["run", "-k", "k"],
+            vec!["campaign", "-k", "k", "-o", "out"],
+        ] {
+            assert!(random_faults(&command).expect("default parses"));
+            for (value, expected) in [("true", true), ("false", false)] {
+                let mut explicit = command.clone();
+                explicit.extend([RANDOM_FAULTS_FLAG, value]);
+                assert_eq!(random_faults(&explicit).expect("explicit parses"), expected);
+            }
+            for value in ["off", "no", "0", ""] {
+                let mut malformed = command.clone();
+                malformed.extend([RANDOM_FAULTS_FLAG, value]);
+                assert!(
+                    random_faults(&malformed).is_err(),
+                    "{value:?} must not parse"
+                );
+            }
+            let mut bare = command.clone();
+            bare.push(RANDOM_FAULTS_FLAG);
+            assert!(random_faults(&bare).is_err(), "the setting needs a value");
         }
     }
 

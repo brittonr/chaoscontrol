@@ -229,6 +229,7 @@ mod tests {
                 quantum: 100,
                 checkpoint_interval: 1000,
                 disk_image_path: None,
+                random_faults: false,
             },
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),

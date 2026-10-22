@@ -292,6 +292,11 @@ pub struct RecordingConfig {
     /// Optional disk image path for virtio-blk devices.
     #[serde(default = "default_disk_image_path")]
     pub disk_image_path: Option<String>,
+    /// Whether the recorded run injected seed-derived random faults. Always
+    /// written; recordings made before the field existed come from runs that
+    /// injected none and load as off. Replay uses the recorded value.
+    #[serde(default)]
+    pub random_faults: bool,
 }
 
 fn default_disk_image_path() -> Option<String> {
@@ -1055,6 +1060,7 @@ mod tests {
             quantum: 100,
             checkpoint_interval: 1000,
             disk_image_path: None,
+            random_faults: false,
         }
     }
 

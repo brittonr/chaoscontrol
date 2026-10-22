@@ -31,6 +31,15 @@ The engine derives the injected faults from the run's master seed, so the same s
 A run that needs a quiet system sets `random_faults: false` explicitly; the opt-out is a visible choice, not an omission.
 The fault engine's own library default stays off, so a caller that builds an engine directly is unaffected.
 
+Exploration runs take the same setting from the operator.
+`chaoscontrol-explore run` and `campaign` accept `--random-faults true|false`, and a run profile accepts `exploration.random_faults`; both default to on.
+The explorer, its workers, and the auto-minimizer build every system run with that value.
+
+The run records the value it used, always as an explicit boolean, in `checkpoint.json`, `campaign_progress.json`, and every bug report; replay recordings carry it too.
+`resume`, `campaign-resume`, `minimize`, `reproduce`, and replay use the recorded value, so a bug is reproduced under the setting that found it.
+Records written before the setting existed carry no value and load as off, because those runs built their fault engine with random injection hard-coded off.
+The dogfood `run-config.json` projection does not carry the setting.
+
 ## Evidence and replay
 
 Each accepted effect records `Selected`, `Applicable`, `Applied`, and `Observed` stages. Invalid windows and unsupported profiles record typed rejections.

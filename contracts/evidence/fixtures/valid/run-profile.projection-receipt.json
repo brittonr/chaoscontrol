@@ -7,7 +7,7 @@
   },
   "contract": {
     "path": "contracts/evidence/run-config.ncl",
-    "identity": "blake3:15324d64c5e0adeb34a49575ae29ca08308e46c5d1ef2cfd68b61c70fffe693e"
+    "identity": "blake3:df97c62b5874a3a5f059d7a3d38834a6602cf933baf2b6039244ee63e7513e8f"
   },
   "imports": [
     {

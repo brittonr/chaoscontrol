@@ -23,6 +23,7 @@ ChaosControl uses Nickel for reviewed pre-run intent. Rust owns admission, const
 - `topology.num_vms`, `num_vcpus`, and `memory_mib` map with checked integer conversions.
 - `topology.scheduling` maps to `SchedulingStrategy` and schedule diversity.
 - All exploration limits map to `ExplorerConfig` fields.
+- `exploration.random_faults` maps to `ExplorerConfig.random_faults`. Absent means the system-run default, which injects seed-derived random faults; `false` is the explicit opt-out.
 - Coverage mode and address must agree. Blind mode requires address `0`.
 - Determinism-log policy, output, register interval, and memory hashing map together.
 

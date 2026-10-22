@@ -292,6 +292,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-bug-report.ncl",
         "examples/bug-report-identity.ncl",
         "fixtures/valid/bug-report.marker-context.valid.ncl",
+        "fixtures/valid/bug-report.random-faults.valid.ncl",
         "fixtures/valid/process-instances.valid.ncl",
         "examples/raft-assertion-summary.ncl",
         "examples/assertion-summary-logical-keys.ncl",
@@ -337,6 +338,10 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
             "fixtures/valid/run-profile.legacy-diagnostic.valid.ncl",
             "fixtures/valid/run-profile.legacy-diagnostic.valid.json",
         ),
+        (
+            "fixtures/valid/run-profile.random-faults-opt-out.valid.ncl",
+            "fixtures/valid/run-profile.random-faults-opt-out.valid.json",
+        ),
     ] {
         let output = Command::new(&command[0])
             .args(&command[1..])
@@ -373,6 +378,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/bug-report.fallback-scope-missing.invalid.ncl",
         "fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
         "fixtures/invalid/bug-report.process-scope-overclaim.invalid.ncl",
+        "fixtures/invalid/bug-report.non-boolean-random-faults.invalid.ncl",
         "fixtures/invalid/process-instances.duplicate.invalid.ncl",
         "fixtures/invalid/process-instances.token.invalid.ncl",
         "fixtures/invalid/process-instances.cardinality.invalid.ncl",
@@ -383,6 +389,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/run-profile.implicit-blind-coverage.invalid.ncl",
         "fixtures/invalid/run-profile.unknown-frontier-policy.invalid.ncl",
         "fixtures/invalid/run-profile.retired-legacy-policy.invalid.ncl",
+        "fixtures/invalid/run-profile.non-boolean-random-faults.invalid.ncl",
         "fixtures/invalid/simulator-profile.unsupported-rng.invalid.ncl",
         "fixtures/invalid/simulator-profile.empty-artifacts.invalid.ncl",
         "fixtures/invalid/simulator-profile.malformed-digest.invalid.ncl",
@@ -634,6 +641,7 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
             "scenario_summary",
             "fallback_scope",
             "marker_context",
+            "random_faults",
         ],
         "bug-report",
     )?;
@@ -645,6 +653,12 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
         "dedup_key",
     ] {
         require_num(value.get(key), &format!("bug-report.{key}"))?;
+    }
+    if let Some(random_faults) = value.get("random_faults") {
+        ensure(
+            random_faults.is_boolean(),
+            "bug-report.random_faults: expected boolean",
+        )?;
     }
     if value
         .get("replay_parent_depth")

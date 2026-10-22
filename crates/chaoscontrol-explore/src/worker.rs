@@ -304,6 +304,7 @@ fn worker_simulation_config(config: &ExplorerConfig) -> SimulationConfig {
         base_core: None,
         dlog_dir: None,
         bootstrap_budget: None,
+        random_faults: config.random_faults,
     }
 }
 
@@ -527,5 +528,20 @@ mod tests {
             schedule_variant: None,
         };
         assert_eq!(work.branch_index, 42);
+    }
+
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.exploration]
+    #[test]
+    fn worker_runs_use_the_exploration_random_fault_setting() {
+        for random_faults in [true, false] {
+            let config = ExplorerConfig {
+                random_faults,
+                ..ExplorerConfig::default()
+            };
+            assert_eq!(
+                worker_simulation_config(&config).random_faults,
+                random_faults
+            );
+        }
     }
 }

@@ -19,26 +19,38 @@ unused.
 - Give the VM integration harness and the performance benchmark the explicit
   opt-out, because they assert undisturbed system behaviour.
 - Document the default and the opt-out on the fault surface.
+- Give exploration the same explicit setting: `ExplorerConfig.random_faults`,
+  `--random-faults true|false` on `run` and `campaign`, and an optional
+  `exploration.random_faults` in the run profile, each defaulting to on.
+- Record the setting as an explicit boolean in checkpoints, campaign
+  progress, bug reports, and replay recordings, and rebuild resumed,
+  minimized, reproduced, and replayed runs from the recorded value.
+- Give the networking harness the explicit opt-out.
 
 ## Impact
 
 - **Affected specs:** a new `chaoscontrol.system_runs.fault_injection` capability.
 - **Planned files:** the VMM controller configuration and its engine wiring, the
-  integration harness and benchmark opt-outs, the fault surface documentation,
-  and the lifecycle package.
+  integration, networking, and benchmark opt-outs, the explorer configuration,
+  CLI, worker, minimizer, checkpoint, campaign progress, and bug records, the
+  run profile and its Nickel contract and trusted identity, the bug-report
+  evidence contract, the replay recording, the fault surface and profile
+  documentation, and the lifecycle package.
 - **Compatibility:** a system run now injects seed-derived faults unless it
   opts out. The injection is deterministic under a fixed seed, so a run's
   behaviour is reproducible; what changes is that the default is no longer a
-  fault-free system.
-- **Testing:** the VMM crate's unit tests and build, the repository's own
-  gates, and the Cairn gates.
+  fault-free system. Records written before the setting existed load as off,
+  because those runs injected no random faults.
+- **Testing:** the workspace build and tests, the KVM smoke checks, the
+  repository's own gates, and the Cairn gates.
 
 ## Out of Scope
 
 - No change to the fault engine's semantics, its schedule model, or its
   determinism guarantees.
 - No change to the exploration profile's explicit `exploration.mode`, which
-  already names fault schedule, input tree, or hybrid.
+  already names fault schedule, input tree, or hybrid. The profile gains only
+  the optional fault injection setting.
 - No new fault kind and no change to the fault catalogue.
 - No claim that a fault-free run is now impossible. The opt-out stays
   available and explicit.

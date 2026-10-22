@@ -309,6 +309,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         }
     }
 

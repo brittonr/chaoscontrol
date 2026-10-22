@@ -1282,6 +1282,32 @@ fn bug_fallback_scope_cannot_relabel_an_sdk_assertion_as_another_process() {
     );
 }
 
+// r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+#[test]
+fn bug_report_admits_only_a_boolean_random_fault_setting() {
+    use chaoscontrol_evidence::evidence_contracts::validate_bug_report_for_replay;
+    let mut bug: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/evidence/fixtures/valid/bug-report.identity.valid.json"
+    ))
+    .expect("strict identity fixture");
+    validate_bug_report_for_replay(&bug).expect("report written before the setting existed");
+    for recorded in [true, false] {
+        bug["random_faults"] = serde_json::json!(recorded);
+        validate_bug_report_for_replay(&bug).expect("recorded setting");
+    }
+    for malformed in [
+        serde_json::json!("true"),
+        serde_json::json!(1),
+        serde_json::Value::Null,
+    ] {
+        bug["random_faults"] = malformed;
+        assert!(
+            validate_bug_report_for_replay(&bug).is_err(),
+            "only a boolean records the setting"
+        );
+    }
+}
+
 #[test]
 fn rejects_invalid_contract_registry_shape() {
     let input = r#"{

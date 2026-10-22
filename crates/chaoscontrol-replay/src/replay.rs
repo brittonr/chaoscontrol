@@ -83,16 +83,48 @@ pub trait SimulationRunner {
     ) -> Result<(), ReplayError>;
 }
 
+/// VMM configuration of a replay. Every run-defining value, including the
+/// random-fault setting, comes from the recording, so the replay executes the
+/// run the recording describes.
+#[allow(
+    explicit_defaults,
+    reason = "replay shell derives VMM config from recorded partial metadata"
+)]
+fn recorded_simulation_config(
+    config: &RecordingConfig,
+    schedule: FaultSchedule,
+    seed: u64,
+) -> SimulationConfig {
+    SimulationConfig {
+        num_vms: config.num_vms,
+        vm_config: chaoscontrol_vmm::vm::VmConfig {
+            memory_size: config.vm_memory_size,
+            cpu: chaoscontrol_vmm::cpu::CpuConfig {
+                tsc_khz: config.tsc_khz,
+                seed,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        kernel_path: config.kernel_path.clone(),
+        initrd_path: config.initrd_path.clone(),
+        seed,
+        quantum: config.quantum,
+        schedule,
+        disk_image_path: config.disk_image_path.clone(),
+        base_core: None,
+        dlog_dir: None,
+        bootstrap_budget: None,
+        random_faults: config.random_faults,
+    }
+}
+
 /// Real implementation using SimulationController.
 pub struct RealSimulationRunner {
     controller: SimulationController,
 }
 
 impl SimulationRunner for RealSimulationRunner {
-    #[allow(
-        explicit_defaults,
-        reason = "replay shell derives VMM config from recorded partial metadata"
-    )]
     fn create(
         config: &RecordingConfig,
         schedule: FaultSchedule,
@@ -100,29 +132,8 @@ impl SimulationRunner for RealSimulationRunner {
         run_sequence: u64,
     ) -> Result<Self, ReplayError> {
         let replay_schedule = schedule.clone();
-        let sim_config = SimulationConfig {
-            num_vms: config.num_vms,
-            vm_config: chaoscontrol_vmm::vm::VmConfig {
-                memory_size: config.vm_memory_size,
-                cpu: chaoscontrol_vmm::cpu::CpuConfig {
-                    tsc_khz: config.tsc_khz,
-                    seed,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            kernel_path: config.kernel_path.clone(),
-            initrd_path: config.initrd_path.clone(),
-            seed,
-            quantum: config.quantum,
-            schedule,
-            disk_image_path: config.disk_image_path.clone(),
-            base_core: None,
-            dlog_dir: None,
-            bootstrap_budget: None,
-        };
-
-        let mut controller = SimulationController::new(sim_config)?;
+        let mut controller =
+            SimulationController::new(recorded_simulation_config(config, schedule, seed))?;
         controller.start_fault_run_at(replay_schedule, run_sequence);
         Ok(Self { controller })
     }
@@ -709,6 +720,37 @@ mod tests {
     };
     use chaoscontrol_vmm::scheduler::{SchedulerConfig, SchedulingStrategy};
 
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+    #[test]
+    fn replay_runs_under_the_recorded_random_fault_setting() {
+        const RANDOM_FAULTS_KEY: &str = "random_faults";
+        let recording = |random_faults| RecordingConfig {
+            num_vms: 2,
+            vm_memory_size: 256 * 1024 * 1024,
+            tsc_khz: 3_000_000,
+            kernel_path: "vmlinux".into(),
+            initrd_path: None,
+            quantum: 100,
+            checkpoint_interval: 1000,
+            disk_image_path: None,
+            random_faults,
+        };
+        for random_faults in [true, false] {
+            let config = recording(random_faults);
+            let replayed = recorded_simulation_config(&config, FaultSchedule::new(), 7);
+            assert_eq!(replayed.random_faults, random_faults);
+        }
+
+        let mut legacy = serde_json::to_value(recording(true)).expect("recording config JSON");
+        legacy
+            .as_object_mut()
+            .expect("recording config object")
+            .remove(RANDOM_FAULTS_KEY);
+        let legacy: RecordingConfig = serde_json::from_value(legacy).expect("legacy recording");
+        let replayed = recorded_simulation_config(&legacy, FaultSchedule::new(), 7);
+        assert!(!replayed.random_faults);
+    }
+
     const SHORT_REPLAY_QUANTUM: u64 = 45;
     const CORRUPT_FAULT_TRACE_QUANTUM: u64 = 43;
     const DIVERGENT_SCHEDULE_TRACE_QUANTUM: u64 = 47;
@@ -1047,6 +1089,7 @@ mod tests {
                 quantum: 100,
                 checkpoint_interval: 1000,
                 disk_image_path: None,
+                random_faults: false,
             },
             checkpoints,
             schedule: FaultSchedule::new(),

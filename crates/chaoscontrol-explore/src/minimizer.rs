@@ -354,10 +354,16 @@ impl Minimizer {
             return Ok(());
         }
 
+        self.controller = Some(SimulationController::new(self.simulation_config())?);
+        Ok(())
+    }
+
+    /// Simulation configuration for candidate replays of the bug's run.
+    fn simulation_config(&self) -> SimulationConfig {
         let mut vm_config = self.config.vm_config.clone();
         vm_config.scheduling_strategy = self.config.scheduling_strategy;
 
-        let sim_config = SimulationConfig {
+        SimulationConfig {
             num_vms: self.config.num_vms,
             vm_config,
             kernel_path: self.config.kernel_path.clone(),
@@ -369,10 +375,10 @@ impl Minimizer {
             base_core: None,
             dlog_dir: None,
             bootstrap_budget: None,
-        };
-
-        self.controller = Some(SimulationController::new(sim_config)?);
-        Ok(())
+            // The bug records the setting of the run that found it; replaying
+            // candidates under any other setting would minimize another run.
+            random_faults: self.bug.random_faults,
+        }
     }
 
     fn bootstrap(&mut self) -> Result<SimulationSnapshot, ExploreError> {
@@ -462,6 +468,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         }
     }
 
@@ -470,6 +477,19 @@ mod tests {
         let config = test_config();
         assert_eq!(config.num_vms, 3);
         assert_eq!(config.seed, 42);
+    }
+
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
+    #[test]
+    fn candidates_replay_under_the_bug_recorded_random_fault_setting() {
+        for random_faults in [true, false] {
+            let bug = BugReport {
+                random_faults,
+                ..bug_with_snapshot(None)
+            };
+            let minimizer = Minimizer::new(test_config(), bug);
+            assert_eq!(minimizer.simulation_config().random_faults, random_faults);
+        }
     }
 
     #[test]

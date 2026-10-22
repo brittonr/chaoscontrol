@@ -864,6 +864,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         }
     }
 
@@ -1034,6 +1035,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         };
 
         let formatted = format_bug(&bug);
@@ -1544,6 +1546,7 @@ mod tests {
             schedule_variant: None,
             scenario_config: None,
             scenario_summary: None,
+            random_faults: false,
         };
 
         let formatted = format_bug(&bug);
@@ -1580,6 +1583,7 @@ mod tests {
                     schedule_variant: None,
                     scenario_config: None,
                     scenario_summary: None,
+                    random_faults: false,
                 },
                 found_by_seeds: vec![42, 44],
                 first_seed: 42,

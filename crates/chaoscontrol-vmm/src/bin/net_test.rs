@@ -39,6 +39,10 @@ fn net_config(kernel: &str, initrd: &str, seed: u64) -> SimulationConfig {
         initrd_path: Some(initrd.to_string()),
         seed,
         quantum: 100,
+        // This harness asserts undisturbed networking behaviour and exact
+        // delivery statistics; the explicit opt-out keeps it free of the
+        // default fault injection.
+        random_faults: false,
         ..Default::default()
     }
 }

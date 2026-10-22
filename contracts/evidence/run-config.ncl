@@ -30,6 +30,9 @@ let Exploration = {
   # "legacy-diagnostic" is explicit diagnostic rollback only: its outputs are
   # marked release_eligible = false and every release/dogfood gate refuses them.
   frontier_policy | P.closed_enum ["campaign", "legacy-diagnostic"] | optional,
+  # Absent means the system-run default: every run injects seed-derived random
+  # faults in addition to its schedule. false is the explicit opt-out.
+  random_faults | Bool | optional,
 } in
 let Coverage = {
   mode | P.closed_enum ["blind", "bitmap"],

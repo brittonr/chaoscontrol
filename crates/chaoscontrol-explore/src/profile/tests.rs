@@ -15,6 +15,10 @@ const CAMPAIGN_RUN: &str =
 const LEGACY_DIAGNOSTIC_RUN: &str = include_str!(
     "../../../../contracts/evidence/fixtures/valid/run-profile.legacy-diagnostic.valid.json"
 );
+const RANDOM_FAULTS_OPT_OUT_RUN: &str = include_str!(
+    "../../../../contracts/evidence/fixtures/valid/run-profile.random-faults-opt-out.valid.json"
+);
+const RANDOM_FAULTS_KEY: &str = "random_faults";
 
 const RUN: &str =
     include_str!("../../../../contracts/evidence/fixtures/valid/run-profile.valid.json");
@@ -148,6 +152,36 @@ fn run_profile_rejects_unknown_and_retired_frontier_policies() {
             serde_json::from_value::<RunProfile>(value).is_err(),
             "policy {unknown:?} must be rejected"
         );
+    }
+}
+
+// r[verify chaoscontrol.system_runs.fault_injection.scenario.exploration]
+#[test]
+fn run_profile_injects_random_faults_unless_it_opts_out_explicitly() {
+    let profile: RunProfile = serde_json::from_str(RUN).expect("run profile");
+    let serialized = serde_json::to_value(&profile).expect("profile JSON");
+    assert!(serialized["exploration"].get(RANDOM_FAULTS_KEY).is_none());
+    let config = profile
+        .try_into_explorer_config(47, None)
+        .expect("run conversion");
+    assert!(config.random_faults);
+
+    let opt_out: RunProfile =
+        serde_json::from_str(RANDOM_FAULTS_OPT_OUT_RUN).expect("opt-out profile");
+    let serialized = serde_json::to_value(&opt_out).expect("profile JSON");
+    assert_eq!(
+        serialized["exploration"][RANDOM_FAULTS_KEY],
+        serde_json::json!(false)
+    );
+    let config = opt_out
+        .try_into_explorer_config(47, None)
+        .expect("run conversion");
+    assert!(!config.random_faults);
+
+    for malformed in [serde_json::json!("off"), serde_json::json!(0)] {
+        let mut value = serde_json::from_str::<serde_json::Value>(RUN).expect("run JSON");
+        value["exploration"][RANDOM_FAULTS_KEY] = malformed;
+        assert!(serde_json::from_value::<RunProfile>(value).is_err());
     }
 }
 

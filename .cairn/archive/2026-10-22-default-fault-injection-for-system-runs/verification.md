@@ -57,6 +57,15 @@ The raft accepted-verdict rail ran twice on KVM.
 - `cairn validate --root . --strict` is valid with no issues or findings after the sync.
 - `cairn archive --execute` with `CAIRN_ARCHIVE_DATE=2026-10-22` moved the package to `.cairn/archive/2026-10-22-default-fault-injection-for-system-runs` (receipt `357780be06a6f434e36fda34c50c3808e0543a39a009c7da58577956b22abdf2`).
 
+## Final gate on `bbecdb8`
+
+`nix flake check -L --keep-going --option builders ''` ran on the tree of the archive commit `bbecdb8`.
+
+- Every check passed except `local-multi-hypervisor-kvm-smoke`. `snapshot-replay-smoke` passed.
+- While that smoke ran, unrelated host work held the load average between 51 and 66 on 32 cores. A local run of the same smoke ended both workloads in `HostWatchdogTimeout { vcpu: 0 }`, and three sandbox rebuilds also failed (1 of 2, 1 of 2, and 0 of 2 runs passed).
+- An interleaved raft-rail A/B on the same tree, at load 12 to 40, failed one run with random injection off on the same timeout. Both default-on runs and the second opt-out run passed.
+- After the load fell to about 8, a rebuild of `checks.x86_64-linux.local-multi-hypervisor-kvm-smoke` passed both runs (`status=recorded runs=2 passed=2`).
+
 ## Non-claims
 
 - Default random injection does not show that a run reaches every failure path.

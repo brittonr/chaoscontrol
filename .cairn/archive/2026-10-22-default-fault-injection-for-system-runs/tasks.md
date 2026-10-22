@@ -15,5 +15,5 @@
 ## Phase 2: Verification and completion evidence
 
 - [x] [serial] V1 Build the VMM crate and run the affected tests and gates. r[chaoscontrol.system_runs.fault_injection]
-- [ ] [serial] V2 Run the Cairn gates, sync the accepted spec, archive the change, and record the evidence. The installed `cairn` validates this repository's refreshed policy, and `cairn validate --root . --strict` passes with this package active; syncing the spec and archiving remain. r[chaoscontrol.system_runs.fault_injection.scenario.opt_out]
+- [x] [serial] V2 Run the Cairn gates, sync the accepted spec, archive the change, and record the evidence. Evidence: `verification.md`. r[chaoscontrol.system_runs.fault_injection.scenario.opt_out]
 - [x] [serial] V3 Build the workspace, run its tests and Clippy, the product-scope, evidence-contract, and profile-projection checks, and `nix flake check` including the KVM smoke checks. Evidence: `verification.md`. r[chaoscontrol.system_runs.fault_injection.exploration]

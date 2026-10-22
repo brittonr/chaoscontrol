@@ -5,7 +5,8 @@
 - `595b2c7` is the original change, replayed onto `main` at `e540904`; `controller.rs` merged without conflict.
 - `eaef511` gives exploration the setting and records it.
 - `e0f263a` declares the product-scope intent.
-- Every check below ran on the tree of `e0f263a`.
+- `ce75182` carries the recorded setting into the dogfood `run-config.json` projection.
+- The repository, Nix, and end-to-end checks below ran on the tree of `e0f263a`. The run-config projection and lifecycle checks ran on the tree of `ce75182`.
 
 The original change did not build `chaoscontrol-explore` or `chaoscontrol-replay`. Five `SimulationConfig` literals named every field and lacked `random_faults`: in `explorer.rs`, `worker.rs`, `minimizer.rs`, the explorer binary's `reproduce`, and `replay.rs`.
 
@@ -43,8 +44,20 @@ The raft accepted-verdict rail ran twice on KVM.
 
 `reproduce` received no setting in either run, so it used the value recorded in the bug.
 
+## Run-config projection
+
+- `recorded_random_faults_is_carried_and_legacy_checkpoints_keep_the_shape` passes. A checkpoint without the setting keeps the legacy run-config shape, both recorded values round-trip through the compatibility encoding and validate, and a string, number, or null value is refused.
+- `check-evidence-contracts --root .` passes with the new valid and invalid run-config fixtures. The whole `chaoscontrol-evidence` test suite and its Clippy pass.
+- `check-contract-registry .` passes: 21 families. The run-profile, run-config, and bug-report fixtures for the setting are registered.
+
+## Lifecycle
+
+- `cairn gate proposal`, `design`, and `tasks` each return `PASS` with no issues. Their receipts are `ede1a85c7d81c440b638d3c7edd10bda97943c173a7f5c079a82a686e031dfd7`, `c61956a5272bd9c1041656064898ea96741a025994e8d6cbc9f48bef7969f056`, and `f1b305cf71c17d80eec93060521445a5d533c5078c4ce8ecff01ee0437d15ffc`.
+- `cairn sync --execute` merged the delta into `.cairn/specs/system-run-fault-injection/spec.md` (receipt `d8affe86a3708727af91520f8cd2db4ea72438989930ff59dbe8be8cc09df883`).
+- `cairn validate --root . --strict` is valid with no issues or findings after the sync.
+- `cairn archive --execute` with `CAIRN_ARCHIVE_DATE=2026-10-22` moved the package to `.cairn/archive/2026-10-22-default-fault-injection-for-system-runs` (receipt `357780be06a6f434e36fda34c50c3808e0543a39a009c7da58577956b22abdf2`).
+
 ## Non-claims
 
 - Default random injection does not show that a run reaches every failure path.
 - The host watchdog timeouts are a host or VM residual risk. They reproduce with random injection off, and this change does not address them.
-- The dogfood `run-config.json` projection does not carry the setting.

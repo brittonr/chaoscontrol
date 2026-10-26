@@ -502,3 +502,62 @@ source remains `19d2ecd42160eefc2bca0abb2d30c70f490bdea5`; this evidence-only
 delivery and task closure do not relabel the tested revision or close the
 remaining production-readiness prerequisites.
 
+
+## Approved replacement planted-finding evidence (2026-10-25)
+
+The user selected a current-source replacement finding and directed that the
+inaccessible historical failed-build payloads be recorded as unattainable.
+This authorizes campaign/replay execution and evidence-only updates, not another
+product correction. The 53-slot implementation ledger is unchanged.
+
+- [x] [depends:snapshot-lineage-campaign] Record the approved replacement selection and historical-artifact disposition without changing product code, campaign bounds or historical receipts. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [x] [depends:snapshot-lineage-campaign] Run the unchanged-bound control, planted and deep-probe campaigns on clean `ef778be7ecc0467f176857dac779a262b9b741d1`; retain exact commands, inputs, assertion outcomes and per-depth overlays. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [x] [depends:snapshot-lineage-campaign] Replay every retained safety finding with parent depth at least three and select a replacement only after a valid digest-verified `snapshot_backed_reproduced` verdict. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [x] [depends:snapshot-lineage-campaign] Retain a Nickel-validated BLAKE3 receipt, update only supported task/document state, and publish evidence without relabeling historical failures or the exact clean release revision. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+
+The original initrd and finding remain unrecovered. The sixteen builder-owned
+historical payloads remain unreadable; approved disposition is not recovery.
+Existing passing release evidence supersedes those failed-run diagnostics for
+the approved review, but does not change their historical verdicts. A deliberate
+snapshot replay probe is not evidence of a discovered Raft consensus defect.
+
+
+Observed on clean `ef778be7ecc0467f176857dac779a262b9b741d1` with the immutable
+release explorer from that revision and kernel/initrd store paths
+`kmykw8w23hlf752b098yv6phmv7cryzf-chaoscontrol-vmlinux` and
+`nfv89frhg5fz8hfsshp0acw6j4zz6clb-chaoscontrol-initrd-raft`. The declarations are
+the unchanged attempt47 ones: seed 42, three VMs, 1 vCPU, 128 MiB, ten rounds,
+two branches, 500 ticks, quantum 100, frontier 50, 10000 bootstrap ticks and a
+600-second campaign envelope.
+
+All three campaigns completed inside the unchanged envelope with ten committed
+rounds, twenty branches and twenty aligned captures; none recorded an
+uncommitted capture or a `HostWatchdogTimeout`. Control and `fig8_commit` exited
+zero with no retained finding and reached frontier depth eight. The deliberate
+`snapshot_replay_probe` campaign exited 1 because of its admitted assertion
+failure and reached depth four with eight retained safety findings.
+
+Overlay payloads from observed dirty pages times 4096 were: depth one
+7815168-8245248, depth two 9658368-10506240, depth three 11132928-14561280 and
+depth four 11255808-17596416 bytes across the three campaigns. Each campaign
+retains its measured per-depth minima, maxima and capture counts.
+
+Every retained safety finding had parent depth three and replayed to a
+`schema_version` 2 `snapshot_backed_reproduced` verdict with matching bug,
+assertion, identity and parent-depth fields, plus a present digest-verified
+parent snapshot. The selected replacement finding is bug 0 at assertion
+`3463273124` with parent snapshot
+`sha256:6855c3684836345a6fe76670815fa397bad545713be0ad260c570c38ea453245`.
+
+The Nickel receipt `dogfood-results/production-readiness-planted-20261025/receipt.ncl`
+exports with `approved_review_ready = true` under the approved disposition while
+`production_ready`, `historical_original_reproduced` and
+`historical_failed_payloads_recovered` stay false. A negative export that forces
+those three fields is rejected by contract. Independent BLAKE3 and byte-length
+verification covers all 383 bound artifacts; all 110 inherited `ef778be`
+artifact bindings and all 138 matrix artifacts verify, and the only inherited
+non-gate difference is the extended read-only initrd recovery record.
+
+The historical original finding and its exact initrd remain unrecovered, and the
+sixteen builder-owned failed-build payloads remain unattainable. Those historical
+verdicts and receipts are unchanged; this approved review does not restore them.

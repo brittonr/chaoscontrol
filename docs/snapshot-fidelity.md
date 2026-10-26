@@ -794,3 +794,73 @@ substitute for that finding. No permissions, acceptance criteria, historical
 receipts or failed verdicts are changed. All 52 authorized corrective attempts
 are consumed; no attempt53, lifecycle archive or readiness promotion is implied.
 
+
+## Approved replacement planted-finding cohort (2026-10-25)
+
+The operator selected "Reselect a current-source finding" and directed that the
+sixteen inaccessible historical failed-build payloads be recorded as
+unattainable. That approval covers campaign and replay execution plus
+evidence-only updates. It does not authorize another product correction, and the
+53-slot implementation ledger is unchanged. The historical original finding is
+still unrecovered: the exact initrd remains absent and the current reader still
+rejects its legacy parents. Neither result is rewritten here.
+
+The cohort ran on clean `ef778be7ecc0467f176857dac779a262b9b741d1` with the
+immutable release explorer built from that revision and the store paths
+`kmykw8w23hlf752b098yv6phmv7cryzf-chaoscontrol-vmlinux` and
+`nfv89frhg5fz8hfsshp0acw6j4zz6clb-chaoscontrol-initrd-raft`. The used kernel
+resolves to `hsypp38yxmfrf49a0f5a24r0j50xxsiq-linux-6.19-dev/vmlinux`
+(`blake3:0541ff0e…1d07ca`, 410793888 bytes); the initrd is
+`blake3:30411f41…845048` (477079 bytes). Seed 42,
+three VMs, one vCPU, 128 MiB, ten rounds, two branches, 500 ticks, quantum 100,
+frontier 50, 10000 bootstrap ticks and the unchanged 600-second campaign
+envelope are identical to the attempt47 declarations. Campaign outputs, boot
+files and the explorer were copied to content-bound local paths before analysis.
+
+| Campaign | Exit | Rounds | Branches | Depth | Retained | Replays | Wall (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `raft_bug=none` | 0 | 10 | 20 | 8 | 0 | — | 345.7 |
+| `raft_bug=fig8_commit` | 0 | 10 | 20 | 8 | 0 | — | 381.9 |
+| `raft_bug=snapshot_replay_probe` | 1 | 10 | 20 | 4 | 8 safety | 8 | 313.5 |
+
+Exit 1 is the deliberate failure from the admitted probe; it is not a timeout.
+All three advisory bounds completed well inside 600 seconds, no round reported a
+host watchdog timeout, and no capture was left uncommitted. The control and
+`fig8_commit` campaigns retained no finding, so neither liveness failure nor
+operational timeout was reclassified as a safety result. Their deeper frontier
+(8) does not pass or replace the ten-round/depth-four exploration requirement.
+
+Observed dirty pages times 4096 give these overlay payloads; compressed snapshot
+lengths are not substituted:
+
+| Depth | Control bytes (captures) | Planted bytes (captures) | Probe bytes (captures) |
+| --- | --- | --- | --- |
+| 1 | 7815168–8122368 (2) | 7979008–8118272 (2) | 7753728–8245248 (2) |
+| 2 | 10059776–10506240 (2) | 9822208–9928704 (2) | 9658368–10149888 (6) |
+| 3 | 13041664–14143488 (4) | 13152256–14561280 (4) | 11132928–11644928 (10) |
+| 4 | 15056896–17354752 (4) | 14979072–17596416 (4) | 11255808–11259904 (2) |
+
+Each campaign produced twenty aligned captures; every trace-selected parent
+resolved to the recorded child depth and no capture remained unmatched. The
+assertion catalog is accepted and collision-safe for all three campaigns at 45
+sites: control and planted report 44 passing, zero failing, one unexercised;
+the probe reports 44 passing and the single deliberate failure at assertion
+`3463273124` (`snapshot-replay-probe.v1`).
+
+All eight retained probe findings have parent depth three and reproduced with
+`schema_version` 2 `snapshot_backed_reproduced` verdicts. Each verdict matches
+the exported bug, assertion, identity and parent-depth fields and names a
+present, digest-verified parent snapshot. The selected replacement finding is
+bug 0: assertion `3463273124`, parent depth 3, snapshot
+`sha256:6855c3684836345a6fe76670815fa397bad545713be0ad260c570c38ea453245`
+(`simulation-snapshot-cbor-zstd-v2`). Its diagnostic is
+"BUG REPRODUCED — assertion 3463273124 failed".
+
+This is a deliberate snapshot replay probe that trips only after restored parent
+context. It is not a discovered Raft consensus defect, and it does not stand in
+for the historical finding it replaces. Validate the receipt with `nickel export
+--format json dogfood-results/production-readiness-planted-20261025/receipt.ncl`;
+the computed `approved_review_ready` verdict covers only this reselected
+evidence plus the already-retained `ef778be` release gates. `production_ready`,
+`historical_original_reproduced` and `historical_failed_payloads_recovered` stay
+false.

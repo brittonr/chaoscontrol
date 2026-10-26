@@ -25,11 +25,17 @@ the exact tested revision. The
 [MCP correction receipt](dogfood-results/production-readiness-mcp53-20261020/receipt.ncl)
 binds the cohort, source, dependency, command, result and matrix identities.
 Copying upstream self-fixtures or accepting process exit zero is not a remedy.
-Production readiness still waits on the retained historical replay and inaccessible
-failed-build payload prerequisites. The
-[focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
-retains the depth-four campaign and retained-finding replay evidence.
-See the [focused evidence boundary](docs/snapshot-fidelity.md#focused-logical-marker-correction-attempt47)
+The historical original planted finding and the sixteen builder-owned failed-build
+payloads remain unrecovered. The operator approved reselecting a current-source
+finding and recording those payloads as unattainable. The
+[replacement receipt](dogfood-results/production-readiness-planted-20261025/receipt.ncl)
+binds that disposition: unchanged 600-second control, planted and deliberate-probe
+campaigns on clean `ef778be7ecc0467f176857dac779a262b9b741d1`, measured overlays
+through depth four, and eight retained depth-three safety findings that reproduced
+with valid digest-verified parents. `production_ready` remains false; no historical
+receipt, failed verdict or tested release revision is relabeled. See the
+[replacement evidence boundary](docs/snapshot-fidelity.md#approved-replacement-planted-finding-cohort-2026-10-25)
+and the [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
 for exact sources, measured limits and non-claims.
 
 The [2026-10-20 gate receipt](dogfood-results/production-readiness-gates-20261020/receipt.ncl)

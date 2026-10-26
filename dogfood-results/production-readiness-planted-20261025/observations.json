@@ -2731,6 +2731,21 @@
       "bytes": 1741
     },
     {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final-head/execution.json",
+      "digest": "blake3:c2e5e39b9f8effa9fed5f87cda4eb5ad919ac75ad432144439fbda6f978746c7",
+      "bytes": 1446
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final-head/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final-head/stdout.log",
+      "digest": "blake3:bf81ac5a0bc550e54269c2ecc7b92cca7d7007d4f2396e8c89657c54cb55d8c5",
+      "bytes": 1741
+    },
+    {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-marker-repaired/execution.json",
       "digest": "blake3:f2cd4193a444d0c19163b9e9ee1803295e3ac72379bfc9e3c963633127af3cd6",
       "bytes": 1455
@@ -2789,6 +2804,21 @@
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final/stdout.log",
       "digest": "blake3:7b17b3dcfff3ea4096d8d3cfcc4936023d03d9419c8feb88428d44e4143dc069",
       "bytes": 66740
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final-head/execution.json",
+      "digest": "blake3:4c2afcd7bca4d7e3186a144cadc81fccd1ffc06988378d1b11ed20c973d6e753",
+      "bytes": 1410
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final-head/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final-head/stdout.log",
+      "digest": "blake3:06d3bbae15505002f41f65c332c92cd4449d6c50845c7fc415323b2d6b9b51c4",
+      "bytes": 66921
     },
     {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-marker-repaired/execution.json",
@@ -4861,6 +4891,40 @@
       "timeout_seconds": 120,
       "operational_timeout": false,
       "exit_code": 0,
+      "started": "2026-10-26T17:58:02.687692+00:00",
+      "finished": "2026-10-26T17:58:02.753637+00:00",
+      "elapsed_seconds": 0.06595650300732814,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final-head/stdout.log",
+          "digest": "blake3:bf81ac5a0bc550e54269c2ecc7b92cca7d7007d4f2396e8c89657c54cb55d8c5",
+          "bytes": 1741
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final-head/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "traceability",
+        "coverage",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--json"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn traceability coverage --root . --policy cairn-policy/generated/cairn-policy.json --json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
       "started": "2026-10-26T17:57:33.367820+00:00",
       "finished": "2026-10-26T17:57:33.784845+00:00",
       "elapsed_seconds": 0.4170238410006277,
@@ -4972,6 +5036,39 @@
         },
         {
           "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "validate",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--strict"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn validate --root . --policy cairn-policy/generated/cairn-policy.json --strict",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:58:02.499513+00:00",
+      "finished": "2026-10-26T17:58:02.563691+00:00",
+      "elapsed_seconds": 0.06414955999935046,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final-head/stdout.log",
+          "digest": "blake3:06d3bbae15505002f41f65c332c92cd4449d6c50845c7fc415323b2d6b9b51c4",
+          "bytes": 66921
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final-head/stderr.log",
           "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
           "bytes": 0
         }
@@ -7016,5 +7113,5 @@
     "failures": [],
     "all_verified": true
   },
-  "artifact_count": 451
+  "artifact_count": 457
 }

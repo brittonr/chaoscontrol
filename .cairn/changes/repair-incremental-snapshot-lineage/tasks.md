@@ -577,6 +577,10 @@ that satisfies the statement, and the annotated tests plus workspace formatting
 were exercised afterwards. Coverage then reports 393/393 with zero missing and
 zero dangling links.
 
+This marker repair is evidence metadata, not a corrective implementation
+attempt: it changes no behavior, no bound and no acceptance criterion, so the
+recorded 53-attempt ledger and its limit are unchanged.
+
 The first strict validation of this evidence tree was rejected for four new
 tasks that lacked requirement references and concurrency markers. Those tasks
 now carry `[depends:snapshot-lineage-campaign]` and the existing traceability

@@ -33,7 +33,10 @@ binds that disposition: unchanged 600-second control, planted and deliberate-pro
 campaigns on clean `ef778be7ecc0467f176857dac779a262b9b741d1`, measured overlays
 through depth four, and eight retained depth-three safety findings that reproduced
 with valid digest-verified parents. `production_ready` remains false; no historical
-receipt, failed verdict or tested release revision is relabeled. See the
+receipt, failed verdict or tested release revision is relabeled. Native traceability
+on this delivery head reports 5 missing links from the merged, unrelated
+`default-fault-injection-for-system-runs` requirements; `382/382` remains the
+verified coverage of `ef778be`. See the
 [replacement evidence boundary](docs/snapshot-fidelity.md#approved-replacement-planted-finding-cohort-2026-10-25)
 and the [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
 for exact sources, measured limits and non-claims.

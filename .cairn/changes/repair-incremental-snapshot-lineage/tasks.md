@@ -553,10 +553,29 @@ The Nickel receipt `dogfood-results/production-readiness-planted-20261025/receip
 exports with `approved_review_ready = true` under the approved disposition while
 `production_ready`, `historical_original_reproduced` and
 `historical_failed_payloads_recovered` stay false. A negative export that forces
-those three fields is rejected by contract. Independent BLAKE3 and byte-length
-verification covers all 383 bound artifacts; all 110 inherited `ef778be`
-artifact bindings and all 138 matrix artifacts verify, and the only inherited
-non-gate difference is the extended read-only initrd recovery record.
+those three fields is rejected by contract, and that rejected export is bound
+with the accepted one. Independent BLAKE3 and byte-length verification covers
+every bound artifact, including the negative check, the rejected and final
+strict validation runs, traceability and policy freshness; all 110 inherited
+`ef778be` artifact bindings and all 138 matrix artifacts verify, and the only
+inherited non-gate difference is the extended read-only initrd recovery record.
+
+Strict lifecycle validation and policy freshness pass on this evidence tree.
+Native traceability does not: the delivery head now includes the merged
+`default-fault-injection-for-system-runs` change, whose five
+`chaoscontrol.system_runs.fault_injection*` requirements carry their markers only
+in its archived tasks and have no marker in a declared evidence source. The
+fresh run reports 388 referenced, 393 requirements, 5 missing and 0 dangling with
+verdict `fail`, and it is retained rather than suppressed. Those links belong to
+that change and are not manufactured here; `382/382` remains the verified
+coverage of the release-tested `ef778be` source, not of the delivery head.
+
+The first strict validation of this evidence tree was rejected for four new
+tasks that lacked requirement references and concurrency markers. Those tasks
+now carry `[depends:snapshot-lineage-campaign]` and the existing traceability
+requirement; the rejected run is retained beside the passing one rather than
+discarded. A superseded run against the wrong repository root was discarded
+before retention, so no such record is bound.
 
 The historical original finding and its exact initrd remain unrecovered, and the
 sixteen builder-owned failed-build payloads remain unattainable. Those historical

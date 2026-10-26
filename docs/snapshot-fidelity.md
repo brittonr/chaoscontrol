@@ -864,3 +864,13 @@ the computed `approved_review_ready` verdict covers only this reselected
 evidence plus the already-retained `ef778be` release gates. `production_ready`,
 `historical_original_reproduced` and `historical_failed_payloads_recovered` stay
 false.
+
+The committed evidence tree keeps its own gate boundary. Strict lifecycle
+validation and policy freshness pass, and a rejected validation run is retained
+next to the passing one. Native traceability does not pass on this delivery
+head: the merged `default-fault-injection-for-system-runs` change left five
+`chaoscontrol.system_runs.fault_injection*` requirements marked only in its
+archived tasks, so the fresh report is 388 referenced, 393 requirements, five
+missing, zero dangling and verdict `fail`. Those links belong to that change and
+are not asserted here; `382/382` remains the verified coverage of the
+release-tested `ef778be` source.

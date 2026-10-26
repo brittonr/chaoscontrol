@@ -87,6 +87,7 @@ let InheritedGatesReady =
   historical_original_reproduced | std.contract.Equal false = false,
   historical_failed_payloads_recovered | std.contract.Equal false = false,
   original_unamended_acceptance_ready | std.contract.Equal false = false,
+  production_ready | std.contract.Equal false = false,
   approved_review_ready | std.contract.Equal true = InheritedGatesReady && ReplacementReady && ApprovedDisposition,
   outcome = "approved-replacement-evidence-complete",
   artifacts | Array Artifact = O.artifacts,

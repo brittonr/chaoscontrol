@@ -308,6 +308,7 @@ fn worker_simulation_config(config: &ExplorerConfig) -> SimulationConfig {
     }
 }
 
+// r[impl chaoscontrol.system_runs.fault_injection.exploration]
 /// Run one branch, replacing the worker controller after host watchdog timeouts.
 ///
 /// Watchdog timeouts retry or discard the branch. Other errors and panics keep

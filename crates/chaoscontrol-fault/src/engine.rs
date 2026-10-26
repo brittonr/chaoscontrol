@@ -1472,6 +1472,7 @@ mod tests {
         assert_ne!(val1, val2); // Different random values
     }
 
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.determinism]
     #[test]
     fn random_deterministic_with_same_seed() {
         let mut e1 = FaultEngine::new(EngineConfig {

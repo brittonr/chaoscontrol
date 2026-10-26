@@ -115,6 +115,7 @@ fn bench_controller(kernel: &str, initrd: &str) {
         quantum: 100,
         // This harness asserts undisturbed system behaviour; the explicit
         // opt-out keeps it free of the default fault injection.
+        // r[impl chaoscontrol.system_runs.fault_injection.scenario.opt_out]
         random_faults: false,
         ..Default::default()
     };

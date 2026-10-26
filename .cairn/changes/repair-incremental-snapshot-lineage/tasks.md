@@ -561,14 +561,21 @@ strict validation runs, traceability and policy freshness; all 110 inherited
 inherited non-gate difference is the extended read-only initrd recovery record.
 
 Strict lifecycle validation and policy freshness pass on this evidence tree.
-Native traceability does not: the delivery head now includes the merged
+Native traceability first failed here: the delivery head includes the merged
 `default-fault-injection-for-system-runs` change, whose five
-`chaoscontrol.system_runs.fault_injection*` requirements carry their markers only
-in its archived tasks and have no marker in a declared evidence source. The
-fresh run reports 388 referenced, 393 requirements, 5 missing and 0 dangling with
-verdict `fail`, and it is retained rather than suppressed. Those links belong to
-that change and are not manufactured here; `382/382` remains the verified
-coverage of the release-tested `ef778be` source, not of the delivery head.
+`chaoscontrol.system_runs.fault_injection*` requirements carried markers only in
+its archived tasks, so the fresh run reported 388 referenced, 393 requirements,
+five missing, zero dangling and verdict `fail`. That run is retained.
+
+The repair adds seven markers and nothing else: `impl` at the engine mapping,
+the explorer worker configuration and the reproduction of a recorded bug; the
+harness opt-out; and `verify` on `system_runs_inject_faults_by_default`,
+`the_fault_injection_opt_out_is_honoured`,
+`random_deterministic_with_same_seed` and the explorer worker test that already
+covered `scenario.exploration`. Each marker sits on the existing code or test
+that satisfies the statement, and the annotated tests plus workspace formatting
+were exercised afterwards. Coverage then reports 393/393 with zero missing and
+zero dangling links.
 
 The first strict validation of this evidence tree was rejected for four new
 tasks that lacked requirement references and concurrency markers. Those tasks

@@ -867,10 +867,16 @@ false.
 
 The committed evidence tree keeps its own gate boundary. Strict lifecycle
 validation and policy freshness pass, and a rejected validation run is retained
-next to the passing one. Native traceability does not pass on this delivery
-head: the merged `default-fault-injection-for-system-runs` change left five
+next to the passing one. Native traceability first failed here: the merged
+`default-fault-injection-for-system-runs` change left five
 `chaoscontrol.system_runs.fault_injection*` requirements marked only in its
-archived tasks, so the fresh report is 388 referenced, 393 requirements, five
-missing, zero dangling and verdict `fail`. Those links belong to that change and
-are not asserted here; `382/382` remains the verified coverage of the
-release-tested `ef778be` source.
+archived tasks, so the fresh report was 388 referenced, 393 requirements, five
+missing, zero dangling and verdict `fail`, and that run is retained. The repair
+is marker-only: `impl` markers at the engine mapping, the explorer worker
+configuration and the recorded-bug reproduction, an `impl` marker at the
+harness opt-out, and `verify` markers on the default, opt-out, seed-determinism
+and explorer-worker tests that already covered those statements. Coverage then
+reports 393/393 with zero missing and zero dangling links. The markers assert
+only the code and tests they sit on, they add no behavior, and `382/382` remains
+the verified coverage of the release-tested `ef778be` source. Release gates are
+therefore not re-bound to this marker-only head.

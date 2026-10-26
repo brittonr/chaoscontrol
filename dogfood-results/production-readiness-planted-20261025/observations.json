@@ -2566,6 +2566,96 @@
       "bytes": 16733016
     },
     {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-formatting/execution.json",
+      "digest": "blake3:c8313d635c2724af5b96b35dd5442dcb2438da748dfb33489a5af0e314db4965",
+      "bytes": 1565
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-formatting/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-formatting/stdout.log",
+      "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+      "bytes": 882
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-cli/execution.json",
+      "digest": "blake3:83748e451d1e57bc8c19981a1698b6045b5f1717c7ec1faa1c43b0b6ac579b15",
+      "bytes": 2010
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-cli/stderr.log",
+      "digest": "blake3:810af55b061086eedc4ea09d77dd7ccbe742895754110e36f402c12a031c3703",
+      "bytes": 6434
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-cli/stdout.log",
+      "digest": "blake3:00f1fa8577bb339daaab0d74094390be18934494950fe4b4c8d9a82460bb3822",
+      "bytes": 1079
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-worker/execution.json",
+      "digest": "blake3:084dfe1137b566680547e64ccb259ade7fa29d42ee8325198e59cf3755eda658",
+      "bytes": 1764
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-worker/stderr.log",
+      "digest": "blake3:b941f3f3f0a82fad506f2d2123502f739e4c0b87210155111b0a09636343829a",
+      "bytes": 3702
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-worker/stdout.log",
+      "digest": "blake3:977c10cc48113d82966bfdb64e1c0121ac6f8dd7b434d8a55307acf55672ae4a",
+      "bytes": 1980
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-fault/execution.json",
+      "digest": "blake3:fbeb258426b1a4805f4bbed15d4c10e1866de3d341ebb96c6d61dad4682c9e9e",
+      "bytes": 1727
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-fault/stderr.log",
+      "digest": "blake3:5aceb715108d8865646c154621b055bdff397f16dd49976962cee07d98830ba4",
+      "bytes": 1310
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-fault/stdout.log",
+      "digest": "blake3:af9f6721b75d13a262a8aad635b6b579038aa74e2ef7cbf682f4d373e1c8370c",
+      "bytes": 1059
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-default/execution.json",
+      "digest": "blake3:c6c36345635a75748d5dba931ad4343e2648a60ee0a578f4778688f80824c795",
+      "bytes": 1736
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-default/stderr.log",
+      "digest": "blake3:5109b5422bfa5b3c3b29f649e87a6f19185971ff25d30982616fdfec23828330",
+      "bytes": 1347
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-default/stdout.log",
+      "digest": "blake3:26b98e0162576672bb42ba681bcdf2345d3cf8bb1c938a4835ce5046d595253a",
+      "bytes": 1064
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-opt-out/execution.json",
+      "digest": "blake3:a37f8e0dee1a66fa8fd9e641a8312731a2f675cf806d4686eb2a07ad2a46aff8",
+      "bytes": 1740
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-opt-out/stderr.log",
+      "digest": "blake3:66a3f107fb186770e6a4595247a50b1542d8a8a6bc3a3414a3431cf2d22e3ed5",
+      "bytes": 786
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-opt-out/stdout.log",
+      "digest": "blake3:f954b2f6919d8e3d8cb676bcf7cd4bd85be28e9dd062e2f287d8ca2981f42e2d",
+      "bytes": 1067
+    },
+    {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability/execution.json",
       "digest": "blake3:7ca642df7a6d58cb1ab35934ea51a18d5de4546304089e3cafa641166c940a06",
       "bytes": 1424
@@ -2578,6 +2668,36 @@
     {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability/stdout.log",
       "digest": "blake3:e4f9df4ad2450e97321a1761a43e562105127ac494ca75a722cd98471552ebfe",
+      "bytes": 1741
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair/execution.json",
+      "digest": "blake3:facbfef2149eee96c8009de29b0e840363b6d6ed68fa4534c8bcd1d76794d8c1",
+      "bytes": 1465
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair/stderr.log",
+      "digest": "blake3:0d6b37b85f7098e17c14dfd421bdf089b3b545a8c04e73e315c9f32fc26a50be",
+      "bytes": 36
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair/stdout.log",
+      "digest": "blake3:22059960b1ee73700cc8f146aeaf3bcc2e112b0d61aa033f3cc36aa33567f584",
+      "bytes": 2051
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair2/execution.json",
+      "digest": "blake3:64195e2bb5e00e63b9679fad8c5806a6de973b10ad5b555418a0832f79ccbd9a",
+      "bytes": 1466
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair2/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair2/stdout.log",
+      "digest": "blake3:bf81ac5a0bc550e54269c2ecc7b92cca7d7007d4f2396e8c89657c54cb55d8c5",
       "bytes": 1741
     },
     {
@@ -2608,6 +2728,21 @@
     {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final/stdout.log",
       "digest": "blake3:e4f9df4ad2450e97321a1761a43e562105127ac494ca75a722cd98471552ebfe",
+      "bytes": 1741
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-marker-repaired/execution.json",
+      "digest": "blake3:f2cd4193a444d0c19163b9e9ee1803295e3ac72379bfc9e3c963633127af3cd6",
+      "bytes": 1455
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-marker-repaired/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-marker-repaired/stdout.log",
+      "digest": "blake3:bf81ac5a0bc550e54269c2ecc7b92cca7d7007d4f2396e8c89657c54cb55d8c5",
       "bytes": 1741
     },
     {
@@ -2654,6 +2789,21 @@
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final/stdout.log",
       "digest": "blake3:7b17b3dcfff3ea4096d8d3cfcc4936023d03d9419c8feb88428d44e4143dc069",
       "bytes": 66740
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-marker-repaired/execution.json",
+      "digest": "blake3:b70cb749d991c223824206420b8009358f5a47837513d7e7902a6801c50b4d15",
+      "bytes": 1420
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-marker-repaired/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-marker-repaired/stdout.log",
+      "digest": "blake3:a2d239dfdd625fd2bdd8b5844273eb0346ad4f94c0d9899166dcad0eb607b58d",
+      "bytes": 66921
     },
     {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-rejected-missing-task-markers/execution.json",
@@ -2732,6 +2882,21 @@
     },
     {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-final/stdout.log",
+      "digest": "blake3:626bb5e31eed06caa9eff49fd1d1a339f21e19bb3347e93255daa23e716b1f47",
+      "bytes": 55
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-marker-repaired/execution.json",
+      "digest": "blake3:13813db6014942ba0dd13d6edebb9c4656bc892bc9453d74c9fd5f1640752937",
+      "bytes": 1483
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-marker-repaired/stderr.log",
+      "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+      "bytes": 0
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-marker-repaired/stdout.log",
       "digest": "blake3:626bb5e31eed06caa9eff49fd1d1a339f21e19bb3347e93255daa23e716b1f47",
       "bytes": 55
     },
@@ -3761,6 +3926,11 @@
       "bytes": 2081
     },
     {
+      "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/run-marker-tests.py",
+      "digest": "blake3:e8891f2d5443333cb99c79cd595a390c525f2b0da028f6c0e8e84da014d3be12",
+      "bytes": 2039
+    },
+    {
       "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/run-planted-cohort.py",
       "digest": "blake3:010ca70bd88745a2aadf9d841cb14e3628a6017635873791490324e0952e99bd",
       "bytes": 7817
@@ -4257,6 +4427,257 @@
       "schema": "chaoscontrol.local-command-observation.v1",
       "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
       "command": [
+        "env",
+        "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+        "CARGO_INCREMENTAL=0",
+        "CARGO_BUILD_JOBS=2",
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "display_command": "env 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 /nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix develop --no-update-lock-file -c cargo fmt --all -- --check",
+      "timeout_seconds": 1800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:50:35.220734+00:00",
+      "finished": "2026-10-26T17:50:39.298510+00:00",
+      "elapsed_seconds": 4.077802640997106,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-formatting/stdout.log",
+          "digest": "blake3:c52c7800576a12be2f5f3655aa263eba2d52e25378e3c627cc5fdf9cc2855c12",
+          "bytes": 882
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-formatting/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "env",
+        "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+        "CARGO_INCREMENTAL=0",
+        "CARGO_BUILD_JOBS=2",
+        "CARGO_TARGET_DIR=/dev/shm/cc-marker-cargo",
+        "TMPDIR=/dev/shm/cc-marker-tmp",
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-explore",
+        "--bin",
+        "chaoscontrol-explore",
+        "run_and_campaign_inject_random_faults_unless_explicitly_opted_out"
+      ],
+      "display_command": "env 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=/dev/shm/cc-marker-cargo TMPDIR=/dev/shm/cc-marker-tmp /nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix develop --no-update-lock-file -c cargo test --offline --locked -p chaoscontrol-explore --bin chaoscontrol-explore run_and_campaign_inject_random_faults_unless_explicitly_opted_out",
+      "timeout_seconds": 1800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:55:02.335587+00:00",
+      "finished": "2026-10-26T17:57:25.420243+00:00",
+      "elapsed_seconds": 143.08480382099515,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-cli/stdout.log",
+          "digest": "blake3:00f1fa8577bb339daaab0d74094390be18934494950fe4b4c8d9a82460bb3822",
+          "bytes": 1079
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-cli/stderr.log",
+          "digest": "blake3:810af55b061086eedc4ea09d77dd7ccbe742895754110e36f402c12a031c3703",
+          "bytes": 6434
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "env",
+        "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+        "CARGO_INCREMENTAL=0",
+        "CARGO_BUILD_JOBS=2",
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-explore",
+        "worker_runs_use_the_exploration_random_fault_setting"
+      ],
+      "display_command": "env 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 /nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix develop --no-update-lock-file -c cargo test --offline --locked -p chaoscontrol-explore worker_runs_use_the_exploration_random_fault_setting",
+      "timeout_seconds": 1800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:51:07.757735+00:00",
+      "finished": "2026-10-26T17:52:48.753911+00:00",
+      "elapsed_seconds": 100.99618908800767,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-worker/stdout.log",
+          "digest": "blake3:977c10cc48113d82966bfdb64e1c0121ac6f8dd7b434d8a55307acf55672ae4a",
+          "bytes": 1980
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-explore-worker/stderr.log",
+          "digest": "blake3:b941f3f3f0a82fad506f2d2123502f739e4c0b87210155111b0a09636343829a",
+          "bytes": 3702
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "env",
+        "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+        "CARGO_INCREMENTAL=0",
+        "CARGO_BUILD_JOBS=2",
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-fault",
+        "--lib",
+        "random_deterministic_with_same_seed"
+      ],
+      "display_command": "env 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 /nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix develop --no-update-lock-file -c cargo test --offline --locked -p chaoscontrol-fault --lib random_deterministic_with_same_seed",
+      "timeout_seconds": 1800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:49:56.917066+00:00",
+      "finished": "2026-10-26T17:50:21.399464+00:00",
+      "elapsed_seconds": 24.482397237006808,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-fault/stdout.log",
+          "digest": "blake3:af9f6721b75d13a262a8aad635b6b579038aa74e2ef7cbf682f4d373e1c8370c",
+          "bytes": 1059
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-fault/stderr.log",
+          "digest": "blake3:5aceb715108d8865646c154621b055bdff397f16dd49976962cee07d98830ba4",
+          "bytes": 1310
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "env",
+        "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+        "CARGO_INCREMENTAL=0",
+        "CARGO_BUILD_JOBS=2",
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-vmm",
+        "--lib",
+        "system_runs_inject_faults_by_default"
+      ],
+      "display_command": "env 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 /nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix develop --no-update-lock-file -c cargo test --offline --locked -p chaoscontrol-vmm --lib system_runs_inject_faults_by_default",
+      "timeout_seconds": 1800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:50:47.214038+00:00",
+      "finished": "2026-10-26T17:51:05.386154+00:00",
+      "elapsed_seconds": 18.17213188300957,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-default/stdout.log",
+          "digest": "blake3:26b98e0162576672bb42ba681bcdf2345d3cf8bb1c938a4835ce5046d595253a",
+          "bytes": 1064
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-default/stderr.log",
+          "digest": "blake3:5109b5422bfa5b3c3b29f649e87a6f19185971ff25d30982616fdfec23828330",
+          "bytes": 1347
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "env",
+        "NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n",
+        "CARGO_INCREMENTAL=0",
+        "CARGO_BUILD_JOBS=2",
+        "/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-vmm",
+        "--lib",
+        "the_fault_injection_opt_out_is_honoured"
+      ],
+      "display_command": "env 'NIX_CONFIG=min-free = 0\nbuilders =\nsecret-key-files =\nmax-jobs = 1\n' CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 /nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix develop --no-update-lock-file -c cargo test --offline --locked -p chaoscontrol-vmm --lib the_fault_injection_opt_out_is_honoured",
+      "timeout_seconds": 1800,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:51:05.646185+00:00",
+      "finished": "2026-10-26T17:51:07.473760+00:00",
+      "elapsed_seconds": 1.82757567500812,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-opt-out/stdout.log",
+          "digest": "blake3:f954b2f6919d8e3d8cb676bcf7cd4bd85be28e9dd062e2f287d8ca2981f42e2d",
+          "bytes": 1067
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/marker-tests-vmm-opt-out/stderr.log",
+          "digest": "blake3:66a3f107fb186770e6a4595247a50b1542d8a8a6bc3a3414a3431cf2d22e3ed5",
+          "bytes": 786
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
         "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
         "traceability",
         "coverage",
@@ -4282,6 +4703,74 @@
         },
         {
           "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "traceability",
+        "coverage",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--json"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn traceability coverage --root . --policy cairn-policy/generated/cairn-policy.json --json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-26T17:49:25.400641+00:00",
+      "finished": "2026-10-26T17:49:25.515008+00:00",
+      "elapsed_seconds": 0.11436161599704064,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair/stdout.log",
+          "digest": "blake3:22059960b1ee73700cc8f146aeaf3bcc2e112b0d61aa033f3cc36aa33567f584",
+          "bytes": 2051
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair/stderr.log",
+          "digest": "blake3:0d6b37b85f7098e17c14dfd421bdf089b3b545a8c04e73e315c9f32fc26a50be",
+          "bytes": 36
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "traceability",
+        "coverage",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--json"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn traceability coverage --root . --policy cairn-policy/generated/cairn-policy.json --json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:49:34.912321+00:00",
+      "finished": "2026-10-26T17:49:34.976219+00:00",
+      "elapsed_seconds": 0.06390617697616108,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair2/stdout.log",
+          "digest": "blake3:bf81ac5a0bc550e54269c2ecc7b92cca7d7007d4f2396e8c89657c54cb55d8c5",
+          "bytes": 1741
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-after-marker-repair2/stderr.log",
           "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
           "bytes": 0
         }
@@ -4350,6 +4839,40 @@
         },
         {
           "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-final/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "traceability",
+        "coverage",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--json"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn traceability coverage --root . --policy cairn-policy/generated/cairn-policy.json --json",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:57:33.367820+00:00",
+      "finished": "2026-10-26T17:57:33.784845+00:00",
+      "elapsed_seconds": 0.4170238410006277,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-marker-repaired/stdout.log",
+          "digest": "blake3:bf81ac5a0bc550e54269c2ecc7b92cca7d7007d4f2396e8c89657c54cb55d8c5",
+          "bytes": 1741
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-traceability-marker-repaired/stderr.log",
           "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
           "bytes": 0
         }
@@ -4449,6 +4972,39 @@
         },
         {
           "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-final/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "validate",
+        "--root",
+        ".",
+        "--policy",
+        "cairn-policy/generated/cairn-policy.json",
+        "--strict"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn validate --root . --policy cairn-policy/generated/cairn-policy.json --strict",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:57:32.757801+00:00",
+      "finished": "2026-10-26T17:57:33.025517+00:00",
+      "elapsed_seconds": 0.26771910101524554,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-marker-repaired/stdout.log",
+          "digest": "blake3:a2d239dfdd625fd2bdd8b5844273eb0346ad4f94c0d9899166dcad0eb607b58d",
+          "bytes": 66921
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/native-validate-marker-repaired/stderr.log",
           "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
           "bytes": 0
         }
@@ -4615,6 +5171,40 @@
         },
         {
           "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-final/stderr.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol/target/chaoscontrol-mcp53",
+      "command": [
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn",
+        "policy",
+        "export",
+        "--source",
+        "cairn-policy/default.ncl",
+        "--output",
+        "cairn-policy/generated/cairn-policy.json",
+        "--check"
+      ],
+      "display_command": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof/retained-cairn-cli/bin/cairn policy export --source cairn-policy/default.ncl --output cairn-policy/generated/cairn-policy.json --check",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-26T17:57:34.069447+00:00",
+      "finished": "2026-10-26T17:57:34.790838+00:00",
+      "elapsed_seconds": 0.7213989789888728,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-marker-repaired/stdout.log",
+          "digest": "blake3:626bb5e31eed06caa9eff49fd1d1a339f21e19bb3347e93255daa23e716b1f47",
+          "bytes": 55
+        },
+        {
+          "path": "/home/brittonr/git/OnixResearch/chaoscontrol/target/planted-proof-measured/policy-freshness-marker-repaired/stderr.log",
           "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
           "bytes": 0
         }
@@ -6426,5 +7016,5 @@
     "failures": [],
     "all_verified": true
   },
-  "artifact_count": 417
+  "artifact_count": 451
 }

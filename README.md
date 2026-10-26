@@ -34,9 +34,12 @@ campaigns on clean `ef778be7ecc0467f176857dac779a262b9b741d1`, measured overlays
 through depth four, and eight retained depth-three safety findings that reproduced
 with valid digest-verified parents. `production_ready` remains false; no historical
 receipt, failed verdict or tested release revision is relabeled. Native traceability
-on this delivery head reports 5 missing links from the merged, unrelated
-`default-fault-injection-for-system-runs` requirements; `382/382` remains the
-verified coverage of `ef778be`. See the
+first failed on this head because the merged
+`default-fault-injection-for-system-runs` requirements were marked only in archived
+tasks; their implementation and tests now carry the markers, and coverage is
+393/393 with zero missing or dangling links. That repair adds seven comment
+markers and no behavior, so the release gates stay bound to `ef778be` rather
+than to this marker-only head. See the
 [replacement evidence boundary](docs/snapshot-fidelity.md#approved-replacement-planted-finding-cohort-2026-10-25)
 and the [focused attempt47 receipt](dogfood-results/production-readiness-attempt47-20261018/receipt.ncl)
 for exact sources, measured limits and non-claims.

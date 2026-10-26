@@ -155,6 +155,7 @@ pub struct SimulationConfig {
 ///
 /// The engine keeps its own library default; this mapping is where the system
 /// run's explicit choice reaches it.
+// r[impl chaoscontrol.system_runs.fault_injection]
 fn fault_engine_config(config: &SimulationConfig) -> EngineConfig {
     EngineConfig {
         seed: config.seed,
@@ -3128,6 +3129,7 @@ mod tests {
     };
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.default]
     #[test]
     fn system_runs_inject_faults_by_default() {
         let config = SimulationConfig::default();
@@ -3135,6 +3137,7 @@ mod tests {
         assert!(fault_engine_config(&config).random_faults);
     }
 
+    // r[verify chaoscontrol.system_runs.fault_injection.scenario.opt_out]
     #[test]
     fn the_fault_injection_opt_out_is_honoured() {
         let config = SimulationConfig {

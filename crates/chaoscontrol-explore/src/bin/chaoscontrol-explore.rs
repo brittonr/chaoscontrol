@@ -2645,6 +2645,7 @@ fn cmd_reproduce(
         dlog_dir: None,
         // The bug records the setting of the run that found it; reproducing
         // under any other setting would replay a different run.
+        // r[impl chaoscontrol.system_runs.fault_injection.exploration]
         random_faults: serialized_bug.random_faults,
     };
 

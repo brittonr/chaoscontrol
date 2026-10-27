@@ -109,24 +109,43 @@ pub struct ReplayVerdict {
     pub assertion_identity: Option<AssertionEvidenceIdentity>,
     /// Exact runtime process scope; an empty set makes no process-owner claim.
     #[serde(
-        default,
+        default = "empty_process_instances",
         deserialize_with = "crate::validate::deserialize_process_instances",
         skip_serializing_if = "std::collections::BTreeSet::is_empty"
     )]
     pub process_instances: std::collections::BTreeSet<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_marker_context", skip_serializing_if = "Option::is_none")]
     pub marker_context: Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_parent_depth: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "no_schedule_variant",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub schedule_variant: Option<ReplayScheduleVariant>,
     pub snapshot: ReplaySnapshotValidation,
     pub artifact_hashes: Vec<ArtifactHash>,
 }
 
 fn no_assertion_identity() -> Option<AssertionEvidenceIdentity> {
+    None
+}
+
+fn empty_process_instances() -> std::collections::BTreeSet<String> {
+    std::collections::BTreeSet::new()
+}
+
+fn no_fallback_scope() -> Option<chaoscontrol_protocol::fallback::FallbackAssertionScope> {
+    None
+}
+
+fn no_marker_context() -> Option<chaoscontrol_protocol::branch_marker::MarkerEvidenceContext> {
+    None
+}
+
+fn no_schedule_variant() -> Option<ReplayScheduleVariant> {
     None
 }
 
@@ -179,7 +198,7 @@ impl ReplayVerdict {
             assertion_id: None,
             assertion_identity: None,
             fallback_scope: None,
-            process_instances: Default::default(),
+            process_instances: std::collections::BTreeSet::new(),
             marker_context: None,
             replay_parent_depth: None,
             schedule_variant: None,

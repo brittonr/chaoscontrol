@@ -203,12 +203,16 @@ pub struct EngineSnapshot {
     #[serde(default = "empty_process_fault_queue")]
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
     /// Admitted pause-control windows retained for replay.
-    #[serde(default)]
+    #[serde(default = "empty_pause_control")]
     pause_control: Vec<PauseControlRequest>,
 }
 
 fn empty_process_fault_queue() -> VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand> {
     VecDeque::new()
+}
+
+fn empty_pause_control() -> Vec<PauseControlRequest> {
+    Vec::new()
 }
 
 impl EngineSnapshot {

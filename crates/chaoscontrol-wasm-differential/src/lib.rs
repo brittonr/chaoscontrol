@@ -1096,7 +1096,7 @@ pub fn normalize_tool(
             state_identity_blake3: None,
             resource_class: Some(String::from("wall-time")),
             surfaces: hostless_surfaces("unknown", "unknown"),
-            raw_counters: Default::default(),
+            raw_counters: std::collections::BTreeMap::new(),
         };
     }
     if raw.success {
@@ -1517,7 +1517,7 @@ fn completed(engine: &str) -> NormalizedObservation {
         state_identity_blake3: None,
         resource_class: None,
         surfaces: hostless_surfaces("accepted", "linked"),
-        raw_counters: Default::default(),
+        raw_counters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -1530,7 +1530,7 @@ fn rejected(engine: &str, _engine_class: &str) -> NormalizedObservation {
         state_identity_blake3: None,
         resource_class: None,
         surfaces: hostless_surfaces("rejected", "not-reached"),
-        raw_counters: Default::default(),
+        raw_counters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -1543,7 +1543,7 @@ fn trapped(engine: &str, class: &str) -> NormalizedObservation {
         state_identity_blake3: None,
         resource_class: None,
         surfaces: hostless_surfaces("accepted", "linked"),
-        raw_counters: Default::default(),
+        raw_counters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -1556,7 +1556,7 @@ fn exhausted(engine: &str, class: &str) -> NormalizedObservation {
         state_identity_blake3: None,
         resource_class: Some(class.to_owned()),
         surfaces: hostless_surfaces("accepted", "linked"),
-        raw_counters: Default::default(),
+        raw_counters: std::collections::BTreeMap::new(),
     }
 }
 
@@ -1569,7 +1569,7 @@ fn engine_error(engine: &str, class: &str) -> NormalizedObservation {
         state_identity_blake3: None,
         resource_class: None,
         surfaces: hostless_surfaces("unknown", "unknown"),
-        raw_counters: Default::default(),
+        raw_counters: std::collections::BTreeMap::new(),
     }
 }
 

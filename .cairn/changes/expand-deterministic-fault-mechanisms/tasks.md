@@ -10,7 +10,8 @@
 
 - [x] [serial] Define pure directional link identity, disruption modes, scoped admission, and network overlap precedence. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.interactions]
 - [ ] [serial] Wire directional targets, scoped heal, and baseline-profile facts into the fault planner and network fabric. r[chaoscontrol.fault_mechanisms.directional_network]
-- [ ] [serial] Apply directional network faults in the fabric and record per-link effective mode and packet observations. r[chaoscontrol.fault_mechanisms.directional_network]
+- [x] [serial] Apply directional network faults in the fabric with deterministic directional delays, drops, and counters. r[chaoscontrol.fault_mechanisms.directional_network]
+- [ ] [serial] Wire fault attempts and per-link effective-mode observations into the stage ledger. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.evidence]
 - [ ] [serial] Add the virtual quantum-budget CPU throttle, exact release, and scheduler enforcement. r[chaoscontrol.fault_mechanisms.cpu_throttle]
 - [ ] [parallel] Add positive and negative fixtures for direction, modes, scoped heal, queue bounds, budget exhaustion, release, and host-throttle rejection. r[chaoscontrol.fault_mechanisms.fixtures]
 

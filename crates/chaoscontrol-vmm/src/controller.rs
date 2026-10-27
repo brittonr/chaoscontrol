@@ -4456,6 +4456,7 @@ mod tests {
             packets_jittered: 15,
             total_jitter_ticks: 200,
             packets_reordered: 8,
+            ..Default::default()
         };
         let s = stats.to_string();
         assert!(s.contains("sent=100"));

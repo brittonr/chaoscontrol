@@ -20,6 +20,7 @@
 
 pub mod engine;
 pub mod faults;
+pub mod mechanisms;
 pub mod oracle;
 mod oracle_event_validation;
 mod oracle_record_validation;
@@ -30,3 +31,4 @@ pub mod outcomes;
 pub mod report_merge;
 pub mod scenario;
 pub mod schedule;
+pub mod thread_pause;

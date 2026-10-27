@@ -8,21 +8,25 @@
 
 ## Phase 2: Directional network and CPU throttle
 
-- [ ] [serial] Add directional link targets, disruption modes, scoped heal, and baseline-profile facts to the fault planner. r[chaoscontrol.fault_mechanisms.directional_network]
+- [x] [serial] Define pure directional link identity, disruption modes, scoped admission, and network overlap precedence. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.interactions]
+- [ ] [serial] Wire directional targets, scoped heal, and baseline-profile facts into the fault planner and network fabric. r[chaoscontrol.fault_mechanisms.directional_network]
 - [ ] [serial] Apply directional network faults in the fabric and record per-link effective mode and packet observations. r[chaoscontrol.fault_mechanisms.directional_network]
 - [ ] [serial] Add the virtual quantum-budget CPU throttle, exact release, and scheduler enforcement. r[chaoscontrol.fault_mechanisms.cpu_throttle]
 - [ ] [parallel] Add positive and negative fixtures for direction, modes, scoped heal, queue bounds, budget exhaustion, release, and host-throttle rejection. r[chaoscontrol.fault_mechanisms.fixtures]
 
 ## Phase 3: Custom effects and pause control
 
-- [ ] [serial] Define the typed custom-effect descriptor, version, parameter bounds, and Rust-owned adapter admission. r[chaoscontrol.fault_mechanisms.custom_effect]
+- [x] [serial] Define the typed custom-effect descriptor, version, parameter bounds, and ambient-command rejection. r[chaoscontrol.fault_mechanisms.custom_effect]
+- [ ] [serial] Admit the Rust-owned custom-effect adapter and wire bounded execution. r[chaoscontrol.fault_mechanisms.custom_effect]
 - [ ] [serial] Implement seeded custom-effect selection and bounded execution with typed rejection and application-failure paths. r[chaoscontrol.fault_mechanisms.custom_effect]
-- [ ] [serial] Implement workload and operator pause-control requests with exact virtual windows, active-effect continuation, and replay binding. r[chaoscontrol.fault_mechanisms.pause_control]
+- [x] [serial] Implement bounded pause-control request admission with exact windows and duplicate rejection. r[chaoscontrol.fault_mechanisms.pause_control]
+- [ ] [serial] Wire pause control to active-effect continuation and replay binding. r[chaoscontrol.fault_mechanisms.pause_control]
 - [ ] [parallel] Add negative fixtures for ambient commands, unadmitted adapters, malformed or overlapping pause windows, and out-of-horizon requests. r[chaoscontrol.fault_mechanisms.fixtures] r[chaoscontrol.fault_mechanisms.nonclaims]
 
 ## Phase 4: Interactions and evidence
 
-- [ ] [serial] Implement deterministic overlap and one-active-per-target precedence across the new and existing mechanisms. r[chaoscontrol.fault_mechanisms.interactions]
+- [x] [serial] Implement deterministic network overlap precedence. r[chaoscontrol.fault_mechanisms.interactions]
+- [ ] [serial] Extend overlap and one-active-per-target precedence to the new and existing mechanisms. r[chaoscontrol.fault_mechanisms.interactions]
 - [ ] [serial] Extend the stage ledger and receipt with mechanism identity, effective target, suppression, overlap, and per-stage counts. r[chaoscontrol.fault_mechanisms.evidence]
 - [ ] [parallel] Add snapshot and exact-replay fixtures for each mechanism and for overlapping windows, including drift rejection. r[chaoscontrol.fault_mechanisms.fixtures]
 - [ ] [serial] Exercise one bounded KVM campaign with a directional fault, a CPU throttle, a custom effect, and a pause window in one recorded run. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.interactions]

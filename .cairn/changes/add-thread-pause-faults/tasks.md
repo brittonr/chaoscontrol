@@ -4,18 +4,21 @@
 
 - [x] [serial] Record current process, vCPU, and scheduler pause behavior and the existing fault stage ledger before source changes. r[chaoscontrol.thread_pause.fault] r[chaoscontrol.thread_pause.evidence]
 - [x] [serial] Inventory the guest runtime and SDK surfaces that can own a stable thread identity and cooperative safe point. r[chaoscontrol.thread_pause.identity] r[chaoscontrol.thread_pause.safepoints]
-- [ ] [serial] Publish the versioned safe-point and pause-gate ABI, including its supported runtime cohort and explicit unsupported cases. r[chaoscontrol.thread_pause.safepoints] r[chaoscontrol.thread_pause.nonclaims]
+- [x] [serial] Publish the versioned safe-point ABI schema, version, safe-point bound, and unsupported-cohort rejection. r[chaoscontrol.thread_pause.safepoints] r[chaoscontrol.thread_pause.nonclaims]
 
 ## Phase 2: Identity, fault, and planner
 
-- [ ] [serial] Implement logical thread identity assignment, generation tracking, and snapshot-safe lookup in the admitted runtime. r[chaoscontrol.thread_pause.identity]
-- [ ] [serial] Add the typed thread-pause fault variant and pure admission for target, window, and named bounds. r[chaoscontrol.thread_pause.fault]
-- [ ] [parallel] Add negative planner fixtures for unknown, reused, duplicate, zero-length, overflowing, and out-of-window targets. r[chaoscontrol.thread_pause.fault] r[chaoscontrol.thread_pause.fixtures]
+- [x] [serial] Define stable logical thread identity and pure identity admission. r[chaoscontrol.thread_pause.identity]
+- [ ] [serial] Implement runtime identity assignment, generation tracking, and snapshot-safe lookup. r[chaoscontrol.thread_pause.identity]
+- [x] [serial] Implement pure thread-pause plan admission for target, exact window, duplicate active threads, and named bounds. r[chaoscontrol.thread_pause.fault]
+- [ ] [serial] Add the typed thread-pause fault variant to the engine catalogue and planner. r[chaoscontrol.thread_pause.fault]
+- [x] [parallel] Add negative planner fixtures for unsupported ABI, invalid identity, duplicate active thread, over-long window, and total-pause bound. r[chaoscontrol.thread_pause.fault] r[chaoscontrol.thread_pause.fixtures]
 
 ## Phase 3: Safe-point gate and deterministic release
 
 - [ ] [serial] Implement the cooperative safe-point gate and guest-runtime scheduler transition for paused and runnable threads. r[chaoscontrol.thread_pause.safepoints] r[chaoscontrol.thread_pause.release]
-- [ ] [serial] Implement exact-tick release and bounded deterministic virtual-time advancement when no thread is runnable. r[chaoscontrol.thread_pause.release]
+- [x] [serial] Define exact-tick release and paused-at-tick semantics in the pure core. r[chaoscontrol.thread_pause.release]
+- [ ] [serial] Implement bounded deterministic virtual-time advancement when no thread is runnable. r[chaoscontrol.thread_pause.release]
 - [ ] [serial] Bind pause state into snapshots and exact replay validation. r[chaoscontrol.thread_pause.state]
 
 ## Phase 4: Evidence and fixtures

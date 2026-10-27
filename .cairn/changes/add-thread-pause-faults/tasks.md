@@ -32,3 +32,12 @@
 
 - [ ] [serial] Run focused fault, SDK, VMM, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.thread_pause.fixtures]
 - [ ] [serial] Record the bounded KVM receipt, runtime ABI and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.thread_pause.evidence] r[chaoscontrol.thread_pause.nonclaims]
+
+## Blocked prerequisite
+
+The guest-side cooperative runtime is absent. The repository has only the pure
+admission module in `crates/chaoscontrol-fault/src/thread_pause.rs`; no SDK
+runtime assigns logical thread identities, exposes the safe-point ABI, schedules
+paused and runnable tasks, or maps them through snapshots. Implementing a VMM
+vCPU stall would not satisfy the cooperative guest-thread requirement. The KVM
+race proof cannot be completed until that runtime and its guest artifact exist.

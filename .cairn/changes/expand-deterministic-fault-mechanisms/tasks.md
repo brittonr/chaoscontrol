@@ -37,3 +37,11 @@
 
 - [ ] [serial] Run focused fault, network, VMM, SDK, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.fault_mechanisms.fixtures]
 - [x] [serial] Record the bounded KVM receipt, profile and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.nonclaims]
+
+## Blocked prerequisite
+
+A single KVM interaction campaign could not be completed through the controller
+harness: direct controller rounds do not reach guest setup within the bounded
+test window, and the repository's local multi-hypervisor KVM smoke currently
+fails the rust-workload replay expectation (`attempts=6`, `bug_count=0`). The
+in-process four-mechanism fixture is present, but it is not KVM campaign evidence.

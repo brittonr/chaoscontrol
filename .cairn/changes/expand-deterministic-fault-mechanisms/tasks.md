@@ -22,7 +22,7 @@
 - [ ] [serial] Admit the Rust-owned custom-effect adapter and wire bounded execution. r[chaoscontrol.fault_mechanisms.custom_effect]
 - [ ] [serial] Implement seeded custom-effect selection and bounded execution with typed rejection and application-failure paths. r[chaoscontrol.fault_mechanisms.custom_effect]
 - [x] [serial] Implement bounded pause-control request admission with exact windows and duplicate rejection. r[chaoscontrol.fault_mechanisms.pause_control]
-- [ ] [serial] Wire pause control to active-effect continuation and replay binding. r[chaoscontrol.fault_mechanisms.pause_control]
+- [x] [serial] Wire pause control to active-effect continuation and replay binding. r[chaoscontrol.fault_mechanisms.pause_control]
 - [ ] [parallel] Add negative fixtures for ambient commands, unadmitted adapters, malformed or overlapping pause windows, and out-of-horizon requests. r[chaoscontrol.fault_mechanisms.fixtures] r[chaoscontrol.fault_mechanisms.nonclaims]
 
 ## Phase 4: Interactions and evidence

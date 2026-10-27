@@ -53,6 +53,12 @@ The VMM exposes the current ceiling through `chaoscontrol_sdk::resources::memory
 
 The ceiling is an observation and policy surface. It does not change mapped guest memory or guarantee an allocation failure.
 
+## Pause control
+
+An admitted pause-control window suppresses new fault selection while the virtual tick is inside
+the window. Already-applied effects continue to run; the window does not clear them. Replay
+snapshots retain the admitted windows, so a restored run resumes the same suppression boundary.
+
 ## System runs inject faults by default
 
 A system run configures its fault engine with `random_faults` set, and the default is on.

@@ -5,6 +5,7 @@
 //! engine on every hypercall and on every exit to check if faults are due.
 
 use crate::faults::{Fault, GpRegister};
+use crate::mechanisms::{admit_pause_requests, PauseControlRequest};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::outcomes::{
     fault_run_id, preflight_fault_observation_events_with_limit, transition_fault_outcome,
@@ -201,6 +202,9 @@ pub struct EngineSnapshot {
     /// Host-directed process commands not yet observed by the guest supervisor.
     #[serde(default = "empty_process_fault_queue")]
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+    /// Admitted pause-control windows retained for replay.
+    #[serde(default)]
+    pause_control: Vec<PauseControlRequest>,
 }
 
 fn empty_process_fault_queue() -> VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand> {
@@ -381,6 +385,8 @@ pub struct FaultEngine {
     assertion_hits: VecDeque<AssertionHitEvent>,
     /// Accepted hits dropped because the observation queue was full.
     assertion_hit_overflow: u64,
+    /// Admitted pause-control windows.
+    pause_control: Vec<PauseControlRequest>,
 }
 
 impl FaultEngine {
@@ -413,6 +419,7 @@ impl FaultEngine {
             process_fault_queue: VecDeque::new(),
             assertion_hits: VecDeque::new(),
             assertion_hit_overflow: 0,
+            pause_control: Vec::new(),
         }
     }
 
@@ -830,6 +837,19 @@ impl FaultEngine {
     /// Select due fault attempts without claiming application or observation.
     ///
     /// r[impl chaoscontrol.fault_outcomes.accounting]
+    /// Admit a bounded pause-control window. New fault selection is suppressed
+    /// inside the window; already-applied effects continue to run.
+    pub fn request_pause_control(
+        &mut self,
+        request: PauseControlRequest,
+    ) -> Result<(), crate::mechanisms::MechanismError> {
+        let mut requests = self.pause_control.clone();
+        requests.push(request);
+        admit_pause_requests(&requests)?;
+        self.pause_control = requests;
+        Ok(())
+    }
+
     pub fn poll_fault_attempts(
         &mut self,
         current_time_ns: u64,
@@ -850,6 +870,14 @@ impl FaultEngine {
         event_limit: usize,
     ) -> Result<Vec<FaultAttempt>, FaultSelectionError> {
         if !self.setup_complete {
+            return Ok(Vec::new());
+        }
+        let current_tick = current_time_ns / crate::outcomes::NANOSECONDS_PER_SIMULATION_TICK;
+        if self
+            .pause_control
+            .iter()
+            .any(|window| current_tick >= window.start_tick && current_tick < window.end_tick)
+        {
             return Ok(Vec::new());
         }
         if self.run_exhausted {
@@ -1103,6 +1131,7 @@ impl FaultEngine {
             next_random_fault_time_ns: self.next_random_fault_time_ns,
             choice_count: self.choice_count,
             process_fault_queue: self.process_fault_queue.clone(),
+            pause_control: self.pause_control.clone(),
         }
     }
 
@@ -1118,6 +1147,9 @@ impl FaultEngine {
                 .iter()
                 .any(|command| command.validate().is_err())
         {
+            return Err(FaultTransitionError::SnapshotRunStateMismatch);
+        }
+        if admit_pause_requests(&snapshot.pause_control).is_err() {
             return Err(FaultTransitionError::SnapshotRunStateMismatch);
         }
         let canonical_rng = Self::rng_from_seed(self.config.seed);
@@ -1318,6 +1350,7 @@ impl FaultEngine {
         self.choice_history.clear();
         self.catalog_builder = None;
         self.process_fault_queue = snapshot.process_fault_queue.clone();
+        self.pause_control = snapshot.pause_control.clone();
         // Assertion-hit observations are branch-local runtime facts. They are
         // drained by the VMM at their boundary and never restored as authority.
         self.assertion_hits.clear();
@@ -1675,6 +1708,42 @@ mod tests {
         let faults = engine.poll_faults(3000).unwrap();
         assert_eq!(faults.len(), 1);
         assert_eq!(faults[0], Fault::ProcessKill { target: 0 });
+    }
+
+    #[test]
+    fn pause_control_suppresses_selection_and_survives_restore() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule.clone()),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        engine
+            .request_pause_control(PauseControlRequest {
+                requester: String::from("operator"),
+                start_tick: 0,
+                end_tick: 5,
+            })
+            .expect("pause admitted");
+        assert!(engine.poll_faults(0).unwrap().is_empty());
+
+        let snapshot = engine.snapshot();
+        assert_eq!(snapshot.pause_control.len(), 1);
+        engine.pause_control.clear();
+        engine.apply_snapshot(&snapshot);
+        assert!(engine.poll_faults(1_000_000).unwrap().is_empty());
+        assert_eq!(engine.poll_faults(5_000_000).unwrap().len(), 1);
+        assert_eq!(
+            engine.request_pause_control(PauseControlRequest {
+                requester: String::from("operator"),
+                start_tick: 0,
+                end_tick: 5,
+            }),
+            Err(crate::mechanisms::MechanismError::DuplicatePauseRequest)
+        );
     }
 
     #[test]

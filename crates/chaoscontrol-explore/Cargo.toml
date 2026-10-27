@@ -17,6 +17,10 @@ path = "src/bin/check-profile-admission.rs"
 name = "check-frontier-parity"
 path = "src/bin/check-frontier-parity.rs"
 
+[[bin]]
+name = "symbolize-coverage"
+path = "src/bin/symbolize-coverage.rs"
+
 [features]
 default = []
 dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep:futures-core"]

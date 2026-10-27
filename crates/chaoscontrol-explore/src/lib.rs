@@ -103,6 +103,7 @@ pub mod report;
 pub mod server;
 pub mod signal;
 pub mod snapshot_store;
+pub mod symbolized_coverage;
 #[cfg(test)]
 mod test_support;
 pub mod worker;

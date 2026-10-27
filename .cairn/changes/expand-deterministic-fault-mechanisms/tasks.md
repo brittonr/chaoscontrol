@@ -36,4 +36,4 @@
 ## Phase 5: Verification and evidence
 
 - [ ] [serial] Run focused fault, network, VMM, SDK, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.fault_mechanisms.fixtures]
-- [ ] [serial] Record the bounded KVM receipt, profile and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.nonclaims]
+- [x] [serial] Record the bounded KVM receipt, profile and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.nonclaims]

@@ -1,0 +1,66 @@
+{
+  "acceptance_status": "known-gap",
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/report.txt",
+      "sha256": "sha256:6d36e7be512832e5cf1d1ebd62a448b2b4dbef4aac9edfe6fe69a39ed0e1c763"
+    },
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/checkpoint.json",
+      "sha256": "sha256:4303f1ddf62f64b0136f19c71eae98b861a6a93a5f87fbcf8402f30deb38427b"
+    },
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/assertions.json",
+      "sha256": "sha256:49dc84583237b9bbe616668b16b7d3ce56c66a8b58f59dce3f3b31d4aac2d2e3"
+    },
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/receipt.md",
+      "sha256": "sha256:618a3bf6ce8362b17339970eb3c4dffed6d5cb163869b5006e09a4d46c78656c"
+    },
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/run-config.json",
+      "sha256": "sha256:cce9f2e0d6b8dd1c62bd205e6c235ffe4faa3e29cfed4dfb270c012838a52600"
+    },
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/runtime-artifacts.json",
+      "sha256": "sha256:47beb6c8da5bbe3ac5b306b85d9bfa0b1ffba7d3dd5d221b3cd4fb98be49fbf7"
+    }
+  ],
+  "assertion_coverage": {
+    "exercised": 17,
+    "failed": 0,
+    "passed": 17,
+    "registered": 27,
+    "summary_path": "dogfood-results/directional-fault-admitted-cohort-20261027/assertions.json",
+    "unexercised": 10
+  },
+  "bug_reports": [],
+  "checkpoint_reference": {
+    "digest": "sha256:4303f1ddf62f64b0136f19c71eae98b861a6a93a5f87fbcf8402f30deb38427b",
+    "initrd_path": "/nix/store/q284nvk77i483x1wga1zzpq41v2rif6f-chaoscontrol-initrd-redb",
+    "kernel_path": "/nix/store/0mjj1z5ssfz2xgnb5nhl22pkr2kj3asg-linux-6.19-dev/vmlinux",
+    "path": "dogfood-results/directional-fault-admitted-cohort-20261027/checkpoint.json",
+    "seed": 42
+  },
+  "command": "/nix/store/37d4gv9fmvka387201s4sygfid02c877-chaoscontrol-0.1.0/bin/chaoscontrol-explore run --vms 1 --rounds 3 --branches 1 --ticks 1000 --seed 42 --mode fault-schedule --kernel /nix/store/0mjj1z5ssfz2xgnb5nhl22pkr2kj3asg-linux-6.19-dev/vmlinux --initrd /nix/store/q284nvk77i483x1wga1zzpq41v2rif6f-chaoscontrol-initrd-redb --disk-image /nix/store/8i68yqrfslag4nxlkn331sq1n93bh8x5-redb-disk-image --output dogfood-results/directional-fault-admitted-cohort-20261027",
+  "config": {
+    "digest": "sha256:cce9f2e0d6b8dd1c62bd205e6c235ffe4faa3e29cfed4dfb270c012838a52600",
+    "path": "dogfood-results/directional-fault-admitted-cohort-20261027/run-config.json"
+  },
+  "git_revision": "3c134aa4ff2e6395db4a4bb2cddea8b1b86cf675",
+  "initrd_path": "/nix/store/q284nvk77i483x1wga1zzpq41v2rif6f-chaoscontrol-initrd-redb",
+  "kernel_path": "/nix/store/0mjj1z5ssfz2xgnb5nhl22pkr2kj3asg-linux-6.19-dev/vmlinux",
+  "raw_logs": [
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/run.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "dogfood-results/directional-fault-admitted-cohort-20261027/reproduce.log",
+      "policy": "debug-only-excluded-from-git"
+    }
+  ],
+  "run_id": "directional-fault-admitted-cohort-20261027",
+  "schema_version": "1",
+  "status": "known-gap"
+}

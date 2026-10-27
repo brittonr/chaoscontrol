@@ -1,0 +1,85 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     3
+Total branches explored: 3
+Corpus entries:         3
+Unique edges found:     134
+Bugs discovered:        0
+Interleaving coverage:  no-bug output does not prove validated or exhaustive schedule coverage
+Process evidence:      declared, observed process scope only; no whole-guest coverage claim
+Frontier policy:        campaign
+Stop:                   completed
+Search non-claim:       exploration is bounded adaptive sampling; no stop claims that all behavior was explored
+Wall-clock time:        17.8s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              17.8s
+Throughput:             0.17 branches/sec, 7.52 edges/sec
+Phase breakdown:        Run: 6.7s (95%) | Snapshot: 0.2s (2%) | Restore: 0.2s (3%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             4
+Unique edges:           134
+Avg edges/run:          33.50
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       27
+Passed:                 17
+Failed:                 0
+Unexercised:            10
+Exercised:              17/27 (63.0%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  redb           invariant            16          7       0
+  redb           operation            10         10       0
+  redb           recovery              1          0       0
+
+─── Unexercised Assertions ───────────────────────────────────────────
+  ○ [always] redb snapshot replay probe trips only after restored parent context (4149728441)
+  ○ [always] committed data survives restart (4183004122)
+  ○ [always] data survives compaction (1332498654)
+  ○ [always] table len matches oracle (no table) (296995187)
+  ○ [always] read matches oracle (no table) (1170022529)
+  ○ [always] committed key missing after recovery (1826397693)
+  ○ [always] database opens after repair (666717064)
+  ○ [always] uncommitted data not visible (4011644660)
+  ○ [always] range scan empty table matches oracle (3918949916)
+  ○ [always] database opens after repair (2068280537)
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [reachable] op: batch insert (909740281) — 191 hits
+  ✓ [reachable] op: savepoint (875174004) — 170 hits
+  ✓ [always] read matches oracle (4170964693) — 100 hits
+  ✓ [reachable] op: read (3253211420) — 187 hits
+  ✓ [always] database opens successfully (500036695) — 1 hits
+  ✓ [reachable] op: insert (3984792159) — 181 hits
+  ✓ [always] read matches oracle (none) (2502051314) — 87 hits
+  ✓ [sometimes] large batch committed (3742114909) — 191 hits
+  ✓ [reachable] op: rollback (3189465693) — 212 hits
+  ✓ [always] range scan entry matches oracle (3683484742) — 43231 hits
+  ✓ [reachable] op: delete (1432146092) — 210 hits
+  ✓ [reachable] op: range scan (1704945435) — 193 hits
+  ✓ [always] delete removes key (4131267799) — 210 hits
+  ✓ [reachable] op: compact (4276840229) — 183 hits
+  ✓ [always] range scan length matches oracle (523554046) — 193 hits
+  ✓ [sometimes] commit succeeds (3586379808) — 181 hits
+  ✓ [always] table len matches oracle (2978809801) — 152 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        1 │       134 │        134 │    0 │        4 │      1 │ 143.6ms │ 2.3s │   72.8ms │   0.0ms
+      2 │        1 │         0 │        134 │    0 │        6 │      2 │  28.4ms │ 2.3s │   41.3ms │   0.0ms
+      3 │        1 │         0 │        134 │    0 │       10 │      3 │  30.2ms │ 2.1s │   52.6ms │   0.0ms
+
+  Coverage growth: 134 → 134 → 134 edges (round 1 → 2 → 3)
+  Plateau rounds:  2/3 (67% produced no new coverage)
+
+─── No Bugs Found ──────────────────────────────────────────────────────
+No assertion failures detected during exploration.
+
+═══════════════════════════════════════════════════════════════════════

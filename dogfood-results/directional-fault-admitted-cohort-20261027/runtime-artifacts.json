@@ -1,0 +1,22 @@
+[
+ {
+  "role": "host-binary",
+  "path": "/nix/store/37d4gv9fmvka387201s4sygfid02c877-chaoscontrol-0.1.0/bin/chaoscontrol-explore",
+  "sha256": "sha256:7333219171d352bf558d0d9bab94930eae66634d433ae6a542d398ff53b69e75"
+ },
+ {
+  "role": "guest-kernel",
+  "path": "/nix/store/0mjj1z5ssfz2xgnb5nhl22pkr2kj3asg-linux-6.19-dev/vmlinux",
+  "sha256": "sha256:51487f6136e74e766b28d1b5af99ff878908619ef43c828186f7316f10a4289d"
+ },
+ {
+  "role": "guest-initrd",
+  "path": "/nix/store/q284nvk77i483x1wga1zzpq41v2rif6f-chaoscontrol-initrd-redb",
+  "sha256": "sha256:098899bd46007d7b4b797797a659a09aaf218f2188894c5ef886369bfc0931c0"
+ },
+ {
+  "role": "guest-disk-image",
+  "path": "/nix/store/8i68yqrfslag4nxlkn331sq1n93bh8x5-redb-disk-image",
+  "sha256": "sha256:16207fb5b9f91ce5c1c868ee1fa5b03751eaf0fd0b08328e2926510eb236ef88"
+ }
+]

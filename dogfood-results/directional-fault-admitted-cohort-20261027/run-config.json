@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "profile": "directional-fault-admitted-cohort-20261027",
+  "mode": "hybrid",
+  "num_vms": 1,
+  "kernel_path": "/nix/store/0mjj1z5ssfz2xgnb5nhl22pkr2kj3asg-linux-6.19-dev/vmlinux",
+  "initrd_path": "/nix/store/q284nvk77i483x1wga1zzpq41v2rif6f-chaoscontrol-initrd-redb",
+  "seed": 42,
+  "branch_factor": 1,
+  "ticks_per_branch": 1000,
+  "max_rounds": 3,
+  "max_frontier": 50,
+  "quantum": 100,
+  "coverage_gpa": 917504,
+  "bootstrap_budget": 10000,
+  "random_faults": true,
+  "raw_log_policy": "debug-only-excluded-from-git"
+}

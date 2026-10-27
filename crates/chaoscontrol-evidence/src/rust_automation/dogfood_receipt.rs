@@ -151,10 +151,20 @@ pub fn build_receipt(input: &MaterializeInput) -> Result<Value, String> {
         .get("config")
         .and_then(Value::as_object)
         .ok_or_else(|| String::from("checkpoint.config must be an object"))?;
-    let assertions = input
-        .assertions
-        .as_array()
-        .ok_or_else(|| String::from("assertions must be a list"))?;
+    let assertions = match &input.assertions {
+        serde_json::Value::Array(assertions) => assertions,
+        serde_json::Value::Object(summary) => summary
+            .get("assertions")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                String::from("assertions must be a list or a v2 summary with an assertions list")
+            })?,
+        _ => {
+            return Err(String::from(
+                "assertions must be a list or a v2 summary with an assertions list",
+            ))
+        }
+    };
     let coverage = json!({
         "registered": assertions.len(),
         "exercised": assertions.iter().filter(|item| item.get("verdict").and_then(Value::as_str) != Some("unexercised")).count(),
@@ -318,6 +328,38 @@ mod tests {
             receipt["bug_reports"][0]["replay_context"],
             "parent-snapshot-required-insufficient"
         );
+    }
+
+    #[test]
+    fn receipt_accepts_v2_assertion_summary() {
+        let checkpoint = checkpoint();
+        let input = MaterializeInput {
+            output_name: String::from("run"),
+            output_path: String::from("/run"),
+            git_revision: String::from("rev"),
+            replay_status: String::from("known-gap"),
+            replay_message: String::from("not reproduced"),
+            replay_exit_status: 1,
+            replay_command: None,
+            checkpoint,
+            assertions: json!({
+                "schema": "chaoscontrol.assertion-summary.v2",
+                "assertions": [
+                    {"verdict": "passed"},
+                    {"verdict": "unexercised"}
+                ]
+            }),
+            bugs: vec![],
+            bug_paths: vec![],
+            artifacts: vec![],
+            run_config_digest: String::from("sha256:a"),
+            checkpoint_digest: String::from("sha256:b"),
+        };
+        let receipt = build_receipt(&input).expect("receipt");
+        assert_eq!(receipt["assertion_coverage"]["registered"], 2);
+        assert_eq!(receipt["assertion_coverage"]["exercised"], 1);
+        assert_eq!(receipt["assertion_coverage"]["passed"], 1);
+        assert_eq!(receipt["assertion_coverage"]["unexercised"], 1);
     }
 
     #[test]

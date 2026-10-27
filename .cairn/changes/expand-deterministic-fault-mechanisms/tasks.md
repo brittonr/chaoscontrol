@@ -4,7 +4,7 @@
 
 - [x] [serial] Record current fault variants, network-fabric direction behavior, stage ledger, and snapshot/replay binding before source changes. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.evidence]
 - [x] [serial] Inventory the fault enum, planner, scheduler, network queues, and SDK request surfaces that each mechanism will extend. r[chaoscontrol.fault_mechanisms.interactions]
-- [ ] [serial] Publish the overlap/precedence table, directional link identity, baseline-profile admission, and explicit unsupported cases. r[chaoscontrol.fault_mechanisms.interactions] r[chaoscontrol.fault_mechanisms.nonclaims]
+- [x] [serial] Publish the overlap/precedence table, directional link identity, baseline-profile admission, and explicit unsupported cases. r[chaoscontrol.fault_mechanisms.interactions] r[chaoscontrol.fault_mechanisms.nonclaims]
 
 ## Phase 2: Directional network and CPU throttle
 

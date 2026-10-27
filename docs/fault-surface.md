@@ -75,6 +75,28 @@ The run records the value it used, always as an explicit boolean, in `checkpoint
 Records written before the setting existed carry no value and load as off, because those runs built their fault engine with random injection hard-coded off.
 The dogfood `run-config.json` projection carries the setting whenever the checkpoint records it, and keeps the legacy shape for checkpoints that predate it.
 
+## Interactions and precedence
+
+| Situation | Effective rule |
+|---|---|
+| Partition plus directional fault | Partition drops first; directional faults apply only to reachable links. |
+| Overlapping directional windows on one link and direction | The most severe mode wins: `Stopped` > `Jammed` > `Slowed`. |
+| Directional heal | Clears both directions for the selected link pair. |
+| Directional fault plus baseline profile | Directional mode and delay apply before baseline loss and baseline latency. |
+| Per-VM loss plus baseline loss | Baseline loss is evaluated first, then the per-VM loss rate. |
+| CPU stall plus CPU throttle | The stall keeps the vCPU unrunnable; the throttle clamps the aggregate budget for runnable work. |
+| Pause window plus active effect | New selection is suppressed inside the window; an already-applied effect continues until its own release. |
+
+The stage ledger records the attempt identity, mechanism, effective target, and observed stage for
+each accepted effect. It does not infer that a suppressed fault was absent from the host.
+
+### Explicit unsupported cases
+
+- Process-scoped CPU throttle targets are admitted by the pure contract but are not enforced by the VMM.
+- Custom effects require an admitted Rust adapter and are not executed by ambient commands or shell text.
+- Pause control is an engine-surface request; no CLI flag or Nickel run-profile field is defined yet.
+- Host CPU affinity, cgroup limits, and host network manipulation are outside this mechanism.
+
 ## Evidence and replay
 
 Each accepted effect records `Selected`, `Applicable`, `Applied`, and `Observed` stages. Invalid windows and unsupported profiles record typed rejections.

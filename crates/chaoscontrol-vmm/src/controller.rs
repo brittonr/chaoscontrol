@@ -18,6 +18,9 @@ use crate::sim_adapter::KvmExecutor;
 use crate::snapshot::VmSnapshot;
 use crate::vm::{AssertionHitRecord, DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::faults::Fault;
+use chaoscontrol_fault::mechanisms::{
+    CustomEffectAdapter, CustomEffectContext, CustomEffectIdentity,
+};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::outcomes::{
     checked_ns_to_tsc_delta, plan_fault_application, preflight_fault_application_events_with_limit,
@@ -272,6 +275,8 @@ pub struct SimulationController {
     assertion_checkpoints: Vec<ControllerAssertionCheckpoint>,
     /// Permanent latch after a round fails once mutation has started.
     round_poison: Option<ControllerRoundPoison>,
+    /// Host-owned adapter for the one admitted custom-effect identity.
+    custom_effect_adapter: Option<Box<dyn CustomEffectAdapter>>,
 }
 
 impl SimulationController {
@@ -664,6 +669,7 @@ impl SimulationController {
             guest_artifact_ids,
             vm_memory_bases: vec![None; num_vms],
             fault_application_policy: FaultApplicationPolicy::default(),
+            custom_effect_adapter: None,
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
             assertion_checkpoints: Vec::new(),
@@ -1221,6 +1227,10 @@ impl SimulationController {
         Ok(FaultPlanningFacts {
             current_tick: self.tick,
             network_supported: true,
+            custom_effect: self
+                .custom_effect_adapter
+                .as_ref()
+                .map(|adapter| adapter.identity()),
             vms,
         })
     }
@@ -1415,6 +1425,7 @@ impl SimulationController {
             FaultMechanism::CpuRegisterBitflip
             | FaultMechanism::CpuStall
             | FaultMechanism::CpuThrottle => self.apply_cpu_fault_plan(plan),
+            FaultMechanism::CustomEffect => self.apply_custom_fault_plan(plan),
             FaultMechanism::MemoryPressure => self.apply_resource_fault_plan(plan),
         }
     }
@@ -1797,6 +1808,34 @@ impl SimulationController {
         };
         let observation = self
             .make_shell_observation(plan.attempt_id, FaultObservationSubsystem::Cpu, effect)
+            .map_err(|_| internal_application_error())?;
+        Ok(vec![observation])
+    }
+
+    fn apply_custom_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        let FaultPlanEffect::CustomEffect { effect } = &plan.effect else {
+            return Err(internal_application_error());
+        };
+        let adapter = self
+            .custom_effect_adapter
+            .as_mut()
+            .ok_or_else(target_state_application_error)?;
+        let identity = adapter.identity();
+        if identity.effect_id != effect.effect_id || identity.version != effect.version {
+            return Err(target_state_application_error());
+        }
+        adapter
+            .apply(effect, CustomEffectContext { tick: self.tick })
+            .map_err(|_| target_state_application_error())?;
+        let observation = self
+            .make_shell_observation(
+                plan.attempt_id,
+                FaultObservationSubsystem::Process,
+                FaultObservationEffect::CustomEffectApplied,
+            )
             .map_err(|_| internal_application_error())?;
         Ok(vec![observation])
     }
@@ -2908,6 +2947,26 @@ impl SimulationController {
     }
 
     /// Get current simulation tick.
+    /// Admit a pause-control window for this run.
+    pub fn request_pause_control(
+        &mut self,
+        request: chaoscontrol_fault::mechanisms::PauseControlRequest,
+    ) -> Result<(), chaoscontrol_fault::mechanisms::MechanismError> {
+        self.fault_engine.request_pause_control(request)
+    }
+
+    /// Install the one host-owned custom-effect adapter.
+    pub fn set_custom_effect_adapter(&mut self, adapter: Box<dyn CustomEffectAdapter>) {
+        self.custom_effect_adapter = Some(adapter);
+    }
+
+    /// Return the installed custom-effect identity, if any.
+    pub fn custom_effect_identity(&self) -> Option<CustomEffectIdentity> {
+        self.custom_effect_adapter
+            .as_ref()
+            .map(|adapter| adapter.identity())
+    }
+
     pub fn tick(&self) -> u64 {
         self.tick
     }
@@ -3305,11 +3364,38 @@ mod tests {
     use crate::devices::block::DeterministicBlock;
     use crate::devices::virtio_block::VirtioBlock;
     use chaoscontrol_fault::faults::{FaultCategory, FaultVariant, GpRegister};
+    use chaoscontrol_fault::mechanisms::{
+        CustomEffectError, CustomFaultEffect, PauseControlRequest,
+    };
     use chaoscontrol_fault::outcomes::{
         transition_fault_outcome, FaultApplicationFailureDisposition,
         FaultApplicationFailureReason, FaultOutcomeLedger,
     };
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    struct RecordingCustomAdapter {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl CustomEffectAdapter for RecordingCustomAdapter {
+        fn identity(&self) -> CustomEffectIdentity {
+            CustomEffectIdentity {
+                effect_id: String::from("test-effect"),
+                version: 1,
+            }
+        }
+
+        fn apply(
+            &mut self,
+            _effect: &CustomFaultEffect,
+            _context: CustomEffectContext,
+        ) -> Result<(), CustomEffectError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
 
     // r[verify chaoscontrol.system_runs.fault_injection.scenario.default]
     #[test]
@@ -3384,6 +3470,7 @@ mod tests {
             guest_artifact_ids: Vec::new(),
             vm_memory_bases: vec![None],
             fault_application_policy: FaultApplicationPolicy::default(),
+            custom_effect_adapter: None,
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
             assertion_checkpoints: Vec::new(),
@@ -3604,6 +3691,7 @@ mod tests {
             guest_artifact_ids: Vec::new(),
             vm_memory_bases: vec![None; VM_COUNT],
             fault_application_policy: FaultApplicationPolicy::default(),
+            custom_effect_adapter: None,
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
             assertion_checkpoints: Vec::new(),
@@ -3737,6 +3825,7 @@ mod tests {
             guest_artifact_ids: Vec::new(),
             vm_memory_bases: Vec::new(),
             fault_application_policy: FaultApplicationPolicy::default(),
+            custom_effect_adapter: None,
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
             assertion_checkpoints: Vec::new(),
@@ -3963,6 +4052,106 @@ mod tests {
         controller.tick = 5;
         assert_eq!(controller.effective_exit_budget(0, 100), 100);
         assert!(controller.vms[0].cpu_throttle.is_none());
+    }
+
+    #[test]
+    fn custom_effect_adapter_is_invoked_and_recorded() {
+        let mut controller = adapter_test_controller();
+        let calls = Arc::new(AtomicUsize::new(0));
+        controller.set_custom_effect_adapter(Box::new(RecordingCustomAdapter {
+            calls: Arc::clone(&calls),
+        }));
+        assert_eq!(
+            controller.custom_effect_identity().unwrap().effect_id,
+            "test-effect"
+        );
+        let plan = FaultPlan {
+            attempt_id: FaultAttemptId([9; 32]),
+            effect: FaultPlanEffect::CustomEffect {
+                effect: CustomFaultEffect {
+                    effect_id: String::from("test-effect"),
+                    version: 1,
+                    parameters: std::collections::BTreeMap::new(),
+                },
+            },
+        };
+        let observations = controller.apply_fault_plan(&plan).expect("custom effect");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].effect,
+            chaoscontrol_fault::outcomes::FaultObservationEffect::CustomEffectApplied
+        );
+    }
+
+    #[test]
+    fn interaction_fixture_applies_directional_throttle_custom_and_pause() {
+        use chaoscontrol_fault::mechanisms::{NetworkDirection, NetworkDisruption};
+
+        let mut controller = adapter_test_controller();
+        let calls = Arc::new(AtomicUsize::new(0));
+        controller.set_custom_effect_adapter(Box::new(RecordingCustomAdapter {
+            calls: Arc::clone(&calls),
+        }));
+        let plans = [
+            FaultPlanEffect::NetworkDirectional {
+                node: 0,
+                peer: 1,
+                direction: NetworkDirection::Outbound,
+                disruption: NetworkDisruption::Stopped,
+                delay_ticks: 0,
+                queue_limit: 0,
+            },
+            FaultPlanEffect::CpuThrottle {
+                target: 0,
+                budget_units: 2,
+                release_at_tick: 5,
+            },
+            FaultPlanEffect::CustomEffect {
+                effect: CustomFaultEffect {
+                    effect_id: String::from("test-effect"),
+                    version: 1,
+                    parameters: std::collections::BTreeMap::new(),
+                },
+            },
+        ];
+        let mut custom_observed = false;
+        for (index, effect) in plans.into_iter().enumerate() {
+            let plan = FaultPlan {
+                attempt_id: FaultAttemptId([20 + index as u8; 32]),
+                effect,
+            };
+            let observations = controller
+                .apply_fault_plan(&plan)
+                .expect("interaction mechanism applies");
+            custom_observed |= observations.iter().any(|observation| {
+                observation.effect
+                    == chaoscontrol_fault::outcomes::FaultObservationEffect::CustomEffectApplied
+            });
+        }
+        controller
+            .request_pause_control(PauseControlRequest {
+                requester: String::from("interaction-fixture"),
+                start_tick: 0,
+                end_tick: 2,
+            })
+            .expect("pause window admitted");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            controller.effective_exit_budget(0, 100),
+            2,
+            "throttle clamps the round budget"
+        );
+        let snapshot = controller.snapshot_all().expect("snapshot");
+        assert_eq!(
+            snapshot.cpu_throttle[0],
+            Some(CpuThrottleState {
+                budget_units: 2,
+                release_at_tick: 5,
+            })
+        );
+        assert!(!controller.network.send_packet(0, 1, vec![1], 0));
+        assert!(custom_observed);
     }
 
     #[test]
@@ -5359,6 +5548,9 @@ mod tests {
         const FULL_RATE_PPM: u32 = 1_000_000;
         const TEST_MEMORY_BASELINE_BYTES: u64 = 256 * 1024 * 1024;
         let mut controller = adapter_test_controller();
+        controller.set_custom_effect_adapter(Box::new(RecordingCustomAdapter {
+            calls: Arc::new(AtomicUsize::new(0)),
+        }));
         let cases = vec![
             (
                 FaultVariant::NetworkPartition,
@@ -5536,6 +5728,16 @@ mod tests {
                     limit_bytes: 1,
                     baseline_bytes: TEST_MEMORY_BASELINE_BYTES,
                     release_at_tick: 1,
+                },
+            ),
+            (
+                FaultVariant::CustomEffect,
+                FaultPlanEffect::CustomEffect {
+                    effect: CustomFaultEffect {
+                        effect_id: String::from("test-effect"),
+                        version: 1,
+                        parameters: std::collections::BTreeMap::new(),
+                    },
                 },
             ),
             (

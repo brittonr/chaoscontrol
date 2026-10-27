@@ -339,6 +339,11 @@ pub enum SerializableFault {
         budget_units: u64,
         duration_ticks: u64,
     },
+    CustomEffect {
+        effect_id: String,
+        version: u32,
+        parameters: std::collections::BTreeMap<String, String>,
+    },
     ClockFreeze {
         target: usize,
         duration_ticks: u64,
@@ -517,6 +522,15 @@ impl From<&Fault> for SerializableFault {
                 target: *target,
                 budget_units: *budget_units,
                 duration_ticks: *duration_ticks,
+            },
+            Fault::CustomEffect {
+                effect_id,
+                version,
+                parameters,
+            } => SerializableFault::CustomEffect {
+                effect_id: effect_id.clone(),
+                version: *version,
+                parameters: parameters.clone(),
             },
             Fault::ClockFreeze {
                 target,
@@ -701,6 +715,15 @@ impl From<&SerializableFault> for Fault {
                 target: *target,
                 budget_units: *budget_units,
                 duration_ticks: *duration_ticks,
+            },
+            SerializableFault::CustomEffect {
+                effect_id,
+                version,
+                parameters,
+            } => Fault::CustomEffect {
+                effect_id: effect_id.clone(),
+                version: *version,
+                parameters: parameters.clone(),
             },
             SerializableFault::ClockFreeze {
                 target,
@@ -1363,6 +1386,32 @@ mod tests {
         let serializable: SerializableFault = (&fault).into();
         let roundtrip: Fault = (&serializable).into();
         assert_eq!(fault, roundtrip);
+    }
+
+    #[test]
+    fn new_mechanism_faults_round_trip_through_checkpoint_schema() {
+        let faults = [
+            Fault::CpuThrottle {
+                target: 0,
+                budget_units: 4,
+                duration_ticks: 8,
+            },
+            Fault::CustomEffect {
+                effect_id: String::from("test-effect"),
+                version: 1,
+                parameters: std::collections::BTreeMap::from([(
+                    String::from("key"),
+                    String::from("value"),
+                )]),
+            },
+        ];
+        for fault in faults {
+            let serializable: SerializableFault = (&fault).into();
+            let json = serde_json::to_string(&serializable).unwrap();
+            let decoded: SerializableFault = serde_json::from_str(&json).unwrap();
+            let roundtrip: Fault = (&decoded).into();
+            assert_eq!(fault, roundtrip);
+        }
     }
 
     #[test]

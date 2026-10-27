@@ -114,12 +114,13 @@ pub enum FaultVariant {
     CpuBitflip,
     CpuStall,
     CpuThrottle,
+    CustomEffect,
     ClockFreeze,
     ClockJitter,
 }
 
 impl FaultVariant {
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 34] = [
         Self::NetworkPartition,
         Self::NetworkLatency,
         Self::PacketLoss,
@@ -151,6 +152,7 @@ impl FaultVariant {
         Self::CpuBitflip,
         Self::CpuStall,
         Self::CpuThrottle,
+        Self::CustomEffect,
         Self::ClockFreeze,
         Self::ClockJitter,
     ];
@@ -446,6 +448,16 @@ pub enum Fault {
         duration_ticks: u64,
     },
 
+    /// Invoke one admitted Rust-owned custom effect.
+    CustomEffect {
+        /// Stable effect identity declared by the adapter.
+        effect_id: String,
+        /// Declared effect version.
+        version: u32,
+        /// Bounded string parameters owned by the adapter.
+        parameters: std::collections::BTreeMap<String, String>,
+    },
+
     // ── Advanced clock faults ───────────────────────────────
     /// Freeze the virtual TSC at its current value for a duration.
     ///
@@ -506,6 +518,7 @@ impl Fault {
             Self::CpuBitflip { .. } => FaultVariant::CpuBitflip,
             Self::CpuStall { .. } => FaultVariant::CpuStall,
             Self::CpuThrottle { .. } => FaultVariant::CpuThrottle,
+            Self::CustomEffect { .. } => FaultVariant::CustomEffect,
             Self::ClockFreeze { .. } => FaultVariant::ClockFreeze,
             Self::ClockJitter { .. } => FaultVariant::ClockJitter,
         }
@@ -517,7 +530,8 @@ impl Fault {
             Fault::NetworkPartition { .. }
             | Fault::NetworkHeal
             | Fault::NetworkDirectional { .. }
-            | Fault::NetworkDirectionalHeal { .. } => None,
+            | Fault::NetworkDirectionalHeal { .. }
+            | Fault::CustomEffect { .. } => None,
             Fault::NetworkLatency { target, .. }
             | Fault::NetworkJitter { target, .. }
             | Fault::NetworkBandwidth { target, .. }
@@ -591,6 +605,7 @@ impl Fault {
             Fault::CpuBitflip { .. } | Fault::CpuStall { .. } | Fault::CpuThrottle { .. } => {
                 FaultCategory::Cpu
             }
+            Fault::CustomEffect { .. } => FaultCategory::Custom,
         }
     }
 }
@@ -715,6 +730,15 @@ impl fmt::Display for Fault {
                 f,
                 "cpu-throttle(vm={target}, budget={budget_units}, {duration_ticks} ticks)"
             ),
+            Fault::CustomEffect {
+                effect_id,
+                version,
+                parameters,
+            } => write!(
+                f,
+                "custom-effect({effect_id}@{version}, {} parameters)",
+                parameters.len()
+            ),
             Fault::ClockFreeze {
                 target,
                 duration_ticks,
@@ -775,6 +799,7 @@ impl Fault {
             Fault::CpuBitflip { .. } => "cpu-bitflip",
             Fault::CpuStall { .. } => "cpu-stall",
             Fault::CpuThrottle { .. } => "cpu-throttle",
+            Fault::CustomEffect { .. } => "custom-effect",
             Fault::ClockFreeze { .. } => "clock-freeze",
             Fault::ClockJitter { .. } => "clock-jitter",
         }
@@ -786,6 +811,7 @@ impl Fault {
 pub enum FaultCategory {
     Network,
     Disk,
+    Custom,
     Process,
     Clock,
     Resource,
@@ -803,6 +829,7 @@ impl fmt::Display for FaultCategory {
             FaultCategory::Resource => write!(f, "resource"),
             FaultCategory::Interrupt => write!(f, "interrupt"),
             FaultCategory::Cpu => write!(f, "cpu"),
+            FaultCategory::Custom => write!(f, "custom"),
         }
     }
 }

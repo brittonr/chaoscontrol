@@ -248,6 +248,25 @@ fn hash_usize(hasher: &mut blake3::Hasher, value: usize) {
     hasher.update(&value_u64.to_le_bytes());
 }
 
+fn hash_custom_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    let Fault::CustomEffect {
+        effect_id,
+        version,
+        parameters,
+    } = fault
+    else {
+        unreachable!("custom category must contain a custom fault");
+    };
+    hasher.update(effect_id.as_bytes());
+    hasher.update(&version.to_le_bytes());
+    for (name, value) in parameters {
+        hasher.update(name.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(value.as_bytes());
+        hasher.update(&[0]);
+    }
+}
+
 fn hash_usize_slice(hasher: &mut blake3::Hasher, values: &[usize]) {
     hash_usize(hasher, values.len());
     for value in values {
@@ -265,6 +284,7 @@ fn hash_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
         FaultCategory::Resource => hash_resource_fault(hasher, fault),
         FaultCategory::Interrupt => hash_interrupt_fault(hasher, fault),
         FaultCategory::Cpu => hash_cpu_fault(hasher, fault),
+        FaultCategory::Custom => hash_custom_fault(hasher, fault),
     }
 }
 
@@ -552,6 +572,7 @@ pub struct VmFaultFacts {
 pub struct FaultPlanningFacts {
     pub current_tick: u64,
     pub network_supported: bool,
+    pub custom_effect: Option<crate::mechanisms::CustomEffectIdentity>,
     pub vms: Vec<VmFaultFacts>,
 }
 
@@ -595,6 +616,7 @@ pub enum FaultMechanism {
     VirtualClockJitter,
     CpuStall,
     CpuThrottle,
+    CustomEffect,
     MemoryPressure,
 }
 
@@ -625,6 +647,7 @@ impl FaultPlan {
             | FaultPlanEffect::VirtualClockJitter { .. }
             | FaultPlanEffect::CpuStall { .. }
             | FaultPlanEffect::CpuThrottle { .. }
+            | FaultPlanEffect::CustomEffect { .. }
             | FaultPlanEffect::MemoryPressure { .. } => SINGLE_IMMEDIATE_OBSERVATION,
             _ => 0,
         }
@@ -774,6 +797,9 @@ pub enum FaultPlanEffect {
         budget_units: u64,
         release_at_tick: u64,
     },
+    CustomEffect {
+        effect: crate::mechanisms::CustomFaultEffect,
+    },
     MemoryPressure {
         target: u32,
         limit_bytes: u64,
@@ -817,6 +843,7 @@ impl FaultPlanEffect {
             Self::VirtualClockJitter { .. } => FaultMechanism::VirtualClockJitter,
             Self::CpuStall { .. } => FaultMechanism::CpuStall,
             Self::CpuThrottle { .. } => FaultMechanism::CpuThrottle,
+            Self::CustomEffect { .. } => FaultMechanism::CustomEffect,
             Self::MemoryPressure { .. } => FaultMechanism::MemoryPressure,
         }
     }
@@ -851,6 +878,7 @@ impl FaultPlanEffect {
             | Self::VirtualClockJitter { .. }
             | Self::CpuStall { .. }
             | Self::CpuThrottle { .. }
+            | Self::CustomEffect { .. }
             | Self::MemoryPressure { .. } => FaultEffectTiming::Immediate,
             _ => FaultEffectTiming::Armed,
         }
@@ -938,6 +966,7 @@ pub enum FaultRejectionReason {
         budget_units: u64,
         max: u64,
     },
+    InvalidCustomEffect,
     ArithmeticOverflow,
     UnsupportedCapability {
         variant: FaultVariant,
@@ -958,6 +987,7 @@ pub fn plan_fault_application(
         FaultCategory::Resource => plan_resource_fault(&attempt.fault, facts, policy)?,
         FaultCategory::Interrupt => plan_interrupt_fault(&attempt.fault, facts)?,
         FaultCategory::Cpu => plan_cpu_fault(&attempt.fault, facts, policy)?,
+        FaultCategory::Custom => plan_custom_fault(&attempt.fault, facts)?,
     };
     Ok(FaultPlan {
         attempt_id: attempt.id,
@@ -1488,6 +1518,38 @@ fn plan_cpu_fault(
     }
 }
 
+fn plan_custom_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    let Fault::CustomEffect {
+        effect_id,
+        version,
+        parameters,
+    } = fault
+    else {
+        unreachable!("custom planner must receive a custom fault");
+    };
+    let effect = crate::mechanisms::CustomFaultEffect {
+        effect_id: effect_id.clone(),
+        version: *version,
+        parameters: parameters.clone(),
+    };
+    crate::mechanisms::admit_custom_effect(&effect)
+        .map_err(|_| FaultRejectionReason::InvalidCustomEffect)?;
+    let Some(identity) = facts.custom_effect.as_ref() else {
+        return Err(FaultRejectionReason::UnsupportedCapability {
+            variant: fault.variant(),
+        });
+    };
+    if identity.effect_id != *effect_id || identity.version != *version {
+        return Err(FaultRejectionReason::UnsupportedCapability {
+            variant: fault.variant(),
+        });
+    }
+    Ok(FaultPlanEffect::CustomEffect { effect })
+}
+
 fn checked_target(target: usize, facts: &FaultPlanningFacts) -> Result<u32, FaultRejectionReason> {
     if target >= facts.vms.len() {
         return Err(FaultRejectionReason::MissingVm {
@@ -1706,6 +1768,7 @@ pub enum FaultObservationEffect {
     VirtualClockJitterConfigured,
     CpuStallActivated,
     CpuThrottleActivated,
+    CustomEffectApplied,
     MemoryCeilingChanged,
     InterruptInjected,
     NmiInjected,
@@ -2494,6 +2557,18 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
                 && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
         }
         (
+            Fault::CustomEffect {
+                effect_id,
+                version,
+                parameters,
+            },
+            FaultPlanEffect::CustomEffect { effect },
+        ) => {
+            effect.effect_id == *effect_id
+                && effect.version == *version
+                && effect.parameters == *parameters
+        }
+        (
             Fault::CpuThrottle {
                 target: fault_target,
                 budget_units,
@@ -2725,6 +2800,7 @@ fn observation_effect_subsystem(effect: FaultObservationEffect) -> FaultObservat
         FaultObservationEffect::CpuRegisterChanged
         | FaultObservationEffect::CpuStallActivated
         | FaultObservationEffect::CpuThrottleActivated => FaultObservationSubsystem::Cpu,
+        FaultObservationEffect::CustomEffectApplied => FaultObservationSubsystem::Process,
         FaultObservationEffect::MemoryCeilingChanged => FaultObservationSubsystem::Scheduler,
         FaultObservationEffect::InterruptInjected | FaultObservationEffect::NmiInjected => {
             FaultObservationSubsystem::Interrupt
@@ -2816,6 +2892,9 @@ fn mechanism_accepts_observation(
         ) | (
             FaultMechanism::CpuThrottle,
             FaultObservationEffect::CpuThrottleActivated
+        ) | (
+            FaultMechanism::CustomEffect,
+            FaultObservationEffect::CustomEffectApplied
         ) | (
             FaultMechanism::MemoryPressure,
             FaultObservationEffect::MemoryCeilingChanged
@@ -2913,6 +2992,10 @@ mod tests {
         FaultPlanningFacts {
             current_tick: 1,
             network_supported: true,
+            custom_effect: Some(crate::mechanisms::CustomEffectIdentity {
+                effect_id: String::from("test-effect"),
+                version: 1,
+            }),
             vms: vec![running_vm(), running_vm(), running_vm()],
         }
     }
@@ -3415,6 +3498,37 @@ mod tests {
             })
         );
 
+        let custom = plan_fault_application(
+            &attempt(Fault::CustomEffect {
+                effect_id: String::from("test-effect"),
+                version: 1,
+                parameters: std::collections::BTreeMap::new(),
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert!(matches!(
+            custom.effect,
+            FaultPlanEffect::CustomEffect { .. }
+        ));
+        let mut without_adapter = facts.clone();
+        without_adapter.custom_effect = None;
+        assert_eq!(
+            plan_fault_application(
+                &attempt(Fault::CustomEffect {
+                    effect_id: String::from("test-effect"),
+                    version: 1,
+                    parameters: std::collections::BTreeMap::new(),
+                }),
+                &without_adapter,
+                &policy,
+            ),
+            Err(FaultRejectionReason::UnsupportedCapability {
+                variant: FaultVariant::CustomEffect,
+            })
+        );
+
         let pressure = plan_fault_application(
             &attempt(Fault::MemoryPressure {
                 target: 0,
@@ -3779,6 +3893,11 @@ mod tests {
                 target: 0,
                 budget_units: 1,
                 duration_ticks: 1,
+            },
+            Fault::CustomEffect {
+                effect_id: String::from("test-effect"),
+                version: 1,
+                parameters: std::collections::BTreeMap::new(),
             },
             Fault::ClockFreeze {
                 target: 0,

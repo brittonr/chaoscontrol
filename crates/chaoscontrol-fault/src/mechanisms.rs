@@ -105,6 +105,43 @@ pub struct CustomFaultEffect {
     pub parameters: BTreeMap<String, String>,
 }
 
+/// Stable identity of one admitted Rust-owned custom-effect adapter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomEffectIdentity {
+    pub effect_id: String,
+    pub version: u32,
+}
+
+/// Bounded context passed to a custom-effect adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CustomEffectContext {
+    pub tick: u64,
+}
+
+/// Failure class returned by a custom-effect adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomEffectError {
+    UnsupportedIdentity,
+    VersionMismatch,
+    Rejected,
+    Failed,
+}
+
+/// A Rust-owned adapter for one admitted custom-effect identity.
+///
+/// The adapter owns its effect semantics. ChaosControl owns only bounded
+/// admission, invocation, and evidence. Implementations must not invoke an
+/// ambient shell, dynamic library, network fetch, or package installation.
+pub trait CustomEffectAdapter: Send {
+    fn identity(&self) -> CustomEffectIdentity;
+    fn apply(
+        &mut self,
+        effect: &CustomFaultEffect,
+        context: CustomEffectContext,
+    ) -> Result<(), CustomEffectError>;
+}
+
 /// Admitted baseline network profile applied to all links.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

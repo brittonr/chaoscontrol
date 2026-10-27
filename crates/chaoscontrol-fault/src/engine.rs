@@ -1736,8 +1736,11 @@ mod tests {
 
         let snapshot = engine.snapshot();
         assert_eq!(snapshot.pause_control.len(), 1);
+        let encoded = serde_json::to_value(&snapshot).expect("encode engine snapshot");
+        let decoded: EngineSnapshot =
+            serde_json::from_value(encoded).expect("decode engine snapshot");
         engine.pause_control.clear();
-        engine.apply_snapshot(&snapshot);
+        engine.apply_snapshot(&decoded);
         assert!(engine.poll_faults(1_000_000).unwrap().is_empty());
         assert_eq!(engine.poll_faults(5_000_000).unwrap().len(), 1);
         assert_eq!(

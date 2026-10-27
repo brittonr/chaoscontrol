@@ -1781,6 +1781,33 @@ mod directional_tests {
     }
 
     #[test]
+    fn directional_and_baseline_state_survive_serde_roundtrip() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        assert!(fabric.arm_directional_with_attempt(
+            fault(
+                0,
+                1,
+                NetworkDirection::Outbound,
+                NetworkDisruption::Stopped,
+                0,
+            ),
+            Some(FaultAttemptId([3; 32])),
+        ));
+        assert!(fabric.set_baseline_profile(
+            chaoscontrol_fault::mechanisms::NetworkBaselineProfile {
+                latency_ticks: 2,
+                loss_rate_ppm: 0,
+            }
+        ));
+        let encoded = serde_json::to_string(&fabric).expect("serialize fabric");
+        let mut restored: NetworkFabric =
+            serde_json::from_str(&encoded).expect("deserialize fabric");
+        assert!(!restored.send_packet(0, 1, vec![1], 0));
+        assert!(restored.send_packet(1, 0, vec![1], 0));
+        assert_eq!(restored.stats().packets_delayed_baseline, 1);
+    }
+
+    #[test]
     fn invalid_targets_and_self_links_are_rejected() {
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(!fabric.arm_directional(fault(

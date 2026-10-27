@@ -195,6 +195,9 @@ pub struct DirectionalLinkFault {
     pub delay_ticks: u64,
     /// Bounded queue depth for jammed faults.
     pub queue_limit: u32,
+    /// Attempt that armed the fault, when attributed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<FaultAttemptId>,
 }
 
 impl std::fmt::Display for NetworkStats {
@@ -356,7 +359,11 @@ impl NetworkFabric {
         let attributed_mechanism_active = self.partition_attempt_ids.iter().any(Option::is_some)
             || vectors
                 .into_iter()
-                .any(|attempts| attempts.iter().any(Option::is_some));
+                .any(|attempts| attempts.iter().any(Option::is_some))
+            || self
+                .directional
+                .iter()
+                .any(|fault| fault.attempt_id.is_some());
         if attributed_mechanism_active {
             MAX_PENDING_FAULT_OBSERVATIONS - self.fault_observations.len()
         } else {
@@ -397,6 +404,10 @@ impl NetworkFabric {
             Self::attempt_for_pair_u32(&self.loss_rate_ppm, &self.loss_attempt_ids, from, to)
                 .is_some(),
         );
+        let directional_observations = usize::from(
+            self.directional_for(from, to)
+                .is_some_and(|(_, _, _, attempt)| attempt.is_some()),
+        );
         let delivered_observations = [
             Self::attempt_for_pair_u64(&self.latency, &self.latency_attempt_ids, from, to),
             Self::attempt_for_pair_u64(&self.bandwidth_bps, &self.bandwidth_attempt_ids, from, to),
@@ -422,7 +433,8 @@ impl NetworkFabric {
             ]
             .into_iter()
             .flatten()
-            .count();
+            .count()
+            + directional_observations;
         let max_observations = if partition_observations != 0 {
             partition_observations
         } else {
@@ -467,8 +479,8 @@ impl NetworkFabric {
         let jitter = self.jitter[from].max(self.jitter[to]);
         let reorder = self.reorder_window[from].max(self.reorder_window[to]);
         let directional_delay = match self.directional_for(from, to) {
-            Some((chaoscontrol_fault::mechanisms::NetworkDisruption::Slowed, delay, _)) => delay,
-            Some((chaoscontrol_fault::mechanisms::NetworkDisruption::Jammed, delay, queue)) => {
+            Some((chaoscontrol_fault::mechanisms::NetworkDisruption::Slowed, delay, _, _)) => delay,
+            Some((chaoscontrol_fault::mechanisms::NetworkDisruption::Jammed, delay, queue, _)) => {
                 delay.max(1).min(u64::from(queue.max(1)))
             }
             _ => 0,
@@ -1280,10 +1292,20 @@ impl NetworkFabric {
 
     /// Install one directional link fault.
     pub fn arm_directional(&mut self, fault: DirectionalLinkFault) -> bool {
+        self.arm_directional_with_attempt(fault, None)
+    }
+
+    /// Install one directional link fault with attempt attribution.
+    pub fn arm_directional_with_attempt(
+        &mut self,
+        mut fault: DirectionalLinkFault,
+        attempt_id: Option<FaultAttemptId>,
+    ) -> bool {
         let num_vms = self.loss_rate_ppm.len();
         if fault.node == fault.peer || fault.node >= num_vms || fault.peer >= num_vms {
             return false;
         }
+        fault.attempt_id = attempt_id;
         self.directional.push(fault);
         true
     }
@@ -1308,9 +1330,14 @@ impl NetworkFabric {
         &self,
         from: usize,
         to: usize,
-    ) -> Option<(chaoscontrol_fault::mechanisms::NetworkDisruption, u64, u32)> {
+    ) -> Option<(
+        chaoscontrol_fault::mechanisms::NetworkDisruption,
+        u64,
+        u32,
+        Option<FaultAttemptId>,
+    )> {
         use chaoscontrol_fault::mechanisms::{NetworkDirection, NetworkDisruption};
-        let mut best: Option<(NetworkDisruption, u64, u32)> = None;
+        let mut best: Option<(NetworkDisruption, u64, u32, Option<FaultAttemptId>)> = None;
         for fault in &self.directional {
             let applies = match fault.direction {
                 NetworkDirection::Outbound => fault.node == from && fault.peer == to,
@@ -1323,13 +1350,18 @@ impl NetworkFabric {
             if !applies {
                 continue;
             }
-            let replace = best.is_none_or(|(mode, delay, queue)| {
+            let replace = best.is_none_or(|(mode, delay, queue, _)| {
                 fault.disruption.severity() > mode.severity()
                     || (fault.disruption.severity() == mode.severity()
                         && (fault.delay_ticks > delay || fault.queue_limit > queue))
             });
             if replace {
-                best = Some((fault.disruption, fault.delay_ticks, fault.queue_limit));
+                best = Some((
+                    fault.disruption,
+                    fault.delay_ticks,
+                    fault.queue_limit,
+                    fault.attempt_id,
+                ));
             }
         }
         best
@@ -1343,11 +1375,16 @@ impl NetworkFabric {
         current_tick: u64,
     ) -> Option<(u64, bool)> {
         use chaoscontrol_fault::mechanisms::NetworkDisruption;
-        let (disruption, delay_ticks, queue_limit) = self.directional_for(from, to)?;
+        let (disruption, delay_ticks, queue_limit, attempt_id) = self.directional_for(from, to)?;
+        let _ = current_tick;
         match disruption {
             NetworkDisruption::Stopped => {
                 self.stats.packets_dropped_directional =
                     self.stats.packets_dropped_directional.saturating_add(1);
+                self.record_fault_observation(
+                    attempt_id,
+                    FaultObservationEffect::PacketDroppedByDirectional,
+                );
                 Some((0, false))
             }
             NetworkDisruption::Slowed => {
@@ -1357,6 +1394,10 @@ impl NetworkFabric {
                     .stats
                     .total_directional_delay_ticks
                     .saturating_add(delay_ticks);
+                self.record_fault_observation(
+                    attempt_id,
+                    FaultObservationEffect::PacketDelayedByDirectional,
+                );
                 Some((delay_ticks, true))
             }
             NetworkDisruption::Jammed => {
@@ -1369,7 +1410,10 @@ impl NetworkFabric {
                     .stats
                     .total_directional_delay_ticks
                     .saturating_add(bounded);
-                let _ = current_tick;
+                self.record_fault_observation(
+                    attempt_id,
+                    FaultObservationEffect::PacketJammedByDirectional,
+                );
                 Some((bounded, true))
             }
         }
@@ -1539,6 +1583,7 @@ mod directional_tests {
             disruption,
             delay_ticks,
             queue_limit: 4,
+            attempt_id: None,
         }
     }
 
@@ -1596,6 +1641,29 @@ mod directional_tests {
         assert!(jammed.send_packet(0, 1, vec![1], 10));
         assert_eq!(jammed.packet_in_flight.last().unwrap().deliver_at_tick, 14);
         assert_eq!(jammed.stats().packets_jammed_directional, 1);
+    }
+
+    #[test]
+    fn attributed_directional_drop_records_the_attempt_observation() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        let attempt = FaultAttemptId([7; 32]);
+        assert!(fabric.arm_directional_with_attempt(
+            fault(
+                0,
+                1,
+                NetworkDirection::Outbound,
+                NetworkDisruption::Stopped,
+                0,
+            ),
+            Some(attempt),
+        ));
+        assert!(!fabric.send_packet(0, 1, vec![1], 0));
+        assert_eq!(fabric.fault_observations.len(), 1);
+        assert_eq!(
+            fabric.fault_observations[0].effect,
+            chaoscontrol_fault::outcomes::FaultObservationEffect::PacketDroppedByDirectional
+        );
+        assert_eq!(fabric.fault_observations[0].attempt_id, attempt);
     }
 
     #[test]

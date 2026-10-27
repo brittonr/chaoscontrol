@@ -1636,6 +1636,9 @@ pub enum FaultObservationEffect {
     PacketDelayedByBandwidth,
     PacketReordered,
     PacketDuplicated,
+    PacketDroppedByDirectional,
+    PacketDelayedByDirectional,
+    PacketJammedByDirectional,
     BlockReadFailed,
     BlockWriteFailed,
     BlockWriteTorn,
@@ -2628,7 +2631,10 @@ fn observation_effect_subsystem(effect: FaultObservationEffect) -> FaultObservat
         | FaultObservationEffect::PacketDelayedByJitter
         | FaultObservationEffect::PacketDelayedByBandwidth
         | FaultObservationEffect::PacketReordered
-        | FaultObservationEffect::PacketDuplicated => FaultObservationSubsystem::Network,
+        | FaultObservationEffect::PacketDuplicated
+        | FaultObservationEffect::PacketDroppedByDirectional
+        | FaultObservationEffect::PacketDelayedByDirectional
+        | FaultObservationEffect::PacketJammedByDirectional => FaultObservationSubsystem::Network,
         FaultObservationEffect::BlockReadFailed
         | FaultObservationEffect::BlockWriteFailed
         | FaultObservationEffect::BlockWriteTorn
@@ -2682,6 +2688,15 @@ fn mechanism_accepts_observation(
         ) | (
             FaultMechanism::NetworkBandwidth,
             FaultObservationEffect::PacketDelayedByBandwidth
+        ) | (
+            FaultMechanism::NetworkDirectional,
+            FaultObservationEffect::PacketDroppedByDirectional
+        ) | (
+            FaultMechanism::NetworkDirectional,
+            FaultObservationEffect::PacketDelayedByDirectional
+        ) | (
+            FaultMechanism::NetworkDirectional,
+            FaultObservationEffect::PacketJammedByDirectional
         ) | (
             FaultMechanism::PacketDuplicate,
             FaultObservationEffect::PacketDuplicated

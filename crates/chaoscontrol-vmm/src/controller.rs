@@ -1456,17 +1456,18 @@ impl SimulationController {
                 disruption,
                 delay_ticks,
                 queue_limit,
-            } => {
-                self.network
-                    .arm_directional(chaoscontrol_sim_core::network::DirectionalLinkFault {
-                        node: checked_usize(*node)?,
-                        peer: checked_usize(*peer)?,
-                        direction: *direction,
-                        disruption: *disruption,
-                        delay_ticks: *delay_ticks,
-                        queue_limit: *queue_limit,
-                    })
-            }
+            } => self.network.arm_directional_with_attempt(
+                chaoscontrol_sim_core::network::DirectionalLinkFault {
+                    node: checked_usize(*node)?,
+                    peer: checked_usize(*peer)?,
+                    direction: *direction,
+                    disruption: *disruption,
+                    delay_ticks: *delay_ticks,
+                    queue_limit: *queue_limit,
+                    attempt_id: None,
+                },
+                Some(plan.attempt_id),
+            ),
             FaultPlanEffect::NetworkDirectionalHeal { node, peer } => self
                 .network
                 .clear_directional_link(checked_usize(*node)?, checked_usize(*peer)?),

@@ -232,7 +232,7 @@ fn proposal(score: f64) -> EntryProposal {
     EntryProposal {
         score,
         marker: None,
-        assertion: false,
+        assertion: None,
     }
 }
 

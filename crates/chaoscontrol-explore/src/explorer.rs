@@ -1061,6 +1061,18 @@ impl Explorer {
                 }));
             }
         };
+        if let Some(selected) = authorized.selected() {
+            if let Some(assertion) = &selected.assertion {
+                validate_assertion_checkpoint(assertion, &selected.snapshot).map_err(
+                    |message| ExploreError::Config {
+                        message: format!(
+                            "stale assertion checkpoint parent {}: {message}",
+                            selected.seq
+                        ),
+                    },
+                )?;
+            }
+        }
         let (mut report, observation) = match mode {
             RoundMode::FaultSchedule => self.explore_round(&authorized)?,
             RoundMode::InputTree => self.explore_input_tree_round(&authorized)?,
@@ -1107,7 +1119,7 @@ impl Explorer {
             return Ok(vec![EntryProposal {
                 score: base_score,
                 marker: None,
-                assertion: false,
+                assertion: None,
             }]);
         }
         let mut seen = BTreeSet::new();
@@ -1124,7 +1136,7 @@ impl Explorer {
                 proposals.push(EntryProposal {
                     score: marker_score(base_score, prior_hits),
                     marker: Some(frontier_metadata(observation, result.total_ticks)),
-                    assertion: false,
+                    assertion: None,
                 });
             }
         }
@@ -1178,15 +1190,14 @@ impl Explorer {
                     .assertion_checkpoints
                     .iter()
                     .flat_map(|checkpoint| {
-                        checkpoint
-                            .hits
-                            .iter()
-                            .map(move |hit| (assertion_observation(checkpoint, hit), checkpoint))
+                        checkpoint.hits.iter().map(move |hit| {
+                            (assertion_observation(checkpoint, hit), checkpoint, hit)
+                        })
                     })
                     .collect();
                 let observations: Vec<_> = candidates
                     .iter()
-                    .map(|(observation, _)| observation.clone())
+                    .map(|(observation, _, _)| observation.clone())
                     .collect();
                 let selection = self.assertion_checkpoint_selector.select(&observations);
                 let base_score = self.score_branch(result, depth);
@@ -1195,16 +1206,22 @@ impl Explorer {
                     if decision.reason != AssertionCheckpointDecisionKind::Selected {
                         continue;
                     }
-                    let Some(checkpoint) =
-                        candidates.iter().find_map(|(observation, checkpoint)| {
-                            (observation == &decision.observation).then_some(*checkpoint)
-                        })
+                    let Some((checkpoint, hit)) =
+                        candidates
+                            .iter()
+                            .find_map(|(observation, checkpoint, hit)| {
+                                (observation == &decision.observation)
+                                    .then_some((*checkpoint, *hit))
+                            })
                     else {
                         continue;
                     };
                     if !seen_checkpoints.insert((checkpoint.vm_index, checkpoint.tick)) {
                         continue;
                     }
+                    let Some(assertion) = assertion_metadata(checkpoint, hit) else {
+                        continue;
+                    };
                     retained.push(RetainedBranch {
                         snapshot: checkpoint.snapshot.clone(),
                         coverage: result.coverage.clone(),
@@ -1213,7 +1230,7 @@ impl Explorer {
                         proposals: vec![EntryProposal {
                             score: base_score + decision.score,
                             marker: None,
-                            assertion: true,
+                            assertion: Some(assertion),
                         }],
                         digests: self.branch_digests_at(result, schedule, checkpoint.tick)?,
                     });
@@ -2362,6 +2379,7 @@ impl Explorer {
                 schedule: entry.schedule.clone(),
                 parent: None,
                 marker: None,
+                assertion: None,
             };
             if let ExplorerFrontier::Legacy(frontier) = &mut self.frontier {
                 frontier.push_recycled(frontier_entry);
@@ -2392,6 +2410,7 @@ impl Explorer {
                             schedule: entry.schedule.clone(),
                             parent: None,
                             marker: None,
+                            assertion: None,
                         };
                         if let ExplorerFrontier::Legacy(frontier) = &mut self.frontier {
                             frontier.push_recycled(frontier_entry);
@@ -3296,6 +3315,79 @@ pub struct ExplorationStats {
     pub corpus_size: usize,
 }
 
+fn validate_assertion_checkpoint(
+    assertion: &crate::assertion_checkpoints::AssertionCheckpointMetadata,
+    snapshot: &SimulationSnapshot,
+) -> Result<(), String> {
+    if snapshot.tick != assertion.observed_tick {
+        return Err(format!(
+            "snapshot tick {} differs from observed tick {}",
+            snapshot.tick, assertion.observed_tick
+        ));
+    }
+    let vm_index = usize::try_from(assertion.vm_index)
+        .map_err(|_| "assertion VM index exceeds platform width".to_string())?;
+    let (vm, _) = snapshot
+        .vm_snapshots
+        .get(vm_index)
+        .ok_or_else(|| format!("snapshot has no VM {vm_index}"))?;
+    if vm.exit_count != assertion.exit_count {
+        return Err(format!(
+            "VM exit count {} differs from the assertion boundary {}",
+            vm.exit_count, assertion.exit_count
+        ));
+    }
+    if vm.virtual_tsc != assertion.virtual_tsc {
+        return Err(format!(
+            "VM virtual TSC {} differs from the assertion boundary {}",
+            vm.virtual_tsc, assertion.virtual_tsc
+        ));
+    }
+    let engine = &vm.fault_engine_snapshot;
+    if engine.run_id().0 != assertion.run_id {
+        return Err("fault-engine run identity differs from the assertion boundary".to_string());
+    }
+    if engine.run_sequence() != assertion.run_sequence {
+        return Err("fault-engine run sequence differs from the assertion boundary".to_string());
+    }
+    let record = engine
+        .assertion_record(assertion.fingerprint)
+        .ok_or_else(|| "captured oracle state lacks the assertion identity".to_string())?;
+    if record.kind != assertion.kind {
+        return Err("captured assertion kind differs from the frontier metadata".to_string());
+    }
+    let satisfied = match assertion.kind {
+        chaoscontrol_protocol::identity::AssertionKind::Sometimes => {
+            assertion.condition && record.true_count > 0
+        }
+        chaoscontrol_protocol::identity::AssertionKind::Reachable => record.hit_count > 0,
+        chaoscontrol_protocol::identity::AssertionKind::Always
+        | chaoscontrol_protocol::identity::AssertionKind::Unreachable => false,
+    };
+    if !satisfied {
+        return Err("captured assertion state does not contain the admitted hit".to_string());
+    }
+    Ok(())
+}
+
+fn assertion_metadata(
+    checkpoint: &chaoscontrol_vmm::controller::ControllerAssertionCheckpoint,
+    hit: &chaoscontrol_vmm::vm::AssertionHitRecord,
+) -> Option<crate::assertion_checkpoints::AssertionCheckpointMetadata> {
+    Some(crate::assertion_checkpoints::AssertionCheckpointMetadata {
+        fingerprint: hit.event.fingerprint,
+        kind: hit.event.kind,
+        condition: hit.event.condition,
+        vm_index: u32::try_from(checkpoint.vm_index).ok()?,
+        vcpu: u32::try_from(hit.vcpu).ok()?,
+        exit_count: hit.exit_count,
+        virtual_tsc: hit.virtual_tsc,
+        run_id: hit.event.run_id.0,
+        run_sequence: hit.event.run_sequence,
+        observed_tick: checkpoint.tick,
+    })
+}
+
 fn assertion_observation(
     checkpoint: &chaoscontrol_vmm::controller::ControllerAssertionCheckpoint,
     hit: &chaoscontrol_vmm::vm::AssertionHitRecord,
@@ -3642,6 +3734,45 @@ mod tests {
     }
 
     #[test]
+    fn assertion_checkpoint_validation_rejects_tick_and_vm_drift() {
+        use chaoscontrol_protocol::identity::{AssertionFingerprint, AssertionKind};
+        use chaoscontrol_vmm::controller::NetworkFabric;
+
+        let snapshot = SimulationSnapshot {
+            tick: 5,
+            vm_snapshots: Vec::new(),
+            network_state: NetworkFabric::new(1, TEST_VARIANT_SEED),
+            fault_engine_snapshot: chaoscontrol_fault::engine::FaultEngine::new(Default::default())
+                .snapshot(),
+            vcpu_stall_until: Vec::new(),
+            clock_freeze: Vec::new(),
+            clock_jitter_bound: Vec::new(),
+            memory_pressure: Vec::new(),
+            process_fault_attempt: Vec::new(),
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
+        };
+        let mut metadata = crate::assertion_checkpoints::AssertionCheckpointMetadata {
+            fingerprint: AssertionFingerprint([3; 32]),
+            kind: AssertionKind::Sometimes,
+            condition: true,
+            vm_index: 0,
+            vcpu: 0,
+            exit_count: 100,
+            virtual_tsc: 1_000,
+            run_id: [9; 32],
+            run_sequence: 1,
+            observed_tick: 4,
+        };
+        let error = validate_assertion_checkpoint(&metadata, &snapshot).unwrap_err();
+        assert!(error.contains("snapshot tick"));
+
+        metadata.observed_tick = snapshot.tick;
+        let error = validate_assertion_checkpoint(&metadata, &snapshot).unwrap_err();
+        assert!(error.contains("no VM 0"));
+    }
+
+    #[test]
     fn assertion_checkpoint_adds_a_retained_branch() {
         use chaoscontrol_fault::outcomes::FaultRunId;
         use chaoscontrol_protocol::identity::{AssertionFingerprint, AssertionKind};
@@ -3701,7 +3832,7 @@ mod tests {
         assert!(outcome
             .retained
             .iter()
-            .any(|retained| retained.proposals.iter().any(|p| p.assertion)));
+            .any(|retained| retained.proposals.iter().any(|p| p.assertion.is_some())));
     }
 
     #[test]

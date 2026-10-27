@@ -223,9 +223,17 @@ impl EngineSnapshot {
         self.run_id
     }
 
-    /// Return the exact fault run sequence captured by this snapshot.
+    /// Return the fault run sequence captured by this snapshot.
     pub fn run_sequence(&self) -> u64 {
         self.run_sequence
+    }
+
+    /// Return the captured assertion record for an exact fingerprint.
+    pub fn assertion_record(
+        &self,
+        fingerprint: AssertionFingerprint,
+    ) -> Option<&crate::oracle::AssertionRecord> {
+        self.oracle.structured_assertions.get(&fingerprint)
     }
 
     /// Test seam for invalid untrusted-ledger fixtures.

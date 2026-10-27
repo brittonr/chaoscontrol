@@ -100,8 +100,8 @@ pub(crate) struct EntryProposal {
     pub(crate) score: f64,
     /// Marker that created the opportunity, if any.
     pub(crate) marker: Option<MarkerFrontierMetadata>,
-    /// Whether an assertion hit created the opportunity.
-    pub(crate) assertion: bool,
+    /// Exact assertion-hit provenance, when an assertion created the opportunity.
+    pub(crate) assertion: Option<crate::assertion_checkpoints::AssertionCheckpointMetadata>,
 }
 
 /// Product digests of one retained branch result; never snapshot bytes.
@@ -261,6 +261,8 @@ pub(crate) struct SelectedEntry {
     pub(crate) depth: u32,
     /// Exact marker instance that created the parent candidate.
     pub(crate) marker: Option<MarkerFrontierMetadata>,
+    /// Exact assertion-hit provenance, when one created the candidate.
+    pub(crate) assertion: Option<crate::assertion_checkpoints::AssertionCheckpointMetadata>,
     /// Whether the epsilon draw explored.
     pub(crate) explored: bool,
 }

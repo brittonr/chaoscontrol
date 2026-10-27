@@ -326,6 +326,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
                     schedule: entry.schedule.clone(),
                     depth: entry.depth,
                     marker: entry.marker.clone(),
+                    assertion: entry.assertion.clone(),
                     explored: plan.explored,
                 };
                 Ok(Authorization::Execute(Box::new(AuthorizedRound::new(

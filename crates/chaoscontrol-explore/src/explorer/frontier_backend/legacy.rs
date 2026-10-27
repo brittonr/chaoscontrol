@@ -90,6 +90,7 @@ impl LegacyFrontier {
                 schedule: source.schedule.clone(),
                 parent: source.parent,
                 marker: proposal.marker.clone(),
+                assertion: proposal.assertion.clone(),
             }));
         }
     }
@@ -162,6 +163,7 @@ impl FrontierBackend for LegacyFrontier {
                     schedule: entry.schedule.clone(),
                     depth: entry.depth,
                     marker: entry.marker.clone(),
+                    assertion: entry.assertion.clone(),
                     explored,
                 })
             }

@@ -430,7 +430,7 @@ fn branch_script(
         new_edges: recorded.new_edges,
         snapshot: recorded.snapshot,
         new_findings: recorded.new_bugs,
-        proposals: recorded.proposals.iter().copied().map(proposal).collect(),
+        proposals: recorded.proposals.iter().cloned().map(proposal).collect(),
     };
     if script.retained() == script.proposals.is_empty() {
         return Err(inconsistent(
@@ -484,7 +484,7 @@ impl RecordedRun {
             .collect::<Result<Vec<_>, ParityCheckError>>()?;
         Ok(RunScript {
             config,
-            root: self.root_proposals.iter().copied().map(proposal).collect(),
+            root: self.root_proposals.iter().cloned().map(proposal).collect(),
             rounds,
         })
     }

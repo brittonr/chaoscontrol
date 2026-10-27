@@ -17,7 +17,8 @@
 - [x] [serial] Capture the selected boundary state using the existing snapshot store and bind the exact assertion and execution facts. r[chaoscontrol.assertion_checkpoints.capture]
 - [x] [serial] Add captured checkpoints to the frontier as deduplicated branch proposals with an assertion provenance marker. r[chaoscontrol.assertion_checkpoints.frontier]
 - [x] [serial] Persist the checkpoint selector hit counts and campaign capture budget across resume. r[chaoscontrol.assertion_checkpoints.policy]
-- [ ] [serial] Bind full assertion provenance and reject stale or mismatched checkpoint parents on restore. r[chaoscontrol.assertion_checkpoints.frontier]
+- [x] [serial] Bind full assertion provenance and reject stale or mismatched checkpoint parents on restore. r[chaoscontrol.assertion_checkpoints.frontier]
+- [ ] [serial] Persist assertion provenance in the Campaign journal so resumed entries retain stale-parent validation. r[chaoscontrol.assertion_checkpoints.frontier]
 - [ ] [serial] Connect branch scheduling and reporting to checkpoint provenance without changing assertion or finding semantics. r[chaoscontrol.assertion_checkpoints.nonclaims]
 
 ## Phase 4: Evidence and adversarial fixtures

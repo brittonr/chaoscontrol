@@ -75,6 +75,8 @@ pub(super) struct CampaignEntry {
     /// Parent fault schedule.
     pub(super) schedule: FaultSchedule,
     pub(super) marker: Option<crate::marker_branching::MarkerFrontierMetadata>,
+    /// Exact assertion-hit provenance, when one created the candidate.
+    pub(super) assertion: Option<crate::assertion_checkpoints::AssertionCheckpointMetadata>,
 }
 
 /// How a resumed checkpoint's journal binding compares with the recovered journal.
@@ -372,6 +374,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
                     depth: proposal.depth,
                     schedule: proposal.schedule.clone(),
                     marker: proposal.proposal.marker.clone(),
+                    assertion: proposal.proposal.assertion.clone(),
                 },
             ));
             records.push(encode(

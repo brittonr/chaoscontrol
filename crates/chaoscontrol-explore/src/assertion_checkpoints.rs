@@ -323,6 +323,32 @@ fn eligible(observation: &AssertionHitObservation) -> bool {
     }
 }
 
+/// Exact assertion-hit provenance retained with a checkpoint frontier entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssertionCheckpointMetadata {
+    /// Full admitted assertion fingerprint.
+    pub fingerprint: AssertionFingerprint,
+    /// Assertion kind at the hit.
+    pub kind: AssertionKind,
+    /// Condition result at the hit.
+    pub condition: bool,
+    /// VM slot that observed the hit.
+    pub vm_index: u32,
+    /// Active vCPU at the hit.
+    pub vcpu: u32,
+    /// VM exit count at the hit boundary.
+    pub exit_count: u64,
+    /// VM virtual TSC at the hit boundary.
+    pub virtual_tsc: u64,
+    /// Fault-engine run identity.
+    pub run_id: [u8; 32],
+    /// Fault-engine run sequence.
+    pub run_sequence: u64,
+    /// Global simulation tick at capture.
+    pub observed_tick: u64,
+}
+
 /// Serializable selector state retained across checkpoint resume.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

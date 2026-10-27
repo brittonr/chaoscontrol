@@ -28,6 +28,8 @@ pub struct FrontierEntry {
     pub parent: Option<u64>,
     /// Guest-declared marker that created this branch opportunity.
     pub marker: Option<MarkerFrontierMetadata>,
+    /// Exact assertion-hit provenance, when one created this opportunity.
+    pub assertion: Option<crate::assertion_checkpoints::AssertionCheckpointMetadata>,
 }
 
 /// Draws one selection's epsilon-greedy randomness in the legacy order.
@@ -196,6 +198,7 @@ mod tests {
             schedule: FaultSchedule::new(),
             parent: None,
             marker: None,
+            assertion: None,
         }
     }
 

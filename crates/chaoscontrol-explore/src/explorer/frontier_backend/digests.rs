@@ -134,7 +134,7 @@ pub(crate) fn round_manifest_digest(
             }
             for proposal in &retained.proposals {
                 hasher.update(&proposal.score.to_bits().to_le_bytes());
-                hasher.update(&[u8::from(proposal.assertion)]);
+                hasher.update(&[u8::from(proposal.assertion.is_some())]);
             }
         }
     }

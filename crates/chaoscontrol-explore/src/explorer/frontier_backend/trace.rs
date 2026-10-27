@@ -61,16 +61,16 @@ pub(crate) struct TraceSelection {
 }
 
 /// One frontier-entry proposal.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TraceProposal {
     /// IEEE-754 bits of the score.
     pub(crate) score_bits: u64,
     /// Whether a marker created it.
     pub(crate) marker: bool,
-    /// Whether an assertion hit created it.
-    #[serde(default)]
-    pub(crate) assertion: bool,
+    /// Exact assertion-hit provenance, when an assertion created it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) assertion: Option<crate::assertion_checkpoints::AssertionCheckpointMetadata>,
 }
 
 /// One executed branch.
@@ -260,7 +260,7 @@ pub(crate) fn trace_proposals(proposals: &[EntryProposal]) -> Vec<TraceProposal>
         .map(|proposal| TraceProposal {
             score_bits: proposal.score.to_bits(),
             marker: proposal.marker.is_some(),
-            assertion: proposal.assertion,
+            assertion: proposal.assertion.clone(),
         })
         .collect()
 }

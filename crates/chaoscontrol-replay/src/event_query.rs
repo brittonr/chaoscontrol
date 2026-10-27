@@ -56,19 +56,39 @@ pub struct EventEnvelope {
     pub source_kind: EventSourceKind,
     pub source_sequence: u64,
     pub tick: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_u32", skip_serializing_if = "Option::is_none")]
     pub vm_index: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_string", skip_serializing_if = "Option::is_none")]
     pub process: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_u32", skip_serializing_if = "Option::is_none")]
     pub thread: Option<u32>,
     pub kind: String,
     pub text: String,
     pub payload_digest: [u8; 32],
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_json", skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default = "empty_derived", skip_serializing_if = "BTreeMap::is_empty")]
     pub derived: BTreeMap<String, String>,
+}
+
+fn no_u32() -> Option<u32> {
+    None
+}
+
+fn no_u64() -> Option<u64> {
+    None
+}
+
+fn no_string() -> Option<String> {
+    None
+}
+
+fn no_json() -> Option<serde_json::Value> {
+    None
+}
+
+fn empty_derived() -> BTreeMap<String, String> {
+    BTreeMap::new()
 }
 
 /// Build canonical envelopes from one retained recording.
@@ -339,7 +359,7 @@ pub struct EventQueryReceipt {
     pub schema: String,
     pub source_ids: Vec<[u8; 32]>,
     pub query: EventQuery,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_u64", skip_serializing_if = "Option::is_none")]
     pub moment_tick: Option<u64>,
     pub limits: EventQueryLimits,
     pub scanned: u64,
@@ -353,7 +373,7 @@ pub struct EventQueryReceipt {
 #[serde(deny_unknown_fields)]
 pub struct TimelineFact {
     pub id: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_u64", skip_serializing_if = "Option::is_none")]
     pub parent: Option<u64>,
     pub tick: u64,
     pub kind: String,

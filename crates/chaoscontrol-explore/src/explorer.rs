@@ -1196,16 +1196,28 @@ impl Explorer {
             })
             .collect();
         let mut retained = Vec::new();
+        let mut retained_digests = BTreeSet::new();
         if let Some((result, schedule, depth)) = enriched {
             if let Some(snapshot) = result.snapshot.clone() {
                 let proposals = self.entry_proposals(result, depth)?;
+                let digests = self.branch_digests(result, schedule)?;
+                if let Some(digests) = &digests {
+                    retained_digests.insert((
+                        digests.schedule,
+                        digests.variant,
+                        digests.coverage,
+                        digests.oracle,
+                        digests.total_ticks,
+                        digests.snapshot_tick,
+                    ));
+                }
                 retained.push(RetainedBranch {
                     snapshot,
                     coverage: result.coverage.clone(),
                     schedule: schedule.clone(),
                     depth,
                     proposals,
-                    digests: self.branch_digests(result, schedule)?,
+                    digests,
                 });
             }
             if !result.assertion_checkpoints.is_empty() {
@@ -1225,7 +1237,6 @@ impl Explorer {
                 let selection = self.assertion_checkpoint_selector.select(&observations);
                 self.record_assertion_checkpoint_decisions(&selection.decisions);
                 let base_score = self.score_branch(result, depth);
-                let mut seen_checkpoints = BTreeSet::new();
                 for decision in selection.decisions {
                     if decision.reason != AssertionCheckpointDecisionKind::Selected {
                         continue;
@@ -1240,14 +1251,24 @@ impl Explorer {
                     else {
                         continue;
                     };
-                    if !seen_checkpoints.insert((checkpoint.vm_index, checkpoint.tick)) {
-                        continue;
-                    }
                     let Some(assertion) = assertion_metadata(checkpoint, hit) else {
                         self.assertion_checkpoint_capture_failures =
                             self.assertion_checkpoint_capture_failures.saturating_add(1);
                         continue;
                     };
+                    let digests = self.branch_digests_at(result, schedule, checkpoint.tick)?;
+                    if let Some(digests) = &digests {
+                        if !retained_digests.insert((
+                            digests.schedule,
+                            digests.variant,
+                            digests.coverage,
+                            digests.oracle,
+                            digests.total_ticks,
+                            digests.snapshot_tick,
+                        )) {
+                            continue;
+                        }
+                    }
                     retained.push(RetainedBranch {
                         snapshot: checkpoint.snapshot.clone(),
                         coverage: result.coverage.clone(),
@@ -1258,7 +1279,7 @@ impl Explorer {
                             marker: None,
                             assertion: Some(assertion),
                         }],
-                        digests: self.branch_digests_at(result, schedule, checkpoint.tick)?,
+                        digests,
                     });
                     self.assertion_checkpoint_frontier_entries =
                         self.assertion_checkpoint_frontier_entries.saturating_add(1);
@@ -3890,33 +3911,43 @@ mod tests {
             fault_operation_sequence: 0,
         };
         let mut result = branch_result(OracleReport::empty());
+        result.total_ticks = TEST_MARKER_TICK + 1;
         result.snapshot = Some(snapshot.clone());
-        result.assertion_checkpoints = vec![ControllerAssertionCheckpoint {
-            vm_index: 0,
-            tick: TEST_MARKER_TICK,
-            hits: vec![AssertionHitRecord {
-                event: chaoscontrol_fault::engine::AssertionHitEvent {
-                    run_id: FaultRunId([9; 32]),
-                    run_sequence: 1,
-                    fingerprint: AssertionFingerprint([3; 32]),
-                    kind: AssertionKind::Sometimes,
-                    condition: true,
-                    compatibility_id: Some(3),
-                    guest: "guest".to_string(),
-                    category: "branch".to_string(),
-                    process_identity: None,
-                },
-                exit_count: 100,
-                virtual_tsc: 1_000,
-                vcpu: 0,
-            }],
-            snapshot,
-        }];
+        let hit = |fingerprint_byte: u8| AssertionHitRecord {
+            event: chaoscontrol_fault::engine::AssertionHitEvent {
+                run_id: FaultRunId([9; 32]),
+                run_sequence: 1,
+                fingerprint: AssertionFingerprint([fingerprint_byte; 32]),
+                kind: AssertionKind::Sometimes,
+                condition: true,
+                compatibility_id: Some(u32::from(fingerprint_byte)),
+                guest: "guest".to_string(),
+                category: "branch".to_string(),
+                process_identity: None,
+            },
+            exit_count: 100,
+            virtual_tsc: 1_000,
+            vcpu: 0,
+        };
+        result.assertion_checkpoints = vec![
+            ControllerAssertionCheckpoint {
+                vm_index: 0,
+                tick: TEST_MARKER_TICK,
+                hits: vec![hit(3)],
+                snapshot: snapshot.clone(),
+            },
+            ControllerAssertionCheckpoint {
+                vm_index: usize::MAX,
+                tick: TEST_MARKER_TICK,
+                hits: vec![hit(5)],
+                snapshot,
+            },
+        ];
 
         let outcome = explorer
             .branch_outcome(
                 BranchSlot::Variant(0),
-                1,
+                0,
                 &[],
                 Some((&result, &FaultSchedule::new(), 1)),
                 true,
@@ -3928,6 +3959,8 @@ mod tests {
             .retained
             .iter()
             .any(|retained| retained.proposals.iter().any(|p| p.assertion.is_some())));
+        assert_eq!(explorer.assertion_checkpoint_capture_failures, 1);
+        assert_eq!(explorer.assertion_checkpoint_frontier_entries, 1);
     }
 
     #[test]

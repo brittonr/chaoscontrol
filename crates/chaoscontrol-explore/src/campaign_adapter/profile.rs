@@ -27,6 +27,7 @@ use super::ranks::{
 };
 use super::stops::RoundDemand;
 use super::AdapterError;
+use crate::assertion_checkpoints::DEFAULT_ASSERTION_CAPTURES_PER_BRANCH;
 use crate::explorer::ExplorerConfig;
 
 /// Retention order: original score, then insertion order (legacy stable truncation).
@@ -156,6 +157,11 @@ fn exploration_bounds(config: &ExplorerConfig) -> Result<ExplorationBounds, Adap
     let branches = u64::try_from(config.branch_factor)
         .map_err(|_| AdapterError::BoundOverflow)?
         .max(1);
+    // One branch-end source plus the bounded assertion-checkpoint captures.
+    let retained_sources_per_branch = 1_u64
+        .checked_add(u64::from(DEFAULT_ASSERTION_CAPTURES_PER_BRANCH))
+        .ok_or(AdapterError::BoundOverflow)?;
+    let max_child_moments = checked_mul(branches, retained_sources_per_branch)?;
     let max_frontier =
         u64::try_from(config.max_frontier).map_err(|_| AdapterError::BoundOverflow)?;
     // The oracle bound is per VM. Reports merge every VM's independently
@@ -187,7 +193,7 @@ fn exploration_bounds(config: &ExplorerConfig) -> Result<ExplorationBounds, Adap
         max_guidance_records: checked_add(max_candidates, rounds)?,
         max_outstanding: SEQUENTIAL_OUTSTANDING,
         max_depth: checked_add(rounds, 1)?,
-        max_child_moments: branches,
+        max_child_moments,
         max_derived_records: DERIVED_RECORDS,
         max_rank_dimensions: rank_dimensions,
         max_rank_magnitude: MAX_RANK_MAGNITUDE,

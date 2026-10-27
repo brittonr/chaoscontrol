@@ -1100,6 +1100,10 @@ fn an_epoch_recorded_before_the_chained_state_identity_fails_recovery_at_its_gen
             ReplayFailure::EarlierStateFraming,
         ),
         (
+            super::records::PREVIOUS_GENESIS_SCHEMA,
+            ReplayFailure::EarlierStateFraming,
+        ),
+        (
             "chaoscontrol.campaign-genesis.v0",
             ReplayFailure::UnknownSchema,
         ),
@@ -1146,9 +1150,9 @@ fn an_epoch_recorded_before_the_chained_state_identity_fails_recovery_at_its_gen
 #[test]
 fn the_genesis_schema_names_the_pinned_state_identities() {
     const GENESIS_STATE: &str =
-        "State:9631f13464bf8bf2ed4d1262c9977f06f8893370b4f1a3d29578506abe167714";
+        "State:d49f58775c78b0fce2205afbecbf9a6f54f24dd40844a6439707654d16abb1ae";
     const SELECTED_STATE: &str =
-        "State:f8eaf159e821e6e0b41b347e1b97ea21d72b2ae10cbddaca14c705621d3683fd";
+        "State:e53a093ed5029fca8535361a19a996a95f8c03b183f6d29a6c9419a0fa35436d";
     let dir = tempfile::tempdir().unwrap();
     let mut frontier = open_campaign(dir.path(), ScriptedIo::default());
     let genesis = frontier.state().unwrap().state_id().to_string();

@@ -42,11 +42,14 @@ pub(crate) const SELECTION: RecordKind = RecordKind::new(5);
 pub(crate) const ROUND: RecordKind = RecordKind::new(6);
 /// Schema of the genesis record. Version 2 marks an epoch whose Campaign control records carry
 /// Campaign's chained state identities (Campaign `4a669ead` and later).
-pub(crate) const GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v2";
+pub(crate) const GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v3";
 /// Genesis schema of an epoch recorded under Campaign's earlier whole-state identity framing.
 /// Its control records name state identities the chained framing never derives, so the epoch
 /// cannot replay.
 pub(crate) const EARLIER_FRAMING_GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v1";
+/// Previous chained-identity schema; its admitted bounds predate assertion checkpoint
+/// retention, so its journals cannot replay under the current profile.
+pub(crate) const PREVIOUS_GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v2";
 const SLOT_PROBE: u8 = 1;
 const SLOT_VARIANT: u8 = 2;
 const SLOT_ALTERNATIVE: u8 = 3;
@@ -310,7 +313,9 @@ fn step(
             }
             let genesis: GenesisRecord = decode(record.payload())?;
             // r[impl chaoscontrol.campaign_policy.journal_framing]
-            if genesis.schema == EARLIER_FRAMING_GENESIS_SCHEMA {
+            if genesis.schema == EARLIER_FRAMING_GENESIS_SCHEMA
+                || genesis.schema == PREVIOUS_GENESIS_SCHEMA
+            {
                 return Err(ReplayFailure::EarlierStateFraming);
             }
             if genesis.schema != GENESIS_SCHEMA {

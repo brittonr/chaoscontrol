@@ -23,11 +23,12 @@
 ## Phase 4: Evidence and adversarial fixtures
 
 - [x] [parallel] Emit the bounded checkpoint receipt with selected, captured, skipped, duplicate, failed, and frontier outcomes. r[chaoscontrol.assertion_checkpoints.evidence]
-- [ ] [parallel] Add negative fixtures for unbound assertions, identity drift, stale parents, storage failure, missing snapshots, and overclaim. r[chaoscontrol.assertion_checkpoints.fixtures] r[chaoscontrol.assertion_checkpoints.nonclaims]
+- [x] [parallel] Add negative fixtures for unbound assertions, identity drift, stale parents, storage failure, missing snapshots, and overclaim. r[chaoscontrol.assertion_checkpoints.fixtures] r[chaoscontrol.assertion_checkpoints.nonclaims]
 - [x] [serial] Exercise a real KVM workload where a rare assertion hit is selected, captured, and admitted to the Campaign frontier. r[chaoscontrol.assertion_checkpoints.observation] r[chaoscontrol.assertion_checkpoints.frontier]
 - [x] [serial] Exercise a restored assertion-checkpoint parent in a follow-up exploration round. r[chaoscontrol.assertion_checkpoints.frontier]
 
 ## Phase 5: Verification and evidence
 
-- [ ] [serial] Run focused explorer, VMM, SDK, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.assertion_checkpoints.fixtures]
-- [ ] [serial] Record the bounded KVM receipt, exact source and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.assertion_checkpoints.evidence] r[chaoscontrol.assertion_checkpoints.nonclaims]
+- [x] [serial] Run focused explorer, VMM, fault, and replay tests; Clippy with warnings denied; Cairn validation and gates; the product-scope check; and a bounded KVM smoke. r[chaoscontrol.assertion_checkpoints.fixtures]
+- [ ] [serial] Run the complete Nix gate; Octet currently reports pre-existing `chaoscontrol-smr` findings outside the changed files. r[chaoscontrol.assertion_checkpoints.fixtures]
+- [ ] [serial] Record a formal admitted-cohort KVM receipt with exact source and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.assertion_checkpoints.evidence] r[chaoscontrol.assertion_checkpoints.nonclaims]

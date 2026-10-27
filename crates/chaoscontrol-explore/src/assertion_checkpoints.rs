@@ -20,6 +20,9 @@ pub const MAX_TRACKED_ASSERTION_IDENTITIES: usize = 4_096;
 pub const MAX_ASSERTION_RECEIPT_DECISIONS: usize = 1_024;
 /// Bound on serialized checkpoint-receipt bytes.
 pub const MAX_ASSERTION_RECEIPT_BYTES: usize = 1_048_576;
+/// Stable assertion-checkpoint receipt schema.
+pub const ASSERTION_CHECKPOINT_RECEIPT_SCHEMA: &str =
+    "chaoscontrol.assertion-checkpoint-receipt.v1";
 
 const NOVELTY_BONUS: f64 = 32.0;
 const RARITY_NUMERATOR: f64 = 16.0;
@@ -395,7 +398,7 @@ impl AssertionCheckpointReceipt {
         capture_failures: u64,
     ) -> Self {
         Self {
-            schema: "chaoscontrol.assertion-checkpoint-receipt.v1".to_string(),
+            schema: ASSERTION_CHECKPOINT_RECEIPT_SCHEMA.to_string(),
             seed,
             limits,
             selector,
@@ -408,7 +411,67 @@ impl AssertionCheckpointReceipt {
             capture_failures,
         }
     }
+
+    /// Validate schema, decision bounds, and counter consistency.
+    pub fn validate(&self) -> Result<(), AssertionCheckpointReceiptError> {
+        if self.schema != ASSERTION_CHECKPOINT_RECEIPT_SCHEMA {
+            return Err(AssertionCheckpointReceiptError::SchemaMismatch);
+        }
+        if self.decisions.len() > MAX_ASSERTION_RECEIPT_DECISIONS {
+            return Err(AssertionCheckpointReceiptError::DecisionBound);
+        }
+        let retained_decisions = u64::try_from(self.decisions.len())
+            .map_err(|_| AssertionCheckpointReceiptError::CounterOverflow)?;
+        let accounted = self
+            .selected_decisions
+            .checked_add(self.duplicate_decisions)
+            .and_then(|value| value.checked_add(self.skipped_decisions))
+            .ok_or(AssertionCheckpointReceiptError::CounterOverflow)?;
+        let covered = retained_decisions
+            .checked_add(self.omitted_decisions)
+            .ok_or(AssertionCheckpointReceiptError::CounterOverflow)?;
+        if covered != accounted {
+            return Err(AssertionCheckpointReceiptError::CounterMismatch);
+        }
+        if self.frontier_entries > self.selected_decisions
+            || self.capture_failures > self.selected_decisions
+            || self
+                .frontier_entries
+                .checked_add(self.capture_failures)
+                .is_none_or(|value| value > self.selected_decisions)
+        {
+            return Err(AssertionCheckpointReceiptError::SelectionOverclaim);
+        }
+        Ok(())
+    }
 }
+
+/// Assertion-checkpoint receipt validation failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssertionCheckpointReceiptError {
+    SchemaMismatch,
+    DecisionBound,
+    CounterOverflow,
+    CounterMismatch,
+    SelectionOverclaim,
+}
+
+impl core::fmt::Display for AssertionCheckpointReceiptError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let message = match self {
+            Self::SchemaMismatch => "assertion checkpoint receipt schema is not current",
+            Self::DecisionBound => "assertion checkpoint receipt decisions exceed the bound",
+            Self::CounterOverflow => "assertion checkpoint receipt counters overflow",
+            Self::CounterMismatch => "assertion checkpoint receipt counters do not match decisions",
+            Self::SelectionOverclaim => {
+                "assertion checkpoint receipt claims more outcomes than selected decisions"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for AssertionCheckpointReceiptError {}
 
 /// Serializable selector state retained across checkpoint resume.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -679,6 +742,60 @@ mod tests {
         assert_eq!(
             zero.validate().unwrap_err(),
             AssertionCheckpointError::ZeroHitCount
+        );
+    }
+
+    fn receipt(
+        selected: u64,
+        duplicate: u64,
+        skipped: u64,
+        omitted: u64,
+        frontier: u64,
+        capture_failures: u64,
+    ) -> AssertionCheckpointReceipt {
+        AssertionCheckpointReceipt::new(
+            42,
+            AssertionCheckpointLimits::default(),
+            AssertionCheckpointSelectorState {
+                campaign_captures: 0,
+                hit_counts: BTreeMap::new(),
+            },
+            Vec::new(),
+            omitted,
+            selected,
+            duplicate,
+            skipped,
+            frontier,
+            capture_failures,
+        )
+    }
+
+    #[test]
+    fn receipt_validation_accepts_consistent_counters() {
+        receipt(2, 1, 3, 6, 1, 1)
+            .validate()
+            .expect("consistent receipt");
+    }
+
+    #[test]
+    fn receipt_validation_rejects_counter_and_selection_overclaims() {
+        assert_eq!(
+            receipt(0, 0, 0, 1, 0, 0).validate().unwrap_err(),
+            AssertionCheckpointReceiptError::CounterMismatch
+        );
+        assert_eq!(
+            receipt(1, 0, 0, 1, 2, 0).validate().unwrap_err(),
+            AssertionCheckpointReceiptError::SelectionOverclaim
+        );
+        assert_eq!(
+            receipt(1, 0, 0, 1, 1, 1).validate().unwrap_err(),
+            AssertionCheckpointReceiptError::SelectionOverclaim
+        );
+        let mut stale = receipt(0, 0, 0, 0, 0, 0);
+        stale.schema = "chaoscontrol.assertion-checkpoint-receipt.v0".to_string();
+        assert_eq!(
+            stale.validate().unwrap_err(),
+            AssertionCheckpointReceiptError::SchemaMismatch
         );
     }
 

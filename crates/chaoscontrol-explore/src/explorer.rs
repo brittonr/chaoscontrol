@@ -2954,7 +2954,13 @@ impl Explorer {
         &self,
         dir: &std::path::Path,
     ) -> Result<(), CheckpointError> {
-        let bytes = serde_json::to_vec_pretty(&self.assertion_checkpoint_receipt())?;
+        let receipt = self.assertion_checkpoint_receipt();
+        receipt
+            .validate()
+            .map_err(|error| CheckpointError::InvalidBounds {
+                reason: format!("invalid assertion checkpoint receipt: {error}"),
+            })?;
+        let bytes = serde_json::to_vec_pretty(&receipt)?;
         if bytes.len() > MAX_ASSERTION_RECEIPT_BYTES {
             return Err(CheckpointError::InvalidBounds {
                 reason: "assertion checkpoint receipt exceeds the byte limit".to_string(),

@@ -94,6 +94,7 @@ pub mod kcov;
 pub mod runtime;
 #[cfg(feature = "full")]
 pub mod supervisor;
+pub mod symbols;
 
 /// Initialize the ChaosControl SDK.
 ///

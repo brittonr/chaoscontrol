@@ -9,7 +9,8 @@
 ## Phase 2: Build and runtime facts
 
 - [ ] [serial] Emit bounded symbol catalogs for the admitted Rust workload modules and preserve their exact identities with the guest artifacts. r[chaoscontrol.coverage_symbols.catalog]
-- [ ] [serial] Record loaded instrumented modules, load ordinals, and registered instrumentation identifiers in the guest runtime. r[chaoscontrol.coverage_symbols.module_identity]
+- [x] [serial] Add a bounded SDK declaration API for loaded module content identity, reviewed path, and load ordinal. r[chaoscontrol.coverage_symbols.module_identity]
+- [ ] [serial] Wire automatic module-load declarations and registered instrumentation identifiers into the admitted guest runtime. r[chaoscontrol.coverage_symbols.module_identity]
 - [x] [parallel] Add negative build fixtures for LTO/incomplete catalogs and path escape. r[chaoscontrol.coverage_symbols.catalog] r[chaoscontrol.coverage_symbols.fixtures]
 
 ## Phase 3: Pure mapping and report

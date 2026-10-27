@@ -179,6 +179,12 @@ pub struct NetworkStats {
     pub packets_jammed_directional: u64,
     /// Cumulative directional delay ticks added.
     pub total_directional_delay_ticks: u64,
+    /// Packets dropped by the admitted baseline loss profile.
+    pub packets_dropped_baseline: u64,
+    /// Packets delayed by the admitted baseline latency profile.
+    pub packets_delayed_baseline: u64,
+    /// Cumulative baseline latency ticks added.
+    pub total_baseline_delay_ticks: u64,
 }
 
 /// One directional link fault installed in the fabric.
@@ -307,6 +313,12 @@ pub struct NetworkFabric {
     /// Active directional link faults.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub directional: Vec<DirectionalLinkFault>,
+    /// Admitted baseline latency in ticks.
+    #[serde(default)]
+    pub baseline_latency_ticks: u64,
+    /// Admitted baseline packet loss in parts per million.
+    #[serde(default)]
+    pub baseline_loss_rate_ppm: u32,
 }
 
 impl NetworkFabric {
@@ -342,6 +354,8 @@ impl NetworkFabric {
             fault_observation_sequence: 0,
             fault_observation_overflowed: 0,
             directional: Vec::new(),
+            baseline_latency_ticks: 0,
+            baseline_loss_rate_ppm: 0,
         }
     }
 
@@ -475,7 +489,9 @@ impl NetworkFabric {
         let tx_end = tx_start
             .checked_add(serialization)
             .ok_or(NetworkSendError::TickArithmetic)?;
-        let latency = self.latency[from].max(self.latency[to]);
+        let latency = self.latency[from]
+            .max(self.latency[to])
+            .saturating_add(self.baseline_latency_ticks);
         let jitter = self.jitter[from].max(self.jitter[to]);
         let reorder = self.reorder_window[from].max(self.reorder_window[to]);
         let directional_delay = match self.directional_for(from, to) {
@@ -583,6 +599,16 @@ impl NetworkFabric {
             None => 0,
         };
 
+        // 1c. Baseline loss profile
+        if self.baseline_loss_rate_ppm > 0 {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < self.baseline_loss_rate_ppm {
+                self.stats.packets_dropped_baseline =
+                    self.stats.packets_dropped_baseline.saturating_add(1);
+                return false;
+            }
+        }
+
         // 2. Packet loss — max(sender, receiver) rate
         let sender_loss = self.loss_rate_ppm.get(from).copied().unwrap_or(0);
         let receiver_loss = self.loss_rate_ppm.get(to).copied().unwrap_or(0);
@@ -645,7 +671,9 @@ impl NetworkFabric {
         // 5. Latency + jitter — base delay plus random variation
         let sender_latency = self.latency.get(from).copied().unwrap_or(0);
         let receiver_latency = self.latency.get(to).copied().unwrap_or(0);
-        let latency_ticks = sender_latency.max(receiver_latency);
+        let latency_ticks = sender_latency
+            .max(receiver_latency)
+            .saturating_add(self.baseline_latency_ticks);
         let after_bandwidth = current_tick.saturating_add(bandwidth_delay_ticks);
         let after_latency = after_bandwidth.saturating_add(latency_ticks);
         let latency_applied = after_latency.saturating_sub(after_bandwidth);
@@ -656,6 +684,14 @@ impl NetworkFabric {
                 .stats
                 .total_latency_delay_ticks
                 .saturating_add(latency_applied);
+        }
+        if self.baseline_latency_ticks > 0 {
+            self.stats.packets_delayed_baseline =
+                self.stats.packets_delayed_baseline.saturating_add(1);
+            self.stats.total_baseline_delay_ticks = self
+                .stats
+                .total_baseline_delay_ticks
+                .saturating_add(self.baseline_latency_ticks);
         }
 
         let sender_jitter = self.jitter.get(from).copied().unwrap_or(0);
@@ -789,6 +825,16 @@ impl NetworkFabric {
             None => 0,
         };
 
+        // 1c. Baseline loss profile
+        if self.baseline_loss_rate_ppm > 0 {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < self.baseline_loss_rate_ppm {
+                self.stats.packets_dropped_baseline =
+                    self.stats.packets_dropped_baseline.saturating_add(1);
+                return false;
+            }
+        }
+
         // 2. Packet loss — max(sender, receiver) rate
         let sender_loss = self.loss_rate_ppm.get(from).copied().unwrap_or(0);
         let receiver_loss = self.loss_rate_ppm.get(to).copied().unwrap_or(0);
@@ -846,7 +892,9 @@ impl NetworkFabric {
         // 5. Latency + jitter — base delay plus random variation
         let sender_latency = self.latency.get(from).copied().unwrap_or(0);
         let receiver_latency = self.latency.get(to).copied().unwrap_or(0);
-        let latency_ticks = sender_latency.max(receiver_latency);
+        let latency_ticks = sender_latency
+            .max(receiver_latency)
+            .saturating_add(self.baseline_latency_ticks);
         let after_bandwidth = current_tick.saturating_add(bandwidth_delay_ticks);
         let after_latency = after_bandwidth.saturating_add(latency_ticks);
         let latency_applied = after_latency.saturating_sub(after_bandwidth);
@@ -857,6 +905,14 @@ impl NetworkFabric {
                 .stats
                 .total_latency_delay_ticks
                 .saturating_add(latency_applied);
+        }
+        if self.baseline_latency_ticks > 0 {
+            self.stats.packets_delayed_baseline =
+                self.stats.packets_delayed_baseline.saturating_add(1);
+            self.stats.total_baseline_delay_ticks = self
+                .stats
+                .total_baseline_delay_ticks
+                .saturating_add(self.baseline_latency_ticks);
         }
 
         let sender_jitter = self.jitter.get(from).copied().unwrap_or(0);
@@ -1419,6 +1475,26 @@ impl NetworkFabric {
         }
     }
 
+    /// Install an admitted baseline network profile.
+    pub fn set_baseline_profile(
+        &mut self,
+        profile: chaoscontrol_fault::mechanisms::NetworkBaselineProfile,
+    ) -> bool {
+        if chaoscontrol_fault::mechanisms::admit_baseline_profile(&profile).is_err() {
+            return false;
+        }
+        self.baseline_latency_ticks = profile.latency_ticks;
+        self.baseline_loss_rate_ppm = profile.loss_rate_ppm;
+        true
+    }
+
+    /// Clear the admitted baseline network profile.
+    pub fn clear_baseline_profile(&mut self) -> bool {
+        self.baseline_latency_ticks = 0;
+        self.baseline_loss_rate_ppm = 0;
+        true
+    }
+
     /// Set latency for a specific VM.
     pub fn set_latency(&mut self, target: usize, latency_ticks: u64) -> bool {
         let Some(slot) = self.latency.get_mut(target) else {
@@ -1699,5 +1775,47 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+    use chaoscontrol_fault::mechanisms::NetworkBaselineProfile;
+
+    #[test]
+    fn baseline_loss_and_latency_are_bounded_and_deterministic() {
+        let mut fabric = NetworkFabric::new(2, 7);
+        assert!(fabric.set_baseline_profile(NetworkBaselineProfile {
+            latency_ticks: 5,
+            loss_rate_ppm: 0,
+        }));
+        assert!(fabric.send_packet(0, 1, vec![1], 10));
+        assert_eq!(fabric.packet_in_flight.last().unwrap().deliver_at_tick, 15);
+        assert_eq!(fabric.stats().packets_delayed_baseline, 1);
+        assert_eq!(fabric.stats().total_baseline_delay_ticks, 5);
+
+        assert!(fabric.set_baseline_profile(NetworkBaselineProfile {
+            latency_ticks: 0,
+            loss_rate_ppm: 1_000_000,
+        }));
+        assert!(!fabric.send_packet(0, 1, vec![1], 20));
+        assert_eq!(fabric.stats().packets_dropped_baseline, 1);
+
+        assert!(fabric.clear_baseline_profile());
+        assert!(fabric.send_packet(0, 1, vec![1], 30));
+    }
+
+    #[test]
+    fn invalid_baseline_profiles_are_rejected() {
+        let mut fabric = NetworkFabric::new(2, 7);
+        assert!(!fabric.set_baseline_profile(NetworkBaselineProfile {
+            latency_ticks: 0,
+            loss_rate_ppm: chaoscontrol_fault::mechanisms::MAX_BASELINE_LOSS_PPM + 1,
+        }));
+        assert!(!fabric.set_baseline_profile(NetworkBaselineProfile {
+            latency_ticks: chaoscontrol_fault::mechanisms::MAX_BASELINE_LATENCY_TICKS + 1,
+            loss_rate_ppm: 0,
+        }));
     }
 }

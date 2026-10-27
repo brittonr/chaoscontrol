@@ -12,6 +12,8 @@ pub const MAX_CUSTOM_PARAMETERS: usize = 64;
 pub const MAX_CUSTOM_STRING_BYTES: usize = 256;
 pub const MAX_PAUSE_WINDOW_TICKS: u64 = 1_000_000;
 pub const MAX_ACTIVE_NETWORK_FAULTS: usize = 1_024;
+pub const MAX_BASELINE_LATENCY_TICKS: u64 = 1_000_000;
+pub const MAX_BASELINE_LOSS_PPM: u32 = 1_000_000;
 pub const MAX_PAUSE_REQUESTS: usize = 1_024;
 
 /// Direction a network fault disrupts.
@@ -103,6 +105,14 @@ pub struct CustomFaultEffect {
     pub parameters: BTreeMap<String, String>,
 }
 
+/// Admitted baseline network profile applied to all links.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkBaselineProfile {
+    pub latency_ticks: u64,
+    pub loss_rate_ppm: u32,
+}
+
 /// A bounded fault-pause request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -131,6 +141,7 @@ pub enum MechanismError {
     InvalidDirection,
     InvalidDelay,
     InvalidQueue,
+    InvalidRate,
     InvalidThrottleTarget,
     InvalidThrottleBudget,
     InvalidEffectId,
@@ -151,6 +162,7 @@ impl core::fmt::Display for MechanismError {
             Self::InvalidDirection => "network direction is invalid",
             Self::InvalidDelay => "slowed network fault requires a nonzero delay",
             Self::InvalidQueue => "jammed network fault requires a nonzero queue limit",
+            Self::InvalidRate => "network rate exceeds one million parts per million",
             Self::InvalidThrottleTarget => "CPU throttle target is invalid",
             Self::InvalidThrottleBudget => "CPU throttle budget is zero or over-bound",
             Self::InvalidEffectId => "custom effect identity is empty or invalid",
@@ -166,6 +178,17 @@ impl core::fmt::Display for MechanismError {
 }
 
 impl std::error::Error for MechanismError {}
+
+/// Admit a baseline network profile.
+pub fn admit_baseline_profile(profile: &NetworkBaselineProfile) -> Result<(), MechanismError> {
+    if profile.latency_ticks > MAX_BASELINE_LATENCY_TICKS {
+        return Err(MechanismError::InvalidDelay);
+    }
+    if profile.loss_rate_ppm > MAX_BASELINE_LOSS_PPM {
+        return Err(MechanismError::InvalidRate);
+    }
+    Ok(())
+}
 
 /// Admit a directional network fault.
 pub fn admit_directional_network(fault: &DirectionalNetworkFault) -> Result<(), MechanismError> {

@@ -243,6 +243,18 @@ pub enum SerializableFault {
         rate_ppm: u32,
     },
     NetworkHeal,
+    NetworkDirectional {
+        node: usize,
+        peer: usize,
+        direction: chaoscontrol_fault::mechanisms::NetworkDirection,
+        disruption: chaoscontrol_fault::mechanisms::NetworkDisruption,
+        delay_ns: u64,
+        queue_limit: u32,
+    },
+    NetworkDirectionalHeal {
+        node: usize,
+        peer: usize,
+    },
     DiskReadError {
         target: usize,
         offset: u64,
@@ -371,6 +383,27 @@ impl From<&Fault> for SerializableFault {
                 rate_ppm: *rate_ppm,
             },
             Fault::NetworkHeal => SerializableFault::NetworkHeal,
+            Fault::NetworkDirectional {
+                node,
+                peer,
+                direction,
+                disruption,
+                delay_ns,
+                queue_limit,
+            } => SerializableFault::NetworkDirectional {
+                node: *node,
+                peer: *peer,
+                direction: *direction,
+                disruption: *disruption,
+                delay_ns: *delay_ns,
+                queue_limit: *queue_limit,
+            },
+            Fault::NetworkDirectionalHeal { node, peer } => {
+                SerializableFault::NetworkDirectionalHeal {
+                    node: *node,
+                    peer: *peer,
+                }
+            }
             Fault::DiskReadError { target, offset } => SerializableFault::DiskReadError {
                 target: *target,
                 offset: *offset,
@@ -525,6 +558,27 @@ impl From<&SerializableFault> for Fault {
                 rate_ppm: *rate_ppm,
             },
             SerializableFault::NetworkHeal => Fault::NetworkHeal,
+            SerializableFault::NetworkDirectional {
+                node,
+                peer,
+                direction,
+                disruption,
+                delay_ns,
+                queue_limit,
+            } => Fault::NetworkDirectional {
+                node: *node,
+                peer: *peer,
+                direction: *direction,
+                disruption: *disruption,
+                delay_ns: *delay_ns,
+                queue_limit: *queue_limit,
+            },
+            SerializableFault::NetworkDirectionalHeal { node, peer } => {
+                Fault::NetworkDirectionalHeal {
+                    node: *node,
+                    peer: *peer,
+                }
+            }
             SerializableFault::DiskReadError { target, offset } => Fault::DiskReadError {
                 target: *target,
                 offset: *offset,

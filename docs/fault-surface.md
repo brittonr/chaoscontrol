@@ -14,6 +14,10 @@ directions. `NetworkFabric` records cumulative directional drop, delay, jam,
 and delay-tick counters. The effective direction is deterministic and the
 fault is included in packet preflight bounds.
 
+The fabric can also admit a baseline latency and low-loss profile applied to
+all traffic. Baseline loss is seed-derived and baseline latency is recorded in
+the cumulative network counters.
+
 These faults are guest-network simulation facts. They do not manipulate host
 networking, prove packet absence, or claim that the selected direction was the
 only active fault unless the stage ledger says so.

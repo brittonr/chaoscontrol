@@ -38,7 +38,7 @@ use crate::explorer::{ExplorationMode, ExplorerConfig};
 
 /// Seed of the conformance adapter's entropy source.
 const CONFORMANCE_SEED: u64 = 0x00c0_ffee;
-/// Campaign default profile values (`campaign-profile` `default.json` at Campaign `4a669ead`).
+/// Campaign default profile values (`campaign-profile` `default.json` at Campaign `796fe38`).
 const DEFAULT_THRESHOLD_PARTS_PER_MILLION: u64 = 100_000;
 const DEFAULT_EXPLORATION_ORDER: [u32; 1] = [0];
 const DEFAULT_RETENTION_RANK_ORDER: [u32; 1] = [0];
@@ -445,7 +445,7 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `4a669ead`).
+/// Fixture count of the pinned Campaign conformance suite (Campaign `796fe38`).
 const PINNED_FIXTURE_COUNT: usize = 80;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.

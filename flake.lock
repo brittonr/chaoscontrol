@@ -262,17 +262,17 @@
       "flake": false,
       "locked": {
         "allRefs": true,
-        "lastModified": 1792624524,
-        "narHash": "sha256-L468HoGcG1ZkOvYsJcjN9LBfKxL4HEEq6I5tBstp+fs=",
+        "lastModified": 1792915886,
+        "narHash": "sha256-ZmWFr5fpGh65EpXWZCJo9ScNIWpEIqbgVVfCmpoX6lk=",
         "ref": "refs/heads/main",
-        "rev": "4a669eadaeac50b48efd77383219372be122f692",
-        "revCount": 112,
+        "rev": "796fe3844c91c3060da5ffc573a6f801a214aba7",
+        "revCount": 115,
         "type": "git",
         "url": "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN"
       },
       "original": {
         "allRefs": true,
-        "rev": "4a669eadaeac50b48efd77383219372be122f692",
+        "rev": "796fe3844c91c3060da5ffc573a6f801a214aba7",
         "type": "git",
         "url": "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN"
       }

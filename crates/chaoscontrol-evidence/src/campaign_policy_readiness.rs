@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-pub const CAMPAIGN_REVISION: &str = "4a669eadaeac50b48efd77383219372be122f692";
+pub const CAMPAIGN_REVISION: &str = "796fe3844c91c3060da5ffc573a6f801a214aba7";
 pub const CHOREGRAPH_HISTORY_REVISION: &str = "b3e08e19750f53bdbcae970cdf58a47a791ed20b";
 
 // r[impl chaoscontrol.campaign_policy.baseline]

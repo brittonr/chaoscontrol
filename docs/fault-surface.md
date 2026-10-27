@@ -39,6 +39,13 @@ The same counter and bound produce the same value. Set `bound_tsc` to zero to re
 `CpuStall` marks one vCPU as not runnable until its release tick. Other admitted vCPUs can continue.
 A single-vCPU VM records zero exits while the stall is active. The scheduler makes the vCPU runnable at the exact release tick.
 
+## CPU throttle
+
+`CpuThrottle` limits a VM's aggregate vCPU exits per scheduling round. The scheduler clamps the
+kernel plan's exit budget to the admitted `budget_units` while the throttle is active.
+The throttle releases at its exact `release_at_tick`, and replay snapshots retain both the budget
+and release tick. The planner rejects a zero or over-bound budget.
+
 ## Memory pressure
 
 `MemoryPressure` contains a nonzero ceiling and a finite duration. The planner rejects a ceiling that is zero or not below the admitted baseline.

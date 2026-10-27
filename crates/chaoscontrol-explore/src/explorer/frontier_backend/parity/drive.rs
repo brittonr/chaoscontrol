@@ -348,6 +348,7 @@ fn structural_snapshot(origin: ParentOrigin) -> SimulationSnapshot {
         network_state: NetworkFabric::new(STRUCTURAL_VM_COUNT, STRUCTURAL_NETWORK_SEED),
         fault_engine_snapshot: engine.snapshot(),
         vcpu_stall_until: Vec::new(),
+        cpu_throttle: Vec::new(),
         clock_freeze: Vec::new(),
         clock_jitter_bound: Vec::new(),
         memory_pressure: Vec::new(),

@@ -3867,6 +3867,7 @@ mod tests {
             fault_engine_snapshot: chaoscontrol_fault::engine::FaultEngine::new(Default::default())
                 .snapshot(),
             vcpu_stall_until: Vec::new(),
+            cpu_throttle: Vec::new(),
             clock_freeze: Vec::new(),
             clock_jitter_bound: Vec::new(),
             memory_pressure: Vec::new(),
@@ -3909,6 +3910,7 @@ mod tests {
             fault_engine_snapshot: chaoscontrol_fault::engine::FaultEngine::new(Default::default())
                 .snapshot(),
             vcpu_stall_until: Vec::new(),
+            cpu_throttle: Vec::new(),
             clock_freeze: Vec::new(),
             clock_jitter_bound: Vec::new(),
             memory_pressure: Vec::new(),
@@ -4089,6 +4091,7 @@ mod tests {
                 )
                 .snapshot(),
                 vcpu_stall_until: Vec::new(),
+                cpu_throttle: Vec::new(),
                 clock_freeze: Vec::new(),
                 clock_jitter_bound: Vec::new(),
                 memory_pressure: Vec::new(),
@@ -4360,6 +4363,7 @@ mod tests {
                 ),
                 fault_engine_snapshot: engine.snapshot(),
                 vcpu_stall_until: Vec::new(),
+                cpu_throttle: Vec::new(),
                 clock_freeze: Vec::new(),
                 clock_jitter_bound: Vec::new(),
                 memory_pressure: Vec::new(),

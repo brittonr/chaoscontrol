@@ -209,6 +209,8 @@ pub struct VmSlot {
     pub initial_snapshot: Option<VmSnapshot>,
     /// Per-vCPU stall: vCPU index → tick at which stall expires.
     pub vcpu_stall_until: std::collections::BTreeMap<usize, u64>,
+    /// Active aggregate vCPU exit-budget throttle.
+    pub cpu_throttle: Option<CpuThrottleState>,
     /// Frozen TSC: `(frozen_tsc_value, expires_at_tick)`. Takes priority over jitter.
     pub clock_freeze: Option<(u64, u64)>,
     /// Per-exit TSC jitter bound (±bound). 0 = disabled.
@@ -364,6 +366,19 @@ impl SimulationController {
 
     /// All boundary effects are admitted before mutation and use the same owners
     /// as ordinary rounds. A failed effect cannot leave the controller runnable.
+    fn effective_exit_budget(&mut self, vm_index: usize, budget: u64) -> u64 {
+        let Some(throttle) = self.vms.get(vm_index).and_then(|slot| slot.cpu_throttle) else {
+            return budget;
+        };
+        if self.tick >= throttle.release_at_tick {
+            if let Some(slot) = self.vms.get_mut(vm_index) {
+                slot.cpu_throttle = None;
+            }
+            return budget;
+        }
+        budget.min(throttle.budget_units).max(1)
+    }
+
     /// Run a VM budget, capturing exact checkpoints when an admitted hit stops it.
     fn run_vcpu_with_assertion_checkpoints(
         &mut self,
@@ -417,8 +432,9 @@ impl SimulationController {
                         });
                     }
                     mutation_started = true;
+                    let budget = self.effective_exit_budget(*vm_index, *exit_budget);
                     let (exits, halted) =
-                        self.run_vcpu_with_assertion_checkpoints(*vm_index, *exit_budget)?;
+                        self.run_vcpu_with_assertion_checkpoints(*vm_index, budget)?;
                     ExitObservation::VcpuCompleted {
                         sequence,
                         vm_index: *vm_index,
@@ -628,6 +644,7 @@ impl SimulationController {
                 memory_limit_release_at_tick: None,
                 initial_snapshot: Some(initial_snapshot),
                 vcpu_stall_until: std::collections::BTreeMap::new(),
+                cpu_throttle: None,
                 clock_freeze: None,
                 clock_jitter_bound: 0,
                 process_fault_attempt: None,
@@ -1195,6 +1212,7 @@ impl SimulationController {
                 supports_clock_freeze: true,
                 supports_clock_jitter: true,
                 supports_cpu_stall: true,
+                supports_cpu_throttle: true,
                 supports_memory_pressure: true,
                 virtual_tsc: slot.vm.virtual_tsc(),
                 tsc_khz: slot.vm.virtual_tsc_ref().tsc_khz(),
@@ -1394,9 +1412,9 @@ impl SimulationController {
             FaultMechanism::IrqInjection | FaultMechanism::NmiInjection => {
                 self.apply_interrupt_fault_plan(plan)
             }
-            FaultMechanism::CpuRegisterBitflip | FaultMechanism::CpuStall => {
-                self.apply_cpu_fault_plan(plan)
-            }
+            FaultMechanism::CpuRegisterBitflip
+            | FaultMechanism::CpuStall
+            | FaultMechanism::CpuThrottle => self.apply_cpu_fault_plan(plan),
             FaultMechanism::MemoryPressure => self.apply_resource_fault_plan(plan),
         }
     }
@@ -1761,6 +1779,20 @@ impl SimulationController {
                 slot.vcpu_stall_until.insert(vcpu, *release_at_tick);
                 FaultObservationEffect::CpuStallActivated
             }
+            FaultPlanEffect::CpuThrottle {
+                target,
+                budget_units,
+                release_at_tick,
+            } => {
+                if *release_at_tick <= self.tick || *budget_units == 0 {
+                    return Err(target_state_application_error());
+                }
+                self.vm_slot_mut_checked(*target)?.cpu_throttle = Some(CpuThrottleState {
+                    budget_units: *budget_units,
+                    release_at_tick: *release_at_tick,
+                });
+                FaultObservationEffect::CpuThrottleActivated
+            }
             _ => return Err(internal_application_error()),
         };
         let observation = self
@@ -2116,6 +2148,23 @@ impl SimulationController {
                     slot.vcpu_stall_until.insert(*vcpu, expires);
                 }
             }
+            Fault::CpuThrottle {
+                target,
+                budget_units,
+                duration_ticks,
+            } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    let expires = self.tick.saturating_add(*duration_ticks);
+                    info!(
+                        "CpuThrottle: VM{} budget {} until tick {}",
+                        target, budget_units, expires
+                    );
+                    slot.cpu_throttle = Some(CpuThrottleState {
+                        budget_units: *budget_units,
+                        release_at_tick: expires,
+                    });
+                }
+            }
 
             // ── Advanced clock faults ──
             Fault::ClockFreeze {
@@ -2303,6 +2352,7 @@ impl SimulationController {
             .iter()
             .map(|s| s.vcpu_stall_until.clone())
             .collect();
+        let cpu_throttle = self.vms.iter().map(|s| s.cpu_throttle).collect();
         let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
         let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
         let memory_pressure = self
@@ -2337,6 +2387,7 @@ impl SimulationController {
             network_state: self.network.clone(),
             fault_engine_snapshot: self.fault_engine.snapshot(),
             vcpu_stall_until,
+            cpu_throttle,
             clock_freeze,
             clock_jitter_bound,
             memory_pressure,
@@ -2374,6 +2425,7 @@ impl SimulationController {
             .iter()
             .map(|s| s.vcpu_stall_until.clone())
             .collect();
+        let cpu_throttle = self.vms.iter().map(|s| s.cpu_throttle).collect();
         let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
         let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
         let memory_pressure = self
@@ -2408,6 +2460,7 @@ impl SimulationController {
             network_state: self.network.clone(),
             fault_engine_snapshot: self.fault_engine.snapshot(),
             vcpu_stall_until,
+            cpu_throttle,
             clock_freeze,
             clock_jitter_bound,
             memory_pressure,
@@ -2510,6 +2563,7 @@ impl SimulationController {
         } else {
             self.vms[index].vcpu_stall_until.clear();
         }
+        self.vms[index].cpu_throttle = snapshot.cpu_throttle.get(index).copied().flatten();
         self.vms[index].clock_freeze = snapshot.clock_freeze.get(index).copied().flatten();
         self.vms[index].clock_jitter_bound =
             snapshot.clock_jitter_bound.get(index).copied().unwrap_or(0);
@@ -2562,7 +2616,11 @@ impl SimulationController {
         ];
         let memory_state_length_valid =
             snapshot.memory_pressure.is_empty() || snapshot.memory_pressure.len() == vm_count;
-        if vector_lengths.into_iter().any(|length| length != vm_count) || !memory_state_length_valid
+        let throttle_state_length_valid =
+            snapshot.cpu_throttle.is_empty() || snapshot.cpu_throttle.len() == vm_count;
+        if vector_lengths.into_iter().any(|length| length != vm_count)
+            || !memory_state_length_valid
+            || !throttle_state_length_valid
         {
             return Err(fault_transition_vm_error(
                 FaultTransitionError::SnapshotPendingStateMismatch,
@@ -3144,6 +3202,13 @@ pub struct SimulationResult {
     pub assertion_checkpoints: Vec<ControllerAssertionCheckpoint>,
 }
 
+/// Active aggregate vCPU exit-budget throttle retained by replay snapshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CpuThrottleState {
+    pub budget_units: u64,
+    pub release_at_tick: u64,
+}
+
 /// Active guest-visible memory-pressure state retained by replay snapshots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -3167,6 +3232,9 @@ pub struct SimulationSnapshot {
     pub fault_engine_snapshot: chaoscontrol_fault::engine::EngineSnapshot,
     /// Per-VM vCPU stall deadlines.
     pub vcpu_stall_until: Vec<std::collections::BTreeMap<usize, u64>>,
+    /// Per-VM active CPU-exit throttles.
+    #[serde(default)]
+    pub cpu_throttle: Vec<Option<CpuThrottleState>>,
     /// Per-VM clock freeze state.
     pub clock_freeze: Vec<Option<(u64, u64)>>,
     /// Per-VM clock jitter bound.
@@ -3301,6 +3369,7 @@ mod tests {
             memory_limit_release_at_tick: None,
             initial_snapshot: None,
             vcpu_stall_until: std::collections::BTreeMap::new(),
+            cpu_throttle: None,
             clock_freeze: None,
             clock_jitter_bound: 0,
             process_fault_attempt: None,
@@ -3519,6 +3588,7 @@ mod tests {
                 memory_limit_release_at_tick: None,
                 initial_snapshot: None,
                 vcpu_stall_until: std::collections::BTreeMap::new(),
+                cpu_throttle: None,
                 clock_freeze: None,
                 clock_jitter_bound: 0,
                 process_fault_attempt: None,
@@ -3683,6 +3753,7 @@ mod tests {
             network_state: NetworkFabric::new(0, FORGED_SEED),
             fault_engine_snapshot: forged_engine,
             vcpu_stall_until: Vec::new(),
+            cpu_throttle: Vec::new(),
             clock_freeze: Vec::new(),
             clock_jitter_bound: Vec::new(),
             memory_pressure: Vec::new(),
@@ -3878,6 +3949,37 @@ mod tests {
 
         // Resuming is not equal to Paused
         assert_ne!(status, VmStatus::Paused);
+    }
+
+    #[test]
+    fn cpu_throttle_clamps_budget_and_releases_at_tick() {
+        let mut controller = adapter_test_controller();
+        controller.vms[0].cpu_throttle = Some(CpuThrottleState {
+            budget_units: 3,
+            release_at_tick: 5,
+        });
+        controller.tick = 0;
+        assert_eq!(controller.effective_exit_budget(0, 100), 3);
+        controller.tick = 5;
+        assert_eq!(controller.effective_exit_budget(0, 100), 100);
+        assert!(controller.vms[0].cpu_throttle.is_none());
+    }
+
+    #[test]
+    fn cpu_throttle_survives_snapshot_restore() {
+        let mut controller = adapter_test_controller();
+        let throttle = CpuThrottleState {
+            budget_units: 7,
+            release_at_tick: 9,
+        };
+        controller.vms[0].cpu_throttle = Some(throttle);
+        let snapshot = controller.snapshot_all().expect("snapshot");
+        assert_eq!(snapshot.cpu_throttle[0], Some(throttle));
+        controller.vms[0].cpu_throttle = None;
+        controller
+            .restore_slot_fault_surface(0, &snapshot)
+            .expect("restore fault surface");
+        assert_eq!(controller.vms[0].cpu_throttle, Some(throttle));
     }
 
     #[test]
@@ -5456,6 +5558,14 @@ mod tests {
                 FaultPlanEffect::CpuStall {
                     target: 0,
                     vcpu: 0,
+                    release_at_tick: 1,
+                },
+            ),
+            (
+                FaultVariant::CpuThrottle,
+                FaultPlanEffect::CpuThrottle {
+                    target: 0,
+                    budget_units: 1,
                     release_at_tick: 1,
                 },
             ),

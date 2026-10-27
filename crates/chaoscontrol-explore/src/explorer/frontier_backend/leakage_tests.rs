@@ -85,6 +85,7 @@ impl ProductValues {
             network_state: chaoscontrol_vmm::controller::NetworkFabric::new(VM_COUNT, NETWORK_SEED),
             fault_engine_snapshot: engine.snapshot(),
             vcpu_stall_until: Vec::new(),
+            cpu_throttle: Vec::new(),
             clock_freeze: Vec::new(),
             clock_jitter_bound: Vec::new(),
             memory_pressure: Vec::new(),

@@ -334,6 +334,11 @@ pub enum SerializableFault {
         vcpu: usize,
         duration_ticks: u64,
     },
+    CpuThrottle {
+        target: usize,
+        budget_units: u64,
+        duration_ticks: u64,
+    },
     ClockFreeze {
         target: usize,
         duration_ticks: u64,
@@ -502,6 +507,15 @@ impl From<&Fault> for SerializableFault {
             } => SerializableFault::CpuStall {
                 target: *target,
                 vcpu: *vcpu,
+                duration_ticks: *duration_ticks,
+            },
+            Fault::CpuThrottle {
+                target,
+                budget_units,
+                duration_ticks,
+            } => SerializableFault::CpuThrottle {
+                target: *target,
+                budget_units: *budget_units,
                 duration_ticks: *duration_ticks,
             },
             Fault::ClockFreeze {
@@ -677,6 +691,15 @@ impl From<&SerializableFault> for Fault {
             } => Fault::CpuStall {
                 target: *target,
                 vcpu: *vcpu,
+                duration_ticks: *duration_ticks,
+            },
+            SerializableFault::CpuThrottle {
+                target,
+                budget_units,
+                duration_ticks,
+            } => Fault::CpuThrottle {
+                target: *target,
+                budget_units: *budget_units,
                 duration_ticks: *duration_ticks,
             },
             SerializableFault::ClockFreeze {

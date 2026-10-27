@@ -171,6 +171,7 @@ mod tests {
             network_state,
             fault_engine_snapshot: dummy_engine_snapshot(),
             vcpu_stall_until: vec![],
+            cpu_throttle: vec![],
             clock_freeze: vec![],
             clock_jitter_bound: vec![],
             memory_pressure: vec![],

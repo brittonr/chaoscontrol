@@ -13,7 +13,7 @@
 - [x] [serial] Add baseline latency/low-loss profile facts to the directional network profile. r[chaoscontrol.fault_mechanisms.directional_network]
 - [x] [serial] Apply directional network faults in the fabric with deterministic directional delays, drops, and counters. r[chaoscontrol.fault_mechanisms.directional_network]
 - [x] [serial] Wire directional fault attempts and packet observations into the network stage ledger. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.evidence]
-- [ ] [serial] Add the virtual quantum-budget CPU throttle, exact release, and scheduler enforcement. r[chaoscontrol.fault_mechanisms.cpu_throttle]
+- [x] [serial] Add the virtual quantum-budget CPU throttle, exact release, and scheduler enforcement. r[chaoscontrol.fault_mechanisms.cpu_throttle]
 - [ ] [parallel] Add positive and negative fixtures for direction, modes, scoped heal, queue bounds, budget exhaustion, release, and host-throttle rejection. r[chaoscontrol.fault_mechanisms.fixtures]
 
 ## Phase 3: Custom effects and pause control

@@ -467,6 +467,15 @@ fn hash_cpu_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
             hash_usize(hasher, *vcpu);
             hasher.update(&duration_ticks.to_le_bytes());
         }
+        Fault::CpuThrottle {
+            target,
+            budget_units,
+            duration_ticks,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&budget_units.to_le_bytes());
+            hasher.update(&duration_ticks.to_le_bytes());
+        }
         _ => unreachable!("CPU category must contain a CPU fault"),
     }
 }
@@ -533,6 +542,7 @@ pub struct VmFaultFacts {
     pub supports_clock_freeze: bool,
     pub supports_clock_jitter: bool,
     pub supports_cpu_stall: bool,
+    pub supports_cpu_throttle: bool,
     pub supports_memory_pressure: bool,
     pub virtual_tsc: u64,
     pub tsc_khz: u32,
@@ -584,6 +594,7 @@ pub enum FaultMechanism {
     VirtualClockFreeze,
     VirtualClockJitter,
     CpuStall,
+    CpuThrottle,
     MemoryPressure,
 }
 
@@ -613,6 +624,7 @@ impl FaultPlan {
             | FaultPlanEffect::VirtualClockFreeze { .. }
             | FaultPlanEffect::VirtualClockJitter { .. }
             | FaultPlanEffect::CpuStall { .. }
+            | FaultPlanEffect::CpuThrottle { .. }
             | FaultPlanEffect::MemoryPressure { .. } => SINGLE_IMMEDIATE_OBSERVATION,
             _ => 0,
         }
@@ -757,6 +769,11 @@ pub enum FaultPlanEffect {
         vcpu: u32,
         release_at_tick: u64,
     },
+    CpuThrottle {
+        target: u32,
+        budget_units: u64,
+        release_at_tick: u64,
+    },
     MemoryPressure {
         target: u32,
         limit_bytes: u64,
@@ -799,6 +816,7 @@ impl FaultPlanEffect {
             Self::VirtualClockFreeze { .. } => FaultMechanism::VirtualClockFreeze,
             Self::VirtualClockJitter { .. } => FaultMechanism::VirtualClockJitter,
             Self::CpuStall { .. } => FaultMechanism::CpuStall,
+            Self::CpuThrottle { .. } => FaultMechanism::CpuThrottle,
             Self::MemoryPressure { .. } => FaultMechanism::MemoryPressure,
         }
     }
@@ -832,6 +850,7 @@ impl FaultPlanEffect {
             | Self::VirtualClockFreeze { .. }
             | Self::VirtualClockJitter { .. }
             | Self::CpuStall { .. }
+            | Self::CpuThrottle { .. }
             | Self::MemoryPressure { .. } => FaultEffectTiming::Immediate,
             _ => FaultEffectTiming::Armed,
         }
@@ -914,6 +933,10 @@ pub enum FaultRejectionReason {
     InvalidMemoryLimit {
         limit_bytes: u64,
         baseline_bytes: u64,
+    },
+    InvalidThrottleBudget {
+        budget_units: u64,
+        max: u64,
     },
     ArithmeticOverflow,
     UnsupportedCapability {
@@ -1433,6 +1456,34 @@ fn plan_cpu_fault(
                 release_at_tick,
             })
         }
+        Fault::CpuThrottle {
+            target,
+            budget_units,
+            duration_ticks,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            if !facts.vms[target as usize].supports_cpu_throttle {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            if *budget_units == 0 || *budget_units > crate::mechanisms::MAX_THROTTLE_WINDOW_TICKS {
+                return Err(FaultRejectionReason::InvalidThrottleBudget {
+                    budget_units: *budget_units,
+                    max: crate::mechanisms::MAX_THROTTLE_WINDOW_TICKS,
+                });
+            }
+            checked_duration_ticks(*duration_ticks, policy, false)?;
+            let release_at_tick = facts
+                .current_tick
+                .checked_add(*duration_ticks)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::CpuThrottle {
+                target,
+                budget_units: *budget_units,
+                release_at_tick,
+            })
+        }
         _ => unreachable!("CPU planner must receive a CPU fault"),
     }
 }
@@ -1654,6 +1705,7 @@ pub enum FaultObservationEffect {
     VirtualClockFrozen,
     VirtualClockJitterConfigured,
     CpuStallActivated,
+    CpuThrottleActivated,
     MemoryCeilingChanged,
     InterruptInjected,
     NmiInjected,
@@ -2442,6 +2494,25 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
                 && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
         }
         (
+            Fault::CpuThrottle {
+                target: fault_target,
+                budget_units,
+                duration_ticks,
+            },
+            FaultPlanEffect::CpuThrottle {
+                target: planned_target,
+                budget_units: planned_budget,
+                release_at_tick,
+            },
+        ) => {
+            let selected_tick = attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK;
+            target(*fault_target) == Some(*planned_target)
+                && *budget_units > 0
+                && *budget_units == *planned_budget
+                && *duration_ticks > 0
+                && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
+        }
+        (
             Fault::CpuBitflip {
                 target: fault_target,
                 vcpu: fault_vcpu,
@@ -2651,9 +2722,9 @@ fn observation_effect_subsystem(effect: FaultObservationEffect) -> FaultObservat
         | FaultObservationEffect::VirtualClockJitterConfigured => {
             FaultObservationSubsystem::VirtualClock
         }
-        FaultObservationEffect::CpuRegisterChanged | FaultObservationEffect::CpuStallActivated => {
-            FaultObservationSubsystem::Cpu
-        }
+        FaultObservationEffect::CpuRegisterChanged
+        | FaultObservationEffect::CpuStallActivated
+        | FaultObservationEffect::CpuThrottleActivated => FaultObservationSubsystem::Cpu,
         FaultObservationEffect::MemoryCeilingChanged => FaultObservationSubsystem::Scheduler,
         FaultObservationEffect::InterruptInjected | FaultObservationEffect::NmiInjected => {
             FaultObservationSubsystem::Interrupt
@@ -2743,6 +2814,9 @@ fn mechanism_accepts_observation(
             FaultMechanism::CpuStall,
             FaultObservationEffect::CpuStallActivated
         ) | (
+            FaultMechanism::CpuThrottle,
+            FaultObservationEffect::CpuThrottleActivated
+        ) | (
             FaultMechanism::MemoryPressure,
             FaultObservationEffect::MemoryCeilingChanged
         ) | (
@@ -2828,6 +2902,7 @@ mod tests {
             supports_clock_freeze: true,
             supports_clock_jitter: true,
             supports_cpu_stall: true,
+            supports_cpu_throttle: true,
             supports_memory_pressure: true,
             virtual_tsc: TEST_SELECTED_AT_NS,
             tsc_khz: TEST_TSC_KHZ,
@@ -3306,6 +3381,40 @@ mod tests {
             }
         );
 
+        let throttle = plan_fault_application(
+            &attempt(Fault::CpuThrottle {
+                target: 0,
+                budget_units: 4,
+                duration_ticks: WINDOW_TICKS,
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(
+            throttle.effect,
+            FaultPlanEffect::CpuThrottle {
+                target: 0,
+                budget_units: 4,
+                release_at_tick: facts.current_tick + WINDOW_TICKS,
+            }
+        );
+        assert_eq!(
+            plan_fault_application(
+                &attempt(Fault::CpuThrottle {
+                    target: 0,
+                    budget_units: 0,
+                    duration_ticks: WINDOW_TICKS,
+                }),
+                &facts,
+                &policy,
+            ),
+            Err(FaultRejectionReason::InvalidThrottleBudget {
+                budget_units: 0,
+                max: crate::mechanisms::MAX_THROTTLE_WINDOW_TICKS,
+            })
+        );
+
         let pressure = plan_fault_application(
             &attempt(Fault::MemoryPressure {
                 target: 0,
@@ -3664,6 +3773,11 @@ mod tests {
             Fault::CpuStall {
                 target: 0,
                 vcpu: 0,
+                duration_ticks: 1,
+            },
+            Fault::CpuThrottle {
+                target: 0,
+                budget_units: 1,
                 duration_ticks: 1,
             },
             Fault::ClockFreeze {

@@ -113,12 +113,13 @@ pub enum FaultVariant {
     DiskPartialRead,
     CpuBitflip,
     CpuStall,
+    CpuThrottle,
     ClockFreeze,
     ClockJitter,
 }
 
 impl FaultVariant {
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 33] = [
         Self::NetworkPartition,
         Self::NetworkLatency,
         Self::PacketLoss,
@@ -149,6 +150,7 @@ impl FaultVariant {
         Self::DiskPartialRead,
         Self::CpuBitflip,
         Self::CpuStall,
+        Self::CpuThrottle,
         Self::ClockFreeze,
         Self::ClockJitter,
     ];
@@ -431,6 +433,19 @@ pub enum Fault {
         duration_ticks: u64,
     },
 
+    /// Throttle a VM's aggregate vCPU exit budget for a duration.
+    ///
+    /// The scheduler runs the VM with at most `budget_units` exits per
+    /// round while the throttle is active.
+    CpuThrottle {
+        /// Target VM index.
+        target: usize,
+        /// Maximum exits admitted per scheduling round.
+        budget_units: u64,
+        /// Number of ticks to keep the throttle active.
+        duration_ticks: u64,
+    },
+
     // ── Advanced clock faults ───────────────────────────────
     /// Freeze the virtual TSC at its current value for a duration.
     ///
@@ -490,6 +505,7 @@ impl Fault {
             Self::DiskPartialRead { .. } => FaultVariant::DiskPartialRead,
             Self::CpuBitflip { .. } => FaultVariant::CpuBitflip,
             Self::CpuStall { .. } => FaultVariant::CpuStall,
+            Self::CpuThrottle { .. } => FaultVariant::CpuThrottle,
             Self::ClockFreeze { .. } => FaultVariant::ClockFreeze,
             Self::ClockJitter { .. } => FaultVariant::ClockJitter,
         }
@@ -528,6 +544,7 @@ impl Fault {
             | Fault::DiskPartialRead { target, .. }
             | Fault::CpuBitflip { target, .. }
             | Fault::CpuStall { target, .. }
+            | Fault::CpuThrottle { target, .. }
             | Fault::ClockFreeze { target, .. }
             | Fault::ClockJitter { target, .. } => Some(*target),
         }
@@ -571,7 +588,9 @@ impl Fault {
 
             Fault::InjectInterrupt { .. } | Fault::InjectNmi { .. } => FaultCategory::Interrupt,
 
-            Fault::CpuBitflip { .. } | Fault::CpuStall { .. } => FaultCategory::Cpu,
+            Fault::CpuBitflip { .. } | Fault::CpuStall { .. } | Fault::CpuThrottle { .. } => {
+                FaultCategory::Cpu
+            }
         }
     }
 }
@@ -688,6 +707,14 @@ impl fmt::Display for Fault {
                 f,
                 "cpu-stall(vm={target}, vcpu={vcpu}, {duration_ticks} ticks)"
             ),
+            Fault::CpuThrottle {
+                target,
+                budget_units,
+                duration_ticks,
+            } => write!(
+                f,
+                "cpu-throttle(vm={target}, budget={budget_units}, {duration_ticks} ticks)"
+            ),
             Fault::ClockFreeze {
                 target,
                 duration_ticks,
@@ -747,6 +774,7 @@ impl Fault {
             Fault::DiskPartialRead { .. } => "disk-partial-read",
             Fault::CpuBitflip { .. } => "cpu-bitflip",
             Fault::CpuStall { .. } => "cpu-stall",
+            Fault::CpuThrottle { .. } => "cpu-throttle",
             Fault::ClockFreeze { .. } => "clock-freeze",
             Fault::ClockJitter { .. } => "clock-jitter",
         }

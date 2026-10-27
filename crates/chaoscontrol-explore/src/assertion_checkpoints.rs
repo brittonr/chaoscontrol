@@ -16,6 +16,10 @@ pub const DEFAULT_ASSERTION_CAPTURES_PER_BRANCH: u32 = 8;
 pub const DEFAULT_ASSERTION_CAPTURES_PER_CAMPAIGN: u32 = 64;
 /// Bound on distinct assertion identities tracked for rarity scoring.
 pub const MAX_TRACKED_ASSERTION_IDENTITIES: usize = 4_096;
+/// Bound on checkpoint decisions retained in one receipt.
+pub const MAX_ASSERTION_RECEIPT_DECISIONS: usize = 1_024;
+/// Bound on serialized checkpoint-receipt bytes.
+pub const MAX_ASSERTION_RECEIPT_BYTES: usize = 1_048_576;
 
 const NOVELTY_BONUS: f64 = 32.0;
 const RARITY_NUMERATOR: f64 = 16.0;
@@ -24,7 +28,7 @@ const REACHABLE_WEIGHT: f64 = 1.0;
 const SEED_JITTER_SCALE: f64 = 0.001;
 
 /// Named finite limits for assertion-hit checkpoint selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssertionCheckpointLimits {
     pub max_hits_per_branch: usize,
     pub max_captures_per_branch: u32,
@@ -61,7 +65,7 @@ impl AssertionCheckpointLimits {
 }
 
 /// One catalog-bound assertion observation at a deterministic execution boundary.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssertionHitObservation {
     pub run_id: [u8; 32],
     pub vm_index: usize,
@@ -111,7 +115,7 @@ struct HitKey {
 }
 
 /// Why a hit was or was not selected for capture.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AssertionCheckpointDecisionKind {
     Selected,
     Duplicate,
@@ -122,7 +126,7 @@ pub enum AssertionCheckpointDecisionKind {
 }
 
 /// One deterministic decision for one observed hit.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AssertionCheckpointDecision {
     pub observation: AssertionHitObservation,
     pub prior_hits: u32,
@@ -347,6 +351,63 @@ pub struct AssertionCheckpointMetadata {
     pub run_sequence: u64,
     /// Global simulation tick at capture.
     pub observed_tick: u64,
+}
+
+/// Bounded receipt of assertion-hit checkpoint decisions.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AssertionCheckpointReceipt {
+    /// Stable receipt schema.
+    pub schema: String,
+    /// Campaign seed.
+    pub seed: u64,
+    /// Selector limits in force.
+    pub limits: AssertionCheckpointLimits,
+    /// Campaign-persistent selector state.
+    pub selector: AssertionCheckpointSelectorState,
+    /// Ordered decisions retained within the receipt bound.
+    pub decisions: Vec<AssertionCheckpointDecision>,
+    /// Decisions omitted after the receipt bound was reached.
+    pub omitted_decisions: u64,
+    /// Selected capture decisions.
+    pub selected_decisions: u64,
+    /// Duplicate-hit decisions.
+    pub duplicate_decisions: u64,
+    /// Skipped decisions (ineligible, unsatisfied, or budget-exhausted).
+    pub skipped_decisions: u64,
+    /// Assertion-derived frontier entries actually retained.
+    pub frontier_entries: u64,
+    /// Selected hits that could not be converted into frontier provenance.
+    pub capture_failures: u64,
+}
+
+impl AssertionCheckpointReceipt {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        seed: u64,
+        limits: AssertionCheckpointLimits,
+        selector: AssertionCheckpointSelectorState,
+        decisions: Vec<AssertionCheckpointDecision>,
+        omitted_decisions: u64,
+        selected_decisions: u64,
+        duplicate_decisions: u64,
+        skipped_decisions: u64,
+        frontier_entries: u64,
+        capture_failures: u64,
+    ) -> Self {
+        Self {
+            schema: "chaoscontrol.assertion-checkpoint-receipt.v1".to_string(),
+            seed,
+            limits,
+            selector,
+            decisions,
+            omitted_decisions,
+            selected_decisions,
+            duplicate_decisions,
+            skipped_decisions,
+            frontier_entries,
+            capture_failures,
+        }
+    }
 }
 
 /// Serializable selector state retained across checkpoint resume.

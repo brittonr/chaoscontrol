@@ -23,7 +23,7 @@
 
 ## Phase 4: Evidence and adversarial fixtures
 
-- [ ] [parallel] Emit the bounded checkpoint receipt with selected, captured, skipped, duplicate, failed, and frontier outcomes. r[chaoscontrol.assertion_checkpoints.evidence]
+- [x] [parallel] Emit the bounded checkpoint receipt with selected, captured, skipped, duplicate, failed, and frontier outcomes. r[chaoscontrol.assertion_checkpoints.evidence]
 - [ ] [parallel] Add negative fixtures for unbound assertions, identity drift, stale parents, storage failure, missing snapshots, and overclaim. r[chaoscontrol.assertion_checkpoints.fixtures] r[chaoscontrol.assertion_checkpoints.nonclaims]
 - [ ] [serial] Exercise a real KVM workload where a rare assertion hit is selected, captured, restored, and used as a branch parent. r[chaoscontrol.assertion_checkpoints.observation] r[chaoscontrol.assertion_checkpoints.frontier]
 

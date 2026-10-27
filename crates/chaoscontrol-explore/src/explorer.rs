@@ -1,8 +1,10 @@
 //! The main exploration loop — coverage-guided fault schedule search.
 
 use crate::assertion_checkpoints::{
-    AssertionCheckpointDecisionKind, AssertionCheckpointError, AssertionCheckpointLimits,
-    AssertionCheckpointSelector, AssertionHitObservation, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH,
+    AssertionCheckpointDecision, AssertionCheckpointDecisionKind, AssertionCheckpointError,
+    AssertionCheckpointLimits, AssertionCheckpointReceipt, AssertionCheckpointSelector,
+    AssertionHitObservation, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH, MAX_ASSERTION_RECEIPT_BYTES,
+    MAX_ASSERTION_RECEIPT_DECISIONS,
 };
 use crate::branch_recovery::{
     decide_after_watchdog, explore_error_watchdog_vcpu, BranchOutcome as RecoveredBranchOutcome,
@@ -448,6 +450,20 @@ pub struct Explorer {
     marker_hits: BTreeMap<String, u32>,
     /// Campaign-persistent assertion-hit checkpoint selector.
     assertion_checkpoint_selector: AssertionCheckpointSelector,
+    /// Bounded assertion-checkpoint decisions retained for the receipt.
+    assertion_checkpoint_decisions: Vec<AssertionCheckpointDecision>,
+    /// Decisions omitted after the receipt bound was reached.
+    assertion_checkpoint_decisions_omitted: u64,
+    /// Selected capture decisions.
+    assertion_checkpoint_selected: u64,
+    /// Duplicate-hit decisions.
+    assertion_checkpoint_duplicate: u64,
+    /// Skipped decisions.
+    assertion_checkpoint_skipped: u64,
+    /// Assertion-derived frontier entries retained.
+    assertion_checkpoint_frontier_entries: u64,
+    /// Selected hits that could not be converted into frontier provenance.
+    assertion_checkpoint_capture_failures: u64,
     /// Materialized phase summary (stored at bootstrap time).
     scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
     metrics_sink: Option<std::io::BufWriter<std::fs::File>>,
@@ -488,6 +504,13 @@ impl Explorer {
             coverage,
             rng,
             assertion_checkpoint_selector,
+            assertion_checkpoint_decisions: Vec::new(),
+            assertion_checkpoint_decisions_omitted: 0,
+            assertion_checkpoint_selected: 0,
+            assertion_checkpoint_duplicate: 0,
+            assertion_checkpoint_skipped: 0,
+            assertion_checkpoint_frontier_entries: 0,
+            assertion_checkpoint_capture_failures: 0,
             controller: None,
             rounds_completed: 0,
             total_branches_run: 0,
@@ -1200,6 +1223,7 @@ impl Explorer {
                     .map(|(observation, _, _)| observation.clone())
                     .collect();
                 let selection = self.assertion_checkpoint_selector.select(&observations);
+                self.record_assertion_checkpoint_decisions(&selection.decisions);
                 let base_score = self.score_branch(result, depth);
                 let mut seen_checkpoints = BTreeSet::new();
                 for decision in selection.decisions {
@@ -1220,6 +1244,8 @@ impl Explorer {
                         continue;
                     }
                     let Some(assertion) = assertion_metadata(checkpoint, hit) else {
+                        self.assertion_checkpoint_capture_failures =
+                            self.assertion_checkpoint_capture_failures.saturating_add(1);
                         continue;
                     };
                     retained.push(RetainedBranch {
@@ -1234,6 +1260,8 @@ impl Explorer {
                         }],
                         digests: self.branch_digests_at(result, schedule, checkpoint.tick)?,
                     });
+                    self.assertion_checkpoint_frontier_entries =
+                        self.assertion_checkpoint_frontier_entries.saturating_add(1);
                 }
             }
         }
@@ -2850,8 +2878,68 @@ impl Explorer {
         let checkpoint_path = format!("{}/checkpoint.json", dir);
         let checkpoint = self.create_checkpoint(dir)?;
         save_checkpoint(&checkpoint_path, &checkpoint)?;
+        self.write_assertion_checkpoint_receipt(std::path::Path::new(dir))?;
 
         info!("Checkpoint saved to {}", checkpoint_path);
+        Ok(())
+    }
+
+    fn record_assertion_checkpoint_decisions(&mut self, decisions: &[AssertionCheckpointDecision]) {
+        for decision in decisions {
+            match decision.reason {
+                AssertionCheckpointDecisionKind::Selected => {
+                    self.assertion_checkpoint_selected =
+                        self.assertion_checkpoint_selected.saturating_add(1);
+                }
+                AssertionCheckpointDecisionKind::Duplicate => {
+                    self.assertion_checkpoint_duplicate =
+                        self.assertion_checkpoint_duplicate.saturating_add(1);
+                }
+                AssertionCheckpointDecisionKind::IneligibleKind
+                | AssertionCheckpointDecisionKind::Unsatisfied
+                | AssertionCheckpointDecisionKind::BranchBudgetExhausted
+                | AssertionCheckpointDecisionKind::CampaignBudgetExhausted => {
+                    self.assertion_checkpoint_skipped =
+                        self.assertion_checkpoint_skipped.saturating_add(1);
+                }
+            }
+            if self.assertion_checkpoint_decisions.len() >= MAX_ASSERTION_RECEIPT_DECISIONS {
+                self.assertion_checkpoint_decisions_omitted = self
+                    .assertion_checkpoint_decisions_omitted
+                    .saturating_add(1);
+                continue;
+            }
+            self.assertion_checkpoint_decisions.push(decision.clone());
+        }
+    }
+
+    /// Bounded assertion-checkpoint receipt for the current campaign state.
+    pub fn assertion_checkpoint_receipt(&self) -> AssertionCheckpointReceipt {
+        AssertionCheckpointReceipt::new(
+            self.config.seed,
+            self.assertion_checkpoint_selector.limits(),
+            self.assertion_checkpoint_selector.state(),
+            self.assertion_checkpoint_decisions.clone(),
+            self.assertion_checkpoint_decisions_omitted,
+            self.assertion_checkpoint_selected,
+            self.assertion_checkpoint_duplicate,
+            self.assertion_checkpoint_skipped,
+            self.assertion_checkpoint_frontier_entries,
+            self.assertion_checkpoint_capture_failures,
+        )
+    }
+
+    fn write_assertion_checkpoint_receipt(
+        &self,
+        dir: &std::path::Path,
+    ) -> Result<(), CheckpointError> {
+        let bytes = serde_json::to_vec_pretty(&self.assertion_checkpoint_receipt())?;
+        if bytes.len() > MAX_ASSERTION_RECEIPT_BYTES {
+            return Err(CheckpointError::InvalidBounds {
+                reason: "assertion checkpoint receipt exceeds the byte limit".to_string(),
+            });
+        }
+        std::fs::write(dir.join("assertion-checkpoints.json"), bytes)?;
         Ok(())
     }
 
@@ -3026,6 +3114,13 @@ impl Explorer {
             total_branches_run: checkpoint.total_branches_run,
             round_history: checkpoint.round_history.unwrap_or_default(),
             assertion_checkpoint_selector,
+            assertion_checkpoint_decisions: Vec::new(),
+            assertion_checkpoint_decisions_omitted: 0,
+            assertion_checkpoint_selected: 0,
+            assertion_checkpoint_duplicate: 0,
+            assertion_checkpoint_skipped: 0,
+            assertion_checkpoint_frontier_entries: 0,
+            assertion_checkpoint_capture_failures: 0,
             memory_bases: Vec::new(),
             worker_pool: None,
             event_sink: None,
@@ -4826,6 +4921,14 @@ mod tests {
         // Load checkpoint
         let checkpoint_path = checkpoint_dir.join("checkpoint.json");
         let checkpoint = crate::checkpoint::load_checkpoint(&checkpoint_path).unwrap();
+        let receipt_path = checkpoint_dir.join("assertion-checkpoints.json");
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+        assert_eq!(
+            receipt["schema"],
+            "chaoscontrol.assertion-checkpoint-receipt.v1"
+        );
+        assert_eq!(receipt["selector"]["campaign_captures"], 3);
 
         // Verify checkpoint contents
         assert_eq!(checkpoint.config.num_vms, 3);

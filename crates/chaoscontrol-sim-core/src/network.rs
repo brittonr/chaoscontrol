@@ -1759,6 +1759,28 @@ mod directional_tests {
     }
 
     #[test]
+    fn scoped_heal_clears_only_the_selected_link_pair() {
+        let mut fabric = NetworkFabric::new(3, 42);
+        assert!(fabric.arm_directional(fault(
+            0,
+            1,
+            NetworkDirection::Both,
+            NetworkDisruption::Stopped,
+            0,
+        )));
+        assert!(fabric.arm_directional(fault(
+            1,
+            2,
+            NetworkDirection::Both,
+            NetworkDisruption::Stopped,
+            0,
+        )));
+        assert!(fabric.clear_directional_link(0, 1));
+        assert!(fabric.send_packet(0, 1, vec![1], 0));
+        assert!(!fabric.send_packet(1, 2, vec![1], 0));
+    }
+
+    #[test]
     fn invalid_targets_and_self_links_are_rejected() {
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(!fabric.arm_directional(fault(

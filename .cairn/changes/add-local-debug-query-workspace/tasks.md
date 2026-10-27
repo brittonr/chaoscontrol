@@ -8,7 +8,8 @@
 
 ## Phase 2: Envelope and query core
 
-- [ ] [serial] Implement bounded adapters from retained sources into the canonical event envelope. r[chaoscontrol.debug_query.event_envelope]
+- [x] [serial] Implement a bounded adapter from recording events into the canonical event envelope. r[chaoscontrol.debug_query.event_envelope]
+- [ ] [serial] Add bounded dlog, fault-stage, serial, and branch-marker adapters. r[chaoscontrol.debug_query.event_envelope]
 - [x] [serial] Implement the typed AST, pure evaluator, deterministic ordering, and scan/row/byte/operation accounting. r[chaoscontrol.debug_query.language]
 - [x] [parallel] Add positive query fixtures for cross-source filtering, map/contains/matches, union, windows, and up-to-moment evaluation. r[chaoscontrol.debug_query.language] r[chaoscontrol.debug_query.fixtures]
 - [x] [parallel] Add negative query fixtures for duplicate positions, malformed AST, unsupported operation, and every bound. r[chaoscontrol.debug_query.language] r[chaoscontrol.debug_query.fixtures]

@@ -71,6 +71,124 @@ pub struct EventEnvelope {
     pub derived: BTreeMap<String, String>,
 }
 
+/// Build canonical envelopes from one retained recording.
+pub fn envelopes_from_recording(recording: &crate::recording::Recording) -> Vec<EventEnvelope> {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"chaoscontrol.recording-source.v1\0");
+    hasher.update(recording.session_id.as_bytes());
+    hasher.update(&recording.fault_run_id.0);
+    let source_id = *hasher.finalize().as_bytes();
+    recording
+        .events
+        .iter()
+        .enumerate()
+        .map(|(sequence, event)| envelope_from_recorded_event(source_id, sequence as u64, event))
+        .collect()
+}
+
+/// Build one canonical envelope from a recorded event.
+pub fn envelope_from_recorded_event(
+    source_id: [u8; 32],
+    source_sequence: u64,
+    event: &crate::recording::RecordedEvent,
+) -> EventEnvelope {
+    use crate::recording::RecordedEvent;
+    let (source_kind, kind, tick, vm_index, text, details) = match event {
+        RecordedEvent::FaultFired { tick, fault } => (
+            EventSourceKind::FaultStage,
+            "fault_fired",
+            *tick,
+            None,
+            fault.clone(),
+            Some(serde_json::json!({"fault": fault})),
+        ),
+        RecordedEvent::AssertionHit {
+            tick,
+            vm_index,
+            assertion_id,
+            location,
+            passed,
+        } => (
+            EventSourceKind::Assertion,
+            "assertion_hit",
+            *tick,
+            Some(*vm_index as u32),
+            location.clone(),
+            Some(serde_json::json!({"assertion_id": assertion_id, "passed": passed})),
+        ),
+        RecordedEvent::VmStatusChange {
+            tick,
+            vm_index,
+            old_status,
+            new_status,
+        } => (
+            EventSourceKind::SdkLifecycle,
+            "vm_status_change",
+            *tick,
+            Some(*vm_index as u32),
+            format!("{old_status}->{new_status}"),
+            Some(serde_json::json!({"old": old_status, "new": new_status})),
+        ),
+        RecordedEvent::SerialOutput {
+            tick,
+            vm_index,
+            data,
+        } => (
+            EventSourceKind::Serial,
+            "serial_output",
+            *tick,
+            Some(*vm_index as u32),
+            data.clone(),
+            None,
+        ),
+        RecordedEvent::BugDetected {
+            tick,
+            bug_id,
+            description,
+            checkpoint_id,
+        } => (
+            EventSourceKind::Assertion,
+            "bug_detected",
+            *tick,
+            None,
+            description.clone(),
+            Some(serde_json::json!({"bug_id": bug_id, "checkpoint_id": checkpoint_id})),
+        ),
+    };
+    let payload = serde_json::to_vec(event).unwrap_or_default();
+    let mut text = text;
+    if text.is_empty() {
+        text = kind.to_string();
+    }
+    text = bounded_text(&text);
+    EventEnvelope {
+        schema: EVENT_ENVELOPE_SCHEMA.to_string(),
+        source_id,
+        source_kind,
+        source_sequence,
+        tick,
+        vm_index,
+        process: None,
+        thread: None,
+        kind: kind.to_string(),
+        text,
+        payload_digest: *blake3::hash(&payload).as_bytes(),
+        details,
+        derived: BTreeMap::new(),
+    }
+}
+
+fn bounded_text(value: &str) -> String {
+    if value.len() <= MAX_EVENT_TEXT_BYTES {
+        return value.to_string();
+    }
+    let mut end = MAX_EVENT_TEXT_BYTES;
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
+}
+
 /// A bounded predicate over one event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -787,6 +905,33 @@ mod tests {
             render_timeline_markdown(&cyclic).unwrap_err(),
             EventQueryError::TimelineCycle
         );
+    }
+
+    #[test]
+    fn recorded_events_become_canonical_envelopes() {
+        use crate::recording::RecordedEvent;
+        let event = RecordedEvent::AssertionHit {
+            tick: 42,
+            vm_index: 1,
+            assertion_id: 7,
+            location: "leader elected".to_string(),
+            passed: true,
+        };
+        let envelope = envelope_from_recorded_event([5; 32], 3, &event);
+        assert_eq!(envelope.source_kind, EventSourceKind::Assertion);
+        assert_eq!(envelope.kind, "assertion_hit");
+        assert_eq!(envelope.tick, 42);
+        assert_eq!(envelope.vm_index, Some(1));
+        assert_eq!(envelope.text, "leader elected");
+        assert_ne!(envelope.payload_digest, [0; 32]);
+
+        let long = RecordedEvent::SerialOutput {
+            tick: 1,
+            vm_index: 0,
+            data: "x".repeat(MAX_EVENT_TEXT_BYTES + 100),
+        };
+        let envelope = envelope_from_recorded_event([5; 32], 4, &long);
+        assert_eq!(envelope.text.len(), MAX_EVENT_TEXT_BYTES);
     }
 
     #[test]

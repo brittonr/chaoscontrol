@@ -146,6 +146,7 @@ fn proposals(scores: &[f64]) -> Vec<EntryProposal> {
         .map(|score| EntryProposal {
             score: *score,
             marker: None,
+            assertion: false,
         })
         .collect()
 }
@@ -533,6 +534,7 @@ fn marker_branching_with_duplicate_metadata_agrees() {
     let duplicate = |score: f64| EntryProposal {
         score,
         marker: Some(marker(40)),
+        assertion: false,
     };
     let marker_branch = |index: u32, scores: &[f64]| BranchScript {
         proposals: scores.iter().copied().map(duplicate).collect(),

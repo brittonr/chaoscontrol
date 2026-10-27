@@ -217,6 +217,7 @@ mod tests {
             schedule_variant: None,
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
+            assertion_checkpoints: Vec::new(),
         }
     }
 

@@ -100,6 +100,8 @@ pub(crate) struct EntryProposal {
     pub(crate) score: f64,
     /// Marker that created the opportunity, if any.
     pub(crate) marker: Option<MarkerFrontierMetadata>,
+    /// Whether an assertion hit created the opportunity.
+    pub(crate) assertion: bool,
 }
 
 /// Product digests of one retained branch result; never snapshot bytes.
@@ -113,8 +115,10 @@ pub(crate) struct BranchDigests {
     pub(crate) coverage: [u8; 32],
     /// Digest of the branch oracle report.
     pub(crate) oracle: [u8; 32],
-    /// Ticks the branch ran; the snapshot is taken at this tick.
+    /// Ticks the branch ran.
     pub(crate) total_ticks: u64,
+    /// Tick at which the child snapshot was taken.
+    pub(crate) snapshot_tick: u64,
 }
 
 /// A branch result with new edges and a restorable snapshot.
@@ -154,8 +158,8 @@ pub(crate) struct BranchOutcome {
     pub(crate) snapshot_present: bool,
     /// New deduplicated findings of the branch.
     pub(crate) findings: Vec<FindingFacts>,
-    /// Present when the branch had new edges and a snapshot.
-    pub(crate) retained: Option<RetainedBranch>,
+    /// Retained branch-end and assertion-checkpoint sources, in push order.
+    pub(crate) retained: Vec<RetainedBranch>,
 }
 
 /// Product facts of one executed round, in branch order.

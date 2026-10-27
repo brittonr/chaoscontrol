@@ -14,6 +14,7 @@ use crate::outcomes::{
 };
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder, CatalogConflict};
+use chaoscontrol_protocol::identity::AssertionFingerprint;
 use chaoscontrol_protocol::transport::{
     decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame, decode_event_frame,
 };
@@ -25,6 +26,28 @@ use snafu::{ResultExt, Snafu};
 use std::collections::{BTreeMap, VecDeque};
 
 pub const MAX_PROCESS_FAULT_QUEUE: usize = 64;
+
+/// Bound on accepted assertion-hit observations retained between drains.
+pub const MAX_ASSERTION_HIT_EVENTS: usize = 256;
+
+/// One accepted, catalog-bound assertion hit observed during a run.
+///
+/// The VMM attaches the deterministic execution boundary (tick, exit count,
+/// and vCPU) when it drains this event. The event alone is not checkpoint
+/// evidence and does not grant replay authority.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssertionHitEvent {
+    pub run_id: FaultRunId,
+    pub run_sequence: u64,
+    pub fingerprint: AssertionFingerprint,
+    pub kind: AssertionKind,
+    pub condition: bool,
+    pub compatibility_id: Option<u32>,
+    pub guest: String,
+    pub category: String,
+    pub process_identity: Option<String>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessFaultQueueError {
@@ -346,6 +369,10 @@ pub struct FaultEngine {
     catalog_builder: Option<CatalogBuilder>,
     /// Bounded host-to-supervisor process fault queue.
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+    /// Accepted assertion hits awaiting a deterministic VMM boundary.
+    assertion_hits: VecDeque<AssertionHitEvent>,
+    /// Accepted hits dropped because the observation queue was full.
+    assertion_hit_overflow: u64,
 }
 
 impl FaultEngine {
@@ -376,6 +403,8 @@ impl FaultEngine {
             choice_count: 0,
             catalog_builder: None,
             process_fault_queue: VecDeque::new(),
+            assertion_hits: VecDeque::new(),
+            assertion_hit_overflow: 0,
         }
     }
 
@@ -389,6 +418,8 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
         match self.run_sequence.checked_add(1) {
             Some(run_sequence) => {
                 self.run_sequence = run_sequence;
@@ -706,23 +737,67 @@ impl FaultEngine {
             kind: frame.kind,
         };
         let condition = page.condition();
-        let details = if condition {
-            None
-        } else {
-            Some(frame.details.as_slice())
-        };
+        let event_details = Some(frame.details.as_slice());
+        let failure_details = if condition { None } else { event_details };
         if self
             .oracle
-            .record_bound_event_with_compatibility(&event, page.id, condition, details)
+            .record_bound_event_with_compatibility(&event, page.id, condition, failure_details)
             .is_err()
         {
             return (0, STATUS_ASSERTION_EVENT_REJECTED);
         }
+        self.record_assertion_hit(&event, kind, condition, event_details);
         match kind {
             AssertionKind::Always if !condition => (0, STATUS_ASSERTION_FAILED),
             AssertionKind::Unreachable => (0, STATUS_UNREACHABLE_REACHED),
             _ => (0, STATUS_OK),
         }
+    }
+
+    /// Retain one accepted hit until the VMM drains it at a deterministic boundary.
+    fn record_assertion_hit(
+        &mut self,
+        event: &BoundAssertionEvent,
+        kind: AssertionKind,
+        condition: bool,
+        details: Option<&[u8]>,
+    ) {
+        let Some(admitted) = self
+            .oracle
+            .accepted_catalog()
+            .and_then(|catalog| catalog.resolve_event(event).ok())
+        else {
+            return;
+        };
+        let process_identity = crate::oracle::admitted_process_identity(admitted, details)
+            .ok()
+            .flatten();
+        let hit = AssertionHitEvent {
+            run_id: self.run_id,
+            run_sequence: self.run_sequence,
+            fingerprint: event.fingerprint,
+            kind,
+            condition,
+            compatibility_id: admitted.descriptor.compatibility_id,
+            guest: admitted.descriptor.guest.clone(),
+            category: admitted.descriptor.category.clone(),
+            process_identity,
+        };
+        if self.assertion_hits.len() >= MAX_ASSERTION_HIT_EVENTS {
+            self.assertion_hit_overflow = self.assertion_hit_overflow.saturating_add(1);
+            return;
+        }
+        self.assertion_hits.push_back(hit);
+    }
+
+    /// Drain accepted assertion-hit observations in guest order.
+    pub fn take_assertion_hits(&mut self) -> Vec<AssertionHitEvent> {
+        self.assertion_hits.drain(..).collect()
+    }
+
+    /// Number of accepted hits dropped because the bounded queue was full.
+    pub fn assertion_hit_overflow(&self) -> u64 {
+        self.assertion_hit_overflow
     }
 
     fn catalog_failure(&mut self, conflict: CatalogConflict) -> (u64, u8) {
@@ -1235,6 +1310,10 @@ impl FaultEngine {
         self.choice_history.clear();
         self.catalog_builder = None;
         self.process_fault_queue = snapshot.process_fault_queue.clone();
+        // Assertion-hit observations are branch-local runtime facts. They are
+        // drained by the VMM at their boundary and never restored as authority.
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
     }
 
     // ── Input tree exploration ────────────────────────────────

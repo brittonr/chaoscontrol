@@ -330,6 +330,56 @@
   ],
   "change_intents": [
     {
+      "change": "add-assertion-hit-checkpoints",
+      "evidence_prerequisite": "Exact post-hit boundary observation, pure seeded selection, snapshot capture, frontier restore, bounded receipts, and positive and negative fixtures must pass.",
+      "non_claims": [
+        "A captured assertion hit does not prove complete rare-state coverage or causality.",
+        "Checkpointing does not change assertion verdicts, liveness classification, or replay promotion."
+      ],
+      "owner": "chaoscontrol-explore",
+      "target_state": "experimental"
+    },
+    {
+      "change": "add-thread-pause-faults",
+      "evidence_prerequisite": "The admitted cooperative runtime ABI, stable thread identity, safe-point pause and release, snapshot and replay parity, bounded evidence, and positive and negative fixtures must pass.",
+      "non_claims": [
+        "No arbitrary OS-thread preemption or host thread control.",
+        "No race-existence, correctness, complete-interleaving, or Antithesis-parity claim."
+      ],
+      "owner": "chaoscontrol-fault",
+      "target_state": "experimental"
+    },
+    {
+      "change": "add-symbolized-coverage",
+      "evidence_prerequisite": "Exact build catalogs, loaded-module identities, pure mapping, bounded reports, receipts, and positive and negative fixtures must pass.",
+      "non_claims": [
+        "Symbolized coverage does not prove source correctness, complete coverage, causality, or release eligibility.",
+        "Missing catalogs remain explicit rather than inferred."
+      ],
+      "owner": "chaoscontrol-explore",
+      "target_state": "experimental"
+    },
+    {
+      "change": "expand-deterministic-fault-mechanisms",
+      "evidence_prerequisite": "Directional network faults, virtual-budget CPU throttling, typed custom effects, pause control, deterministic overlap, stage evidence, and positive and negative fixtures must pass.",
+      "non_claims": [
+        "No host-level fault injection, unbounded scripts, or ambient command execution.",
+        "No universal fault coverage, Antithesis parity, or release claim."
+      ],
+      "owner": "chaoscontrol-fault",
+      "target_state": "experimental"
+    },
+    {
+      "change": "add-local-debug-query-workspace",
+      "evidence_prerequisite": "Canonical event envelopes, a typed bounded query core, moment admission, static timelines, declared guest observations, receipts, and positive and negative fixtures must pass.",
+      "non_claims": [
+        "No hosted or multi-user service, arbitrary shell, or remote execution.",
+        "No complete event capture, causal attribution, or replay-promotion claim."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "add-property-campaign-rail",
       "evidence_prerequisite": "A typed property-campaign contract, seeded reruns, reducer-backed failure-mode-preserving minimization, bounded receipts, and positive and negative fixtures must pass.",
       "non_claims": [

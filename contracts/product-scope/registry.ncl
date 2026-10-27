@@ -266,6 +266,41 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "add-assertion-hit-checkpoints",
+      owner = "chaoscontrol-explore",
+      target_state = "experimental",
+      evidence_prerequisite = "Exact post-hit boundary observation, pure seeded selection, snapshot capture, frontier restore, bounded receipts, and positive and negative fixtures must pass.",
+      non_claims = ["A captured assertion hit does not prove complete rare-state coverage or causality.", "Checkpointing does not change assertion verdicts, liveness classification, or replay promotion."],
+    },
+    {
+      change = "add-thread-pause-faults",
+      owner = "chaoscontrol-fault",
+      target_state = "experimental",
+      evidence_prerequisite = "The admitted cooperative runtime ABI, stable thread identity, safe-point pause and release, snapshot and replay parity, bounded evidence, and positive and negative fixtures must pass.",
+      non_claims = ["No arbitrary OS-thread preemption or host thread control.", "No race-existence, correctness, complete-interleaving, or Antithesis-parity claim."],
+    },
+    {
+      change = "add-symbolized-coverage",
+      owner = "chaoscontrol-explore",
+      target_state = "experimental",
+      evidence_prerequisite = "Exact build catalogs, loaded-module identities, pure mapping, bounded reports, receipts, and positive and negative fixtures must pass.",
+      non_claims = ["Symbolized coverage does not prove source correctness, complete coverage, causality, or release eligibility.", "Missing catalogs remain explicit rather than inferred."],
+    },
+    {
+      change = "expand-deterministic-fault-mechanisms",
+      owner = "chaoscontrol-fault",
+      target_state = "experimental",
+      evidence_prerequisite = "Directional network faults, virtual-budget CPU throttling, typed custom effects, pause control, deterministic overlap, stage evidence, and positive and negative fixtures must pass.",
+      non_claims = ["No host-level fault injection, unbounded scripts, or ambient command execution.", "No universal fault coverage, Antithesis parity, or release claim."],
+    },
+    {
+      change = "add-local-debug-query-workspace",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Canonical event envelopes, a typed bounded query core, moment admission, static timelines, declared guest observations, receipts, and positive and negative fixtures must pass.",
+      non_claims = ["No hosted or multi-user service, arbitrary shell, or remote execution.", "No complete event capture, causal attribution, or replay-promotion claim."],
+    },
+    {
       change = "add-property-campaign-rail",
       owner = "chaoscontrol-explore",
       target_state = "experimental",

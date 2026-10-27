@@ -138,6 +138,7 @@ impl ProductValues {
             coverage: coverage_digest(&coverage),
             oracle: oracle_digest(&oracle).unwrap(),
             total_ticks: BRANCH_TICKS,
+            snapshot_tick: BRANCH_TICKS,
         };
         let finding = FindingFacts {
             dedup_key: FINDING_DEDUP_KEY,
@@ -213,14 +214,14 @@ impl ProductValues {
                     } else {
                         Vec::new()
                     },
-                    retained: Some(RetainedBranch {
+                    retained: vec![RetainedBranch {
                         snapshot: self.snapshot.clone(),
                         coverage: self.coverage.clone(),
                         schedule: self.schedule.clone(),
                         depth: 1,
                         proposals: vec![proposal(CHILD_SCORES[index])],
                         digests: Some(self.digests),
-                    }),
+                    }],
                 })
                 .collect(),
         }
@@ -231,6 +232,7 @@ fn proposal(score: f64) -> EntryProposal {
     EntryProposal {
         score,
         marker: None,
+        assertion: false,
     }
 }
 

@@ -454,46 +454,45 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
                     selection.parent_moment_id,
                 )
             }));
-            let Some(retained) = &branch.retained else {
-                continue;
-            };
-            let digests = retained
-                .digests
-                .ok_or(FrontierError::Sequence("retained branch without digests"))?;
-            let facts = ChildMomentFacts {
-                campaign_id,
-                selection_id: selection.selection_id,
-                operation_id: selection.operation_id,
-                branch_slot: branch.slot,
-                schedule_digest: digests.schedule,
-                variant_digest: digests.variant,
-                coverage_digest: digests.coverage,
-                oracle_digest: digests.oracle,
-                total_ticks: digests.total_ticks,
-                snapshot_tick: digests.total_ticks,
-                base_set_id,
-            };
-            let moment = admit_child_moment(
-                staged.graph(),
-                &self.identity,
-                campaign_id,
-                &facts,
-                parent_event,
-            )?;
-            let draft = child_moment_draft(&self.identity, &facts, parent_event)?;
-            records.push(JournalRecord::new(
-                MOMENT,
-                encode_moment(moment.event, &draft).map_err(AdapterError::Wire)?,
-            ));
-            children.push(RetainedChild::from(&moment));
-            snapshots.push((moment.moment_id, retained.snapshot.clone()));
-            proposals.extend(retained.proposals.iter().map(|proposal| StagedProposal {
-                moment_id: moment.moment_id,
-                depth: retained.depth,
-                schedule: &retained.schedule,
-                proposal,
-            }));
-            staged.admit_moment(moment);
+            for retained in &branch.retained {
+                let digests = retained
+                    .digests
+                    .ok_or(FrontierError::Sequence("retained branch without digests"))?;
+                let facts = ChildMomentFacts {
+                    campaign_id,
+                    selection_id: selection.selection_id,
+                    operation_id: selection.operation_id,
+                    branch_slot: branch.slot,
+                    schedule_digest: digests.schedule,
+                    variant_digest: digests.variant,
+                    coverage_digest: digests.coverage,
+                    oracle_digest: digests.oracle,
+                    total_ticks: digests.total_ticks,
+                    snapshot_tick: digests.snapshot_tick,
+                    base_set_id,
+                };
+                let moment = admit_child_moment(
+                    staged.graph(),
+                    &self.identity,
+                    campaign_id,
+                    &facts,
+                    parent_event,
+                )?;
+                let draft = child_moment_draft(&self.identity, &facts, parent_event)?;
+                records.push(JournalRecord::new(
+                    MOMENT,
+                    encode_moment(moment.event, &draft).map_err(AdapterError::Wire)?,
+                ));
+                children.push(RetainedChild::from(&moment));
+                snapshots.push((moment.moment_id, retained.snapshot.clone()));
+                proposals.extend(retained.proposals.iter().map(|proposal| StagedProposal {
+                    moment_id: moment.moment_id,
+                    depth: retained.depth,
+                    schedule: &retained.schedule,
+                    proposal,
+                }));
+                staged.admit_moment(moment);
+            }
         }
         let result = result_observation(
             &self.identity,

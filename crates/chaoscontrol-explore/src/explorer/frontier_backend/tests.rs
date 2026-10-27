@@ -74,6 +74,7 @@ fn digests(tick: u64) -> Option<BranchDigests> {
         coverage: [3; 32],
         oracle: [5; 32],
         total_ticks: tick,
+        snapshot_tick: tick,
     })
 }
 
@@ -81,6 +82,7 @@ fn proposal(score: f64) -> EntryProposal {
     EntryProposal {
         score,
         marker: None,
+        assertion: false,
     }
 }
 
@@ -108,14 +110,18 @@ fn observation(depth: u32, branches: &[BranchScript]) -> RoundObservation {
                 new_edges: usize::from(branch.is_some()),
                 snapshot_present: true,
                 findings: Vec::new(),
-                retained: branch.as_ref().map(|scores| RetainedBranch {
-                    snapshot: dummy_snapshot(),
-                    coverage: CoverageBitmap::new(),
-                    schedule: FaultSchedule::new(),
-                    depth,
-                    proposals: scores.iter().copied().map(proposal).collect(),
-                    digests: digests(BRANCH_TICKS),
-                }),
+                retained: branch
+                    .as_ref()
+                    .map(|scores| RetainedBranch {
+                        snapshot: dummy_snapshot(),
+                        coverage: CoverageBitmap::new(),
+                        schedule: FaultSchedule::new(),
+                        depth,
+                        proposals: scores.iter().copied().map(proposal).collect(),
+                        digests: digests(BRANCH_TICKS),
+                    })
+                    .into_iter()
+                    .collect(),
             })
             .collect(),
     }

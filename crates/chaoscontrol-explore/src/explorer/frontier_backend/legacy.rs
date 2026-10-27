@@ -184,7 +184,7 @@ impl FrontierBackend for LegacyFrontier {
         let before = self.ids();
         let mut admitted = Vec::new();
         for branch in &observation.branches {
-            if let Some(retained) = &branch.retained {
+            for retained in &branch.retained {
                 let source = PushSource {
                     snapshot: &retained.snapshot,
                     coverage: &retained.coverage,

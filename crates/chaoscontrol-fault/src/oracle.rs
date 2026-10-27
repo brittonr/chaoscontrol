@@ -214,6 +214,38 @@ pub(crate) struct RunState {
     pub(crate) immediate_failure: Option<(AssertionFingerprint, String)>,
 }
 
+/// Extract the admitted guest-process owner from assertion event details.
+///
+/// Fallback payload details are application data; their owner is admitted
+/// through `FallbackRecord.process` instead. An invalid process token is an
+/// identity conflict, not an empty owner.
+pub fn admitted_process_identity(
+    admitted: &AdmittedAssertion,
+    details: Option<&[u8]>,
+) -> Result<Option<String>, CatalogConflict> {
+    let process_identity = details
+        .filter(|_| {
+            admitted.descriptor.category
+                != chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY
+        })
+        .and_then(|value| serde_json::from_slice::<serde_json::Value>(value).ok())
+        .and_then(|value| {
+            value
+                .get("chaoscontrol_process_identity")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        });
+    if process_identity
+        .as_deref()
+        .is_some_and(|identity| !chaoscontrol_protocol::process::validate_process_token(identity))
+    {
+        return Err(CatalogConflict::Descriptor(
+            chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
+        ));
+    }
+    Ok(process_identity)
+}
+
 /// The property oracle.  Tracks assertions across multiple runs.
 ///
 /// A live oracle accepts counters only through an activated catalog and
@@ -565,27 +597,10 @@ impl PropertyOracle {
                 chaoscontrol_protocol::identity::AssertionError::FieldTooLong("event_details"),
             ));
         }
-        let process_identity = details
-            // Fallback payload details are application data. Their owner is
-            // admitted from FallbackRecord.process through fallback_scope.
-            .filter(|_| {
-                admitted.descriptor.category
-                    != chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY
-            })
-            .and_then(|value| serde_json::from_slice::<serde_json::Value>(value).ok())
-            .and_then(|value| {
-                value
-                    .get("chaoscontrol_process_identity")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
-            });
-        if process_identity.as_deref().is_some_and(|identity| {
-            !chaoscontrol_protocol::process::validate_process_token(identity)
-        }) {
-            return self.reject_bound_event(CatalogConflict::Descriptor(
-                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
-            ));
-        }
+        let process_identity = match admitted_process_identity(&admitted, details) {
+            Ok(identity) => identity,
+            Err(conflict) => return self.reject_bound_event(conflict),
+        };
         let Some(record) = self.structured_assertions.get(&event.fingerprint) else {
             return self.reject_bound_event(CatalogConflict::UnknownFingerprint);
         };

@@ -37,10 +37,13 @@ use crate::memory::{
     BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
     HIMEM_START, PML4_START, RNG_SETUP_DATA_START, ZERO_PAGE_START,
 };
-use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+use chaoscontrol_fault::engine::{
+    AssertionHitEvent, EngineConfig, FaultEngine, MAX_ASSERTION_HIT_EVENTS,
+};
 use chaoscontrol_protocol::{
-    HypercallPage, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT, HYPERCALL_PAGE_ADDR,
-    HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
+    HypercallPage, CMD_ASSERT_ALWAYS, CMD_ASSERT_REACHABLE, CMD_ASSERT_SOMETIMES,
+    CMD_ASSERT_UNREACHABLE, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT,
+    HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
 };
 use chaoscontrol_sim_core::{
     build_guest_determinism_profile, derive_boot_entropy_seed, encode_linux_rng_seed_setup_data,
@@ -726,6 +729,15 @@ impl io::Write for CapturingWriter {
 ///
 /// The VM tracks execution statistics (exit counts) for use in
 /// deterministic scheduling and progress measurement.
+/// One accepted assertion hit with the deterministic VM boundary that observed it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssertionHitRecord {
+    pub event: AssertionHitEvent,
+    pub exit_count: u64,
+    pub virtual_tsc: u64,
+    pub vcpu: usize,
+}
+
 pub struct DeterministicVm {
     #[allow(dead_code)]
     kvm: Kvm,
@@ -808,6 +820,19 @@ pub struct DeterministicVm {
     /// Sliding window for serial panic detection.
     /// Accumulates the last 8 serial output bytes as a big-endian u64.
     panic_match_state: u64,
+
+    /// Accepted assertion hits awaiting explorer collection.
+    assertion_hits: Vec<AssertionHitRecord>,
+    /// Accepted assertion hits dropped because the VM-local queue was full.
+    assertion_hit_overflow: u64,
+    /// Whether assertion hits request a checkpoint stop at the next boundary.
+    assertion_checkpoint_stop: bool,
+    /// Maximum checkpoint stops admitted for the current branch.
+    assertion_checkpoint_stop_limit: u32,
+    /// Checkpoint stops already requested for the current branch.
+    assertion_checkpoint_stops: u32,
+    /// Set when an eligible hit requires the current bounded run to stop.
+    assertion_hit_stop_pending: bool,
 
     /// Per-thread POSIX timer for SIGALRM delivery.
     /// Created by `init_thread_timer()` for parallel worker threads.
@@ -1280,6 +1305,12 @@ impl DeterministicVm {
             exits_since_last_sdk: 0,
             panic_detected: false,
             panic_match_state: 0,
+            assertion_hits: Vec::new(),
+            assertion_hit_overflow: 0,
+            assertion_checkpoint_stop: false,
+            assertion_checkpoint_stop_limit: 0,
+            assertion_checkpoint_stops: 0,
+            assertion_hit_stop_pending: false,
             thread_timer: None,
             coverage_active: false,
             vmcall_enabled,
@@ -1889,6 +1920,10 @@ impl DeterministicVm {
                 // from leaking into subsequent VM runs in the same process.
                 self.disarm_preemption_timer();
                 return Ok((self.exit_count - start_exits, true));
+            }
+            if self.assertion_hit_stop_pending {
+                self.disarm_preemption_timer();
+                return Ok((self.exit_count - start_exits, false));
             }
             // Idle counter incremented in step() on every exit except
             // SDK/coverage port accesses (which reset it to 0).
@@ -3125,6 +3160,9 @@ impl DeterministicVm {
     /// Restore VM state from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
+        self.assertion_hit_stop_pending = false;
         self.validate_fault_engine_snapshot(snapshot)?;
         let mut phase = SnapshotRestorePhase::Quiesce;
         match self.restore_validated(snapshot, &mut phase) {
@@ -3280,6 +3318,9 @@ impl DeterministicVm {
         snapshot: &crate::snapshot::VmSnapshot,
         base: &[u8],
     ) -> Result<(), VmError> {
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
+        self.assertion_hit_stop_pending = false;
         self.validate_fault_engine_snapshot(snapshot)?;
         if base.len() != self.memory.size() {
             return Err(VmError::Snapshot {
@@ -4917,6 +4958,60 @@ impl DeterministicVm {
         &mut self.fault_engine
     }
 
+    /// Drain accepted assertion hits in guest order with their VM boundary.
+    pub fn take_assertion_hits(&mut self) -> Vec<AssertionHitRecord> {
+        std::mem::take(&mut self.assertion_hits)
+    }
+
+    /// Number of accepted hits dropped because the VM-local queue was full.
+    pub fn assertion_hit_overflow(&self) -> u64 {
+        self.assertion_hit_overflow
+    }
+
+    /// Configure branch-local checkpoint stopping and reset its counters.
+    pub fn configure_assertion_checkpoint_stop(&mut self, enabled: bool, max_stops: u32) {
+        self.assertion_checkpoint_stop = enabled;
+        self.assertion_checkpoint_stop_limit = max_stops;
+        self.assertion_checkpoint_stops = 0;
+        self.assertion_hit_stop_pending = false;
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
+    }
+
+    /// Consume a pending checkpoint stop request for the current bounded run.
+    pub fn take_assertion_hit_stop(&mut self) -> bool {
+        std::mem::take(&mut self.assertion_hit_stop_pending)
+    }
+
+    fn capture_assertion_hits(&mut self) {
+        let hits = self.fault_engine.take_assertion_hits();
+        for event in hits {
+            if self.assertion_hits.len() >= MAX_ASSERTION_HIT_EVENTS {
+                self.assertion_hit_overflow = self.assertion_hit_overflow.saturating_add(1);
+                continue;
+            }
+            let eligible = matches!(
+                event.kind,
+                chaoscontrol_protocol::identity::AssertionKind::Reachable
+            ) || (event.kind
+                == chaoscontrol_protocol::identity::AssertionKind::Sometimes
+                && event.condition);
+            if eligible
+                && self.assertion_checkpoint_stop
+                && self.assertion_checkpoint_stops < self.assertion_checkpoint_stop_limit
+            {
+                self.assertion_checkpoint_stops = self.assertion_checkpoint_stops.saturating_add(1);
+                self.assertion_hit_stop_pending = true;
+            }
+            self.assertion_hits.push(AssertionHitRecord {
+                event,
+                exit_count: self.exit_count,
+                virtual_tsc: self.virtual_tsc.read(),
+                vcpu: self.active_vcpu,
+            });
+        }
+    }
+
     /// Get a reference to the vCPU scheduler.
     pub fn scheduler(&self) -> &VcpuScheduler {
         &self.scheduler
@@ -4958,6 +5053,13 @@ impl DeterministicVm {
 
         // Resource observations are VM-owned because they describe this
         // exact guest's admitted execution surface.
+        let assertion_command = matches!(
+            page.command,
+            CMD_ASSERT_ALWAYS
+                | CMD_ASSERT_SOMETIMES
+                | CMD_ASSERT_REACHABLE
+                | CMD_ASSERT_UNREACHABLE
+        );
         let mut response_payload = false;
         let (result, status) = if page.command == chaoscontrol_protocol::CMD_RESOURCE_MEMORY_CEILING
         {
@@ -4971,6 +5073,12 @@ impl DeterministicVm {
         } else {
             self.fault_engine.handle_hypercall(&page)
         };
+
+        if assertion_command {
+            // The engine queues only admitted events. Failure statuses still
+            // carry an exact boundary for `always`/`unreachable` findings.
+            self.capture_assertion_hits();
+        }
 
         // Write result and status back to the guest page.
         const RESULT_OFFSET: usize = 0x10;

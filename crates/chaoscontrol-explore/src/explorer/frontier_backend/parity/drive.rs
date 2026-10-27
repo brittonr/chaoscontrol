@@ -371,6 +371,7 @@ fn structural_digests(origin: ParentOrigin) -> BranchDigests {
         coverage: digest(3),
         oracle: digest(4),
         total_ticks: tag,
+        snapshot_tick: tag,
     }
 }
 
@@ -429,14 +430,18 @@ fn observation(
             new_edges: branch.new_edges,
             snapshot_present: branch.snapshot,
             findings: findings.take(branch.new_findings),
-            retained: branch.retained().then(|| RetainedBranch {
-                snapshot: structural_snapshot(origin),
-                coverage: CoverageBitmap::new(),
-                schedule: FaultSchedule::new(),
-                depth,
-                proposals: branch.proposals.clone(),
-                digests: Some(structural_digests(origin)),
-            }),
+            retained: if branch.retained() {
+                vec![RetainedBranch {
+                    snapshot: structural_snapshot(origin),
+                    coverage: CoverageBitmap::new(),
+                    schedule: FaultSchedule::new(),
+                    depth,
+                    proposals: branch.proposals.clone(),
+                    digests: Some(structural_digests(origin)),
+                }]
+            } else {
+                Vec::new()
+            },
         });
     }
     Ok(RoundObservation { branches })

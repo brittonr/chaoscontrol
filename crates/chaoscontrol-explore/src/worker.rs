@@ -427,12 +427,16 @@ fn run_single_branch(
 
     // Apply the schedule in a new branch run.
     controller.begin_counterfactual_fault_run(schedule.clone())?;
+    controller.configure_assertion_checkpoint_stop(
+        true,
+        crate::assertion_checkpoints::DEFAULT_ASSERTION_CAPTURES_PER_BRANCH,
+    );
 
     // Clear coverage
     controller.clear_all_coverage();
 
     // Run
-    controller.run(ticks_per_branch)?;
+    let run = controller.run(ticks_per_branch)?;
 
     // Collect results
     let result_info = controller.report();
@@ -486,6 +490,7 @@ fn run_single_branch(
         schedule_variant: schedule_variant.cloned(),
         schedule_fingerprint,
         timings: BranchTimings::default(),
+        assertion_checkpoints: run.assertion_checkpoints,
     })
 }
 
@@ -503,6 +508,7 @@ fn empty_branch_result(work: &BranchWork) -> BranchResult {
         schedule_variant: work.schedule_variant.clone(),
         schedule_fingerprint: 0,
         timings: BranchTimings::default(),
+        assertion_checkpoints: Vec::new(),
     }
 }
 

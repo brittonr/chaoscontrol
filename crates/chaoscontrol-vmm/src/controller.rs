@@ -16,7 +16,7 @@ use crate::scheduler::core::ScheduleTrace;
 use crate::scheduler::ScheduleVariant;
 use crate::sim_adapter::KvmExecutor;
 use crate::snapshot::VmSnapshot;
-use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
+use crate::vm::{AssertionHitRecord, DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::outcomes::{
@@ -266,6 +266,8 @@ pub struct SimulationController {
     fault_operation_sequence: u64,
     /// Process observations retained until their ledger batch commits.
     pending_process_observations: VecDeque<(usize, FaultObservation)>,
+    /// Assertion-hit checkpoints captured at exact VM boundaries.
+    assertion_checkpoints: Vec<ControllerAssertionCheckpoint>,
     /// Permanent latch after a round fails once mutation has started.
     round_poison: Option<ControllerRoundPoison>,
 }
@@ -362,6 +364,36 @@ impl SimulationController {
 
     /// All boundary effects are admitted before mutation and use the same owners
     /// as ordinary rounds. A failed effect cannot leave the controller runnable.
+    /// Run a VM budget, capturing exact checkpoints when an admitted hit stops it.
+    fn run_vcpu_with_assertion_checkpoints(
+        &mut self,
+        vm_index: usize,
+        max_exits: u64,
+    ) -> Result<(u64, bool), VmError> {
+        let mut remaining = max_exits;
+        let mut total_exits = 0_u64;
+        loop {
+            let (exits, halted) = self.vms[vm_index].vm.run_bounded(remaining)?;
+            total_exits = total_exits.saturating_add(exits);
+            remaining = remaining.saturating_sub(exits);
+            let stopped = self.vms[vm_index].vm.take_assertion_hit_stop();
+            let hits = self.vms[vm_index].vm.take_assertion_hits();
+            if stopped && !hits.is_empty() {
+                let snapshot = self.snapshot_all()?;
+                self.assertion_checkpoints
+                    .push(ControllerAssertionCheckpoint {
+                        vm_index,
+                        tick: self.tick,
+                        hits,
+                        snapshot,
+                    });
+            }
+            if halted || remaining == 0 || exits == 0 {
+                return Ok((total_exits, halted));
+            }
+        }
+    }
+
     pub(crate) fn execute_core_command(
         &mut self,
         command: &ExecutionCommand,
@@ -385,7 +417,8 @@ impl SimulationController {
                         });
                     }
                     mutation_started = true;
-                    let (exits, halted) = self.vms[*vm_index].vm.run_bounded(*exit_budget)?;
+                    let (exits, halted) =
+                        self.run_vcpu_with_assertion_checkpoints(*vm_index, *exit_budget)?;
                     ExitObservation::VcpuCompleted {
                         sequence,
                         vm_index: *vm_index,
@@ -616,6 +649,7 @@ impl SimulationController {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
+            assertion_checkpoints: Vec::new(),
             round_poison: None,
         })
     }
@@ -662,6 +696,7 @@ impl SimulationController {
             vm_exit_counts,
             network_stats: self.network.stats.clone(),
             fault_outcomes: self.fault_engine.fault_outcomes().clone(),
+            assertion_checkpoints: std::mem::take(&mut self.assertion_checkpoints),
         })
     }
 
@@ -733,6 +768,7 @@ impl SimulationController {
             vm_exit_counts,
             network_stats: self.network.stats.clone(),
             fault_outcomes: self.fault_engine.fault_outcomes().clone(),
+            assertion_checkpoints: std::mem::take(&mut self.assertion_checkpoints),
         })
     }
 
@@ -953,7 +989,8 @@ impl SimulationController {
                             self.vms[i].status = VmStatus::Running;
                             self.vms[i].process_fault_attempt = None;
                             // Run the resumed VM for this round's quantum
-                            let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
+                            let (exits, halted) =
+                                self.run_vcpu_with_assertion_checkpoints(i, self.quantum)?;
                             if halted {
                                 self.vms[i].status = VmStatus::Paused;
                                 vms_halted += 1;
@@ -2721,6 +2758,37 @@ impl SimulationController {
         self.merged_oracle_report()
     }
 
+    /// Configure assertion-hit checkpoint stopping for the next branch.
+    pub fn configure_assertion_checkpoint_stop(&mut self, enabled: bool, max_stops: u32) {
+        for slot in &mut self.vms {
+            slot.vm
+                .configure_assertion_checkpoint_stop(enabled, max_stops);
+        }
+    }
+
+    /// Drain captured assertion-hit checkpoints in capture order.
+    pub fn take_assertion_checkpoints(&mut self) -> Vec<ControllerAssertionCheckpoint> {
+        std::mem::take(&mut self.assertion_checkpoints)
+    }
+
+    /// Drain accepted assertion hits from every VM, tagged with its VM slot.
+    pub fn take_assertion_hits(&mut self) -> Vec<ControllerAssertionHit> {
+        let mut hits = Vec::new();
+        for (vm_index, slot) in self.vms.iter_mut().enumerate() {
+            for record in slot.vm.take_assertion_hits() {
+                hits.push(ControllerAssertionHit { vm_index, record });
+            }
+        }
+        hits
+    }
+
+    /// Number of accepted hits dropped because a VM-local queue was full.
+    pub fn assertion_hit_overflow(&self) -> u64 {
+        self.vms.iter().fold(0_u64, |total, slot| {
+            total.saturating_add(slot.vm.assertion_hit_overflow())
+        })
+    }
+
     /// Merge oracle reports from all VM fault engines.
     ///
     /// Each VM has its own FaultEngine + PropertyOracle that tracks
@@ -2996,6 +3064,26 @@ pub struct VmScheduleTrace {
     pub trace: ScheduleTrace,
 }
 
+/// One accepted assertion hit and the VM slot that observed it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControllerAssertionHit {
+    pub vm_index: usize,
+    pub record: AssertionHitRecord,
+}
+
+/// Exact checkpoint captured after an assertion hit stopped a VM.
+#[derive(Debug, Clone)]
+pub struct ControllerAssertionCheckpoint {
+    /// VM that produced the hit.
+    pub vm_index: usize,
+    /// Global simulation tick at the capture boundary.
+    pub tick: u64,
+    /// Hits observed at this boundary.
+    pub hits: Vec<AssertionHitRecord>,
+    /// Complete simulation state at the boundary.
+    pub snapshot: SimulationSnapshot,
+}
+
 /// Result of a single scheduling round.
 #[derive(Debug)]
 pub struct RoundResult {
@@ -3028,6 +3116,8 @@ pub struct SimulationResult {
     pub network_stats: NetworkStats,
     /// Ordered stage ledger for all fault attempts in this simulation.
     pub fault_outcomes: chaoscontrol_fault::outcomes::FaultOutcomeLedger,
+    /// Exact assertion-hit checkpoints captured during the run.
+    pub assertion_checkpoints: Vec<ControllerAssertionCheckpoint>,
 }
 
 /// Active guest-visible memory-pressure state retained by replay snapshots.
@@ -3203,6 +3293,7 @@ mod tests {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
+            assertion_checkpoints: Vec::new(),
             round_poison: None,
         };
         controller.fault_engine.begin_run();
@@ -3421,6 +3512,7 @@ mod tests {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
+            assertion_checkpoints: Vec::new(),
             round_poison: None,
         }
     }
@@ -3553,6 +3645,7 @@ mod tests {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
+            assertion_checkpoints: Vec::new(),
             round_poison: None,
         };
         let mut engine_value =

@@ -414,6 +414,7 @@ fn proposal(recorded: TraceProposal) -> EntryProposal {
             run_id: 0,
             observed_tick: 0,
         }),
+        assertion: recorded.assertion,
     }
 }
 

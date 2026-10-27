@@ -125,14 +125,16 @@ pub(crate) fn round_manifest_digest(
             hasher.update(&finding.dedup_key.to_le_bytes());
             hasher.update(&finding.assertion_fingerprint);
         }
-        if let Some(retained) = &branch.retained {
+        for retained in &branch.retained {
             if let Some(digests) = &retained.digests {
                 hasher.update(&digests.schedule);
                 hasher.update(&digests.coverage);
                 hasher.update(&digests.oracle);
+                hasher.update(&digests.snapshot_tick.to_le_bytes());
             }
             for proposal in &retained.proposals {
                 hasher.update(&proposal.score.to_bits().to_le_bytes());
+                hasher.update(&[u8::from(proposal.assertion)]);
             }
         }
     }

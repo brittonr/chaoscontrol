@@ -68,6 +68,9 @@ pub(crate) struct TraceProposal {
     pub(crate) score_bits: u64,
     /// Whether a marker created it.
     pub(crate) marker: bool,
+    /// Whether an assertion hit created it.
+    #[serde(default)]
+    pub(crate) assertion: bool,
 }
 
 /// One executed branch.
@@ -208,8 +211,9 @@ impl TraceRecord {
                 new_bugs: branch.findings.len(),
                 proposals: branch
                     .retained
-                    .as_ref()
-                    .map_or_else(Vec::new, |retained| trace_proposals(&retained.proposals)),
+                    .iter()
+                    .flat_map(|retained| trace_proposals(&retained.proposals))
+                    .collect(),
             })
             .collect();
         Self::Round(TraceRound {
@@ -256,6 +260,7 @@ pub(crate) fn trace_proposals(proposals: &[EntryProposal]) -> Vec<TraceProposal>
         .map(|proposal| TraceProposal {
             score_bits: proposal.score.to_bits(),
             marker: proposal.marker.is_some(),
+            assertion: proposal.assertion,
         })
         .collect()
 }

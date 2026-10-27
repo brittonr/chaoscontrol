@@ -1,5 +1,9 @@
 //! The main exploration loop — coverage-guided fault schedule search.
 
+use crate::assertion_checkpoints::{
+    AssertionCheckpointDecisionKind, AssertionCheckpointLimits, AssertionCheckpointSelector,
+    AssertionHitObservation, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH,
+};
 use crate::branch_recovery::{
     decide_after_watchdog, explore_error_watchdog_vcpu, BranchOutcome as RecoveredBranchOutcome,
     RecoverySnapshot, RoundWatchdogLedger, WatchdogDecision, MAX_BRANCH_WATCHDOG_ATTEMPTS,
@@ -411,6 +415,8 @@ pub struct Explorer {
     consecutive_stale_rounds: u64,
     /// Prior observations per stable branch-marker identity.
     marker_hits: BTreeMap<String, u32>,
+    /// Campaign-persistent assertion-hit checkpoint selector.
+    assertion_checkpoint_selector: AssertionCheckpointSelector,
     /// Materialized phase summary (stored at bootstrap time).
     scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
     metrics_sink: Option<std::io::BufWriter<std::fs::File>>,
@@ -439,6 +445,9 @@ impl Explorer {
         let mutator = ScheduleMutator::new(config.seed);
         let coverage = CoverageCollector::new(config.coverage_gpa);
         let rng = ChaCha8Rng::seed_from_u64(config.seed);
+        let assertion_checkpoint_selector =
+            AssertionCheckpointSelector::new(AssertionCheckpointLimits::default(), config.seed)
+                .expect("default assertion checkpoint limits are valid");
 
         Self {
             config,
@@ -447,6 +456,7 @@ impl Explorer {
             mutator,
             coverage,
             rng,
+            assertion_checkpoint_selector,
             controller: None,
             rounds_completed: 0,
             total_branches_run: 0,
@@ -934,6 +944,15 @@ impl Explorer {
         result: &BranchResult,
         schedule: &FaultSchedule,
     ) -> Result<Option<BranchDigests>, ExploreError> {
+        self.branch_digests_at(result, schedule, result.total_ticks)
+    }
+
+    fn branch_digests_at(
+        &self,
+        result: &BranchResult,
+        schedule: &FaultSchedule,
+        snapshot_tick: u64,
+    ) -> Result<Option<BranchDigests>, ExploreError> {
         if self.config.frontier_policy.is_legacy_diagnostic() {
             return Ok(None);
         }
@@ -943,6 +962,7 @@ impl Explorer {
             coverage: coverage_digest(&result.coverage),
             oracle: oracle_digest(&result.oracle_report)?,
             total_ticks: result.total_ticks,
+            snapshot_tick,
         }))
     }
 
@@ -1056,6 +1076,7 @@ impl Explorer {
             return Ok(vec![EntryProposal {
                 score: base_score,
                 marker: None,
+                assertion: false,
             }]);
         }
         let mut seen = BTreeSet::new();
@@ -1072,6 +1093,7 @@ impl Explorer {
                 proposals.push(EntryProposal {
                     score: marker_score(base_score, prior_hits),
                     marker: Some(frontier_metadata(observation, result.total_ticks)),
+                    assertion: false,
                 });
             }
         }
@@ -1087,7 +1109,7 @@ impl Explorer {
             marker_observations(&result.oracle_report).map_err(|error| ExploreError::Config {
                 message: format!("invalid branch marker: {error:?}"),
             })?;
-        Ok(new_edges > 0 || !markers.is_empty())
+        Ok(new_edges > 0 || !markers.is_empty() || !result.assertion_checkpoints.is_empty())
     }
 
     /// Product facts of one executed branch; retains it when it has new edges
@@ -1107,23 +1129,66 @@ impl Explorer {
                 assertion_fingerprint: bug.assertion_identity.fingerprint.0,
             })
             .collect();
-        let retained = match enriched {
-            Some((result, schedule, depth)) => match result.snapshot.clone() {
-                Some(snapshot) => {
-                    let proposals = self.entry_proposals(result, depth)?;
-                    Some(RetainedBranch {
-                        snapshot,
+        let mut retained = Vec::new();
+        if let Some((result, schedule, depth)) = enriched {
+            if let Some(snapshot) = result.snapshot.clone() {
+                let proposals = self.entry_proposals(result, depth)?;
+                retained.push(RetainedBranch {
+                    snapshot,
+                    coverage: result.coverage.clone(),
+                    schedule: schedule.clone(),
+                    depth,
+                    proposals,
+                    digests: self.branch_digests(result, schedule)?,
+                });
+            }
+            if !result.assertion_checkpoints.is_empty() {
+                let candidates: Vec<_> = result
+                    .assertion_checkpoints
+                    .iter()
+                    .flat_map(|checkpoint| {
+                        checkpoint
+                            .hits
+                            .iter()
+                            .map(move |hit| (assertion_observation(checkpoint, hit), checkpoint))
+                    })
+                    .collect();
+                let observations: Vec<_> = candidates
+                    .iter()
+                    .map(|(observation, _)| observation.clone())
+                    .collect();
+                let selection = self.assertion_checkpoint_selector.select(&observations);
+                let base_score = self.score_branch(result, depth);
+                let mut seen_checkpoints = BTreeSet::new();
+                for decision in selection.decisions {
+                    if decision.reason != AssertionCheckpointDecisionKind::Selected {
+                        continue;
+                    }
+                    let Some(checkpoint) =
+                        candidates.iter().find_map(|(observation, checkpoint)| {
+                            (observation == &decision.observation).then_some(*checkpoint)
+                        })
+                    else {
+                        continue;
+                    };
+                    if !seen_checkpoints.insert((checkpoint.vm_index, checkpoint.tick)) {
+                        continue;
+                    }
+                    retained.push(RetainedBranch {
+                        snapshot: checkpoint.snapshot.clone(),
                         coverage: result.coverage.clone(),
                         schedule: schedule.clone(),
                         depth,
-                        proposals,
-                        digests: self.branch_digests(result, schedule)?,
-                    })
+                        proposals: vec![EntryProposal {
+                            score: base_score + decision.score,
+                            marker: None,
+                            assertion: true,
+                        }],
+                        digests: self.branch_digests_at(result, schedule, checkpoint.tick)?,
+                    });
                 }
-                None => None,
-            },
-            None => None,
-        };
+            }
+        }
         Ok(BranchOutcome {
             slot,
             new_edges,
@@ -1784,6 +1849,7 @@ impl Explorer {
             schedule_variant: None,
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
+            assertion_checkpoints: Vec::new(),
         })
     }
 
@@ -1801,10 +1867,13 @@ impl Explorer {
     ) -> Result<BranchResult, ExploreError> {
         self.ensure_controller()?;
         let mut timings = BranchTimings::default();
+        let assertion_checkpoints;
 
         // Phase 1: restore + run (needs &mut controller)
         {
             let controller = self.controller.as_mut().unwrap();
+            controller
+                .configure_assertion_checkpoint_stop(true, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH);
 
             // Restore from snapshot if provided (rewinds VM state without reboot)
             if let Some(snap) = snapshot {
@@ -1832,7 +1901,8 @@ impl Explorer {
 
             // Run for configured ticks
             let started = Instant::now();
-            controller.run(self.config.ticks_per_branch)?;
+            let run = controller.run(self.config.ticks_per_branch)?;
+            assertion_checkpoints = run.assertion_checkpoints;
             timings.run_ms += started.elapsed().as_secs_f64() * 1000.0;
         }
 
@@ -1891,6 +1961,7 @@ impl Explorer {
             schedule_variant: schedule_variant.cloned(),
             schedule_fingerprint,
             timings,
+            assertion_checkpoints,
         })
     }
 
@@ -1906,10 +1977,13 @@ impl Explorer {
     ) -> Result<BranchResult, ExploreError> {
         self.ensure_controller()?;
         let mut timings = BranchTimings::default();
+        let assertion_checkpoints;
 
         // Phase 1: restore + set overrides + run
         {
             let controller = self.controller.as_mut().unwrap();
+            controller
+                .configure_assertion_checkpoint_stop(true, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH);
 
             if let Some(snap) = snapshot {
                 let started = Instant::now();
@@ -1933,7 +2007,8 @@ impl Explorer {
 
             controller.clear_all_coverage();
             let started = Instant::now();
-            controller.run(self.config.ticks_per_branch)?;
+            let run = controller.run(self.config.ticks_per_branch)?;
+            assertion_checkpoints = run.assertion_checkpoints;
             timings.run_ms += started.elapsed().as_secs_f64() * 1000.0;
         }
 
@@ -1987,6 +2062,7 @@ impl Explorer {
             schedule_variant: None,
             schedule_fingerprint,
             timings,
+            assertion_checkpoints,
         })
     }
 
@@ -2878,6 +2954,9 @@ impl Explorer {
         coverage.update_global(&restored_bitmap);
 
         let rng = ChaCha8Rng::seed_from_u64(config.seed);
+        let assertion_checkpoint_selector =
+            AssertionCheckpointSelector::new(AssertionCheckpointLimits::default(), config.seed)
+                .expect("default assertion checkpoint limits are valid");
 
         info!(
             "Restored checkpoint: {} rounds completed, {} branches, {} edges",
@@ -2895,6 +2974,7 @@ impl Explorer {
             rounds_completed: checkpoint.rounds_completed,
             total_branches_run: checkpoint.total_branches_run,
             round_history: checkpoint.round_history.unwrap_or_default(),
+            assertion_checkpoint_selector,
             memory_bases: Vec::new(),
             worker_pool: None,
             event_sink: None,
@@ -2981,6 +3061,8 @@ pub struct BranchResult {
     pub schedule_fingerprint: u64,
     /// Per-branch wall-clock phase timings.
     pub timings: BranchTimings,
+    /// Exact assertion-hit checkpoints captured during the branch.
+    pub assertion_checkpoints: Vec<chaoscontrol_vmm::controller::ControllerAssertionCheckpoint>,
 }
 
 impl Clone for BranchResult {
@@ -2997,6 +3079,7 @@ impl Clone for BranchResult {
             schedule_variant: self.schedule_variant.clone(),
             schedule_fingerprint: self.schedule_fingerprint,
             timings: self.timings,
+            assertion_checkpoints: self.assertion_checkpoints.clone(),
         }
     }
 }
@@ -3172,6 +3255,25 @@ pub struct ExplorationStats {
     pub bugs: usize,
     pub frontier_size: usize,
     pub corpus_size: usize,
+}
+
+fn assertion_observation(
+    checkpoint: &chaoscontrol_vmm::controller::ControllerAssertionCheckpoint,
+    hit: &chaoscontrol_vmm::vm::AssertionHitRecord,
+) -> AssertionHitObservation {
+    AssertionHitObservation {
+        run_id: hit.event.run_id.0,
+        vm_index: checkpoint.vm_index,
+        vcpu: hit.vcpu,
+        exit_count: hit.exit_count,
+        observed_tick: checkpoint.tick,
+        fingerprint: hit.event.fingerprint,
+        kind: hit.event.kind,
+        condition: hit.event.condition,
+        compatibility_id: hit.event.compatibility_id,
+        guest: hit.event.guest.clone(),
+        process_identity: hit.event.process_identity.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -3496,7 +3598,71 @@ mod tests {
             schedule_variant: None,
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
+            assertion_checkpoints: Vec::new(),
         }
+    }
+
+    #[test]
+    fn assertion_checkpoint_adds_a_retained_branch() {
+        use chaoscontrol_fault::outcomes::FaultRunId;
+        use chaoscontrol_protocol::identity::{AssertionFingerprint, AssertionKind};
+        use chaoscontrol_vmm::controller::{ControllerAssertionCheckpoint, NetworkFabric};
+        use chaoscontrol_vmm::vm::AssertionHitRecord;
+
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let snapshot = SimulationSnapshot {
+            tick: TEST_MARKER_TICK,
+            vm_snapshots: Vec::new(),
+            network_state: NetworkFabric::new(1, TEST_VARIANT_SEED),
+            fault_engine_snapshot: chaoscontrol_fault::engine::FaultEngine::new(Default::default())
+                .snapshot(),
+            vcpu_stall_until: Vec::new(),
+            clock_freeze: Vec::new(),
+            clock_jitter_bound: Vec::new(),
+            memory_pressure: Vec::new(),
+            process_fault_attempt: Vec::new(),
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
+        };
+        let mut result = branch_result(OracleReport::empty());
+        result.snapshot = Some(snapshot.clone());
+        result.assertion_checkpoints = vec![ControllerAssertionCheckpoint {
+            vm_index: 0,
+            tick: TEST_MARKER_TICK,
+            hits: vec![AssertionHitRecord {
+                event: chaoscontrol_fault::engine::AssertionHitEvent {
+                    run_id: FaultRunId([9; 32]),
+                    run_sequence: 1,
+                    fingerprint: AssertionFingerprint([3; 32]),
+                    kind: AssertionKind::Sometimes,
+                    condition: true,
+                    compatibility_id: Some(3),
+                    guest: "guest".to_string(),
+                    category: "branch".to_string(),
+                    process_identity: None,
+                },
+                exit_count: 100,
+                virtual_tsc: 1_000,
+                vcpu: 0,
+            }],
+            snapshot,
+        }];
+
+        let outcome = explorer
+            .branch_outcome(
+                BranchSlot::Variant(0),
+                1,
+                &[],
+                Some((&result, &FaultSchedule::new(), 1)),
+                true,
+            )
+            .expect("branch outcome");
+
+        assert_eq!(outcome.retained.len(), 2);
+        assert!(outcome
+            .retained
+            .iter()
+            .any(|retained| retained.proposals.iter().any(|p| p.assertion)));
     }
 
     #[test]
@@ -4157,6 +4323,7 @@ mod tests {
             schedule_variant: None,
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
+            assertion_checkpoints: Vec::new(),
         };
 
         // Add some coverage

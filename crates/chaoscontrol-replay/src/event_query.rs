@@ -178,6 +178,70 @@ pub fn envelope_from_recorded_event(
     }
 }
 
+/// Build canonical envelopes from raw dlog bytes.
+///
+/// The source identity is the BLAKE3 digest of the complete dlog byte stream.
+pub fn envelopes_from_dlog_bytes(
+    bytes: &[u8],
+    max_records: usize,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    use chaoscontrol_vmm::dlog::{DlogRecord, RECORD_SIZE};
+    if !bytes.len().is_multiple_of(RECORD_SIZE) {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    if max_records == 0 {
+        return Err(EventQueryError::ScanBound);
+    }
+    let source_id = *blake3::hash(bytes).as_bytes();
+    let mut envelopes = Vec::new();
+    for sequence in 0..bytes.len() / RECORD_SIZE {
+        if envelopes.len() >= max_records {
+            break;
+        }
+        let start = sequence * RECORD_SIZE;
+        let mut record = [0_u8; RECORD_SIZE];
+        record.copy_from_slice(&bytes[start..start + RECORD_SIZE]);
+        let record = DlogRecord::from_bytes(record);
+        envelopes.push(envelope_from_dlog(source_id, sequence as u64, &record));
+    }
+    Ok(envelopes)
+}
+
+fn envelope_from_dlog(
+    source_id: [u8; 32],
+    source_sequence: u64,
+    record: &chaoscontrol_vmm::dlog::DlogRecord,
+) -> EventEnvelope {
+    let text = format!(
+        "tag={} exit={} rip={:#x} vcpu={}",
+        record.tag, record.exit_count, record.rip, record.vcpu
+    );
+    EventEnvelope {
+        schema: EVENT_ENVELOPE_SCHEMA.to_string(),
+        source_id,
+        source_kind: EventSourceKind::Dlog,
+        source_sequence,
+        tick: record.virtual_tsc,
+        vm_index: None,
+        process: None,
+        thread: Some(u32::from(record.vcpu)),
+        kind: format!("dlog_{}", record.tag),
+        text: bounded_text(&text),
+        payload_digest: *blake3::hash(&record.to_bytes()).as_bytes(),
+        details: Some(serde_json::json!({
+            "seq": record.seq,
+            "exit_count": record.exit_count,
+            "rip": record.rip,
+            "tag": record.tag,
+            "vcpu": record.vcpu,
+            "port_or_addr": u32::from(record.port_or_addr_lo) | (u32::from(record.port_or_addr_hi) << 16),
+            "data": record.data,
+            "extra": record.extra,
+        })),
+        derived: BTreeMap::new(),
+    }
+}
+
 fn bounded_text(value: &str) -> String {
     if value.len() <= MAX_EVENT_TEXT_BYTES {
         return value.to_string();
@@ -932,6 +996,23 @@ mod tests {
         };
         let envelope = envelope_from_recorded_event([5; 32], 4, &long);
         assert_eq!(envelope.text.len(), MAX_EVENT_TEXT_BYTES);
+    }
+
+    #[test]
+    fn dlog_bytes_become_canonical_envelopes() {
+        use chaoscontrol_vmm::dlog::{DlogRecord, DlogTag, RECORD_SIZE};
+        let record = DlogRecord::new(7, 100, 42, 0x200, DlogTag::IoOut, 0).with_port(0x10);
+        let bytes = record.to_bytes();
+        let envelopes = envelopes_from_dlog_bytes(&bytes, 10).unwrap();
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0].source_kind, EventSourceKind::Dlog);
+        assert_eq!(envelopes[0].tick, 100);
+        assert_eq!(envelopes[0].kind, format!("dlog_{}", record.tag));
+        assert_ne!(envelopes[0].payload_digest, [0; 32]);
+        assert_eq!(
+            envelopes_from_dlog_bytes(&bytes[..RECORD_SIZE - 1], 10).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
     }
 
     #[test]

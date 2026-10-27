@@ -1,8 +1,9 @@
 //! Bounded local event query and static timeline tool.
 
 use chaoscontrol_replay::event_query::{
-    envelopes_from_recording, evaluate, receipt_for, render_timeline_dot, render_timeline_markdown,
-    EventEnvelope, EventQuery, EventQueryLimits, TimelineFact,
+    envelopes_from_dlog_bytes, envelopes_from_recording, evaluate, receipt_for,
+    render_timeline_dot, render_timeline_markdown, EventEnvelope, EventQuery, EventQueryLimits,
+    TimelineFact,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -28,6 +29,9 @@ enum Command {
         /// Optional retained recording JSON file.
         #[arg(long)]
         recording: Option<PathBuf>,
+        /// Optional raw dlog file.
+        #[arg(long)]
+        dlog: Option<PathBuf>,
         /// Query JSON file.
         query: PathBuf,
         /// Output result JSON file.
@@ -70,6 +74,7 @@ fn run() -> Result<(), String> {
         Command::Query {
             events,
             recording,
+            dlog,
             query,
             output,
             receipt,
@@ -79,17 +84,22 @@ fn run() -> Result<(), String> {
                 Some(path) => read_json(&path)?,
                 None => EventQueryLimits::default(),
             };
-            let events: Vec<EventEnvelope> = match (events, recording) {
-                (Some(path), None) => read_json(&path)?,
-                (None, Some(path)) => {
+            let events: Vec<EventEnvelope> = match (events, recording, dlog) {
+                (Some(path), None, None) => read_json(&path)?,
+                (None, Some(path), None) => {
                     let recording = chaoscontrol_replay::serialize::load_recording(&path)
                         .map_err(|error| error.to_string())?;
                     envelopes_from_recording(&recording)
                 }
-                (Some(_), Some(_)) => {
-                    return Err("pass either --recording or an events file, not both".to_string())
+                (None, None, Some(path)) => {
+                    let bytes = read_bytes(&path)?;
+                    envelopes_from_dlog_bytes(&bytes, limits.max_scanned_events)
+                        .map_err(|error| error.to_string())?
                 }
-                (None, None) => return Err("pass --recording or an events file".to_string()),
+                (None, None, None) => {
+                    return Err("pass --recording, --dlog, or an events file".to_string())
+                }
+                _ => return Err("pass exactly one input source".to_string()),
             };
             let query: EventQuery = read_json(&query)?;
             let result = evaluate(&query, &events, &limits).map_err(|error| error.to_string())?;
@@ -135,6 +145,18 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
     }
     let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let metadata =
+        std::fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
+    }
+    if metadata.len() > MAX_INPUT_BYTES {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {

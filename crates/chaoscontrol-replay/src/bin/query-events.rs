@@ -1,8 +1,8 @@
 //! Bounded local event query and static timeline tool.
 
 use chaoscontrol_replay::event_query::{
-    evaluate, receipt_for, render_timeline_dot, render_timeline_markdown, EventEnvelope,
-    EventQuery, EventQueryLimits, TimelineFact,
+    envelopes_from_recording, evaluate, receipt_for, render_timeline_dot, render_timeline_markdown,
+    EventEnvelope, EventQuery, EventQueryLimits, TimelineFact,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -23,8 +23,11 @@ struct Cli {
 enum Command {
     /// Evaluate one typed query over event envelopes.
     Query {
-        /// JSON array of event envelopes.
-        events: PathBuf,
+        /// Optional JSON array of event envelopes.
+        events: Option<PathBuf>,
+        /// Optional retained recording JSON file.
+        #[arg(long)]
+        recording: Option<PathBuf>,
         /// Query JSON file.
         query: PathBuf,
         /// Output result JSON file.
@@ -66,6 +69,7 @@ fn run() -> Result<(), String> {
     match cli.command {
         Command::Query {
             events,
+            recording,
             query,
             output,
             receipt,
@@ -75,7 +79,18 @@ fn run() -> Result<(), String> {
                 Some(path) => read_json(&path)?,
                 None => EventQueryLimits::default(),
             };
-            let events: Vec<EventEnvelope> = read_json(&events)?;
+            let events: Vec<EventEnvelope> = match (events, recording) {
+                (Some(path), None) => read_json(&path)?,
+                (None, Some(path)) => {
+                    let recording = chaoscontrol_replay::serialize::load_recording(&path)
+                        .map_err(|error| error.to_string())?;
+                    envelopes_from_recording(&recording)
+                }
+                (Some(_), Some(_)) => {
+                    return Err("pass either --recording or an events file, not both".to_string())
+                }
+                (None, None) => return Err("pass --recording or an events file".to_string()),
+            };
             let query: EventQuery = read_json(&query)?;
             let result = evaluate(&query, &events, &limits).map_err(|error| error.to_string())?;
             write_json(&output, &result)?;

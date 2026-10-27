@@ -1,8 +1,8 @@
 //! The main exploration loop — coverage-guided fault schedule search.
 
 use crate::assertion_checkpoints::{
-    AssertionCheckpointDecisionKind, AssertionCheckpointLimits, AssertionCheckpointSelector,
-    AssertionHitObservation, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH,
+    AssertionCheckpointDecisionKind, AssertionCheckpointError, AssertionCheckpointLimits,
+    AssertionCheckpointSelector, AssertionHitObservation, DEFAULT_ASSERTION_CAPTURES_PER_BRANCH,
 };
 use crate::branch_recovery::{
     decide_after_watchdog, explore_error_watchdog_vcpu, BranchOutcome as RecoveredBranchOutcome,
@@ -93,6 +93,37 @@ pub enum ExploreError {
 
     #[snafu(display("frontier-policy.json receipt write failed"))]
     FrontierPolicyReceipt { source: std::io::Error },
+}
+
+/// Failure to resume an explorer from a checkpoint.
+#[derive(Debug)]
+pub enum ExplorerResumeError {
+    /// The retained bug set does not match the admitted assertion report.
+    BugIdentity(crate::checkpoint::BugSetIdentityError),
+    /// The retained assertion-checkpoint selector state is invalid.
+    Selector(AssertionCheckpointError),
+}
+
+impl core::fmt::Display for ExplorerResumeError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::BugIdentity(error) => write!(formatter, "invalid assertion identity: {error}"),
+            Self::Selector(error) => {
+                write!(
+                    formatter,
+                    "invalid assertion checkpoint selector state: {error}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExplorerResumeError {}
+
+impl From<crate::checkpoint::BugSetIdentityError> for ExplorerResumeError {
+    fn from(error: crate::checkpoint::BugSetIdentityError) -> Self {
+        Self::BugIdentity(error)
+    }
 }
 
 /// How the explorer branches the execution tree.
@@ -2895,6 +2926,7 @@ impl Explorer {
             scenario_summary: self.scenario_summary.clone(),
             campaign_journal: self.frontier.journal_binding(),
             release_eligible: self.release_eligible(),
+            assertion_checkpoint_selector: Some(self.assertion_checkpoint_selector.state()),
         })
     }
 
@@ -2904,7 +2936,7 @@ impl Explorer {
         kernel_path_override: Option<String>,
         initrd_path_override: Option<String>,
         max_rounds_override: Option<u64>,
-    ) -> Result<Self, crate::checkpoint::BugSetIdentityError> {
+    ) -> Result<Self, ExplorerResumeError> {
         let standalone_bugs = crate::checkpoint::replay_bug_set(
             &checkpoint.bugs,
             checkpoint.assertion_report.as_ref(),
@@ -2963,7 +2995,7 @@ impl Explorer {
             checkpoint.rounds_completed, checkpoint.total_branches_run, checkpoint.total_edges
         );
 
-        Ok(Self {
+        let mut explorer = Self {
             config,
             frontier,
             corpus,
@@ -2993,7 +3025,14 @@ impl Explorer {
             resumed_journal: checkpoint.campaign_journal.clone(),
             inherits_diagnostic_rounds: !checkpoint.release_eligible,
             recovery: None,
-        })
+        };
+        if let Some(state) = &checkpoint.assertion_checkpoint_selector {
+            explorer
+                .assertion_checkpoint_selector
+                .restore_state(state)
+                .map_err(ExplorerResumeError::Selector)?;
+        }
+        Ok(explorer)
     }
 }
 
@@ -4636,6 +4675,17 @@ mod tests {
             bitmap.record_hit(i * 10);
         }
         explorer.coverage.update_global(&bitmap);
+        let selector_state = crate::assertion_checkpoints::AssertionCheckpointSelectorState {
+            campaign_captures: 3,
+            hit_counts: std::collections::BTreeMap::from([(
+                chaoscontrol_protocol::identity::AssertionFingerprint([4; 32]).to_hex(),
+                2,
+            )]),
+        };
+        explorer
+            .assertion_checkpoint_selector
+            .restore_state(&selector_state)
+            .unwrap();
 
         // Save checkpoint
         explorer
@@ -4664,6 +4714,10 @@ mod tests {
 
         assert_eq!(restored.rounds_completed, 42);
         assert_eq!(restored.total_branches_run, 336);
+        assert_eq!(
+            restored.assertion_checkpoint_selector.state(),
+            selector_state
+        );
         assert_eq!(restored.config.num_vms, 3);
         assert_eq!(restored.config.seed, 12345);
         assert_eq!(restored.coverage.stats().total_edges, 100);

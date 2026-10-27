@@ -11,6 +11,7 @@
 //! the frontier, but carry forward the global coverage so we don't
 //! re-explore known territory.
 
+use crate::assertion_checkpoints::AssertionCheckpointSelectorState;
 use crate::corpus::BugReport;
 use crate::explorer::FrontierPolicy;
 use crate::snapshot_store::{FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore};
@@ -934,6 +935,9 @@ pub struct ExplorationCheckpoint {
         skip_serializing_if = "is_release_eligible"
     )]
     pub release_eligible: bool,
+    /// Campaign-persistent assertion-hit selector state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assertion_checkpoint_selector: Option<AssertionCheckpointSelectorState>,
 }
 
 const fn release_eligible_by_default() -> bool {
@@ -1015,6 +1019,13 @@ fn validate_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<(), Checkpo
         return Err(CheckpointError::InvalidBounds {
             reason: "round history exceeds the checkpoint limit".to_string(),
         });
+    }
+    if let Some(state) = &checkpoint.assertion_checkpoint_selector {
+        state
+            .validate()
+            .map_err(|error| CheckpointError::InvalidBounds {
+                reason: format!("invalid assertion checkpoint selector state: {error}"),
+            })?;
     }
     if checkpoint
         .seen_dedup_keys
@@ -1329,6 +1340,7 @@ mod tests {
             scenario_summary: None,
             campaign_journal: None,
             release_eligible: true,
+            assertion_checkpoint_selector: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -1384,6 +1396,7 @@ mod tests {
             scenario_summary: None,
             campaign_journal: None,
             release_eligible: true,
+            assertion_checkpoint_selector: None,
         };
 
         save_checkpoint(&path, &checkpoint).unwrap();
@@ -1475,6 +1488,7 @@ mod tests {
             scenario_summary: None,
             campaign_journal: None,
             release_eligible: true,
+            assertion_checkpoint_selector: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -1607,6 +1621,7 @@ mod tests {
             scenario_summary: Some(materialized.summary),
             campaign_journal: None,
             release_eligible: true,
+            assertion_checkpoint_selector: None,
         };
 
         let json = serde_json::to_string_pretty(&checkpoint).unwrap();
@@ -1985,6 +2000,7 @@ mod tests {
             scenario_summary: None,
             campaign_journal: None,
             release_eligible: true,
+            assertion_checkpoint_selector: None,
         }
     }
 

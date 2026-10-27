@@ -5,6 +5,7 @@
 //! It performs no I/O, allocation beyond bounded collections, or clock access.
 
 use chaoscontrol_protocol::identity::{AssertionFingerprint, AssertionKind};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Hard bound on observations considered for one branch.
@@ -13,6 +14,8 @@ pub const MAX_ASSERTION_HITS_PER_BRANCH: usize = 256;
 pub const DEFAULT_ASSERTION_CAPTURES_PER_BRANCH: u32 = 8;
 /// Default per-campaign capture allowance.
 pub const DEFAULT_ASSERTION_CAPTURES_PER_CAMPAIGN: u32 = 64;
+/// Bound on distinct assertion identities tracked for rarity scoring.
+pub const MAX_TRACKED_ASSERTION_IDENTITIES: usize = 4_096;
 
 const NOVELTY_BONUS: f64 = 32.0;
 const RARITY_NUMERATOR: f64 = 16.0;
@@ -176,6 +179,39 @@ impl AssertionCheckpointSelector {
         self.hit_counts.get(&fingerprint).copied().unwrap_or(0)
     }
 
+    /// Export campaign-persistent selector state.
+    pub fn state(&self) -> AssertionCheckpointSelectorState {
+        AssertionCheckpointSelectorState {
+            campaign_captures: self.campaign_captures,
+            hit_counts: self
+                .hit_counts
+                .iter()
+                .map(|(fingerprint, count)| (fingerprint.to_hex(), *count))
+                .collect(),
+        }
+    }
+
+    /// Restore campaign-persistent selector state.
+    ///
+    /// Exact duplicate keys are not retained across resume; prior hit counts
+    /// and the campaign capture budget are.
+    pub fn restore_state(
+        &mut self,
+        state: &AssertionCheckpointSelectorState,
+    ) -> Result<(), AssertionCheckpointError> {
+        state.validate()?;
+        let mut hit_counts = BTreeMap::new();
+        for (fingerprint, count) in &state.hit_counts {
+            let fingerprint = AssertionFingerprint::from_hex(fingerprint)
+                .map_err(|_| AssertionCheckpointError::InvalidFingerprint)?;
+            hit_counts.insert(fingerprint, *count);
+        }
+        self.campaign_captures = state.campaign_captures;
+        self.hit_counts = hit_counts;
+        self.seen_hits.clear();
+        Ok(())
+    }
+
     /// Select capture candidates for one branch.
     pub fn select(
         &mut self,
@@ -287,13 +323,43 @@ fn eligible(observation: &AssertionHitObservation) -> bool {
     }
 }
 
-/// Validation failures for checkpoint limits.
+/// Serializable selector state retained across checkpoint resume.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssertionCheckpointSelectorState {
+    /// Captures already spent by the campaign.
+    pub campaign_captures: u32,
+    /// Prior hit count per assertion fingerprint hex.
+    pub hit_counts: BTreeMap<String, u32>,
+}
+
+impl AssertionCheckpointSelectorState {
+    /// Validate bounded, parseable state before restoring it.
+    pub fn validate(&self) -> Result<(), AssertionCheckpointError> {
+        if self.hit_counts.len() > MAX_TRACKED_ASSERTION_IDENTITIES {
+            return Err(AssertionCheckpointError::TooManyTrackedIdentities);
+        }
+        for (fingerprint, count) in &self.hit_counts {
+            AssertionFingerprint::from_hex(fingerprint)
+                .map_err(|_| AssertionCheckpointError::InvalidFingerprint)?;
+            if *count == 0 {
+                return Err(AssertionCheckpointError::ZeroHitCount);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validation failures for checkpoint limits and retained selector state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssertionCheckpointError {
     ZeroHitLimit,
     HitLimitTooLarge,
     ZeroBranchCaptureLimit,
     ZeroCampaignCaptureLimit,
+    TooManyTrackedIdentities,
+    InvalidFingerprint,
+    ZeroHitCount,
 }
 
 impl core::fmt::Display for AssertionCheckpointError {
@@ -303,6 +369,9 @@ impl core::fmt::Display for AssertionCheckpointError {
             Self::HitLimitTooLarge => "assertion hit limit exceeds the admitted maximum",
             Self::ZeroBranchCaptureLimit => "assertion branch capture limit must be nonzero",
             Self::ZeroCampaignCaptureLimit => "assertion campaign capture limit must be nonzero",
+            Self::TooManyTrackedIdentities => "assertion hit identity count exceeds the bound",
+            Self::InvalidFingerprint => "assertion hit identity is not a valid fingerprint",
+            Self::ZeroHitCount => "assertion hit count must be nonzero",
         };
         formatter.write_str(message)
     }
@@ -484,6 +553,46 @@ mod tests {
         assert!(selection.truncated);
         assert_eq!(selection.decisions.len(), 2);
         assert_eq!(selector.campaign_captures(), 2);
+    }
+
+    #[test]
+    fn selector_state_round_trips_campaign_budget_and_hit_counts() {
+        let mut selector =
+            AssertionCheckpointSelector::new(limits(8, 1), 42).expect("valid limits");
+        selector.select(&[observation(10, 0, 1, AssertionKind::Sometimes, true)]);
+        let state = selector.state();
+        assert_eq!(state.campaign_captures, 1);
+        assert_eq!(state.hit_counts.get(&fingerprint(1).to_hex()), Some(&1));
+
+        let mut resumed = AssertionCheckpointSelector::new(limits(8, 1), 42).expect("valid limits");
+        resumed.restore_state(&state).expect("valid state");
+        assert_eq!(resumed.campaign_captures(), 1);
+        assert_eq!(resumed.prior_hits(fingerprint(1)), 1);
+        let selection = resumed.select(&[observation(20, 0, 2, AssertionKind::Sometimes, true)]);
+        assert_eq!(
+            selection.decisions[0].reason,
+            AssertionCheckpointDecisionKind::CampaignBudgetExhausted
+        );
+    }
+
+    #[test]
+    fn selector_state_rejects_invalid_identities_and_counts() {
+        let invalid = AssertionCheckpointSelectorState {
+            campaign_captures: 0,
+            hit_counts: BTreeMap::from([("not-a-fingerprint".to_string(), 1)]),
+        };
+        assert_eq!(
+            invalid.validate().unwrap_err(),
+            AssertionCheckpointError::InvalidFingerprint
+        );
+        let zero = AssertionCheckpointSelectorState {
+            campaign_captures: 0,
+            hit_counts: BTreeMap::from([(fingerprint(1).to_hex(), 0)]),
+        };
+        assert_eq!(
+            zero.validate().unwrap_err(),
+            AssertionCheckpointError::ZeroHitCount
+        );
     }
 
     #[test]

@@ -156,6 +156,7 @@
 
 pub mod checkpoint;
 pub mod debugger;
+pub mod event_query;
 pub mod inspect;
 pub mod recording;
 pub mod replay;

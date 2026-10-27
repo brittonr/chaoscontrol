@@ -890,9 +890,11 @@ let schedule = FaultScheduleBuilder::new()
     .build();
 ```
 
-**30 fault types** across 7 categories: network, disk, process, clock,
-resource, interrupt, and CPU. Clock freeze, bounded clock jitter, vCPU
-stall, and finite memory pressure use deterministic release behavior.
+**32 fault types** across 7 categories: network, disk, process, clock,
+resource, interrupt, and CPU. Directional network faults apply inbound,
+outbound, or both-direction disruptions to one link with a scoped heal.
+Clock freeze, bounded clock jitter, vCPU stall, and finite memory pressure
+use deterministic release behavior.
 See [`docs/fault-surface.md`](docs/fault-surface.md).
 
 Fault evidence uses six distinct stages:

@@ -300,6 +300,33 @@ fn hash_network_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
             hasher.update(&bytes_per_sec.to_le_bytes());
         }
         Fault::NetworkHeal => {}
+        Fault::NetworkDirectional {
+            node,
+            peer,
+            direction,
+            disruption,
+            delay_ns,
+            queue_limit,
+        } => {
+            hash_usize(hasher, *node);
+            hash_usize(hasher, *peer);
+            hasher.update(&[match direction {
+                crate::mechanisms::NetworkDirection::Inbound => 1,
+                crate::mechanisms::NetworkDirection::Outbound => 2,
+                crate::mechanisms::NetworkDirection::Both => 3,
+            }]);
+            hasher.update(&[match disruption {
+                crate::mechanisms::NetworkDisruption::Stopped => 1,
+                crate::mechanisms::NetworkDisruption::Slowed => 2,
+                crate::mechanisms::NetworkDisruption::Jammed => 3,
+            }]);
+            hasher.update(&delay_ns.to_le_bytes());
+            hasher.update(&queue_limit.to_le_bytes());
+        }
+        Fault::NetworkDirectionalHeal { node, peer } => {
+            hash_usize(hasher, *node);
+            hash_usize(hasher, *peer);
+        }
         _ => unreachable!("network category must contain a network fault"),
     }
 }
@@ -535,6 +562,8 @@ pub enum FaultMechanism {
     NetworkBandwidth,
     PacketDuplicate,
     NetworkHeal,
+    NetworkDirectional,
+    NetworkDirectionalHeal,
     BlockReadError,
     BlockWriteError,
     BlockTornWrite,
@@ -625,6 +654,18 @@ pub enum FaultPlanEffect {
         rate_ppm: u32,
     },
     NetworkHeal,
+    NetworkDirectional {
+        node: u32,
+        peer: u32,
+        direction: crate::mechanisms::NetworkDirection,
+        disruption: crate::mechanisms::NetworkDisruption,
+        delay_ticks: u64,
+        queue_limit: u32,
+    },
+    NetworkDirectionalHeal {
+        node: u32,
+        peer: u32,
+    },
     BlockReadError {
         target: u32,
         offset: u64,
@@ -736,6 +777,8 @@ impl FaultPlanEffect {
             Self::NetworkBandwidth { .. } => FaultMechanism::NetworkBandwidth,
             Self::PacketDuplicate { .. } => FaultMechanism::PacketDuplicate,
             Self::NetworkHeal => FaultMechanism::NetworkHeal,
+            Self::NetworkDirectional { .. } => FaultMechanism::NetworkDirectional,
+            Self::NetworkDirectionalHeal { .. } => FaultMechanism::NetworkDirectionalHeal,
             Self::BlockReadError { .. } => FaultMechanism::BlockReadError,
             Self::BlockWriteError { .. } => FaultMechanism::BlockWriteError,
             Self::BlockTornWrite { .. } => FaultMechanism::BlockTornWrite,
@@ -853,6 +896,8 @@ pub enum FaultRejectionReason {
         size: u64,
     },
     EmptyPartitionSide,
+    InvalidDirectionalLink,
+    InvalidDirectionalQueue,
     TooManyPartitionMembers {
         count: u64,
         max: u32,
@@ -953,6 +998,46 @@ fn plan_network_fault(
             rate_ppm: checked_rate(*rate_ppm)?,
         }),
         Fault::NetworkHeal => Ok(FaultPlanEffect::NetworkHeal),
+        Fault::NetworkDirectional {
+            node,
+            peer,
+            direction,
+            disruption,
+            delay_ns,
+            queue_limit,
+        } => {
+            let node = checked_target(*node, facts)?;
+            let peer = checked_target(*peer, facts)?;
+            if node == peer {
+                return Err(FaultRejectionReason::InvalidDirectionalLink);
+            }
+            if *queue_limit == 0 {
+                return Err(FaultRejectionReason::InvalidDirectionalQueue);
+            }
+            let delay_ticks = match disruption {
+                crate::mechanisms::NetworkDisruption::Stopped => 0,
+                crate::mechanisms::NetworkDisruption::Slowed
+                | crate::mechanisms::NetworkDisruption::Jammed => {
+                    duration_ns_to_ticks(*delay_ns, policy, false)?
+                }
+            };
+            Ok(FaultPlanEffect::NetworkDirectional {
+                node,
+                peer,
+                direction: *direction,
+                disruption: *disruption,
+                delay_ticks,
+                queue_limit: *queue_limit,
+            })
+        }
+        Fault::NetworkDirectionalHeal { node, peer } => {
+            let node = checked_target(*node, facts)?;
+            let peer = checked_target(*peer, facts)?;
+            if node == peer {
+                return Err(FaultRejectionReason::InvalidDirectionalLink);
+            }
+            Ok(FaultPlanEffect::NetworkDirectionalHeal { node, peer })
+        }
         _ => unreachable!("network planner must receive a network fault"),
     }
 }
@@ -2372,6 +2457,46 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
                 && fault_register == planned_register
                 && fault_bit == planned_bit
         }
+        (
+            Fault::NetworkDirectional {
+                node: fault_node,
+                peer: fault_peer,
+                direction: fault_direction,
+                disruption: fault_disruption,
+                delay_ns,
+                queue_limit: fault_queue,
+            },
+            FaultPlanEffect::NetworkDirectional {
+                node: planned_node,
+                peer: planned_peer,
+                direction: planned_direction,
+                disruption: planned_disruption,
+                delay_ticks,
+                queue_limit: planned_queue,
+            },
+        ) => {
+            target(*fault_node) == Some(*planned_node)
+                && target(*fault_peer) == Some(*planned_peer)
+                && *fault_direction == *planned_direction
+                && *fault_disruption == *planned_disruption
+                && *fault_queue == *planned_queue
+                && (matches!(
+                    fault_disruption,
+                    crate::mechanisms::NetworkDisruption::Stopped
+                ) || duration_ticks(*delay_ns) == Some(*delay_ticks))
+        }
+        (
+            Fault::NetworkDirectionalHeal {
+                node: fault_node,
+                peer: fault_peer,
+            },
+            FaultPlanEffect::NetworkDirectionalHeal {
+                node: planned_node,
+                peer: planned_peer,
+            },
+        ) => {
+            target(*fault_node) == Some(*planned_node) && target(*fault_peer) == Some(*planned_peer)
+        }
         _ => false,
     }
 }
@@ -3455,6 +3580,15 @@ mod tests {
                 rate_ppm: 1,
             },
             Fault::NetworkHeal,
+            Fault::NetworkDirectional {
+                node: 0,
+                peer: 1,
+                direction: crate::mechanisms::NetworkDirection::Outbound,
+                disruption: crate::mechanisms::NetworkDisruption::Slowed,
+                delay_ns: NANOSECONDS_PER_SIMULATION_TICK,
+                queue_limit: 1,
+            },
+            Fault::NetworkDirectionalHeal { node: 0, peer: 1 },
             Fault::DiskReadError {
                 target: 0,
                 offset: 0,

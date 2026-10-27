@@ -9,7 +9,8 @@
 ## Phase 2: Directional network and CPU throttle
 
 - [x] [serial] Define pure directional link identity, disruption modes, scoped admission, and network overlap precedence. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.interactions]
-- [ ] [serial] Wire directional targets, scoped heal, and baseline-profile facts into the fault planner and network fabric. r[chaoscontrol.fault_mechanisms.directional_network]
+- [x] [serial] Add directional targets, modes, scoped heal, and the directional effect to the fault enum, planner, and network fabric. r[chaoscontrol.fault_mechanisms.directional_network]
+- [ ] [serial] Add baseline latency/low-loss profile facts to the directional network profile. r[chaoscontrol.fault_mechanisms.directional_network]
 - [x] [serial] Apply directional network faults in the fabric with deterministic directional delays, drops, and counters. r[chaoscontrol.fault_mechanisms.directional_network]
 - [ ] [serial] Wire fault attempts and per-link effective-mode observations into the stage ledger. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.evidence]
 - [ ] [serial] Add the virtual quantum-budget CPU throttle, exact release, and scheduler enforcement. r[chaoscontrol.fault_mechanisms.cpu_throttle]

@@ -1294,6 +1294,15 @@ impl NetworkFabric {
         true
     }
 
+    /// Clear directional faults for one link pair in both directions.
+    pub fn clear_directional_link(&mut self, node: usize, peer: usize) -> bool {
+        self.directional.retain(|fault| {
+            !((fault.node == node && fault.peer == peer)
+                || (fault.node == peer && fault.peer == node))
+        });
+        true
+    }
+
     /// Effective directional fault for one traffic direction.
     fn directional_for(
         &self,

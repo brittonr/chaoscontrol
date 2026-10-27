@@ -1372,7 +1372,9 @@ impl SimulationController {
             | FaultMechanism::NetworkJitter
             | FaultMechanism::NetworkBandwidth
             | FaultMechanism::PacketDuplicate
-            | FaultMechanism::NetworkHeal => self.apply_network_fault_plan(plan),
+            | FaultMechanism::NetworkHeal
+            | FaultMechanism::NetworkDirectional
+            | FaultMechanism::NetworkDirectionalHeal => self.apply_network_fault_plan(plan),
             FaultMechanism::BlockReadError
             | FaultMechanism::BlockWriteError
             | FaultMechanism::BlockTornWrite
@@ -1447,6 +1449,27 @@ impl SimulationController {
                     .arm_duplicate(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
             }
             FaultPlanEffect::NetworkHeal => self.network.clear_partitions(),
+            FaultPlanEffect::NetworkDirectional {
+                node,
+                peer,
+                direction,
+                disruption,
+                delay_ticks,
+                queue_limit,
+            } => {
+                self.network
+                    .arm_directional(chaoscontrol_sim_core::network::DirectionalLinkFault {
+                        node: checked_usize(*node)?,
+                        peer: checked_usize(*peer)?,
+                        direction: *direction,
+                        disruption: *disruption,
+                        delay_ticks: *delay_ticks,
+                        queue_limit: *queue_limit,
+                    })
+            }
+            FaultPlanEffect::NetworkDirectionalHeal { node, peer } => self
+                .network
+                .clear_directional_link(checked_usize(*node)?, checked_usize(*peer)?),
             _ => return Err(internal_application_error()),
         };
         if !applied {
@@ -5291,6 +5314,21 @@ mod tests {
                 },
             ),
             (FaultVariant::NetworkHeal, FaultPlanEffect::NetworkHeal),
+            (
+                FaultVariant::NetworkDirectional,
+                FaultPlanEffect::NetworkDirectional {
+                    node: 0,
+                    peer: 1,
+                    direction: chaoscontrol_fault::mechanisms::NetworkDirection::Outbound,
+                    disruption: chaoscontrol_fault::mechanisms::NetworkDisruption::Stopped,
+                    delay_ticks: 0,
+                    queue_limit: 1,
+                },
+            ),
+            (
+                FaultVariant::NetworkDirectionalHeal,
+                FaultPlanEffect::NetworkDirectionalHeal { node: 0, peer: 1 },
+            ),
             (
                 FaultVariant::DiskReadError,
                 FaultPlanEffect::BlockReadError {

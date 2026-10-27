@@ -1,5 +1,23 @@
 # Deterministic resource, CPU, and clock faults
 
+## Directional network faults
+
+`Fault::NetworkDirectional` applies a disruption to one link endpoint and
+direction rather than to one VM bidirectionally. The admitted modes are:
+
+- `Stopped` drops packets in the selected direction.
+- `Slowed` adds the planned delay in virtual ticks.
+- `Jammed` defers packets by a finite bounded amount.
+
+`Fault::NetworkDirectionalHeal` clears the selected link pair in both
+directions. `NetworkFabric` records cumulative directional drop, delay, jam,
+and delay-tick counters. The effective direction is deterministic and the
+fault is included in packet preflight bounds.
+
+These faults are guest-network simulation facts. They do not manipulate host
+networking, prove packet absence, or claim that the selected direction was the
+only active fault unless the stage ledger says so.
+
 ChaosControl executes four fault classes that previously returned an unsupported result.
 
 ## Clock freeze

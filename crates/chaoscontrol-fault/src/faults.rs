@@ -92,6 +92,8 @@ pub enum FaultVariant {
     NetworkBandwidth,
     PacketDuplicate,
     NetworkHeal,
+    NetworkDirectional,
+    NetworkDirectionalHeal,
     DiskReadError,
     DiskWriteError,
     DiskTornWrite,
@@ -116,7 +118,7 @@ pub enum FaultVariant {
 }
 
 impl FaultVariant {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 32] = [
         Self::NetworkPartition,
         Self::NetworkLatency,
         Self::PacketLoss,
@@ -126,6 +128,8 @@ impl FaultVariant {
         Self::NetworkBandwidth,
         Self::PacketDuplicate,
         Self::NetworkHeal,
+        Self::NetworkDirectional,
+        Self::NetworkDirectionalHeal,
         Self::DiskReadError,
         Self::DiskWriteError,
         Self::DiskTornWrite,
@@ -227,6 +231,25 @@ pub enum Fault {
 
     /// Heal all network partitions and remove network faults.
     NetworkHeal,
+
+    /// Apply a directional fault to one link endpoint.
+    NetworkDirectional {
+        /// Link endpoint the direction is relative to.
+        node: usize,
+        /// Other link endpoint.
+        peer: usize,
+        /// Direction relative to `node`.
+        direction: crate::mechanisms::NetworkDirection,
+        /// Disruption mode.
+        disruption: crate::mechanisms::NetworkDisruption,
+        /// Extra delay in nanoseconds for slowed/jammed modes.
+        delay_ns: u64,
+        /// Bounded queue depth for jammed mode.
+        queue_limit: u32,
+    },
+
+    /// Clear directional faults for one link pair in both directions.
+    NetworkDirectionalHeal { node: usize, peer: usize },
 
     // ── Disk faults ─────────────────────────────────────────────
     /// Inject a read I/O error at a specific block offset.
@@ -446,6 +469,8 @@ impl Fault {
             Self::NetworkBandwidth { .. } => FaultVariant::NetworkBandwidth,
             Self::PacketDuplicate { .. } => FaultVariant::PacketDuplicate,
             Self::NetworkHeal => FaultVariant::NetworkHeal,
+            Self::NetworkDirectional { .. } => FaultVariant::NetworkDirectional,
+            Self::NetworkDirectionalHeal { .. } => FaultVariant::NetworkDirectionalHeal,
             Self::DiskReadError { .. } => FaultVariant::DiskReadError,
             Self::DiskWriteError { .. } => FaultVariant::DiskWriteError,
             Self::DiskTornWrite { .. } => FaultVariant::DiskTornWrite,
@@ -473,7 +498,10 @@ impl Fault {
     /// Get the target VM index, if this fault targets a specific VM.
     pub fn target(&self) -> Option<usize> {
         match self {
-            Fault::NetworkPartition { .. } | Fault::NetworkHeal => None,
+            Fault::NetworkPartition { .. }
+            | Fault::NetworkHeal
+            | Fault::NetworkDirectional { .. }
+            | Fault::NetworkDirectionalHeal { .. } => None,
             Fault::NetworkLatency { target, .. }
             | Fault::NetworkJitter { target, .. }
             | Fault::NetworkBandwidth { target, .. }
@@ -516,7 +544,9 @@ impl Fault {
             | Fault::PacketCorruption { .. }
             | Fault::PacketReorder { .. }
             | Fault::PacketDuplicate { .. }
-            | Fault::NetworkHeal => FaultCategory::Network,
+            | Fault::NetworkHeal
+            | Fault::NetworkDirectional { .. }
+            | Fault::NetworkDirectionalHeal { .. } => FaultCategory::Network,
 
             Fault::DiskReadError { .. }
             | Fault::DiskWriteError { .. }
@@ -665,6 +695,20 @@ impl fmt::Display for Fault {
             Fault::ClockJitter { target, bound_tsc } => {
                 write!(f, "clock-jitter(vm={target}, ±{bound_tsc} tsc)")
             }
+            Fault::NetworkDirectional {
+                node,
+                peer,
+                direction,
+                disruption,
+                delay_ns,
+                queue_limit,
+            } => write!(
+                f,
+                "network-directional(node={node}, peer={peer}, {direction:?}, {disruption:?}, {delay_ns}ns, queue={queue_limit})"
+            ),
+            Fault::NetworkDirectionalHeal { node, peer } => {
+                write!(f, "network-directional-heal(node={node}, peer={peer})")
+            }
         }
     }
 }
@@ -682,6 +726,8 @@ impl Fault {
             Fault::NetworkBandwidth { .. } => "network-bandwidth",
             Fault::PacketDuplicate { .. } => "packet-duplicate",
             Fault::NetworkHeal => "network-heal",
+            Fault::NetworkDirectional { .. } => "network-directional",
+            Fault::NetworkDirectionalHeal { .. } => "network-directional-heal",
             Fault::DiskReadError { .. } => "disk-read-error",
             Fault::DiskWriteError { .. } => "disk-write-error",
             Fault::DiskTornWrite { .. } => "disk-torn-write",

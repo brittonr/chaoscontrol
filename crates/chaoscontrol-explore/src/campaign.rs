@@ -1870,6 +1870,15 @@ mod tests {
     }
 
     #[test]
+    fn campaign_rejects_an_oversized_output_path() {
+        let mut runner = runner_with_policy(FrontierPolicy::Campaign);
+        runner.config.output_dir = "x".repeat(MAX_CAMPAIGN_PATH_BYTES + 1);
+
+        let error = runner.run().expect_err("oversized output path must fail");
+        assert!(format!("{error}").contains("output directory"));
+    }
+
+    #[test]
     fn campaign_rejects_excessive_seed_counts() {
         let mut runner = runner_with_policy(FrontierPolicy::Campaign);
         runner.config.seeds = (0..=MAX_CAMPAIGN_SEEDS as u64).collect();

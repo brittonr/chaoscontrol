@@ -893,6 +893,9 @@ fn sha256(path: &Path) -> Result<String, String> {
 }
 
 fn prepare_output(output: &Path) -> Result<(), String> {
+    if output.as_os_str().is_empty() {
+        return Err(String::from("output directory must not be empty"));
+    }
     if output.exists()
         && fs::read_dir(output)
             .map_err(|error| format!("{}: {error}", output.display()))?
@@ -967,6 +970,11 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn empty_output_directory_is_rejected() {
+        assert!(prepare_output(Path::new("")).is_err());
     }
 
     #[test]

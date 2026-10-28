@@ -1673,6 +1673,29 @@ fn materializes_snapshot_chunks_and_rejects_existing_raw_without_force() {
 }
 
 #[test]
+fn snapshot_chunk_manifest_rejects_overlong_paths() {
+    let chunk = chaoscontrol_evidence::SnapshotChunk {
+        path: format!(
+            "snapshots/{}",
+            "a".repeat(chaoscontrol_evidence::MAX_SNAPSHOT_PATH_BYTES)
+        ),
+        size: 1,
+        sha256: "0".repeat(64),
+    };
+    let manifest = SnapshotChunkManifest {
+        schema_version: 1,
+        original_path: "payload.snapshot.bin".to_string(),
+        original_size: 1,
+        original_sha256: "0".repeat(64),
+        chunks: vec![chunk],
+    };
+    let error = manifest
+        .validate_shape()
+        .expect_err("overlong path rejected");
+    assert!(error.message().contains("path invalid"));
+}
+
+#[test]
 fn snapshot_chunk_manifest_rejects_excess_chunks() {
     let chunk = chaoscontrol_evidence::SnapshotChunk {
         path: "snapshots/chunk.bin".to_string(),

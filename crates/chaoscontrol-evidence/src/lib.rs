@@ -2882,6 +2882,7 @@ impl AssertionSummaryEntry {
 }
 
 pub const MAX_SNAPSHOT_CHUNKS: usize = 4_096;
+pub const MAX_SNAPSHOT_PATH_BYTES: usize = 4_096;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SnapshotChunkManifest {
@@ -2899,8 +2900,8 @@ impl SnapshotChunkManifest {
             format!("chunk manifest schema_version must be {CHUNK_MANIFEST_SCHEMA_VERSION}"),
         )?;
         ensure(
-            !self.original_path.is_empty(),
-            "chunk manifest original_path must be non-empty",
+            !self.original_path.is_empty() && self.original_path.len() <= MAX_SNAPSHOT_PATH_BYTES,
+            "chunk manifest original_path must be non-empty and bounded",
         )?;
         ensure(
             self.original_size > 0,
@@ -2933,7 +2934,9 @@ pub struct SnapshotChunk {
 impl SnapshotChunk {
     fn validate_shape(&self, idx: usize) -> EvidenceResult<()> {
         ensure(
-            self.path.starts_with("snapshots/") && !self.path.contains(".."),
+            self.path.len() <= MAX_SNAPSHOT_PATH_BYTES
+                && self.path.starts_with("snapshots/")
+                && !self.path.contains(".."),
             format!("chunk {idx} path invalid"),
         )?;
         ensure(self.size > 0, format!("chunk {idx} size invalid"))?;

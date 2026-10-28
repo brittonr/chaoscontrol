@@ -237,6 +237,7 @@ impl FileSnapshotStore {
                 .components()
                 .any(|c| matches!(c, std::path::Component::ParentDir))
             || !reference.path.starts_with("snapshots/")
+            || rel.components().count() != 2
         {
             return Err(SnapshotStoreError::PathEscape {
                 path: reference.path.clone(),
@@ -723,6 +724,30 @@ mod tests {
             Err(SnapshotStoreError::NotDirectory { .. })
         ));
         assert!(!store.has_snapshot(&reference));
+    }
+
+    #[test]
+    fn nested_snapshot_references_are_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join(SNAPSHOT_DIR)).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path(),
+            root.path().join(SNAPSHOT_DIR).join("nested"),
+        )
+        .unwrap();
+        let store = FileSnapshotStore::new(root.path());
+        let reference = ReplayParentSnapshotRef {
+            store: FILE_STORE_KIND.to_string(),
+            digest: "sha256:00".to_string(),
+            codec: SNAPSHOT_CODEC.to_string(),
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            path: format!("{SNAPSHOT_DIR}/nested/00.snapshot.bin"),
+        };
+        assert!(matches!(
+            store.resolve_ref(&reference),
+            Err(SnapshotStoreError::PathEscape { .. })
+        ));
     }
 
     #[test]

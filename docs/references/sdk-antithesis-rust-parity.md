@@ -26,7 +26,7 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 
 | Function | Antithesis | ChaosControl | Status |
 |---|---|---|---|
-| Init | `antithesis_init()` | `chaoscontrol_init()` | equivalent |
+| Init | `antithesis_init()` | `chaoscontrol_init()`; the first assertion also registers the catalog lazily | equivalent |
 | VM detection | (none) | `is_in_vm()`, `is_local_output()` | absent |
 | Guest shell | (none) | `runtime::guest_init()` | absent |
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |

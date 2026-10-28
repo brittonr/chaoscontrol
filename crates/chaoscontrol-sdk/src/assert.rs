@@ -231,6 +231,7 @@ pub fn assert_raw_with_key(
     message: &str,
     details: &serde_json::Value,
 ) {
+    crate::internal::init();
     let flags = assertion_flags(kind, cond);
     let Some(json_bytes) = to_json_bytes(details) else {
         transport::hypercall_raw(kind.to_command(), flags, 0, &[]);
@@ -253,6 +254,9 @@ fn emit_registered_assertion_core(
     message: &str,
     details: &serde_json::Value,
 ) {
+    // Match Antithesis: if the caller never invoked the init function, the
+    // first assertion registers the catalog before emitting.
+    crate::internal::init();
     let flags = assertion_flags(kind, cond) | extra_flags;
     let Some(json_bytes) = to_json_bytes(details) else {
         transport::hypercall_raw(kind.to_command(), flags, id, &[]);

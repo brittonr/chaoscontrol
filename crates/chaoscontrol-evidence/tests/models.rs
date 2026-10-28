@@ -1746,19 +1746,28 @@ fn snapshot_chunk_manifest_enforces_the_path_boundary() {
 }
 
 #[test]
-fn snapshot_chunk_manifest_rejects_excess_chunks() {
-    let chunk = chaoscontrol_evidence::SnapshotChunk {
-        path: "snapshots/chunk.bin".to_string(),
+fn snapshot_chunk_manifest_enforces_the_chunk_boundary() {
+    let chunk = |index: usize| chaoscontrol_evidence::SnapshotChunk {
+        path: format!("snapshots/chunk-{index}.bin"),
         size: 1,
         sha256: "0".repeat(64),
     };
-    let manifest = SnapshotChunkManifest {
+    let mut manifest = SnapshotChunkManifest {
         schema_version: 1,
         original_path: "payload.snapshot.bin".to_string(),
-        original_size: 1,
+        original_size: chaoscontrol_evidence::MAX_SNAPSHOT_CHUNKS as u64,
         original_sha256: "0".repeat(64),
-        chunks: vec![chunk; chaoscontrol_evidence::MAX_SNAPSHOT_CHUNKS + 1],
+        chunks: (0..chaoscontrol_evidence::MAX_SNAPSHOT_CHUNKS)
+            .map(chunk)
+            .collect(),
     };
+    manifest
+        .validate_shape()
+        .expect("exact chunk bound is admitted");
+
+    manifest
+        .chunks
+        .push(chunk(chaoscontrol_evidence::MAX_SNAPSHOT_CHUNKS));
     let error = manifest
         .validate_shape()
         .expect_err("excess chunks rejected");

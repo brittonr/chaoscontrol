@@ -88,5 +88,19 @@ fn sparse_emission_keeps_first_pass_and_first_fail_only() {
         .count();
     assert_eq!(raw, 2, "raw assertions are not sampled");
 
+    let declarations = content
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
+        .filter_map(|record| record.get("antithesis_assert").cloned())
+        .filter(|assertion| assertion["hit"] == false)
+        .filter(|assertion| {
+            matches!(
+                assertion["message"].as_str(),
+                Some("sparse site" | "sparse raw")
+            )
+        })
+        .count();
+    assert_eq!(declarations, 2, "declarations are never sampled");
+
     std::fs::remove_file(output).expect("remove local output");
 }

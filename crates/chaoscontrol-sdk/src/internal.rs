@@ -238,6 +238,9 @@ fn emit_sdk_info() {
     }
 }
 
+/// Fallback-schema protocol version emitted in SDK metadata.
+const FALLBACK_PROTOCOL_VERSION: &str = "1.0.0";
+
 fn sdk_info_details() -> serde_json::Value {
     serde_json::json!({
         "language": {
@@ -245,7 +248,7 @@ fn sdk_info_details() -> serde_json::Value {
             "version": option_env!("CHAOSCONTROL_RUSTC_VERSION").unwrap_or("unknown"),
         },
         "sdk_version": env!("CARGO_PKG_VERSION"),
-        "protocol_version": "1",
+        "protocol_version": FALLBACK_PROTOCOL_VERSION,
     })
 }
 

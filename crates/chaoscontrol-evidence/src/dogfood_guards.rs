@@ -14,6 +14,8 @@ use crate::{
 };
 
 pub const DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_DOGFOOD_SCAN_DEPTH: usize = 64;
+const MAX_DOGFOOD_SCAN_ENTRIES: usize = 100_000;
 const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
 
 pub fn check_dogfood_artifact_sizes(
@@ -429,6 +431,23 @@ fn scan_files(
     root: &Path,
     visit: &mut impl FnMut(&Path) -> EvidenceResult<()>,
 ) -> EvidenceResult<()> {
+    let mut discovered = 0_usize;
+    scan_files_at(root, 0, &mut discovered, visit)
+}
+
+fn scan_files_at(
+    root: &Path,
+    depth: usize,
+    discovered: &mut usize,
+    visit: &mut impl FnMut(&Path) -> EvidenceResult<()>,
+) -> EvidenceResult<()> {
+    ensure(
+        depth <= MAX_DOGFOOD_SCAN_DEPTH,
+        format!(
+            "dogfood artifact scan exceeds depth bound: {}",
+            root.display()
+        ),
+    )?;
     let mut entries = std::fs::read_dir(root)?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
@@ -436,9 +455,18 @@ fn scan_files(
         .collect::<Vec<_>>();
     entries.sort();
     for path in entries {
-        if path.is_dir() {
-            scan_files(&path, visit)?;
-        } else if path.is_file() {
+        *discovered += 1;
+        ensure(
+            *discovered <= MAX_DOGFOOD_SCAN_ENTRIES,
+            "dogfood artifact scan exceeds entry bound",
+        )?;
+        let file_type = std::fs::symlink_metadata(&path)?.file_type();
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            scan_files_at(&path, depth + 1, discovered, visit)?;
+        } else if file_type.is_file() {
             visit(&path)?;
         }
     }
@@ -516,5 +544,28 @@ mod tests {
     #[test]
     fn empty_dogfood_root_is_rejected() {
         assert!(check_dogfood_artifact_sizes("", 1_024).is_err());
+    }
+
+    #[test]
+    fn dogfood_scan_skips_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("large.bin"), vec![0_u8; 2_048]).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("outside")).unwrap();
+
+        check_dogfood_artifact_sizes(root.path(), 1_024).expect("symlink target is not scanned");
+    }
+
+    #[test]
+    fn dogfood_scan_rejects_deep_trees() {
+        let root = tempfile::tempdir().unwrap();
+        let mut path = root.path().to_path_buf();
+        for index in 0..=MAX_DOGFOOD_SCAN_DEPTH {
+            path = path.join(format!("level{index}"));
+            std::fs::create_dir(&path).unwrap();
+        }
+
+        let error = check_dogfood_artifact_sizes(root.path(), 1_024).unwrap_err();
+        assert!(error.to_string().contains("depth bound"));
     }
 }

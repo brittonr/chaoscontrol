@@ -4334,7 +4334,23 @@ mod tests {
             .apply_fault_plan(&plan(59, NetworkDisruption::Jammed, 0, 0))
             .is_err());
         controller
-            .apply_fault_plan(&plan(60, NetworkDisruption::Stopped, 0, 0))
+            .apply_fault_plan(&plan(
+                60,
+                NetworkDisruption::Jammed,
+                0,
+                chaoscontrol_fault::mechanisms::MAX_NETWORK_QUEUE_PACKETS,
+            ))
+            .expect("maximum queue");
+        assert!(controller
+            .apply_fault_plan(&plan(
+                61,
+                NetworkDisruption::Jammed,
+                0,
+                chaoscontrol_fault::mechanisms::MAX_NETWORK_QUEUE_PACKETS + 1,
+            ))
+            .is_err());
+        controller
+            .apply_fault_plan(&plan(62, NetworkDisruption::Stopped, 0, 0))
             .expect("stopped fault");
     }
 

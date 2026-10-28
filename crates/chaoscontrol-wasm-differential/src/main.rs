@@ -1039,6 +1039,7 @@ fn write_new_json(path: &Path, value: &impl serde::Serialize) -> Result<(), Erro
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|source| io_error(path, source))?;
     let mut temporary =
         tempfile::NamedTempFile::new_in(parent).map_err(|source| io_error(path, source))?;
     temporary
@@ -1122,6 +1123,14 @@ mod tests {
         let second = retain_raw(root.path(), &value).unwrap();
         assert_eq!(first, second);
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn new_json_publication_creates_parent_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/report.json");
+        write_new_json(&path, &serde_json::json!({"status": "passed"})).unwrap();
+        assert!(path.is_file());
     }
 
     #[test]

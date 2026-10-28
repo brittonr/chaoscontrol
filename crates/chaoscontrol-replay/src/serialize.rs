@@ -9,6 +9,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 pub const MAX_RECORDING_JSON_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_TRIAGE_MARKDOWN_BYTES: usize = 16 * 1024 * 1024;
 
 /// Maximum bytes accepted for a recording or triage JSON file.
 ///
@@ -143,8 +144,17 @@ pub fn load_recording(path: &Path) -> Result<Recording, SerializeError> {
 /// Save a triage report as a human-readable markdown file.
 pub fn save_triage_report(report: &TriageReport, path: &Path) -> Result<(), SerializeError> {
     let markdown = format_triage_markdown(report);
+    write_bounded_output(path, markdown.as_bytes(), MAX_TRIAGE_MARKDOWN_BYTES)
+}
+
+fn write_bounded_output(path: &Path, bytes: &[u8], limit: usize) -> Result<(), SerializeError> {
+    if bytes.len() > limit {
+        return Err(SerializeError::EvidenceTooLarge {
+            limit: u64::try_from(limit).expect("output byte bound fits u64"),
+        });
+    }
     let mut file = create_output_file(path)?;
-    file.write_all(markdown.as_bytes())?;
+    file.write_all(bytes)?;
     Ok(())
 }
 
@@ -389,6 +399,19 @@ mod tests {
             load_recording(&path),
             Err(SerializeError::RecordingTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn bounded_output_is_rejected_before_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("over-limit.txt");
+        assert!(matches!(
+            write_bounded_output(&path, b"abcd", 3),
+            Err(SerializeError::EvidenceTooLarge { .. })
+        ));
+        assert!(!path.exists());
+        write_bounded_output(&path, b"abc", 3).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"abc");
     }
 
     #[test]

@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Component, Path};
 use std::process::{Command, Stdio};
 
@@ -367,9 +366,12 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         let exported: Value = serde_json::from_slice(&output.stdout).map_err(|err| {
             EvidenceError::new(format!("Nickel export for {source} is not JSON: {err}"))
         })?;
-        let committed_text =
-            fs::read_to_string(root.join("contracts/evidence").join(projection))
-                .map_err(|err| EvidenceError::new(format!("failed to read {projection}: {err}")))?;
+        let committed_path = root.join("contracts/evidence").join(projection);
+        let committed_text = crate::bounded_file::read_bounded_regular_file(
+            &committed_path,
+            crate::MAX_EVIDENCE_JSON_BYTES,
+        )
+        .map_err(|err| EvidenceError::new(format!("failed to read {projection}: {err}")))?;
         let committed: Value = serde_json::from_str(&committed_text)
             .map_err(|err| EvidenceError::new(format!("invalid committed {projection}: {err}")))?;
         ensure(
@@ -1488,9 +1490,11 @@ pub fn validate_receipt_evidence_boundary(value: &Value) -> EvidenceResult<()> {
 
 pub fn validate_markdown_receipt(data: &Value, dogfood: &Path) -> EvidenceResult<()> {
     let md_path = dogfood.join("receipt.md");
-    let md = std::fs::read_to_string(&md_path).map_err(|err| {
-        EvidenceError::new(format!("{}: invalid receipt.md: {err}", md_path.display()))
-    })?;
+    let md =
+        crate::bounded_file::read_bounded_regular_file(&md_path, crate::MAX_EVIDENCE_JSON_BYTES)
+            .map_err(|err| {
+                EvidenceError::new(format!("{}: invalid receipt.md: {err}", md_path.display()))
+            })?;
     let run_id = require_str(data.get("run_id"), "receipt.run_id")?;
     ensure(
         dogfood.to_string_lossy().contains(run_id),
@@ -1639,4 +1643,19 @@ fn sha256_file(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
 
 fn sorted<const N: usize>(values: [&'static str; N]) -> Vec<&'static str> {
     BTreeSet::from(values).into_iter().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn markdown_receipt_reads_reject_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.md");
+        std::fs::write(&target, b"# receipt").unwrap();
+        let link = root.path().join("receipt.md");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(validate_markdown_receipt(&serde_json::json!({}), root.path()).is_err());
+    }
 }

@@ -32,3 +32,4 @@ pub use crate::{
     cc_assert_unreachable as assert_unreachable,
 };
 pub use crate::{lifecycle, random};
+pub use crate::{ANTITHESIS_LOCAL_OUTPUT, LOCAL_OUTPUT};

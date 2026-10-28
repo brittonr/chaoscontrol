@@ -1,7 +1,7 @@
 //! Compile-time conformance check for the ported Antithesis surface.
 
 use chaoscontrol_sdk::assert::TrackingInfo;
-use chaoscontrol_sdk::compat::{assert, lifecycle, random, AntithesisRng};
+use chaoscontrol_sdk::compat::{self, assert, lifecycle, random, AntithesisRng};
 use chaoscontrol_sdk::prelude::*;
 
 #[test]
@@ -19,6 +19,11 @@ fn upstream_surface_paths_resolve() {
     assert_eq!(
         chaoscontrol_sdk::ANTITHESIS_LOCAL_OUTPUT,
         "ANTITHESIS_SDK_LOCAL_OUTPUT"
+    );
+    assert_eq!(compat::LOCAL_OUTPUT, chaoscontrol_sdk::LOCAL_OUTPUT);
+    assert_eq!(
+        compat::ANTITHESIS_LOCAL_OUTPUT,
+        chaoscontrol_sdk::ANTITHESIS_LOCAL_OUTPUT
     );
 
     // Guidance type paths.

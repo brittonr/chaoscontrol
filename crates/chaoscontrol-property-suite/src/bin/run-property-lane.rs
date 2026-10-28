@@ -116,6 +116,17 @@ mod tests {
     }
 
     #[test]
+    fn failed_report_publication_leaves_no_temporary_files() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let target = root.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let before = std::fs::read_dir(root.path()).unwrap().count();
+
+        assert!(write_report(&target, b"receipt").is_err());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), before);
+    }
+
+    #[test]
     fn report_writer_replaces_an_existing_regular_file() {
         let root = tempfile::tempdir().expect("temporary directory");
         let path = root.path().join("receipt.json");

@@ -1907,6 +1907,40 @@ mod tests {
     }
 
     #[test]
+    fn query_limits_enforce_each_named_bound() {
+        EventQueryLimits::default().validate().unwrap();
+        let over = [
+            EventQueryLimits {
+                max_nodes: MAX_QUERY_NODES + 1,
+                ..EventQueryLimits::default()
+            },
+            EventQueryLimits {
+                max_depth: MAX_QUERY_DEPTH + 1,
+                ..EventQueryLimits::default()
+            },
+            EventQueryLimits {
+                max_scanned_events: MAX_SCANNED_EVENTS + 1,
+                ..EventQueryLimits::default()
+            },
+            EventQueryLimits {
+                max_result_rows: MAX_RESULT_ROWS + 1,
+                ..EventQueryLimits::default()
+            },
+            EventQueryLimits {
+                max_result_bytes: MAX_RESULT_BYTES + 1,
+                ..EventQueryLimits::default()
+            },
+            EventQueryLimits {
+                max_operations: MAX_QUERY_OPERATIONS + 1,
+                ..EventQueryLimits::default()
+            },
+        ];
+        for limits in over {
+            assert_eq!(limits.validate().unwrap_err(), EventQueryError::QueryBound);
+        }
+    }
+
+    #[test]
     fn event_text_enforces_the_byte_boundary() {
         let mut event = events()[0].clone();
         event.text = "a".repeat(MAX_EVENT_TEXT_BYTES);

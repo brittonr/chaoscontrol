@@ -651,26 +651,25 @@ fn artifact(role: &str, path: &Path) -> Result<Value, String> {
     Ok(json!({"role": role, "path": path, "sha256": sha256(path)?}))
 }
 
-fn open_read_input(path: &Path) -> std::io::Result<fs::File> {
+fn open_read_input(path: &Path) -> std::io::Result<(fs::File, fs::Metadata)> {
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
-    if !file.metadata()?.file_type().is_file() {
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "input is not a regular file",
         ));
     }
-    Ok(file)
+    Ok((file, metadata))
 }
 
 fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
-    let file = open_read_input(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    let length = file
-        .metadata()
-        .map_err(|error| format!("{}: {error}", path.display()))?
-        .len();
+    let (file, metadata) =
+        open_read_input(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let length = metadata.len();
     if length > limit {
         return Err(format!("{} exceeds JSON byte bound", path.display()));
     }
@@ -685,12 +684,9 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 }
 
 fn chunk_snapshot(snapshot: &Path) -> Result<(), String> {
-    let file =
+    let (file, metadata) =
         open_read_input(snapshot).map_err(|error| format!("{}: {error}", snapshot.display()))?;
-    let size = file
-        .metadata()
-        .map_err(|error| format!("{}: {error}", snapshot.display()))?
-        .len();
+    let size = metadata.len();
     if size <= u64::try_from(SNAPSHOT_CHUNK_BYTES).expect("chunk bound fits") {
         return Ok(());
     }
@@ -879,7 +875,8 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 fn sha256(path: &Path) -> Result<String, String> {
-    let file = open_read_input(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let (file, _metadata) =
+        open_read_input(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; HASH_BUFFER_BYTES];

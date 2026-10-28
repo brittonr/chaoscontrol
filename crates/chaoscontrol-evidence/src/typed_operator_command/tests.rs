@@ -110,6 +110,15 @@ fn legacy_traversal_environment_identity_and_limit_fail_closed() {
     assert!(validate_plan(&too_many_environment_entries)
         .unwrap_err()
         .contains("environment entry count"));
+
+    let mut oversized_environment = valid_plan();
+    oversized_environment.environment.entries = vec![EnvironmentEntry {
+        name: String::from("BIG"),
+        value: String::from("x").repeat(MAX_ENVIRONMENT_BYTES + 1),
+    }];
+    assert!(validate_plan(&oversized_environment)
+        .unwrap_err()
+        .contains("environment bytes"));
 }
 
 #[test]

@@ -20,6 +20,7 @@ pub const TIMELINE_RECEIPT_SCHEMA: &str = "chaoscontrol.event-timeline-receipt.v
 pub const MAX_QUERY_NODES: usize = 256;
 pub const MAX_QUERY_DEPTH: usize = 64;
 pub const MAX_SCANNED_EVENTS: usize = 1_000_000;
+pub const MAX_QUERY_OPERATIONS: usize = 10_000_000;
 pub const MAX_RESULT_ROWS: usize = 100_000;
 pub const MAX_EVENT_TEXT_BYTES: usize = 8 * 1024;
 pub const MAX_EVENT_DETAILS_BYTES: usize = 64 * 1024;
@@ -485,6 +486,12 @@ pub struct EventQueryLimits {
     pub max_depth: usize,
     pub max_scanned_events: usize,
     pub max_result_rows: usize,
+    #[serde(default = "default_max_operations")]
+    pub max_operations: usize,
+}
+
+fn default_max_operations() -> usize {
+    MAX_QUERY_OPERATIONS
 }
 
 fn default_max_depth() -> usize {
@@ -498,6 +505,7 @@ impl Default for EventQueryLimits {
             max_depth: MAX_QUERY_DEPTH,
             max_scanned_events: MAX_SCANNED_EVENTS,
             max_result_rows: MAX_RESULT_ROWS,
+            max_operations: MAX_QUERY_OPERATIONS,
         }
     }
 }
@@ -553,6 +561,7 @@ pub enum EventQueryError {
     AmbiguousMoment,
     ScanBound,
     RowBound,
+    OperationBound,
     InvalidEvent,
     DuplicateSourcePosition,
     InvalidPredicate,
@@ -579,6 +588,7 @@ impl core::fmt::Display for EventQueryError {
             Self::AmbiguousMoment => "event query union spans more than one moment",
             Self::ScanBound => "event query scan count exceeds the bound",
             Self::RowBound => "event query result rows exceed the bound",
+            Self::OperationBound => "event query operations exceed the bound",
             Self::InvalidEvent => "event envelope schema or identity is invalid",
             Self::DuplicateSourcePosition => {
                 "two events claim one source position with different content"
@@ -618,6 +628,8 @@ impl EventQueryLimits {
             || self.max_scanned_events > MAX_SCANNED_EVENTS
             || self.max_result_rows == 0
             || self.max_result_rows > MAX_RESULT_ROWS
+            || self.max_operations == 0
+            || self.max_operations > MAX_QUERY_OPERATIONS
         {
             return Err(EventQueryError::QueryBound);
         }
@@ -709,7 +721,8 @@ pub fn evaluate(
         admit_event(event)?;
     }
     validate_source_positions(events)?;
-    let mut rows = evaluate_rows(query, events)?;
+    let mut operations = 0_usize;
+    let mut rows = evaluate_rows(query, events, &mut operations, limits.max_operations)?;
     for event in &rows {
         admit_event(event)?;
     }
@@ -960,13 +973,22 @@ pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryE
 fn evaluate_rows(
     query: &EventQuery,
     events: &[EventEnvelope],
+    operations: &mut usize,
+    max_operations: usize,
 ) -> Result<Vec<EventEnvelope>, EventQueryError> {
     match query {
-        EventQuery::All => Ok(events.to_vec()),
-        EventQuery::Filter { input, predicate } => Ok(evaluate_rows(input, events)?
-            .into_iter()
-            .filter(|event| predicate.matches(event))
-            .collect()),
+        EventQuery::All => {
+            charge_operations(operations, events.len(), max_operations)?;
+            Ok(events.to_vec())
+        }
+        EventQuery::Filter { input, predicate } => {
+            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            Ok(rows
+                .into_iter()
+                .filter(|event| predicate.matches(event))
+                .collect())
+        }
         EventQuery::Map {
             input,
             field,
@@ -974,7 +996,8 @@ fn evaluate_rows(
         } => {
             validate_field(field)?;
             validate_pointer(pointer)?;
-            let mut rows = evaluate_rows(input, events)?;
+            let mut rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
             for event in &mut rows {
                 let value = event
                     .details
@@ -990,7 +1013,9 @@ fn evaluate_rows(
         EventQuery::Contains { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
-            Ok(evaluate_rows(input, events)?
+            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            Ok(rows
                 .into_iter()
                 .filter(|event| field_value(event, field).is_some_and(|value| value.contains(text)))
                 .collect())
@@ -998,7 +1023,9 @@ fn evaluate_rows(
         EventQuery::Matches { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
-            Ok(evaluate_rows(input, events)?
+            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            Ok(rows
                 .into_iter()
                 .filter(|event| field_value(event, field) == Some(text.as_str()))
                 .collect())
@@ -1006,7 +1033,8 @@ fn evaluate_rows(
         EventQuery::Union { inputs } => {
             let mut rows = Vec::new();
             for input in inputs {
-                rows.extend(evaluate_rows(input, events)?);
+                rows.extend(evaluate_rows(input, events, operations, max_operations)?);
+                charge_operations(operations, rows.len(), max_operations)?;
             }
             Ok(rows)
         }
@@ -1018,16 +1046,36 @@ fn evaluate_rows(
             if start_tick > end_tick {
                 return Err(EventQueryError::InvalidText);
             }
-            Ok(evaluate_rows(input, events)?
+            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            Ok(rows
                 .into_iter()
                 .filter(|event| (*start_tick..=*end_tick).contains(&event.tick))
                 .collect())
         }
-        EventQuery::UpTo { input, moment_tick } => Ok(evaluate_rows(input, events)?
-            .into_iter()
-            .filter(|event| event.tick <= *moment_tick)
-            .collect()),
+        EventQuery::UpTo { input, moment_tick } => {
+            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            Ok(rows
+                .into_iter()
+                .filter(|event| event.tick <= *moment_tick)
+                .collect())
+        }
     }
+}
+
+fn charge_operations(
+    operations: &mut usize,
+    amount: usize,
+    max_operations: usize,
+) -> Result<(), EventQueryError> {
+    *operations = (*operations)
+        .checked_add(amount)
+        .ok_or(EventQueryError::CounterOverflow)?;
+    if *operations > max_operations {
+        return Err(EventQueryError::OperationBound);
+    }
+    Ok(())
 }
 
 impl EventPredicate {
@@ -1556,6 +1604,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(decoded.max_depth, MAX_QUERY_DEPTH);
+        assert_eq!(decoded.max_operations, MAX_QUERY_OPERATIONS);
+
+        let narrow_operations = EventQueryLimits {
+            max_operations: 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events(), &narrow_operations).unwrap_err(),
+            EventQueryError::OperationBound
+        );
+        let over_bound_operations = EventQueryLimits {
+            max_operations: MAX_QUERY_OPERATIONS + 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events(), &over_bound_operations).unwrap_err(),
+            EventQueryError::QueryBound
+        );
     }
 
     #[test]

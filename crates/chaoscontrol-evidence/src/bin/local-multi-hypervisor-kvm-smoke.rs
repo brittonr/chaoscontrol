@@ -288,13 +288,30 @@ fn absolute(path: &Path) -> Result<PathBuf, String> {
 }
 
 fn prepare_output(out: &Path) -> Result<(), String> {
-    if out.exists()
-        && fs::read_dir(out)
-            .map_err(|error| format!("{}: {error}", out.display()))?
-            .next()
-            .is_some()
-    {
-        return Err(format!("output directory is not empty: {}", out.display()));
+    if out.as_os_str().is_empty() {
+        return Err(String::from("output directory must not be empty"));
+    }
+    match fs::symlink_metadata(out) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "output directory must not be a symlink: {}",
+                out.display()
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(format!("output path is not a directory: {}", out.display()));
+        }
+        Ok(_) => {
+            if fs::read_dir(out)
+                .map_err(|error| format!("{}: {error}", out.display()))?
+                .next()
+                .is_some()
+            {
+                return Err(format!("output directory is not empty: {}", out.display()));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("{}: {error}", out.display())),
     }
     fs::create_dir_all(out).map_err(|error| format!("{}: {error}", out.display()))?;
     fs::create_dir(out.join("run-receipts"))
@@ -420,6 +437,17 @@ mod tests {
 mod publication_tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn output_directory_symlink_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let link = root.path().join("output");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(prepare_output(&link).is_err());
+        assert!(prepare_output(std::path::Path::new("")).is_err());
+    }
 
     #[test]
     fn receipt_reads_reject_symlinks_and_fifos() {

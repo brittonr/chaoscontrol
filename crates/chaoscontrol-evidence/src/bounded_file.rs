@@ -140,6 +140,17 @@ mod tests {
     }
 
     #[test]
+    fn regular_write_opens_reject_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.txt");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("output.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(open_regular_write(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
     fn regular_write_opens_reject_fifos() {
         let root = tempfile::tempdir().unwrap();
         let fifo = root.path().join("output.fifo");

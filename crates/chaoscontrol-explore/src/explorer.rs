@@ -2276,6 +2276,7 @@ impl Explorer {
         .map_err(|error| ExploreError::Config {
             message: format!("failed assertion report is not admissible: {error:?}"),
         })?;
+        let bug_index_base = self.all_bugs().count();
 
         for (assertion_fingerprint, record) in &result.oracle_report.structured_assertions {
             if matches!(
@@ -2351,7 +2352,7 @@ impl Explorer {
 
                 // Emit BugFound event for dashboard.
                 self.emit_event(crate::dashboard_types::DashboardEvent::BugFound {
-                    bug_index: self.all_bugs().count() + bugs.len(),
+                    bug_index: bug_index_base + bugs.len(),
                     assertion_id: assertion_id as u64,
                     assertion_message: record.message.clone(),
                     round: self.rounds_completed,
@@ -4572,6 +4573,24 @@ mod tests {
         assert_eq!(bugs.len(), 1);
         assert_eq!(bugs[0].assertion_id, 0);
         assert_eq!(bugs[0].assertion_identity.descriptor.compatibility_id, None);
+    }
+
+    #[test]
+    fn bug_event_index_counts_existing_bugs_once() {
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let (sink, events) = std::sync::mpsc::sync_channel(4);
+        explorer.set_event_sink(sink);
+        let result = branch_result(failed_report(Some(TEST_ALIAS)));
+        let bugs = explorer
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0, None)
+            .expect("failed assertion extracts");
+        assert_eq!(bugs.len(), 1);
+        match events.try_recv().expect("bug event") {
+            crate::dashboard_types::DashboardEvent::BugFound { bug_index, .. } => {
+                assert_eq!(bug_index, 0);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 
     #[test]

@@ -427,6 +427,9 @@ enum SeedResult {
 }
 
 fn validate_unique_seeds(seeds: &[u64]) -> Result<(), &'static str> {
+    if seeds.is_empty() {
+        return Err("campaign must include at least one seed");
+    }
     let mut seen = BTreeSet::new();
     for seed in seeds {
         if !seen.insert(*seed) {
@@ -1861,6 +1864,15 @@ mod tests {
             },
             output_dir: "campaign-out".to_string(),
         })
+    }
+
+    #[test]
+    fn campaign_rejects_empty_seeds() {
+        let mut runner = runner_with_policy(FrontierPolicy::Campaign);
+        runner.config.seeds.clear();
+
+        let error = runner.run().expect_err("empty seed set must fail");
+        assert!(format!("{error}").contains("at least one seed"));
     }
 
     #[test]

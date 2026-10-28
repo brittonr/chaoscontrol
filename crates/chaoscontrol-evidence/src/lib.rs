@@ -520,13 +520,14 @@ pub fn materialize_snapshot_chunks(
         ),
     )?;
 
-    write_materialized_snapshot(&manifest, evidence_dir, &original_path)
+    write_materialized_snapshot(&manifest, evidence_dir, &original_path, force)
 }
 
 fn write_materialized_snapshot(
     manifest: &SnapshotChunkManifest,
     evidence_dir: &Path,
     original_path: &Path,
+    force: bool,
 ) -> EvidenceResult<MaterializedSnapshot> {
     let mut aggregate = Sha256::new();
     let mut total_size = 0_u64;
@@ -639,12 +640,24 @@ fn write_materialized_snapshot(
             original_path.display()
         ))
     })?;
-    output.persist(original_path).map_err(|error| {
-        EvidenceError::new(format!(
-            "failed to install materialized snapshot {}: {}",
-            original_path.display(),
-            error.error
-        ))
+    let installed = if force {
+        output.persist(original_path).map(|_| ())
+    } else {
+        output.persist_noclobber(original_path).map(|_| ())
+    };
+    installed.map_err(|error| {
+        if !force && error.error.kind() == std::io::ErrorKind::AlreadyExists {
+            EvidenceError::new(format!(
+                "raw snapshot already exists: {} (use --force)",
+                original_path.display()
+            ))
+        } else {
+            EvidenceError::new(format!(
+                "failed to install materialized snapshot {}: {}",
+                original_path.display(),
+                error.error
+            ))
+        }
     })?;
     File::open(parent)?.sync_all().map_err(|error| {
         EvidenceError::new(format!(

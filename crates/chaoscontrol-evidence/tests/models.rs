@@ -1740,6 +1740,25 @@ fn snapshot_chunk_manifest_rejects_excess_chunks() {
 }
 
 #[test]
+fn materialize_without_force_does_not_replace_a_dangling_symlink() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");
+    let manifest: SnapshotChunkManifest =
+        serde_json::from_slice(&std::fs::read(&manifest_path).expect("read manifest"))
+            .expect("manifest");
+    let original = temp.path().join("snapshots").join(&manifest.original_path);
+    std::os::unix::fs::symlink(temp.path().join("missing"), &original).expect("dangling symlink");
+
+    let error = materialize_snapshot_chunks(&manifest_path, false)
+        .expect_err("dangling target must not be replaced");
+    assert!(error.message().contains("already exists"));
+    assert!(std::fs::symlink_metadata(&original)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+#[test]
 fn materialize_snapshot_chunks_rejects_chunk_symlink_escapes() {
     let temp = tempfile::tempdir().expect("tempdir");
     let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");

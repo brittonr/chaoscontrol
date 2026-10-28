@@ -36,8 +36,29 @@ pub fn write_operator_triage_runbook_path(
     receipt_source: TriageReceiptSource<'_>,
     output: impl AsRef<Path>,
 ) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let output = output.as_ref();
+    let overwrites_receipt = matches!(
+        receipt_source,
+        TriageReceiptSource::Path(receipt) if same_path(output, receipt)
+    );
+    if overwrites_receipt || same_path(output, &root.join(MANIFEST_PATH)) {
+        return Err(EvidenceError::new(
+            "operator triage output must not overwrite an input artifact",
+        ));
+    }
     let rendered = render_operator_triage_runbook_path(root, receipt_source)?;
     write_bytes(output, rendered.as_bytes())
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (std::path::absolute(left), std::path::absolute(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 pub fn check_operator_triage_runbook_path(
@@ -277,6 +298,25 @@ pub fn committed_operator_triage_runbook_path(root: impl AsRef<Path>) -> PathBuf
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn triage_output_cannot_overwrite_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let receipt = root.path().join("receipt.json");
+        std::fs::write(&receipt, br#"{"status":"passed"}"#).unwrap();
+        assert!(write_operator_triage_runbook_path(
+            root.path(),
+            TriageReceiptSource::Path(&receipt),
+            &receipt,
+        )
+        .is_err());
+        assert!(write_operator_triage_runbook_path(
+            root.path(),
+            TriageReceiptSource::Path(&receipt),
+            root.path().join(MANIFEST_PATH),
+        )
+        .is_err());
+    }
 
     #[test]
     fn triage_json_reads_reject_symlinks_and_oversized_inputs() {

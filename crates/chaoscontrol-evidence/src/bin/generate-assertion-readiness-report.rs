@@ -31,7 +31,16 @@ fn parse_args() -> Result<(Mode, PathBuf), String> {
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
-    Ok((mode, root.unwrap_or_else(|| PathBuf::from("."))))
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
+    admit_root(&root)?;
+    Ok((mode, root))
+}
+
+fn admit_root(root: &std::path::Path) -> Result<(), String> {
+    if root.as_os_str().is_empty() {
+        return Err(String::from("ROOT must not be empty"));
+    }
+    Ok(())
 }
 
 fn main() {
@@ -54,5 +63,15 @@ fn main() {
     if let Err(err) = result {
         eprintln!("assertion readiness report failed: {err}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(admit_root(std::path::Path::new("")).is_err());
     }
 }

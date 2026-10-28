@@ -4767,6 +4767,15 @@ impl DeterministicVm {
     /// Fails if the address range is outside guest memory.
     pub fn write_guest_memory(&self, addr: u64, data: &[u8]) -> Result<(), VmError> {
         use vm_memory::{Bytes, GuestAddress};
+        if checked_guest_range_end(addr, data.len(), self.memory.size()).is_none() {
+            return Err(VmError::DiskImage {
+                message: format!(
+                    "write_guest_memory: addr=0x{:x} len={} out of bounds",
+                    addr,
+                    data.len()
+                ),
+            });
+        }
         self.memory
             .inner()
             .write_slice(data, GuestAddress(addr))

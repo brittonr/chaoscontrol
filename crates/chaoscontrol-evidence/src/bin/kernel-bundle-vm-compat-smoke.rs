@@ -525,10 +525,17 @@ fn read_text_bounded(path: &Path, limit: u64) -> EvidenceResult<String> {
         )));
     }
     let mut text = String::new();
-    file.take(limit + 1).read_to_string(&mut text)?;
+    file.take(limit.saturating_add(1))
+        .read_to_string(&mut text)?;
     if text.len() as u64 > limit {
         return Err(EvidenceError::new(format!(
             "{} exceeds the input byte bound",
+            path.display()
+        )));
+    }
+    if text.len() as u64 != length {
+        return Err(EvidenceError::new(format!(
+            "{} changed while reading",
             path.display()
         )));
     }
@@ -627,6 +634,11 @@ fn print_usage() {
 mod publication_tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn text_reads_reject_length_changes() {
+        assert!(read_text_bounded(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
+    }
 
     #[test]
     fn profile_reads_reject_excessive_nesting() {

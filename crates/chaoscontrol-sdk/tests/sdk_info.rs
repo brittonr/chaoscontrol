@@ -37,7 +37,7 @@ fn local_output_starts_with_antithesis_sdk_metadata() {
         sdk["antithesis_sdk"]["sdk_version"],
         env!("CARGO_PKG_VERSION")
     );
-    assert!(sdk["antithesis_sdk"]["protocol_version"].as_str().is_some());
+    assert_eq!(sdk["antithesis_sdk"]["protocol_version"], "1.0.0");
 
     let first_catalog = records
         .iter()

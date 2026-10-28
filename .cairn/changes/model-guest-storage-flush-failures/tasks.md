@@ -33,13 +33,16 @@
 - [x] [depends:protocol-observation-cohorts] Add participant-scoped recovery progress for local sufficiency, peer-available repair, complete global absence, incomplete observation, and finite virtual horizons. r[chaoscontrol.smr_storage_recovery.recovery_progress]
   - Evidence: `storage_recovery::evaluate_recovery_progress` returns pass/fail/not-evaluated/incomplete for local, peer, global-absence, unnecessary-repair, missed-repair, horizon, and incomplete-observation cases.
 - [ ] [parallel] Add positive local-only and peer repair plus negative unnecessary remote repair, missed available item, incomplete observation, and quorum-intersection storage-loss campaigns. r[chaoscontrol.smr_storage_recovery.recovery_progress] r[chaoscontrol.smr_storage_recovery.validation]
+  - Blocked: the campaign surface is the multi-hypervisor rail. At `473c0c7` this change's work leaves that rail passing (`passed=2`), while current HEAD fails it 0/2 across three attempts after later external commits. See [KVM rail attribution](evidence/2026-10-28-kvm-rail-attribution.md). The pure progress decision and its positive/negative cases are already covered.
 
 ## Evidence and closeout
 
 - [x] [serial] Emit exact cohort identities, observations, oracle versions, and non-claims in receipts. r[chaoscontrol.smr_storage_recovery.evidence]
   - Evidence: `identify_storage_recovery_receipt`/`validate_storage_recovery_receipt` bind candidate, guest, kernel, filesystem, device, workload, schedule, oracle version, participants, safety findings, and non-claims; positive and drift/overclaim denials recorded.
 - [ ] [parallel] Run Redb and Molten candidate campaigns for local-only recovery, peer repair, global absence, and incomplete observation through the saved-evidence shell. r[chaoscontrol.smr_storage_recovery.recovery_progress] r[chaoscontrol.smr_storage_recovery.validation]
+  - Blocked on the same multi-hypervisor regression; no candidate campaign result is claimed from the failing rail.
 - [ ] [serial] Run focused tests, formatting, Clippy, Octet, Cairn gates, and relevant KVM or Nix checks. r[chaoscontrol.storage_faults.validation] r[chaoscontrol.smr_storage_recovery.validation]
+  - Focused tests, formatting, strict Clippy, and Cairn validation pass. The full `nix flake check` fails only `local-multi-hypervisor-kvm-smoke`; [attribution](evidence/2026-10-28-kvm-rail-attribution.md) shows this change's revision passes that check. The task stays open until the rail passes at the integrated revision.
 
 ## Verification Coverage
 

@@ -1,9 +1,11 @@
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const CORE_MANIFEST: &str = "crates/chaoscontrol-sim-core/Cargo.toml";
 const CORE_SOURCE: &str = "crates/chaoscontrol-sim-core/src";
 const MAX_SOURCE_FILES: usize = 256;
+const MAX_SOURCE_BYTES: u64 = 16 * 1024 * 1024;
 const FORBIDDEN_DEPENDENCIES: [&str; 8] = [
     "kvm-bindings",
     "kvm-ioctls",
@@ -85,8 +87,7 @@ fn read_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
                         "sim-core source file bound exceeded: maximum={MAX_SOURCE_FILES}"
                     ));
                 }
-                let text = fs::read_to_string(&entry_path)
-                    .map_err(|error| format!("read {}: {error}", entry_path.display()))?;
+                let text = read_bounded_text(&entry_path)?;
                 let relative = entry_path
                     .strip_prefix(root)
                     .map_err(|error| format!("relativize {}: {error}", entry_path.display()))?
@@ -100,10 +101,33 @@ fn read_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
     Ok(files)
 }
 
+fn read_bounded_text(path: &Path) -> Result<String, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > MAX_SOURCE_BYTES {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut text = String::new();
+    file.take(MAX_SOURCE_BYTES + 1)
+        .read_to_string(&mut text)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    if text.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(text)
+}
+
 fn run(root: &Path) -> Result<(), String> {
     let manifest_path = root.join(CORE_MANIFEST);
-    let manifest = fs::read_to_string(&manifest_path)
-        .map_err(|error| format!("read {}: {error}", manifest_path.display()))?;
+    let manifest = read_bounded_text(&manifest_path)?;
     let sources = read_sources(root)?;
     let violations = find_violations(&manifest, &sources);
     if !violations.is_empty() {
@@ -141,6 +165,22 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn source_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.rs");
+        fs::write(&target, b"source").unwrap();
+        let link = root.path().join("module.rs");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded_text(&link).is_err());
+
+        let fifo = root.path().join("module.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded_text(&fifo).is_err());
+    }
 
     #[test]
     fn pure_manifest_and_source_are_accepted() {

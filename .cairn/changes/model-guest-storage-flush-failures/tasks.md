@@ -41,8 +41,8 @@
   - Evidence: `identify_storage_recovery_receipt`/`validate_storage_recovery_receipt` bind candidate, guest, kernel, filesystem, device, workload, schedule, oracle version, participants, safety findings, and non-claims; positive and drift/overclaim denials recorded.
 - [ ] [parallel] Run Redb and Molten candidate campaigns for local-only recovery, peer repair, global absence, and incomplete observation through the saved-evidence shell. r[chaoscontrol.smr_storage_recovery.recovery_progress] r[chaoscontrol.smr_storage_recovery.validation]
   - The multi-hypervisor rail is repaired and now passes, but a candidate campaign still needs the Redb/Molten workload cohort bound into that rail; no candidate result is claimed yet.
-- [ ] [serial] Run focused tests, formatting, Clippy, Octet, Cairn gates, and relevant KVM or Nix checks. r[chaoscontrol.storage_faults.validation] r[chaoscontrol.smr_storage_recovery.validation]
-  - Focused tests, formatting, strict Clippy, and Cairn validation pass. The previously failing `local-multi-hypervisor-kvm-smoke` now passes after the [artifact-leaf repair](evidence/2026-10-28-kernel-artifact-repair.md). The task stays open until the complete rail is rerun at the integrated revision.
+- [x] [serial] Run focused tests, formatting, Clippy, Octet, Cairn gates, and relevant KVM or Nix checks. r[chaoscontrol.storage_faults.validation] r[chaoscontrol.smr_storage_recovery.validation]
+  - Evidence: focused tests (vmm 551, virtio 35, SMR 38, Raft 112, Redb 9), formatting, strict Clippy, and Cairn validation pass. The complete `nix flake check` returned `all checks passed!` (exit 0) at `77a5d696`, including the multi-hypervisor smoke after the [artifact-leaf repair](evidence/2026-10-28-kernel-artifact-repair.md#complete-rail-rerun).
 
 ## Verification Coverage
 

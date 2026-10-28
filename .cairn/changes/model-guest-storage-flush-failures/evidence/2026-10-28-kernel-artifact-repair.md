@@ -60,3 +60,14 @@ nix build .#checks.x86_64-linux.local-multi-hypervisor-kvm-smoke --no-link -L \
 
 Before the repair: exit 1 with `passed=0` on three attempts. After: exit 0 with
 `status=recorded … runs=2 passed=2` on the first attempt.
+
+## Complete rail rerun
+
+```sh
+nix flake check -L --keep-going --no-write-lock-file \
+  --option builders '' --max-jobs 2 --cores 2
+```
+
+At `77a5d696` the complete rail returned `all checks passed!` with exit 0,
+including `local-multi-hypervisor-kvm-smoke` (`status=recorded … passed=2`,
+first attempt).

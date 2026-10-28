@@ -55,7 +55,13 @@ fn write_report(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
-    file.write_all(bytes)
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::File::open(parent)?.sync_all()
 }
 
 fn parse_options(args: &[String]) -> Result<Options, String> {

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::Snafu;
 use std::fs::{self, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
@@ -132,7 +132,7 @@ fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, Snaps
             limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
         })?;
     let mut bytes = Vec::new();
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(read_limit)
         .read_to_end(&mut bytes)
         .map_err(|source| SnapshotStoreError::Io { source })?;
@@ -266,9 +266,26 @@ impl SnapshotStore for FileSnapshotStore {
         let hex = digest.strip_prefix("sha256:").unwrap_or(&digest);
         let rel = format!("{SNAPSHOT_DIR}/{hex}.snapshot.bin");
         let final_path = self.root.join(&rel);
-        let tmp = final_path.with_extension("snapshot.bin.tmp");
-        fs::write(&tmp, &bytes).map_err(|source| SnapshotStoreError::Io { source })?;
-        fs::rename(&tmp, &final_path).map_err(|source| SnapshotStoreError::Io { source })?;
+        let parent = final_path.parent().ok_or_else(|| SnapshotStoreError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "snapshot destination has no parent",
+            ),
+        })?;
+        let mut temporary = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|source| SnapshotStoreError::Io { source })?;
+        temporary
+            .write_all(&bytes)
+            .map_err(|source| SnapshotStoreError::Io { source })?;
+        temporary
+            .as_file()
+            .sync_all()
+            .map_err(|source| SnapshotStoreError::Io { source })?;
+        temporary
+            .persist(&final_path)
+            .map_err(|error| SnapshotStoreError::Io {
+                source: error.error,
+            })?;
         Ok(ReplayParentSnapshotRef {
             store: FILE_STORE_KIND.to_string(),
             digest,

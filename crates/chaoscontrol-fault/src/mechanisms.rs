@@ -510,6 +510,19 @@ mod tests {
     }
 
     #[test]
+    fn network_faults_enforce_the_count_boundary() {
+        let admitted = vec![network(NetworkDisruption::Stopped); MAX_ACTIVE_NETWORK_FAULTS];
+        admit_network_faults(&admitted).unwrap();
+
+        let mut exceeded = admitted;
+        exceeded.push(network(NetworkDisruption::Stopped));
+        assert_eq!(
+            admit_network_faults(&exceeded).unwrap_err(),
+            MechanismError::TooManyNetworkFaults
+        );
+    }
+
+    #[test]
     fn pause_requests_enforce_the_count_boundary() {
         let request = |index: usize| PauseControlRequest {
             requester: "liveness-check".to_string(),

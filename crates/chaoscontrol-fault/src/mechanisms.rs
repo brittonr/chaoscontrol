@@ -4,7 +4,7 @@
 //! evidence remain in their existing shells.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 pub const MAX_LINK_ID: u32 = 1_000_000;
 pub const MAX_THROTTLE_WINDOW_TICKS: u64 = 1_000_000;
@@ -314,15 +314,15 @@ pub fn admit_pause_requests(requests: &[PauseControlRequest]) -> Result<(), Mech
     if requests.len() > MAX_PAUSE_REQUESTS {
         return Err(MechanismError::TooManyPauseRequests);
     }
-    let mut seen = BTreeSet::new();
-    for request in requests {
+    for (index, request) in requests.iter().enumerate() {
         admit_pause_control(request)?;
-        if !seen.insert((
-            request.requester.as_str(),
-            request.start_tick,
-            request.end_tick,
-        )) {
-            return Err(MechanismError::DuplicatePauseRequest);
+        for previous in &requests[..index] {
+            if previous.requester == request.requester
+                && previous.start_tick < request.end_tick
+                && request.start_tick < previous.end_tick
+            {
+                return Err(MechanismError::DuplicatePauseRequest);
+            }
         }
     }
     Ok(())
@@ -510,6 +510,36 @@ mod tests {
             admit_custom_effect(&unsafe_effect).unwrap_err(),
             MechanismError::InvalidParameter
         );
+    }
+
+    #[test]
+    fn pause_requests_reject_overlapping_windows_per_requester() {
+        let first = PauseControlRequest {
+            requester: "liveness-check".to_string(),
+            start_tick: 10,
+            end_tick: 20,
+        };
+        let overlapping = PauseControlRequest {
+            requester: "liveness-check".to_string(),
+            start_tick: 19,
+            end_tick: 30,
+        };
+        assert_eq!(
+            admit_pause_requests(&[first.clone(), overlapping]).unwrap_err(),
+            MechanismError::DuplicatePauseRequest
+        );
+        let adjacent = PauseControlRequest {
+            requester: "liveness-check".to_string(),
+            start_tick: 20,
+            end_tick: 30,
+        };
+        admit_pause_requests(&[first.clone(), adjacent]).unwrap();
+        let other_requester = PauseControlRequest {
+            requester: "watchdog".to_string(),
+            start_tick: 10,
+            end_tick: 20,
+        };
+        admit_pause_requests(&[first, other_requester]).unwrap();
     }
 
     #[test]

@@ -1801,7 +1801,15 @@ impl SimulationController {
                 if *release_at_tick <= self.tick || *budget_units == 0 {
                     return Err(target_state_application_error());
                 }
-                self.vm_slot_mut_checked(*target)?.cpu_throttle = Some(CpuThrottleState {
+                let tick = self.tick;
+                let slot = self.vm_slot_mut_checked(*target)?;
+                if slot
+                    .cpu_throttle
+                    .is_some_and(|active| tick < active.release_at_tick)
+                {
+                    return Err(target_state_application_error());
+                }
+                slot.cpu_throttle = Some(CpuThrottleState {
                     budget_units: *budget_units,
                     release_at_tick: *release_at_tick,
                 });
@@ -4281,6 +4289,36 @@ mod tests {
         assert_eq!(gate.magic, THREAD_GATE_MAGIC);
         assert_eq!(gate.paused_ordinal, 1);
         assert_eq!(gate.release_tick, 5);
+    }
+
+    #[test]
+    fn overlapping_cpu_throttle_is_rejected() {
+        let mut controller = adapter_test_controller();
+        let plan = FaultPlan {
+            attempt_id: FaultAttemptId([41; 32]),
+            effect: FaultPlanEffect::CpuThrottle {
+                target: 0,
+                budget_units: 3,
+                release_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&plan).expect("first throttle");
+        let second = FaultPlan {
+            attempt_id: FaultAttemptId([42; 32]),
+            effect: FaultPlanEffect::CpuThrottle {
+                target: 0,
+                budget_units: 4,
+                release_at_tick: 9,
+            },
+        };
+        assert!(controller.apply_fault_plan(&second).is_err());
+        assert_eq!(
+            controller.vms[0].cpu_throttle,
+            Some(CpuThrottleState {
+                budget_units: 3,
+                release_at_tick: 5,
+            })
+        );
     }
 
     #[test]

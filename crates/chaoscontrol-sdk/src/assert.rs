@@ -299,19 +299,6 @@ pub fn emit_registered_assertion<S: serde::Serialize + ?Sized>(
     emit_registered_assertion_core(kind, cond, 0, id, message, details, true);
 }
 
-/// Emit an assertion without sparse-emission sampling.
-#[cfg(feature = "full")]
-#[doc(hidden)]
-pub fn emit_registered_assertion_unsampled<S: serde::Serialize + ?Sized>(
-    kind: AssertionKind,
-    cond: bool,
-    id: u32,
-    message: &str,
-    details: &S,
-) {
-    emit_registered_assertion_core(kind, cond, 0, id, message, details, false);
-}
-
 /// Emit an `always` assertion whose corresponding property tolerates never
 /// being reached (`AlwaysOrUnreachable` in the fallback schema).
 #[cfg(feature = "full")]
@@ -330,26 +317,6 @@ pub fn emit_registered_always_or_unreachable<S: serde::Serialize + ?Sized>(
         message,
         details,
         true,
-    );
-}
-
-/// Emit an always-or-unreachable assertion without sparse-emission sampling.
-#[cfg(feature = "full")]
-#[doc(hidden)]
-pub fn emit_registered_always_or_unreachable_unsampled<S: serde::Serialize + ?Sized>(
-    cond: bool,
-    id: u32,
-    message: &str,
-    details: &S,
-) {
-    emit_registered_assertion_core(
-        AssertionKind::Always,
-        cond,
-        chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK,
-        id,
-        message,
-        details,
-        false,
     );
 }
 
@@ -450,14 +417,9 @@ pub fn assert_raw(
         return;
     }
     if kind == AssertionKind::Always && !must_hit {
-        emit_registered_always_or_unreachable_unsampled(
-            condition,
-            compatibility_id,
-            &message,
-            details,
-        );
+        emit_registered_always_or_unreachable(condition, compatibility_id, &message, details);
     } else {
-        emit_registered_assertion_unsampled(kind, condition, compatibility_id, &message, details);
+        emit_registered_assertion(kind, condition, compatibility_id, &message, details);
     }
 }
 

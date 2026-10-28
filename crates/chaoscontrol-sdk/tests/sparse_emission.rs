@@ -61,6 +61,8 @@ fn sparse_emission_keeps_first_pass_and_first_fail_only() {
 
     raw_site(true);
     raw_site(false);
+    raw_site(true);
+    raw_site(false);
 
     let content = std::fs::read_to_string(&output).expect("local output");
     let assertions = content
@@ -86,7 +88,10 @@ fn sparse_emission_keeps_first_pass_and_first_fail_only() {
         .iter()
         .filter(|assertion| assertion["message"] == "sparse raw")
         .count();
-    assert_eq!(raw, 2, "raw assertions are not sampled");
+    assert_eq!(
+        raw, 2,
+        "raw assertions share first-pass/first-fail sampling"
+    );
 
     let declarations = content
         .lines()

@@ -74,7 +74,8 @@ surface; `serde_json::Value` remains supported. Assertion messages must be
 const-evaluable, as in 0.3.0. Antithesis 0.3.0 emits only a site's first
 pass and first fail; ChaosControl emits every hit by default so the oracle
 and explorer retain exact counts. The `sparse_emission` feature matches the
-upstream sampling policy when exact per-hit counts are not required. Antithesis numeric macros
+upstream sampling policy, including raw assertions, when exact per-hit
+counts are not required. Antithesis numeric macros
 attach **guidance** (maximize/minimize watermarks).
 ChaosControl numeric macros merge `left`/`right` into the assertion details
 on every call, keeping caller-supplied keys and replacing only `left`/`right`.

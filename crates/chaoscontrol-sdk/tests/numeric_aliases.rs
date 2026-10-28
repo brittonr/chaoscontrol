@@ -60,9 +60,27 @@ fn antithesis_named_numeric_aliases_emit_the_expected_conditions() {
         assert_eq!(assertion["condition"], condition, "{message}");
     }
     assert_eq!(
+        assertions["always greater than fails"]["details"]["left"],
+        1
+    );
+    assert_eq!(
+        assertions["always greater than fails"]["details"]["right"],
+        2
+    );
+    assert_eq!(
+        assertions["always less or equal passes"]["details"]["left"],
+        2
+    );
+    assert_eq!(
+        assertions["always less or equal passes"]["details"]["right"],
+        2
+    );
+    assert_eq!(
         assertions["alias forwards details"]["details"]["custom"],
         true
     );
+    assert_eq!(assertions["alias forwards details"]["details"]["left"], 2);
+    assert_eq!(assertions["alias forwards details"]["details"]["right"], 1);
 
     std::fs::remove_file(output).expect("remove local output");
 }

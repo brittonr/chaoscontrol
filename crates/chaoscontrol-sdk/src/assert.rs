@@ -854,30 +854,31 @@ macro_rules! cc_assert_reachable_category {
 //  Comparison detail helper (full vs no-op)
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Build comparison details on failure: `{"left": "...", "right": "..."}`, empty `{}` on success.
+/// Merge comparison operands into the assertion details.
+///
+/// The operands are recorded as JSON values on every call, matching the
+/// Antithesis fallback schema. Caller-supplied `left`/`right` keys are
+/// replaced by the evaluated operands.
 #[cfg(feature = "full")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_cmp_details {
-    ($cond:expr, $left:ident, $right:ident) => {
-        if $cond {
-            $crate::serde_json::json!({})
-        } else {
-            $crate::serde_json::json!({
-                "left": format!("{:?}", $left),
-                "right": format!("{:?}", $right),
-            })
-        }
-    };
+    ($details:expr, $left:ident, $right:ident) => {{
+        let mut __cc_details = ($details).clone();
+        __cc_details["left"] = $crate::serde_json::json!($left);
+        __cc_details["right"] = $crate::serde_json::json!($right);
+        __cc_details
+    }};
 }
 
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_cmp_details {
-    ($cond:expr, $left:ident, $right:ident) => {
+    ($details:expr, $left:ident, $right:ident) => {{
+        let _: &() = $details;
         ()
-    };
+    }};
 }
 
 /// Build option details on failure: `{"value": "None"}`, empty `{}` on success.
@@ -936,7 +937,7 @@ macro_rules! __cc_bundle_details {
 //  Numeric comparison macros
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Assert `left < right` always holds. Auto-captures left/right on failure.
+/// Assert `left < right` always holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_always_lt {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -946,7 +947,8 @@ macro_rules! cc_assert_always_lt {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left < __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -959,17 +961,21 @@ macro_rules! cc_assert_always_lt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left < __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
-            $left < $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left <= right` always holds. Auto-captures left/right on failure.
+/// Assert `left <= right` always holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_always_le {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -979,7 +985,8 @@ macro_rules! cc_assert_always_le {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left <= __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -992,17 +999,21 @@ macro_rules! cc_assert_always_le {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left <= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
-            $left <= $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left > right` always holds. Auto-captures left/right on failure.
+/// Assert `left > right` always holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_always_gt {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1012,7 +1023,8 @@ macro_rules! cc_assert_always_gt {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left > __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -1025,17 +1037,21 @@ macro_rules! cc_assert_always_gt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left > __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
-            $left > $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left >= right` always holds. Auto-captures left/right on failure.
+/// Assert `left >= right` always holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_always_ge {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1045,7 +1061,8 @@ macro_rules! cc_assert_always_ge {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left >= __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -1058,17 +1075,21 @@ macro_rules! cc_assert_always_ge {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left >= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
-            $left >= $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left == right` always holds. Auto-captures left/right on failure.
+/// Assert `left == right` always holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_always_eq {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1078,7 +1099,8 @@ macro_rules! cc_assert_always_eq {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left == __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -1091,17 +1113,21 @@ macro_rules! cc_assert_always_eq {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left == __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
-            $left == $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left != right` always holds. Auto-captures left/right on failure.
+/// Assert `left != right` always holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_always_ne {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1111,7 +1137,8 @@ macro_rules! cc_assert_always_ne {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left != __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -1124,17 +1151,21 @@ macro_rules! cc_assert_always_ne {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left != __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
-            $left != $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left < right` sometimes holds. Auto-captures left/right on failure.
+/// Assert `left < right` sometimes holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_sometimes_lt {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1144,7 +1175,8 @@ macro_rules! cc_assert_sometimes_lt {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left < __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,
@@ -1157,17 +1189,21 @@ macro_rules! cc_assert_sometimes_lt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left < __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
-            $left < $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left <= right` sometimes holds. Auto-captures left/right on failure.
+/// Assert `left <= right` sometimes holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_sometimes_le {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1177,7 +1213,8 @@ macro_rules! cc_assert_sometimes_le {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left <= __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,
@@ -1190,17 +1227,21 @@ macro_rules! cc_assert_sometimes_le {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left <= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
-            $left <= $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left > right` sometimes holds. Auto-captures left/right on failure.
+/// Assert `left > right` sometimes holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_sometimes_gt {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1210,7 +1251,8 @@ macro_rules! cc_assert_sometimes_gt {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left > __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,
@@ -1223,17 +1265,21 @@ macro_rules! cc_assert_sometimes_gt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left > __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
-            $left > $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left >= right` sometimes holds. Auto-captures left/right on failure.
+/// Assert `left >= right` sometimes holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_sometimes_ge {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1243,7 +1289,8 @@ macro_rules! cc_assert_sometimes_ge {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left >= __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,
@@ -1256,17 +1303,21 @@ macro_rules! cc_assert_sometimes_ge {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left >= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
-            $left >= $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left == right` sometimes holds. Auto-captures left/right on failure.
+/// Assert `left == right` sometimes holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_sometimes_eq {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1276,7 +1327,8 @@ macro_rules! cc_assert_sometimes_eq {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left == __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,
@@ -1289,17 +1341,21 @@ macro_rules! cc_assert_sometimes_eq {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left == __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
-            $left == $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
 
-/// Assert `left != right` sometimes holds. Auto-captures left/right on failure.
+/// Assert `left != right` sometimes holds. Auto-captures left/right in details.
 #[macro_export]
 macro_rules! cc_assert_sometimes_ne {
     ($left:expr, $right:expr, $msg:expr $(,)?) => {{
@@ -1309,7 +1365,8 @@ macro_rules! cc_assert_sometimes_ne {
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left != __cc_right;
-        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        let __cc_det =
+            $crate::__cc_cmp_details!(&$crate::__cc_empty_json!(), __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,
@@ -1322,12 +1379,16 @@ macro_rules! cc_assert_sometimes_ne {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left != __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!($details, __cc_left, __cc_right);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
-            $left != $right,
+            __cc_cond,
             _ID,
             $msg,
-            $details,
+            &__cc_det,
         );
     }};
 }
@@ -1949,6 +2010,16 @@ mod tests {
         cc_assert_sometimes_greater_than_or_equal_to!(1, 1, "alias sge");
         cc_assert_sometimes_less_than!(1, 2, "alias slt");
         cc_assert_sometimes_less_than_or_equal_to!(1, 1, "alias sle");
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn comparison_details_record_operands_and_keep_custom_keys() {
+        use serde_json::json;
+        let left = 2;
+        let right = 1;
+        let details = crate::__cc_cmp_details!(&json!({"custom": true}), left, right);
+        assert_eq!(details, json!({"custom": true, "left": 2, "right": 1}));
     }
 
     #[test]

@@ -32,6 +32,15 @@ fn bundle_macros_accept_unit_details_in_noop_mode() {
 
 #[cfg(not(feature = "full"))]
 #[test]
+fn comparison_macros_accept_the_same_shape_without_details() {
+    cc_assert_always_lt!(1, 2, "lt");
+    cc_assert_always_lt!(1, 2, "lt details", &());
+    cc_assert_sometimes_gt!(2, 1, "gt");
+    cc_assert_sometimes_gt!(2, 1, "gt details", &());
+}
+
+#[cfg(not(feature = "full"))]
+#[test]
 fn lifecycle_noop_keeps_the_detail_call_shape() {
     setup_complete(&());
     setup_complete(&String::from("details"));

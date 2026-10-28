@@ -55,7 +55,7 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 
 ### Numeric comparison macros
 
-| Relation | Antithesis (with guidance) | ChaosControl (with left/right failure details) | Status |
+| Relation | Antithesis (with guidance) | ChaosControl (with left/right details) | Status |
 |---|---|---|---|
 | `>` | `assert_always_greater_than` | `cc_assert_always_greater_than` (alias `cc_assert_always_gt`) | equivalent |
 | `>=` | `assert_always_greater_than_or_equal_to` | `cc_assert_always_greater_than_or_equal_to` (alias `cc_assert_always_ge`) | equivalent |
@@ -66,9 +66,11 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Sometimes variants | `assert_sometimes_<rel>` | `cc_assert_sometimes_<rel>` (long and short names) | equivalent |
 
 Antithesis numeric macros attach **guidance** (maximize/minimize watermarks).
-ChaosControl numeric macros capture `left`/`right` into failure details.
+ChaosControl numeric macros merge `left`/`right` into the assertion details
+on every call, keeping caller-supplied keys and replacing only `left`/`right`.
 The Antithesis-named macros forward to the short-name macros, so condition
-and detail behavior is identical; guidance remains omitted.
+and detail behavior is identical; guidance remains omitted. Operands must
+implement `serde_json::Serialize`; Antithesis requires `Into<Value>`.
 See the guidance decision below.
 
 ## Random

@@ -976,6 +976,22 @@ mod tests {
     use std::os::unix::ffi::OsStrExt;
 
     #[test]
+    fn failed_wasm_publications_leave_no_temporary_files() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("case.wasm")).unwrap();
+        std::fs::create_dir(root.path().join("report.json")).unwrap();
+        let before = std::fs::read_dir(root.path()).unwrap().count();
+
+        assert!(write_generated_module(root.path(), "case", b"wasm").is_err());
+        assert!(write_new_json(
+            &root.path().join("report.json"),
+            &serde_json::json!({"status": "passed"})
+        )
+        .is_err());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), before);
+    }
+
+    #[test]
     fn generated_module_publication_is_atomic_and_never_overwrites() {
         let root = tempfile::tempdir().unwrap();
         write_generated_module(root.path(), "case", b"wasm").unwrap();

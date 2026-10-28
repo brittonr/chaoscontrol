@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -57,7 +58,7 @@ fn run(args: Vec<String>) -> Result<String, (u8, String)> {
         .map_err(|error| shell_error(format!("manifest encode failed: {error}")))?;
     let mut bytes = manifest;
     bytes.push(b'\n');
-    fs::write(destination.join(MANIFEST_FILE), bytes).map_err(|error| {
+    write_atomic(&destination.join(MANIFEST_FILE), &bytes).map_err(|error| {
         shell_error(format!(
             "{}: {error}",
             destination.join(MANIFEST_FILE).display()
@@ -156,8 +157,11 @@ fn transform_files(root: &Path, replacements: &[(String, String)]) -> Result<(),
             )?;
             let text = fs::read_to_string(entry.path())
                 .map_err(|error| format!("{}: {error}", entry.path().display()))?;
-            fs::write(entry.path(), transform_text(&text, replacements))
-                .map_err(|error| format!("{}: {error}", entry.path().display()))?;
+            write_existing(
+                &entry.path(),
+                transform_text(&text, replacements).as_bytes(),
+            )
+            .map_err(|error| format!("{}: {error}", entry.path().display()))?;
         }
     }
     Ok(())
@@ -169,6 +173,57 @@ fn has_text_extension(path: &Path) -> bool {
         .is_some_and(|value| TEXT_EXTENSIONS.contains(&value))
 }
 
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    fs::File::open(parent)?.sync_all()
+}
+
+fn write_existing(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    file.write_all(bytes)
+}
+
 fn shell_error(error: impl ToString) -> (u8, String) {
     (FAILURE_EXIT, error.to_string())
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_manifest_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join(MANIFEST_FILE);
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_atomic(&link, b"replacement").unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn transformed_file_write_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.rs");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("main.rs");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(write_existing(&link, b"replacement").is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+    }
 }

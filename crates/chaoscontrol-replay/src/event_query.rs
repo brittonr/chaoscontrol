@@ -1893,6 +1893,37 @@ mod tests {
     }
 
     #[test]
+    fn scan_and_row_bounds_admit_the_exact_maximum() {
+        let events = events();
+        let count = events.len();
+        let exact_scan = EventQueryLimits {
+            max_scanned_events: count,
+            max_result_rows: count,
+            ..EventQueryLimits::default()
+        };
+        let result = evaluate(&EventQuery::All, &events, &exact_scan).unwrap();
+        assert_eq!(result.rows.len(), count);
+        assert!(!result.truncated);
+
+        let narrow_scan = EventQueryLimits {
+            max_scanned_events: count - 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events, &narrow_scan).unwrap_err(),
+            EventQueryError::ScanBound
+        );
+
+        let narrow_rows = EventQueryLimits {
+            max_result_rows: count - 1,
+            ..EventQueryLimits::default()
+        };
+        let result = evaluate(&EventQuery::All, &events, &narrow_rows).unwrap();
+        assert!(result.truncated);
+        assert_eq!(result.rows.len(), count - 1);
+    }
+
+    #[test]
     fn timeline_cycles_are_detected_after_completed_paths() {
         let facts = vec![
             TimelineFact {

@@ -2489,8 +2489,10 @@ fn snapshot_artifact_sha256(
         std::fs::canonicalize(parent)?.starts_with(&canonical_evidence),
         "snapshot path escapes the evidence directory",
     )?;
-    if snapshot_path.exists() {
-        return Ok((sha256_file(snapshot_path)?, SnapshotStorage::Raw));
+    match std::fs::symlink_metadata(snapshot_path) {
+        Ok(_) => return Ok((sha256_file(snapshot_path)?, SnapshotStorage::Raw)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
 
     let manifest_path = snapshot_path.with_file_name(format!(
@@ -3305,6 +3307,17 @@ mod proof_path_tests {
             Err(error) => error,
         };
         assert!(error.message().contains("escapes the repository root"));
+    }
+
+    #[test]
+    fn broken_raw_snapshot_does_not_fall_back_to_chunks() {
+        let root = tempfile::tempdir().unwrap();
+        let manifest_path = write_snapshot_chunk_fixture(root.path()).unwrap();
+        let manifest: SnapshotChunkManifest =
+            serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+        let raw = root.path().join("snapshots").join(&manifest.original_path);
+        std::os::unix::fs::symlink(root.path().join("absent"), &raw).unwrap();
+        assert!(snapshot_artifact_sha256(root.path(), &raw).is_err());
     }
 
     #[test]

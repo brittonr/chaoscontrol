@@ -26,7 +26,8 @@
 
 - [x] [serial] Add one persistent deterministic block device per Raft node and bind term, vote, log, snapshot, and application state. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
   - Evidence: `chaoscontrol-smr` `persistence`; six cases cover round trip, crash-before-flush, write/capacity denial, corruption/truncation, inconsistent logs, and independent cohort disks.
-- [ ] [serial] Add restart, lagging-replica, unavailable-peer, corruption, and local-repair schedules. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
+- [x] [serial] Add restart, lagging-replica, unavailable-peer, corruption, and local-repair schedules. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
+  - Evidence: `chaoscontrol-smr` `storage_schedule`; five cases cover applied effects, intact local repair, empty/out-of-range/over-bound denial, receipt cohort binding, and receipt identity/participant denials.
 - [x] [depends:protocol-observation-cohorts] Add oracles for acknowledged-data loss, committed truncation, unsafe voting, conflicting history, and unknown-commitment progress. r[chaoscontrol.smr_storage_recovery.protocol_oracles]
   - Evidence: `chaoscontrol-smr` `storage_recovery::validate_storage_recovery` with positive and five negative classes.
 - [x] [depends:protocol-observation-cohorts] Add participant-scoped recovery progress for local sufficiency, peer-available repair, complete global absence, incomplete observation, and finite virtual horizons. r[chaoscontrol.smr_storage_recovery.recovery_progress]
@@ -35,7 +36,8 @@
 
 ## Evidence and closeout
 
-- [ ] [serial] Emit exact cohort identities, observations, oracle versions, and non-claims in receipts. r[chaoscontrol.smr_storage_recovery.evidence]
+- [x] [serial] Emit exact cohort identities, observations, oracle versions, and non-claims in receipts. r[chaoscontrol.smr_storage_recovery.evidence]
+  - Evidence: `identify_storage_recovery_receipt`/`validate_storage_recovery_receipt` bind candidate, guest, kernel, filesystem, device, workload, schedule, oracle version, participants, safety findings, and non-claims; positive and drift/overclaim denials recorded.
 - [ ] [parallel] Run Redb and Molten candidate campaigns for local-only recovery, peer repair, global absence, and incomplete observation through the saved-evidence shell. r[chaoscontrol.smr_storage_recovery.recovery_progress] r[chaoscontrol.smr_storage_recovery.validation]
 - [ ] [serial] Run focused tests, formatting, Clippy, Octet, Cairn gates, and relevant KVM or Nix checks. r[chaoscontrol.storage_faults.validation] r[chaoscontrol.smr_storage_recovery.validation]
 

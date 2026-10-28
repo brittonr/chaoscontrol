@@ -110,6 +110,18 @@ inconsistent log gap, snapshot/log overlap, truncated/acknowledged loss, unsafe
 voting, conflicting committed history, unknown commitment, unnecessary remote
 repair, missed available repair, unreached horizon, and incomplete observation.
 
+`crates/chaoscontrol-smr/src/storage_schedule.rs` adds bounded recovery
+schedules (restart, lagging replica, unavailable peer, corruption, local
+repair) applied only to supplied in-memory disks, plus cohort-bound receipts
+that bind candidate, guest image, kernel, filesystem, device, workload,
+schedule, oracle version, participant identities, safety decision, and
+non-claims. Schedules and receipts are validated independently; a receipt with
+a stale oracle, empty identity, missing participants/non-claims, or a passing
+decision carrying findings is denied.
+
+Executed: `cargo test -p chaoscontrol-smr --lib` (33 passed, 0 failed),
+`cargo fmt --check`, and strict Clippy on `chaoscontrol-smr`.
+
 Still open: workload schedules (restart, lagging replica, unavailable peer,
 corruption, local repair), receipt cohort binding, saved-evidence campaigns,
 and the closing KVM/Nix gates. These are not claimed by the tests above.

@@ -4,7 +4,7 @@ use crate::recording::{validate_recording, Recording};
 use crate::text::{escape_markdown_cell, flatten_lines, markdown_code_block};
 use crate::triage::TriageReport;
 use snafu::Snafu;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -78,6 +78,17 @@ pub enum SerializeError {
     EvidenceTooLarge { limit: u64 },
 }
 
+fn create_output_file(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
 /// Save a recording to a JSON file.
 ///
 /// Note: This saves only the metadata (config, schedule, seed, events).
@@ -92,7 +103,7 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
             limit: MAX_RECORDING_JSON_BYTES,
         });
     }
-    let mut file = File::create(path)?;
+    let mut file = create_output_file(path)?;
     file.write_all(&bytes)?;
     Ok(())
 }
@@ -132,7 +143,7 @@ pub fn load_recording(path: &Path) -> Result<Recording, SerializeError> {
 /// Save a triage report as a human-readable markdown file.
 pub fn save_triage_report(report: &TriageReport, path: &Path) -> Result<(), SerializeError> {
     let markdown = format_triage_markdown(report);
-    let mut file = File::create(path)?;
+    let mut file = create_output_file(path)?;
     file.write_all(markdown.as_bytes())?;
     Ok(())
 }
@@ -238,7 +249,7 @@ pub fn save_triage_json(report: &TriageReport, path: &Path) -> Result<(), Serial
             limit: MAX_EVIDENCE_JSON_BYTES,
         });
     }
-    let mut file = File::create(path)?;
+    let mut file = create_output_file(path)?;
     file.write_all(&bytes)?;
     Ok(())
 }
@@ -525,6 +536,18 @@ mod tests {
         let path = Path::new("/nonexistent/recording.json");
         let result = load_recording(path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn save_recording_rejects_symlink_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = temp_dir.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(save_recording(&test_recording(), &link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
     }
 
     #[test]

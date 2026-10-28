@@ -877,7 +877,10 @@ fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
             metadata.len()
         )));
     }
-    let mut bytes = Vec::new();
+    let capacity = usize::try_from(metadata.len())
+        .unwrap_or(usize::MAX)
+        .min(usize::try_from(maximum_bytes).unwrap_or(usize::MAX));
+    let mut bytes = Vec::with_capacity(capacity);
     file.take(maximum_bytes + 1)
         .read_to_end(&mut bytes)
         .map_err(|source| io_error(path, source))?;

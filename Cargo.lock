@@ -571,8 +571,10 @@ dependencies = [
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
  "chaoscontrol-vmm",
+ "libc",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

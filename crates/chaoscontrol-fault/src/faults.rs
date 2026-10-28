@@ -1118,6 +1118,14 @@ mod tests {
             "disk-fsync-lie(vm=1)"
         );
         assert_eq!(
+            Fault::DiskFlushError {
+                target: 1,
+                delay_ns: 7
+            }
+            .to_string(),
+            "disk-flush-error(vm=1, 7ns)"
+        );
+        assert_eq!(
             Fault::CpuBitflip {
                 target: 0,
                 vcpu: 0,

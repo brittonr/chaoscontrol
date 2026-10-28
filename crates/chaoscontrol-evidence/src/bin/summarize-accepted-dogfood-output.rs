@@ -93,6 +93,8 @@ fn read_optional(path: &Path) -> Result<Option<Value>, String> {
     if bytes.len() as u64 > MAX_SUMMARY_BYTES {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {}", path.display(), error))?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))?;
     if !value.is_object() {
@@ -104,6 +106,14 @@ fn read_optional(path: &Path) -> Result<Option<Value>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("summary.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        assert!(read_optional(&path).is_err());
+    }
     use std::os::unix::ffi::OsStrExt;
 
     #[test]

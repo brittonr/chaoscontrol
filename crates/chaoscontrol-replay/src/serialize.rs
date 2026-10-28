@@ -1,6 +1,7 @@
 //! Serialization for recordings and triage reports.
 
 use crate::recording::{validate_recording, Recording};
+use crate::text::{escape_markdown_cell, markdown_code_block};
 use crate::triage::TriageReport;
 use snafu::Snafu;
 use std::fs::File;
@@ -131,7 +132,7 @@ pub fn save_triage_report(report: &TriageReport, path: &Path) -> Result<(), Seri
 }
 
 /// Format a triage report as markdown.
-fn format_triage_markdown(report: &TriageReport) -> String {
+pub fn format_triage_markdown(report: &TriageReport) -> String {
     let mut md = String::new();
 
     // Header
@@ -159,7 +160,12 @@ fn format_triage_markdown(report: &TriageReport) -> String {
             .vm_index
             .map(|i| format!("VM{}", i))
             .unwrap_or_else(|| "-".to_string());
-        md.push_str(&format!("| {} | {} | {} |\n", entry.tick, vm, entry.event));
+        md.push_str(&format!(
+            "| {} | {} | {} |\n",
+            entry.tick,
+            vm,
+            escape_markdown_cell(&entry.event)
+        ));
     }
     md.push('\n');
 
@@ -171,9 +177,7 @@ fn format_triage_markdown(report: &TriageReport) -> String {
         md.push_str(&format!("- **RIP:** {:#x}\n", vm_state.rip));
         if !vm_state.serial_tail.is_empty() {
             md.push_str("\n**Serial output (tail):**\n\n");
-            md.push_str("```\n");
-            md.push_str(&vm_state.serial_tail);
-            md.push_str("\n```\n\n");
+            md.push_str(&markdown_code_block(&vm_state.serial_tail));
         }
     }
 
@@ -195,9 +199,7 @@ fn format_triage_markdown(report: &TriageReport) -> String {
     ));
 
     md.push_str("**Fault schedule (JSON):**\n\n");
-    md.push_str("```json\n");
-    md.push_str(&report.reproduction.schedule_json);
-    md.push_str("\n```\n\n");
+    md.push_str(&markdown_code_block(&report.reproduction.schedule_json));
 
     md
 }
@@ -379,6 +381,16 @@ mod tests {
         assert_eq!(loaded.assertion.id, 10);
         assert_eq!(loaded.timeline.len(), 2);
         assert_eq!(loaded.vm_states.len(), 1);
+    }
+
+    #[test]
+    fn triage_markdown_escapes_table_cells_and_fences() {
+        let mut report = test_triage_report();
+        report.timeline[0].event = String::from("a|b");
+        report.vm_states[0].serial_tail = String::from("before\n```\nafter");
+        let md = format_triage_markdown(&report);
+        assert!(md.contains(r"a\|b"));
+        assert!(md.contains("````\n"));
     }
 
     #[test]

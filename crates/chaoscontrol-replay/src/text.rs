@@ -18,6 +18,21 @@ pub fn suffix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
     &value[start..]
 }
 
+/// Escape table-cell delimiters so content cannot rewrite the table shape.
+pub fn escape_markdown_cell(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('|', "\\|")
+}
+
+/// Wrap content in a fenced code block that cannot be closed by its content.
+pub fn markdown_code_block(content: &str) -> String {
+    let mut fence_length = 3_usize;
+    while content.contains(&"`".repeat(fence_length)) {
+        fence_length += 1;
+    }
+    let fence = "`".repeat(fence_length);
+    format!("{fence}\n{content}\n{fence}\n\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,5 +52,13 @@ mod tests {
         assert_eq!(suffix_at_char_boundary(value, 0), "");
         assert_eq!(prefix_at_char_boundary(value, value.len()), value);
         assert_eq!(suffix_at_char_boundary(value, value.len()), value);
+    }
+
+    #[test]
+    fn markdown_helpers_escape_delimiters_and_fences() {
+        assert_eq!(escape_markdown_cell("a|b\\c"), "a\\|b\\\\c");
+        let fenced = markdown_code_block("before\n```\nafter");
+        assert!(fenced.starts_with("````\n"));
+        assert!(fenced.ends_with("\n````\n\n"));
     }
 }

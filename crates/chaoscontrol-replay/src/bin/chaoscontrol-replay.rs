@@ -3,7 +3,7 @@
 use chaoscontrol_replay::recording::RecordedEvent;
 use chaoscontrol_replay::replay::{RealSimulationRunner, ReplayEngine, ReplayError};
 use chaoscontrol_replay::serialize::{
-    load_recording, save_triage_json, save_triage_report, SerializeError,
+    format_triage_markdown, load_recording, save_triage_json, save_triage_report, SerializeError,
 };
 use chaoscontrol_replay::triage::TriageEngine;
 use clap::{Parser, Subcommand};
@@ -519,71 +519,6 @@ fn format_event(event: &RecordedEvent) -> String {
             ..
         } => format!("🐛 BUG #{}: {}", bug_id, description),
     }
-}
-
-fn format_triage_markdown(report: &chaoscontrol_replay::triage::TriageReport) -> String {
-    let mut md = String::new();
-
-    md.push_str(&format!("# Bug Report #{}\n\n", report.bug_id));
-    md.push_str(&format!("**Severity:** {:?}\n\n", report.severity));
-    md.push_str(&format!("{}\n\n", report.summary));
-
-    md.push_str("## Failed Assertion\n\n");
-    md.push_str(&format!("- **ID:** {}\n", report.assertion.id));
-    md.push_str(&format!("- **Type:** {}\n", report.assertion.kind));
-    md.push_str(&format!("- **Location:** {}\n", report.assertion.location));
-    md.push_str(&format!(
-        "- **Description:** {}\n\n",
-        report.assertion.description
-    ));
-
-    md.push_str("## Timeline\n\n");
-    md.push_str("Events leading up to the bug:\n\n");
-    md.push_str("| Tick | VM | Event |\n");
-    md.push_str("|------|-------|-------|\n");
-    for entry in &report.timeline {
-        let vm = entry
-            .vm_index
-            .map(|i| format!("VM{}", i))
-            .unwrap_or_else(|| "-".to_string());
-        md.push_str(&format!("| {} | {} | {} |\n", entry.tick, vm, entry.event));
-    }
-    md.push('\n');
-
-    md.push_str("## VM States at Failure\n\n");
-    for vm_state in &report.vm_states {
-        md.push_str(&format!("### VM{}\n\n", vm_state.vm_index));
-        md.push_str(&format!("- **Status:** {}\n", vm_state.status));
-        md.push_str(&format!("- **RIP:** {:#x}\n", vm_state.rip));
-        if !vm_state.serial_tail.is_empty() {
-            md.push_str("\n**Serial output (tail):**\n\n");
-            md.push_str("```\n");
-            md.push_str(&vm_state.serial_tail);
-            md.push_str("\n```\n\n");
-        }
-    }
-
-    md.push_str("## Fault Schedule\n\n");
-    md.push_str(&format!("{}\n\n", report.schedule_description));
-
-    md.push_str("## How to Reproduce\n\n");
-    md.push_str(&format!("1. **Seed:** {}\n", report.reproduction.seed));
-    if let Some(cp_id) = report.reproduction.start_checkpoint_id {
-        md.push_str(&format!("2. **Start from checkpoint:** {}\n", cp_id));
-    } else {
-        md.push_str("2. **Start from:** beginning\n");
-    }
-    md.push_str(&format!(
-        "3. **Run for:** {} ticks\n\n",
-        report.reproduction.ticks_to_bug
-    ));
-
-    md.push_str("**Fault schedule (JSON):**\n\n");
-    md.push_str("```json\n");
-    md.push_str(&report.reproduction.schedule_json);
-    md.push_str("\n```\n\n");
-
-    md
 }
 
 fn cmd_inspect(recording_path: PathBuf) -> Result<(), CliError> {

@@ -986,19 +986,14 @@ pub fn render_timeline_markdown(facts: &[TimelineFact]) -> Result<String, EventQ
             fact.id,
             fact.parent
                 .map_or_else(|| "-".to_string(), |p| p.to_string()),
-            escape_markdown_cell(&fact.kind),
-            escape_markdown_cell(&fact.label)
+            crate::text::escape_markdown_cell(&fact.kind),
+            crate::text::escape_markdown_cell(&fact.label)
         ));
         if output.len() > MAX_TIMELINE_BYTES {
             return Err(EventQueryError::TimelineByteBound);
         }
     }
     Ok(output)
-}
-
-/// Escape table-cell delimiters so one fact cannot rewrite the table shape.
-fn escape_markdown_cell(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('|', "\\|")
 }
 
 /// Escape DOT label delimiters so one fact cannot rewrite the graph shape.

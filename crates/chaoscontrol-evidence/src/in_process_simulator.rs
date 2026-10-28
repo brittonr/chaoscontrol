@@ -696,22 +696,25 @@ pub fn sample_simulator_run_evidence() -> EvidenceResult<SimulatorRunEvidence> {
     run_simulator_adapter_receipt(config, &mut adapter, &mut hooks)
 }
 
+const MAX_SIMULATOR_RECEIPT_BYTES: u64 = 16 * 1024 * 1024;
+
 pub fn write_sample_simulator_receipt_path(
     path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
-    let path = path.as_ref();
     let evidence = sample_simulator_run_evidence()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, serde_json::to_vec_pretty(&evidence.receipt)?)?;
-    Ok(())
+    crate::replay_readiness_publication::write_bytes(
+        path,
+        serde_json::to_vec_pretty(&evidence.receipt)?,
+    )
 }
 
 pub fn validate_simulator_receipt_path(
     path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<String> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::bounded_file::read_bounded_regular_bytes(
+        path.as_ref(),
+        MAX_SIMULATOR_RECEIPT_BYTES,
+    )?;
     let receipt: SimulatorReceipt = serde_json::from_slice(&bytes)?;
     validate_simulator_receipt(&receipt)?;
     Ok(summarize_simulator_receipt(&receipt))
@@ -1153,6 +1156,29 @@ fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_paths_are_atomic_and_no_follow() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/receipt.json");
+        write_sample_simulator_receipt_path(&path).unwrap();
+        validate_simulator_receipt_path(&path).unwrap();
+
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(validate_simulator_receipt_path(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"{}");
+
+        let fifo = root.path().join("receipt.fifo");
+        let fifo_path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) }, 0);
+        assert!(validate_simulator_receipt_path(&fifo).is_err());
+        assert!(write_sample_simulator_receipt_path(std::path::Path::new("")).is_err());
+    }
 
     #[test]
     fn simulator_config_binds_deterministic_sources() {

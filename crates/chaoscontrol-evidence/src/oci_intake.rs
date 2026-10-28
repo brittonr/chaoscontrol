@@ -189,6 +189,9 @@ fn read_bundle_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, 
     if bytes.len() as u64 > MAX_BUNDLE_RECORD_BYTES {
         return Err(IntakeShellError::UnsafePath);
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(IntakeShellError::UnsafePath);
+    }
     crate::json_preflight::preflight_json(
         &String::from_utf8_lossy(&bytes),
         crate::json_preflight::QUALITY_REPORT_LIMITS,
@@ -470,6 +473,11 @@ fn sync_tree_root(path: &Path) -> Result<(), IntakeShellError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_records_reject_length_changes() {
+        assert!(read_bundle_record::<serde_json::Value>(Path::new("/proc/self/cmdline")).is_err());
+    }
 
     #[test]
     fn bundle_records_reject_symlinks_and_fifos() {

@@ -1086,14 +1086,16 @@ fn plan_network_fault(
             if node == peer {
                 return Err(FaultRejectionReason::InvalidDirectionalLink);
             }
-            if *queue_limit == 0 {
+            if *queue_limit == 0 && *disruption == crate::mechanisms::NetworkDisruption::Jammed {
                 return Err(FaultRejectionReason::InvalidDirectionalQueue);
             }
             let delay_ticks = match disruption {
                 crate::mechanisms::NetworkDisruption::Stopped => 0,
-                crate::mechanisms::NetworkDisruption::Slowed
-                | crate::mechanisms::NetworkDisruption::Jammed => {
+                crate::mechanisms::NetworkDisruption::Slowed => {
                     duration_ns_to_ticks(*delay_ns, policy, false)?
+                }
+                crate::mechanisms::NetworkDisruption::Jammed => {
+                    duration_ns_to_ticks(*delay_ns, policy, true)?
                 }
             };
             Ok(FaultPlanEffect::NetworkDirectional {
@@ -3094,6 +3096,64 @@ mod tests {
 
     fn process_kill_effect(target: u32) -> FaultPlanEffect {
         FaultPlanEffect::ProcessKill { target }
+    }
+
+    #[test]
+    fn directional_plan_uses_only_mode_relevant_parameters() {
+        use crate::mechanisms::{NetworkDirection, NetworkDisruption};
+
+        let facts = facts();
+        let policy = FaultApplicationPolicy::default();
+        let stopped = attempt(Fault::NetworkDirectional {
+            node: 0,
+            peer: 1,
+            direction: NetworkDirection::Outbound,
+            disruption: NetworkDisruption::Stopped,
+            delay_ns: 0,
+            queue_limit: 0,
+        });
+        let plan = plan_fault_application(&stopped, &facts, &policy).unwrap();
+        let FaultPlanEffect::NetworkDirectional {
+            delay_ticks,
+            queue_limit,
+            ..
+        } = plan.effect
+        else {
+            panic!("expected directional effect");
+        };
+        assert_eq!((delay_ticks, queue_limit), (0, 0));
+
+        let jammed = attempt(Fault::NetworkDirectional {
+            node: 0,
+            peer: 1,
+            direction: NetworkDirection::Both,
+            disruption: NetworkDisruption::Jammed,
+            delay_ns: 0,
+            queue_limit: 4,
+        });
+        let plan = plan_fault_application(&jammed, &facts, &policy).unwrap();
+        let FaultPlanEffect::NetworkDirectional {
+            delay_ticks,
+            queue_limit,
+            ..
+        } = plan.effect
+        else {
+            panic!("expected directional effect");
+        };
+        assert_eq!((delay_ticks, queue_limit), (0, 4));
+
+        let missing_queue = attempt(Fault::NetworkDirectional {
+            node: 0,
+            peer: 1,
+            direction: NetworkDirection::Outbound,
+            disruption: NetworkDisruption::Jammed,
+            delay_ns: 1,
+            queue_limit: 0,
+        });
+        assert_eq!(
+            plan_fault_application(&missing_queue, &facts, &policy).unwrap_err(),
+            FaultRejectionReason::InvalidDirectionalQueue
+        );
     }
 
     #[test]

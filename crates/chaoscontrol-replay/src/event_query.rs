@@ -969,8 +969,8 @@ pub fn timeline_receipt(
 ) -> Result<TimelineReceipt, EventQueryError> {
     let ordered = ordered_timeline(facts)?;
     let expected = match format {
-        "markdown" => render_timeline_markdown(&ordered)?,
-        "dot" => render_timeline_dot(&ordered)?,
+        "markdown" => render_timeline_markdown_ordered(&ordered)?,
+        "dot" => render_timeline_dot_ordered(&ordered)?,
         _ => return Err(EventQueryError::InvalidFormat),
     };
     if expected != rendered {
@@ -1002,7 +1002,10 @@ pub fn validate_timeline_receipt(
 
 /// Render a bounded static Markdown timeline.
 pub fn render_timeline_markdown(facts: &[TimelineFact]) -> Result<String, EventQueryError> {
-    let ordered = ordered_timeline(facts)?;
+    render_timeline_markdown_ordered(&ordered_timeline(facts)?)
+}
+
+fn render_timeline_markdown_ordered(ordered: &[TimelineFact]) -> Result<String, EventQueryError> {
     let mut output =
         String::from("| tick | id | parent | kind | label |\n|---:|---:|---:|---|---|\n");
     for fact in ordered {
@@ -1029,9 +1032,12 @@ fn escape_dot_label(value: &str) -> String {
 
 /// Render a bounded static DOT graph.
 pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryError> {
-    let ordered = ordered_timeline(facts)?;
+    render_timeline_dot_ordered(&ordered_timeline(facts)?)
+}
+
+fn render_timeline_dot_ordered(ordered: &[TimelineFact]) -> Result<String, EventQueryError> {
     let mut output = String::from("digraph chaoscontrol_timeline {\n");
-    for fact in &ordered {
+    for fact in ordered {
         output.push_str(&format!(
             "  n{} [label=\"{}: {}\"];\n",
             fact.id,
@@ -1042,7 +1048,7 @@ pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryE
             return Err(EventQueryError::TimelineByteBound);
         }
     }
-    for fact in &ordered {
+    for fact in ordered {
         if let Some(parent) = fact.parent {
             output.push_str(&format!("  n{parent} -> n{};\n", fact.id));
         }

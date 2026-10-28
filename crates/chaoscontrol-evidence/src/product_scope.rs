@@ -132,6 +132,7 @@ pub struct DocumentClaim<'a> {
 }
 
 pub fn parse_product_scope_registry(text: &str) -> EvidenceResult<ProductScopeRegistry> {
+    crate::json_preflight::preflight_json(text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(text).map_err(|error| {
         EvidenceError::new(format!("invalid product-scope registry JSON: {error}"))
     })
@@ -374,6 +375,7 @@ pub fn parse_workspace_members(manifest: &str) -> EvidenceResult<Vec<String>> {
 }
 
 pub fn parse_historical_workload_row_count(manifest: &str) -> EvidenceResult<usize> {
+    crate::json_preflight::preflight_json(manifest, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     let value: serde_json::Value = serde_json::from_str(manifest).map_err(|error| {
         EvidenceError::new(format!("invalid accepted workload proof manifest: {error}"))
     })?;
@@ -778,6 +780,15 @@ pub fn product_scope_paths(root: impl AsRef<Path>) -> (PathBuf, PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn product_scope_json_rejects_excessive_nesting() {
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        let error = parse_product_scope_registry(&nested).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+        let error = parse_historical_workload_row_count(&nested).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     fn valid_registry() -> ProductScopeRegistry {
         ProductScopeRegistry {

@@ -242,6 +242,13 @@ fn matrix_accepts_safe_nested_retained_artifact_paths() {
 }
 
 #[test]
+fn matrix_accepts_retained_artifact_path_at_the_bound() {
+    let mut matrix = sample_matrix();
+    matrix.rows[0].retained_artifacts = vec!["x".repeat(MAX_RETAINED_ARTIFACT_PATH_BYTES)];
+    validate_matrix(&matrix).expect("retained artifact path at the byte bound is admitted");
+}
+
+#[test]
 fn matrix_rejects_unsafe_retained_artifact_paths() {
     for path in [
         "../escape",

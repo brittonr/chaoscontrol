@@ -1181,7 +1181,18 @@ fn write_trace_json_with_limit(path: &str, bytes: &[u8], limit: u64) -> std::io:
         ));
     }
     let mut file = open_trace_output(path)?;
-    file.write_all(bytes)
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    sync_trace_parent(path)
+}
+
+fn sync_trace_parent(path: &str) -> std::io::Result<()> {
+    let path = std::path::Path::new(path);
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    File::open(parent)?.sync_all()
 }
 
 fn open_trace_output(path: &str) -> std::io::Result<File> {

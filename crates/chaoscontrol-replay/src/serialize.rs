@@ -106,6 +106,8 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
     }
     let mut file = create_output_file(path)?;
     file.write_all(&bytes)?;
+    file.sync_all()?;
+    sync_parent(path)?;
     Ok(())
 }
 
@@ -155,6 +157,17 @@ fn write_bounded_output(path: &Path, bytes: &[u8], limit: usize) -> Result<(), S
     }
     let mut file = create_output_file(path)?;
     file.write_all(bytes)?;
+    file.sync_all()?;
+    sync_parent(path)?;
+    Ok(())
+}
+
+fn sync_parent(path: &Path) -> Result<(), SerializeError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 

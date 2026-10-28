@@ -13,7 +13,13 @@ const LOCK_FILE_MODE: u32 = 0o600;
 /// Held writer lock. Dropping it releases the lock.
 #[derive(Debug)]
 pub(super) struct JournalLock {
-    _file: File,
+    file: File,
+}
+
+impl Drop for JournalLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
 }
 
 #[derive(Debug)]
@@ -41,7 +47,7 @@ pub(super) fn acquire_lock(path: &Path) -> Result<JournalLock, LockFailure> {
         )));
     }
     match file.try_lock() {
-        Ok(()) => Ok(JournalLock { _file: file }),
+        Ok(()) => Ok(JournalLock { file }),
         Err(TryLockError::WouldBlock) => Err(LockFailure::Busy),
         Err(TryLockError::Error(error)) => Err(LockFailure::Lock(error)),
     }

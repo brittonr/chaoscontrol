@@ -392,6 +392,12 @@ impl DlogWriter {
             .mode(0o600)
             .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
             .open(path)?;
+        if !file.metadata()?.file_type().is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "dlog output is not a regular file",
+            ));
+        }
         Ok(Self {
             writer: BufWriter::with_capacity(64 * 1024, file),
             path: path.to_path_buf(),
@@ -780,6 +786,26 @@ mod tests {
 
         assert!(DlogReader::open(&link).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn writer_rejects_non_regular_target() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("dlog.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let _reader = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&fifo)
+            .unwrap();
+        let error = match DlogWriter::create(&fifo) {
+            Ok(_) => panic!("fifo target was accepted"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[test]

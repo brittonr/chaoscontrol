@@ -122,6 +122,24 @@ mod tests {
     use std::os::unix::ffi::OsStrExt;
 
     #[test]
+    fn architecture_scan_rejects_excessive_entries() {
+        let root = tempfile::tempdir().unwrap();
+        for relative in CORE_PATHS {
+            let path = root.path().join(relative);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"").unwrap();
+        }
+        let vmm_source = root.path().join(VMM_SOURCE_PATH);
+        std::fs::create_dir_all(&vmm_source).unwrap();
+        for index in 0..=MAX_SOURCE_ENTRIES {
+            std::fs::write(vmm_source.join(format!("module{index}.rs")), b"").unwrap();
+        }
+
+        let error = collect_violations(root.path()).expect_err("entry bound must fail");
+        assert!(error.contains("entry bound exceeded"));
+    }
+
+    #[test]
     fn source_reads_reject_symlinks_and_fifos() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("target.rs");

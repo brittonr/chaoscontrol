@@ -14,7 +14,13 @@ fn main() {
 }
 
 fn run() -> EvidenceResult<()> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    run_with(std::env::args().skip(1).collect())
+}
+
+fn run_with(args: Vec<String>) -> EvidenceResult<()> {
+    if args.iter().any(String::is_empty) {
+        return Err(EvidenceError::new("path arguments must not be empty"));
+    }
     match args.as_slice() {
         [cmd, path] if cmd == "validate" => {
             println!("{}", validate_consistency_history_path(path)?);
@@ -63,4 +69,14 @@ fn write_consistency_sample(path: &str, bad: bool) -> EvidenceResult<()> {
     write_sample_consistency_history_path(&path, bad)?;
     println!("wrote {}", path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(run_with(vec!["sample-good".to_string(), String::new()]).is_err());
+    }
 }

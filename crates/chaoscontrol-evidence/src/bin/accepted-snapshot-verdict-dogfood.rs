@@ -453,7 +453,7 @@ fn run_command(
         .map_err(|error| error.to_string())?;
     let parent = log.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    let mut file = fs::File::create(log).map_err(|error| format!("{}: {error}", log.display()))?;
+    let mut file = open_log(log).map_err(|error| format!("{}: {error}", log.display()))?;
     file.write_all(&captured.stdout)
         .map_err(|error| format!("{}: {error}", log.display()))?;
     file.write_all(&captured.stderr)
@@ -673,7 +673,7 @@ fn chunk_snapshot(snapshot: &Path) -> Result<(), String> {
         }
         data.truncate(count);
         let name = format!("{}.part{index:02}", file_name(snapshot)?);
-        fs::write(snapshot.with_file_name(&name), &data)
+        write_atomic(&snapshot.with_file_name(&name), &data)
             .map_err(|error| format!("{}: {error}", name))?;
         chunks.push(json!({"path": format!("snapshots/{name}"), "size": count, "sha256": format!("{:x}", Sha256::digest(&data))}));
         index += 1;
@@ -824,7 +824,27 @@ fn write_json(path: &Path, value: &Value) -> Result<(), String> {
     let mut bytes =
         serde_json::to_vec_pretty(value).map_err(|error| format!("{}: {error}", path.display()))?;
     bytes.push(b'\n');
-    fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+    write_atomic(path, &bytes).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn open_log(path: &Path) -> std::io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    fs::File::open(parent)?.sync_all()
 }
 
 fn sha256(path: &Path) -> Result<String, String> {
@@ -902,4 +922,34 @@ fn now() -> Result<String, String> {
         .map_err(|error| format!("system clock before Unix epoch: {error}"))?
         .as_secs();
     rfc3339_utc(seconds)
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_output_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_atomic(&link, b"replacement").unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn log_open_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.log");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("run.log");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(open_log(&link).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+    }
 }

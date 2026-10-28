@@ -134,6 +134,9 @@ fn read_bounded_text(path: &Path) -> Result<String, String> {
 }
 
 fn run(root: &Path) -> Result<(), String> {
+    if root.as_os_str().is_empty() {
+        return Err(String::from("root must not be empty"));
+    }
     let manifest_path = root.join(CORE_MANIFEST);
     let manifest = read_bounded_text(&manifest_path)?;
     let sources = read_sources(root)?;
@@ -186,6 +189,11 @@ mod tests {
 
         let error = read_sources(root.path()).expect_err("entry bound must fail");
         assert!(error.contains("entry bound exceeded"));
+    }
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(run(Path::new("")).is_err());
     }
 
     #[test]

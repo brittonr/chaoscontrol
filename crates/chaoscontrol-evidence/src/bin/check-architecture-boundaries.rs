@@ -23,6 +23,13 @@ fn repository_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+fn admit_root(root: &Path) -> Result<(), String> {
+    if root.as_os_str().is_empty() {
+        return Err(String::from("root must not be empty"));
+    }
+    Ok(())
+}
+
 fn load_source(root: &Path, relative_path: &str) -> Result<String, String> {
     let path = root.join(relative_path);
     read_bounded_text(&path)
@@ -89,6 +96,7 @@ fn collect_violations(root: &Path) -> Result<Vec<BoundaryViolation>, String> {
 
 fn run() -> Result<(), String> {
     let root = repository_root();
+    admit_root(&root)?;
     let violations = collect_violations(&root)?;
     if violations.is_empty() {
         println!(
@@ -137,6 +145,11 @@ mod tests {
 
         let error = collect_violations(root.path()).expect_err("entry bound must fail");
         assert!(error.contains("entry bound exceeded"));
+    }
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(admit_root(Path::new("")).is_err());
     }
 
     #[test]

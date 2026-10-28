@@ -42,7 +42,21 @@ fn parse_args() -> Result<(PathBuf, Option<PathBuf>, Option<PathBuf>, bool), Str
             other => return Err(format!("unexpected argument {other:?}\n{}", usage())),
         }
     }
+    admit_path("--root", &root)?;
+    if let Some(path) = &manifest {
+        admit_path("--manifest", path)?;
+    }
+    if let Some(path) = &report {
+        admit_path("--report", path)?;
+    }
     Ok((root, manifest, report, selftest))
+}
+
+fn admit_path(label: &str, path: &std::path::Path) -> Result<(), String> {
+    if path.as_os_str().is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -87,5 +101,16 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(admit_path("--root", std::path::Path::new("")).is_err());
+        assert!(admit_path("--manifest", std::path::Path::new("manifest.json")).is_ok());
     }
 }

@@ -21,6 +21,7 @@ const BLOCKED_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 2;
 const WAIT_POLL_MILLISECONDS: u64 = 100;
 const HASH_BUFFER_BYTES: usize = 64 * 1_024;
+const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ARTIFACT_SCAN_DEPTH: usize = 64;
 const KVM_CAPABILITY: &str = "kvm";
 const X86_64_LINUX_CAPABILITY: &str = "x86_64-linux";
@@ -211,10 +212,31 @@ fn run(config: Config) -> Result<bool, String> {
 }
 
 fn read_matrix(path: &Path) -> Result<KvmReleaseMatrix, String> {
-    let bytes = fs::read(path)
-        .map_err(|error| format!("failed to read matrix {}: {error}", path.display()))?;
+    let bytes = read_bytes(path, MAX_INPUT_BYTES)?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse matrix {}: {error}", path.display()))
+}
+
+fn read_bytes(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("failed to inspect {}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(bytes)
 }
 
 fn resolve_path(root: &Path, path: &Path) -> PathBuf {
@@ -665,6 +687,7 @@ fn unix_seconds() -> Result<u64, String> {
 #[cfg(test)]
 mod publication_tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
 
     #[test]
     fn atomic_output_does_not_follow_symlinks() {
@@ -677,6 +700,21 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn input_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("matrix.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bytes(&link, MAX_INPUT_BYTES).is_err());
+
+        let fifo = root.path().join("matrix.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bytes(&fifo, MAX_INPUT_BYTES).is_err());
     }
 
     #[test]

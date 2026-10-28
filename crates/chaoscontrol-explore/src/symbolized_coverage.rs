@@ -926,6 +926,21 @@ mod tests {
             SymbolCoverageError::ReceiptDrift
         );
 
+        let mut wrong_accounting = receipt.clone();
+        wrong_accounting.mapped_hits += 1;
+        assert_eq!(
+            validate_receipt(
+                &wrong_accounting,
+                &catalogs,
+                &loads,
+                &observations,
+                [4; 32],
+                &limits
+            )
+            .unwrap_err(),
+            SymbolCoverageError::ReceiptDrift
+        );
+
         let changed_catalogs = vec![catalog(
             1,
             "src/lib.rs",

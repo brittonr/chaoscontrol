@@ -17,6 +17,7 @@ const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Parser)]
 #[command(about = "Query retained events or render a static timeline")]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -317,6 +318,12 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_exposes_a_version() {
+        use clap::CommandFactory;
+        assert!(Cli::command().get_version().is_some());
+    }
 
     #[test]
     fn query_accepts_optional_events_input() {

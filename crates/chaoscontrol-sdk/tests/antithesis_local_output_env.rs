@@ -38,15 +38,15 @@ fn antithesis_local_output_env_var_is_accepted() {
     assert_eq!(
         records
             .iter()
-            .find_map(|record| record.get("milestone"))
-            .expect("trimmed event record")["step"],
+            .find_map(|record| record.get("  milestone  "))
+            .expect("verbatim event record")["step"],
         1
     );
     assert_eq!(
         records
             .iter()
-            .find_map(|record| record.get("anonymous"))
-            .expect("anonymous event record")["step"],
+            .find_map(|record| record.get("   "))
+            .expect("verbatim empty-name event record")["step"],
         2
     );
 

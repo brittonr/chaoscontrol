@@ -31,7 +31,7 @@ Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
 | VM detection | (none) | `is_in_vm()`, `is_local_output()` | absent |
 | Guest shell | (none) | `runtime::guest_init()` | absent |
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |
-| Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full`; trims and maps empty names to `anonymous` | equivalent |
+| Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full`; records names verbatim (0.3.0 behavior) | equivalent |
 | Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` (primary) or `ANTITHESIS_SDK_LOCAL_OUTPUT` (fallback) | equivalent |
 | Local output constant | `LOCAL_OUTPUT` | `LOCAL_OUTPUT` and `ANTITHESIS_LOCAL_OUTPUT` at crate root | superset |
 | Convenience imports | `prelude` | `prelude` plus `compat` module with unprefixed Antithesis names | superset |

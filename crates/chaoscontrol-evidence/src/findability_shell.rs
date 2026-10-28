@@ -4,8 +4,6 @@ use chaoscontrol_sim_core::findability::{
     FindabilityReport, SubtreeObservation,
 };
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
 use std::path::Path;
 
 pub const FINDABILITY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
@@ -117,27 +115,7 @@ pub fn write_findability_report_path(
     let report = check_findability_artifact_path(artifact_path)?;
     let mut bytes = serde_json::to_vec_pretty(&report)?;
     bytes.push(b'\n');
-    let report_path = report_path.as_ref();
-    if let Some(parent) = report_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(report_path)
-        .map_err(|error| EvidenceError::new(format!("{}: {error}", report_path.display())))?;
-    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
-        drop(file);
-        let cleanup = fs::remove_file(report_path);
-        return Err(EvidenceError::new(match cleanup {
-            Ok(()) => format!("{}: {error}", report_path.display()),
-            Err(cleanup_error) => format!(
-                "{}: {error}; failed to remove partial report: {cleanup_error}",
-                report_path.display()
-            ),
-        }));
-    }
-    Ok(())
+    crate::bounded_file::write_new_bytes(report_path.as_ref(), &bytes)
 }
 
 fn artifact_observations(

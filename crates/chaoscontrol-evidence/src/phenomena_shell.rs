@@ -4,8 +4,6 @@ use chaoscontrol_smr::phenomena::{
     DependencyKind, HistoryOperation, OperationKind, OperationStatus, PhenomenaHistory,
     PhenomenaReport, ReadObservation,
 };
-use std::fs::{self, OpenOptions};
-use std::io::Write;
 use std::path::Path;
 
 pub const MAX_PHENOMENA_HISTORY_BYTES: u64 = 4 * 1_024 * 1_024;
@@ -174,25 +172,5 @@ pub fn write_phenomena_report_path(
     let report = check_phenomena_history_path(history_path)?;
     let mut bytes = serde_json::to_vec_pretty(&report)?;
     bytes.push(b'\n');
-    let report_path = report_path.as_ref();
-    if let Some(parent) = report_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(report_path)
-        .map_err(|error| EvidenceError::new(format!("{}: {error}", report_path.display())))?;
-    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
-        drop(file);
-        let cleanup = fs::remove_file(report_path);
-        return Err(EvidenceError::new(match cleanup {
-            Ok(()) => format!("{}: {error}", report_path.display()),
-            Err(cleanup_error) => format!(
-                "{}: {error}; failed to remove partial report: {cleanup_error}",
-                report_path.display()
-            ),
-        }));
-    }
-    Ok(())
+    crate::bounded_file::write_new_bytes(report_path.as_ref(), &bytes)
 }

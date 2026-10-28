@@ -60,6 +60,27 @@ fn fallback_schema_reports_antithesis_display_types_and_must_hit() {
         assert_eq!(assertion["must_hit"], must_hit, "{message}");
     }
 
+    let declarations = content
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
+        .filter_map(|record| record.get("antithesis_assert").cloned())
+        .filter(|assertion| assertion["hit"] == false)
+        .map(|assertion| {
+            (
+                assertion["message"]
+                    .as_str()
+                    .expect("assertion message")
+                    .to_string(),
+                assertion,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let aou_declaration = &declarations["always or unreachable assertion"];
+    assert_eq!(aou_declaration["display_type"], "AlwaysOrUnreachable");
+    assert_eq!(aou_declaration["must_hit"], false);
+    assert_eq!(aou_declaration["condition"], false);
+    assert_eq!(declarations["always assertion"]["must_hit"], true);
+
     let always = &assertions["always assertion"];
     assert!(always["location"]["file"]
         .as_str()

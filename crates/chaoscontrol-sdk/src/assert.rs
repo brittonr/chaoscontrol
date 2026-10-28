@@ -38,6 +38,11 @@ pub const CATALOG_KIND_REACHABLE: u8 = chaoscontrol_protocol::ASSERTION_KIND_REA
 pub const CATALOG_KIND_UNREACHABLE: u8 =
     chaoscontrol_protocol::ASSERTION_KIND_UNREACHABLE_DISCRIMINANT;
 
+/// Default must-hit behavior for a catalog kind.
+pub const fn default_must_hit(kind: u8) -> bool {
+    kind != CATALOG_KIND_UNREACHABLE
+}
+
 /// The kind of assertion being made.
 ///
 /// Maps to the four assertion semantics supported by ChaosControl.
@@ -168,6 +173,8 @@ pub struct CatalogEntry {
     pub class: &'static str,
     /// Caller function containing the assertion.
     pub function: fn() -> &'static str,
+    /// Whether the property must be reached to pass.
+    pub must_hit: bool,
     /// Guest name for density reporting.
     pub guest: &'static str,
     /// Normalized bounded metadata label, such as `invariant`,
@@ -654,7 +661,7 @@ macro_rules! cc_assert_always_or_unreachable {
     ($cond:expr, $msg:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
-        $crate::__cc_register_catalog!(
+        $crate::__cc_register_catalog_optional!(
             _ID,
             $msg,
             $crate::assert::CATALOG_KIND_ALWAYS,
@@ -673,7 +680,7 @@ macro_rules! cc_assert_always_or_unreachable {
     ($cond:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
-        $crate::__cc_register_catalog!(
+        $crate::__cc_register_catalog_optional!(
             _ID,
             $msg,
             $crate::assert::CATALOG_KIND_ALWAYS,
@@ -755,6 +762,59 @@ macro_rules! cc_assert_raw {
 #[macro_export]
 macro_rules! __cc_register_catalog {
     ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        $crate::__cc_register_catalog_with_must_hit!(
+            $id,
+            $msg,
+            $kind,
+            $guest,
+            $category,
+            $file,
+            $line,
+            $column,
+            $class,
+            $crate::assert::default_must_hit($kind)
+        );
+    };
+    ($id:expr, $msg:expr, $kind:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        $crate::__cc_register_catalog!(
+            $id,
+            $msg,
+            $kind,
+            "uncategorized",
+            "uncategorized",
+            $file,
+            $line,
+            $column,
+            $class
+        );
+    };
+}
+
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_catalog_optional {
+    ($id:expr, $msg:expr, $kind:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        $crate::__cc_register_catalog_with_must_hit!(
+            $id,
+            $msg,
+            $kind,
+            "uncategorized",
+            "uncategorized",
+            $file,
+            $line,
+            $column,
+            $class,
+            false
+        );
+    };
+}
+
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_catalog_with_must_hit {
+    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr, $must_hit:expr) => {
         const _: &str = $msg;
         fn __cc_assertion_function_name() -> &'static str {
             fn __cc_assertion_probe() {}
@@ -779,23 +839,11 @@ macro_rules! __cc_register_catalog {
                 column: $column,
                 class: $class,
                 function: __cc_assertion_function_name as fn() -> &'static str,
+                must_hit: $must_hit,
                 guest: $guest,
                 category: $category,
             };
         };
-    };
-    ($id:expr, $msg:expr, $kind:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
-        $crate::__cc_register_catalog!(
-            $id,
-            $msg,
-            $kind,
-            "uncategorized",
-            "uncategorized",
-            $file,
-            $line,
-            $column,
-            $class
-        );
     };
 }
 
@@ -823,6 +871,7 @@ macro_rules! __cc_register_stable_catalog {
                 column: $column,
                 class: $class,
                 function: __cc_assertion_function_name as fn() -> &'static str,
+                must_hit: $crate::assert::default_must_hit($kind),
                 guest: $guest,
                 category: $category,
             };
@@ -838,6 +887,15 @@ macro_rules! __cc_register_catalog {
         const _: &str = $msg;
     };
     ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        const _: &str = $msg;
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_catalog_optional {
+    ($id:expr, $msg:expr, $kind:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
         const _: &str = $msg;
     };
 }

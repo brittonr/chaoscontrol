@@ -184,7 +184,7 @@ pub(crate) fn location_for_compatibility(
             line: first.line,
             column: first.column,
             display_type: None,
-            must_hit: None,
+            must_hit: Some(first.must_hit),
         }),
         (None, _) => raw_location_for_compatibility(id, kind, message),
         (Some(_), Some(_)) => None,

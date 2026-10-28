@@ -449,11 +449,11 @@ pub(crate) fn local_emit_declaration(
 ) {
     use chaoscontrol_protocol::identity::AssertionKind as ProtocolKind;
 
-    let (assert_type, derived_display_type, derived_must_hit) = match descriptor.kind {
-        ProtocolKind::Always => ("always", "Always", true),
-        ProtocolKind::Sometimes => ("sometimes", "Sometimes", true),
-        ProtocolKind::Reachable => ("reachability", "Reachable", true),
-        ProtocolKind::Unreachable => ("reachability", "Unreachable", false),
+    let (assert_type, derived_must_hit) = match descriptor.kind {
+        ProtocolKind::Always => ("always", true),
+        ProtocolKind::Sometimes => ("sometimes", true),
+        ProtocolKind::Reachable => ("reachability", true),
+        ProtocolKind::Unreachable => ("reachability", false),
     };
     let kind = match descriptor.kind {
         ProtocolKind::Always => crate::assert::AssertionKind::Always,
@@ -464,14 +464,20 @@ pub(crate) fn local_emit_declaration(
     let location = descriptor.compatibility_id.and_then(|id| {
         crate::assertion_catalog::location_for_compatibility(id, kind, &descriptor.message)
     });
-    let display_type = location
-        .as_ref()
-        .and_then(|location| location.display_type)
-        .unwrap_or(derived_display_type);
     let must_hit = location
         .as_ref()
         .and_then(|location| location.must_hit)
         .unwrap_or(derived_must_hit);
+    let display_type = location
+        .as_ref()
+        .and_then(|location| location.display_type)
+        .unwrap_or(match descriptor.kind {
+            ProtocolKind::Always if !must_hit => "AlwaysOrUnreachable",
+            ProtocolKind::Always => "Always",
+            ProtocolKind::Sometimes => "Sometimes",
+            ProtocolKind::Reachable => "Reachable",
+            ProtocolKind::Unreachable => "Unreachable",
+        });
     let (class, function, file, line, column) = location.map_or(
         (
             "",

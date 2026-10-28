@@ -217,10 +217,28 @@ pub fn init() {
     INITIALIZED.get_or_init(|| {
         // Force mode detection
         let _ = get_mode();
+        if matches!(get_mode(), TransportMode::LocalOutput { .. }) {
+            emit_sdk_info();
+        }
         // Emit the assertion catalog so the VMM/oracle knows about
         // every assertion site, including ones never reached at runtime.
         crate::assert::emit_catalog();
     });
+}
+
+/// Emit the Antithesis-compatible SDK metadata record once.
+fn emit_sdk_info() {
+    let value = serde_json::json!({
+        "antithesis_sdk": {
+            "language": {
+                "name": "Rust",
+                "version": option_env!("RUSTC_VERSION").unwrap_or("unknown"),
+            },
+            "sdk_version": env!("CARGO_PKG_VERSION"),
+            "protocol_version": "1",
+        }
+    });
+    local_emit_value(&value);
 }
 
 /// Returns `true` if running inside a ChaosControl VM.

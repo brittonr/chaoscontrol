@@ -15,9 +15,13 @@ pub struct ScaffoldPlan {
 }
 
 pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
-    if workload.is_empty() || workload.contains(['\0', '\n', '\r']) {
+    if workload.is_empty()
+        || !workload
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
         return Err(String::from(
-            "workload name is empty or contains a control character",
+            "workload name is empty or contains unsupported characters",
         ));
     }
     if source_root.is_empty() {
@@ -81,6 +85,8 @@ mod tests {
     fn invalid_names_fail_before_filesystem_effects() {
         assert!(plan("", "/source").is_err());
         assert!(plan("bad\nname", "/source").is_err());
+        assert!(plan("../escape", "/source").is_err());
+        assert!(plan("nested/name", "/source").is_err());
         assert!(plan("valid", "").is_err());
     }
 }

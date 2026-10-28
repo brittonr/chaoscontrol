@@ -186,8 +186,9 @@ change the assertion oracle or prove exploration quality.
   `antithesis_init`, `lifecycle`, `random`, `AntithesisRng`, `assert_raw`).
 - `assert_raw` registers runtime descriptors before catalog emission. A new
   raw site after initialization is rejected; hits for declared sites still
-  emit. `display_type` is derived from kind/must-hit, and `must_hit`
-  distinguishes `Always` from `AlwaysOrUnreachable`.
+  emit. Caller-supplied `display_type` and `must_hit` are preserved in local
+  records; the VMM AOU flag is set when an `Always` raw site has
+  `must_hit = false`.
 - `cc_assert_always_some!` accepts both the Antithesis brace-bundle shape
   (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
   single-expression `Option::is_some` shape. `cc_assert_always_any!` is the

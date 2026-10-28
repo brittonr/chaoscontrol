@@ -25,6 +25,8 @@ pub(crate) struct CatalogLocation {
     pub file: &'static str,
     pub line: u32,
     pub column: u32,
+    pub display_type: Option<&'static str>,
+    pub must_hit: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +54,13 @@ static RAW_REGISTRATIONS: Mutex<Vec<RawRegistration>> = Mutex::new(Vec::new());
 static RAW_CLOSED: AtomicBool = AtomicBool::new(false);
 
 /// Register one runtime raw assertion before the catalog is emitted.
-pub(crate) fn register_raw(descriptor: AssertionDescriptor, class: &str, function: &str) -> bool {
+pub(crate) fn register_raw(
+    descriptor: AssertionDescriptor,
+    class: &str,
+    function: &str,
+    display_type: &str,
+    must_hit: bool,
+) -> bool {
     if descriptor.validate().is_err() {
         return false;
     }
@@ -74,6 +82,8 @@ pub(crate) fn register_raw(descriptor: AssertionDescriptor, class: &str, functio
         file: Box::leak(descriptor.source_file.clone().into_boxed_str()),
         line: descriptor.source_line,
         column: descriptor.source_column,
+        display_type: Some(Box::leak(display_type.to_string().into_boxed_str())),
+        must_hit: Some(must_hit),
     };
     registrations.push(RawRegistration {
         descriptor,
@@ -166,6 +176,8 @@ pub(crate) fn location_for_compatibility(
             file: first.file,
             line: first.line,
             column: first.column,
+            display_type: None,
+            must_hit: None,
         }),
         (None, _) => raw_location_for_compatibility(id, kind, message),
         (Some(_), Some(_)) => None,

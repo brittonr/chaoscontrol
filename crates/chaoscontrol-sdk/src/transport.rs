@@ -376,7 +376,7 @@ fn dispatch_local_bound(
         CMD_ASSERT_UNREACHABLE => crate::assert::AssertionKind::Unreachable,
         _ => return,
     };
-    let (assert_type, display_type, must_hit, condition) = match command {
+    let (assert_type, derived_display_type, derived_must_hit, condition) = match command {
         CMD_ASSERT_ALWAYS => (
             "always",
             if always_or_unreachable {
@@ -394,16 +394,24 @@ fn dispatch_local_bound(
     };
     let location = identity
         .compatibility_id
-        .and_then(|id| crate::assertion_catalog::location_for_compatibility(id, kind, message))
-        .map_or(crate::internal::LocalAssertLocation::EMPTY, |location| {
-            crate::internal::LocalAssertLocation {
-                class: location.class,
-                function: location.function,
-                file: location.file,
-                line: location.line,
-                column: location.column,
-            }
-        });
+        .and_then(|id| crate::assertion_catalog::location_for_compatibility(id, kind, message));
+    let display_type = location
+        .as_ref()
+        .and_then(|location| location.display_type)
+        .unwrap_or(derived_display_type);
+    let must_hit = location
+        .as_ref()
+        .and_then(|location| location.must_hit)
+        .unwrap_or(derived_must_hit);
+    let location = location.map_or(crate::internal::LocalAssertLocation::EMPTY, |location| {
+        crate::internal::LocalAssertLocation {
+            class: location.class,
+            function: location.function,
+            file: location.file,
+            line: location.line,
+            column: location.column,
+        }
+    });
     let (_, report_id) = bound_event_ids(&identity);
     let value = serde_json::json!({
         "antithesis_assert": {

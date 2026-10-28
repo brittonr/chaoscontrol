@@ -24,7 +24,11 @@ fn raw(
         hit,
         must_hit,
         AssertType::Always,
-        "Always".to_string(),
+        if must_hit {
+            "Always".to_string()
+        } else {
+            "AlwaysOrUnreachable".to_string()
+        },
         id.to_string(),
     );
 }

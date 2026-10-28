@@ -310,7 +310,7 @@ pub fn assert_raw(
     hit: bool,
     must_hit: bool,
     assert_type: AssertType,
-    _display_type: String,
+    display_type: String,
     id: String,
 ) {
     use chaoscontrol_protocol::identity::{
@@ -339,7 +339,13 @@ pub fn assert_raw(
         guest: "raw".to_string(),
         category: "raw".to_string(),
     };
-    if !crate::assertion_catalog::register_raw(descriptor, &class, &function) {
+    if !crate::assertion_catalog::register_raw(
+        descriptor,
+        &class,
+        &function,
+        &display_type,
+        must_hit,
+    ) {
         return;
     }
     if !hit {

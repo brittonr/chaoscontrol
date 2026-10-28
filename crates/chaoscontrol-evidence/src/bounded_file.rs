@@ -12,7 +12,7 @@ pub fn output_parent(path: &Path) -> &Path {
         .unwrap_or_else(|| Path::new("."))
 }
 
-pub(crate) fn write_new_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
+pub fn write_new_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
     let parent = output_parent(path);
     std::fs::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;

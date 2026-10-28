@@ -40,7 +40,6 @@ fn run() -> Result<(), String> {
     let topology: OciTopology =
         serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
     if let Some(path) = manifest_output {
-        use std::io::Write;
         let plan = chaoscontrol_protocol::oci_intake::lower_topology(&topology)
             .map_err(|error| format!("{error:?}"))?;
         let manifest = chaoscontrol_protocol::guest_process::ProcessManifest {
@@ -54,16 +53,10 @@ fn run() -> Result<(), String> {
                 .map(|process| process.spec)
                 .collect(),
         };
-        let bytes = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|error| error.to_string())?;
-        file.write_all(&bytes)
-            .and_then(|()| file.write_all(b"\n"))
-            .and_then(|()| file.sync_all())
-            .map_err(|error| error.to_string())?;
+        let mut bytes = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
+        bytes.push(b'\n');
+        chaoscontrol_evidence::bounded_file::write_new_bytes(&path, &bytes)
+            .map_err(|error| error.message().to_string())?;
         println!(
             "manifest={} scope=image-to-guest-bundle-only",
             plan.process_manifest.manifest_identity

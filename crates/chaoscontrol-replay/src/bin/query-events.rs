@@ -183,7 +183,7 @@ fn load_events(
         (None, Some(path), None, None) => {
             let recording = chaoscontrol_replay::serialize::load_recording(&path)
                 .map_err(|error| error.to_string())?;
-            Ok(envelopes_from_recording(&recording))
+            envelopes_from_recording(&recording).map_err(|error| error.to_string())
         }
         (None, None, Some(path), None) => {
             let bytes = read_bytes(&path)?;

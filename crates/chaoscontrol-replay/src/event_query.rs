@@ -3,6 +3,10 @@
 //! This module is pure: callers supply admitted events, queries, and facts.
 //! It performs no file, clock, process, network, or environment access.
 
+use crate::recording::FaultRoundTraceDelta;
+use chaoscontrol_fault::outcomes::{
+    FaultOutcomeLedger, FaultStageEvent, FaultStageKind, NANOSECONDS_PER_SIMULATION_TICK,
+};
 use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -93,18 +97,121 @@ fn empty_derived() -> BTreeMap<String, String> {
 }
 
 /// Build canonical envelopes from one retained recording.
-pub fn envelopes_from_recording(recording: &crate::recording::Recording) -> Vec<EventEnvelope> {
+pub fn envelopes_from_recording(
+    recording: &crate::recording::Recording,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"chaoscontrol.recording-source.v1\0");
     hasher.update(recording.session_id.as_bytes());
     hasher.update(&recording.fault_run_id.0);
     let source_id = *hasher.finalize().as_bytes();
-    recording
+    let mut envelopes: Vec<EventEnvelope> = recording
         .events
         .iter()
         .enumerate()
         .map(|(sequence, event)| envelope_from_recorded_event(source_id, sequence as u64, event))
+        .collect();
+    let stages: &[FaultStageEvent] = if recording.fault_stage_events.is_empty() {
+        &recording.fault_outcome_ledger.events
+    } else {
+        &recording.fault_stage_events
+    };
+    envelopes.extend(envelopes_from_fault_stages(
+        fault_stage_source_id(recording),
+        stages,
+        &recording.fault_round_deltas,
+        &recording.fault_outcome_ledger,
+    )?);
+    Ok(envelopes)
+}
+
+/// Stable identity for the canonical fault-stage trace of one recording.
+fn fault_stage_source_id(recording: &crate::recording::Recording) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"chaoscontrol.fault-stage-source.v1\0");
+    hasher.update(recording.session_id.as_bytes());
+    hasher.update(&recording.fault_run_id.0);
+    *hasher.finalize().as_bytes()
+}
+
+/// Build canonical envelopes from a retained fault-stage trace.
+///
+/// Round deltas supply the exact round tick. Legacy traces without deltas use
+/// the attempt selection tick as the only retained time fact.
+pub fn envelopes_from_fault_stages(
+    source_id: [u8; 32],
+    events: &[FaultStageEvent],
+    deltas: &[FaultRoundTraceDelta],
+    ledger: &FaultOutcomeLedger,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    if source_id == [0; 32] {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| envelope_from_fault_stage(source_id, index, event, deltas, ledger))
         .collect()
+}
+
+fn envelope_from_fault_stage(
+    source_id: [u8; 32],
+    index: usize,
+    event: &FaultStageEvent,
+    deltas: &[FaultRoundTraceDelta],
+    ledger: &FaultOutcomeLedger,
+) -> Result<EventEnvelope, EventQueryError> {
+    let sequence = u64::try_from(index).map_err(|_| EventQueryError::CounterOverflow)?;
+    if event.sequence != sequence {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    let attempt_state = ledger
+        .attempts
+        .get(&event.attempt_id)
+        .ok_or(EventQueryError::InvalidEvent)?;
+    let tick = if deltas.is_empty() {
+        attempt_state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK
+    } else {
+        deltas
+            .iter()
+            .find(|delta| sequence >= delta.event_start && sequence < delta.event_end)
+            .map(|delta| delta.tick)
+            .ok_or(EventQueryError::InvalidEvent)?
+    };
+    let stage = fault_stage_name(&event.kind);
+    let payload = serde_json::to_vec(event).map_err(|_| EventQueryError::InvalidEvent)?;
+    let fault = &attempt_state.attempt.fault;
+    Ok(EventEnvelope {
+        schema: EVENT_ENVELOPE_SCHEMA.to_string(),
+        source_id,
+        source_kind: EventSourceKind::FaultStage,
+        source_sequence: sequence,
+        tick,
+        vm_index: None,
+        process: None,
+        thread: None,
+        kind: format!("fault_stage_{stage}"),
+        text: bounded_text(&format!("{stage} attempt={}", event.attempt_id)),
+        payload_digest: *blake3::hash(&payload).as_bytes(),
+        details: Some(serde_json::json!({
+            "attempt_id": event.attempt_id.to_string(),
+            "stage": stage,
+            "selected_at_ns": attempt_state.attempt.selected_at_ns,
+            "fault": fault,
+        })),
+        derived: BTreeMap::new(),
+    })
+}
+
+fn fault_stage_name(kind: &FaultStageKind) -> &'static str {
+    match kind {
+        FaultStageKind::Selected => "selected",
+        FaultStageKind::Applicable { .. } => "applicable",
+        FaultStageKind::Rejected { .. } => "rejected",
+        FaultStageKind::Applied { .. } => "applied",
+        FaultStageKind::ApplicationFailed { .. } => "application_failed",
+        FaultStageKind::Observed { .. } => "observed",
+    }
 }
 
 /// Build one canonical envelope from a recorded event.
@@ -1320,6 +1427,191 @@ mod tests {
             EventQueryError::ScanBound
         );
         assert_eq!(envelopes_from_dlog_bytes(&two_records, 2).unwrap().len(), 2);
+    }
+
+    fn fault_stage_fixture() -> (
+        chaoscontrol_fault::outcomes::FaultOutcomeLedger,
+        Vec<crate::recording::FaultRoundTraceDelta>,
+        chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) {
+        use chaoscontrol_fault::faults::Fault;
+        use chaoscontrol_fault::outcomes::{
+            fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptSource,
+            FaultOutcomeLedger, FaultStageKind, NANOSECONDS_PER_SIMULATION_TICK,
+        };
+        use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+
+        const SEED: u64 = 42;
+        const RUN_SEQUENCE: u64 = 1;
+        const TICK: u64 = 7;
+        let selected_at_ns = TICK * NANOSECONDS_PER_SIMULATION_TICK;
+        let fault = Fault::ProcessKill { target: 0 };
+        let mut schedule = FaultSchedule::new();
+        schedule.add(ScheduledFault::new(selected_at_ns, fault.clone()));
+        let schedule_id = schedule.identity();
+        let attempt = FaultAttempt::new_with_source(
+            fault_run_id(SEED, RUN_SEQUENCE, schedule_id),
+            RUN_SEQUENCE,
+            schedule_id,
+            0,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: selected_at_ns,
+            },
+            fault,
+        );
+        let ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&attempt),
+            attempt.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let deltas = vec![crate::recording::FaultRoundTraceDelta {
+            tick: TICK,
+            event_start: 0,
+            event_end: 1,
+        }];
+        (ledger, deltas, attempt.id)
+    }
+
+    #[test]
+    fn fault_stage_trace_becomes_canonical_envelopes() {
+        use chaoscontrol_fault::outcomes::FaultOutcomeLedger;
+
+        let (ledger, deltas, attempt_id) = fault_stage_fixture();
+        let envelopes =
+            envelopes_from_fault_stages([9; 32], &ledger.events, &deltas, &ledger).unwrap();
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0].source_kind, EventSourceKind::FaultStage);
+        assert_eq!(envelopes[0].source_sequence, 0);
+        assert_eq!(envelopes[0].tick, 7);
+        assert_eq!(envelopes[0].kind, "fault_stage_selected");
+        assert!(envelopes[0].text.contains(&attempt_id.to_string()));
+        assert_eq!(
+            envelopes[0].details.as_ref().unwrap()["stage"],
+            serde_json::json!("selected")
+        );
+
+        let legacy = envelopes_from_fault_stages([9; 32], &ledger.events, &[], &ledger).unwrap();
+        assert_eq!(legacy[0].tick, 7);
+
+        let uncovered = vec![crate::recording::FaultRoundTraceDelta {
+            tick: 8,
+            event_start: 1,
+            event_end: 2,
+        }];
+        assert_eq!(
+            envelopes_from_fault_stages([9; 32], &ledger.events, &uncovered, &ledger).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+
+        let mut tampered = ledger.events.clone();
+        tampered[0].sequence = 9;
+        assert_eq!(
+            envelopes_from_fault_stages([9; 32], &tampered, &deltas, &ledger).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+
+        let mut missing_attempt = ledger.clone();
+        missing_attempt.attempts.clear();
+        assert_eq!(
+            envelopes_from_fault_stages(
+                [9; 32],
+                &missing_attempt.events,
+                &deltas,
+                &missing_attempt
+            )
+            .unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+        assert_eq!(
+            envelopes_from_fault_stages(
+                [0; 32],
+                &FaultOutcomeLedger::default().events,
+                &[],
+                &FaultOutcomeLedger::default()
+            )
+            .unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+    }
+
+    #[test]
+    fn recording_adapter_includes_fault_stage_envelopes() {
+        use crate::recording::{Recorder, RecordingConfig};
+        use chaoscontrol_fault::faults::Fault;
+        use chaoscontrol_fault::outcomes::{
+            fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptSource,
+            FaultOutcomeLedger, FaultStageKind, NANOSECONDS_PER_SIMULATION_TICK,
+        };
+        use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+        use chaoscontrol_vmm::controller::RoundResult;
+        use std::collections::BTreeSet;
+
+        const SEED: u64 = 42;
+        const RUN_SEQUENCE: u64 = 1;
+        const TICK: u64 = 7;
+        let selected_at_ns = TICK * NANOSECONDS_PER_SIMULATION_TICK;
+        let fault = Fault::ProcessKill { target: 0 };
+        let mut schedule = FaultSchedule::new();
+        schedule.add(ScheduledFault::new(selected_at_ns, fault.clone()));
+        let schedule_id = schedule.identity();
+        let attempt = FaultAttempt::new_with_source(
+            fault_run_id(SEED, RUN_SEQUENCE, schedule_id),
+            RUN_SEQUENCE,
+            schedule_id,
+            0,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: selected_at_ns,
+            },
+            fault.clone(),
+        );
+        let ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&attempt),
+            attempt.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let round = RoundResult {
+            tick: TICK,
+            vms_running: 1,
+            vms_halted: 0,
+            faults_fired: vec![fault],
+            fault_outcomes: ledger.events.clone(),
+            messages_delivered: 0,
+            schedule_traces: Vec::new(),
+        };
+        let mut recorder = Recorder::new(
+            RecordingConfig {
+                num_vms: 2,
+                vm_memory_size: 256 * 1024 * 1024,
+                tsc_khz: 3_000_000,
+                kernel_path: "/test/vmlinux".to_string(),
+                initrd_path: None,
+                quantum: 100,
+                checkpoint_interval: 1_000,
+                disk_image_path: None,
+                random_faults: false,
+            },
+            schedule,
+            SEED,
+        );
+        recorder.record_round(&round, &ledger).unwrap();
+        let envelopes = envelopes_from_recording(recorder.recording()).unwrap();
+        assert!(envelopes.iter().any(|event| event.kind == "fault_fired"));
+        assert!(envelopes
+            .iter()
+            .any(|event| event.kind == "fault_stage_selected" && event.tick == TICK));
+        let source_ids = envelopes
+            .iter()
+            .map(|event| event.source_id)
+            .collect::<BTreeSet<_>>();
+        assert_eq!(source_ids.len(), 2);
     }
 
     #[test]

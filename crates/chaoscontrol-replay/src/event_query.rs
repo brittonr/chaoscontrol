@@ -2065,6 +2065,15 @@ mod tests {
     }
 
     #[test]
+    fn empty_union_is_rejected() {
+        let query = EventQuery::Union { inputs: Vec::new() };
+        assert_eq!(
+            evaluate(&query, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::QueryBound
+        );
+    }
+
+    #[test]
     fn union_keeps_the_first_projected_duplicate() {
         let event = event(
             1,

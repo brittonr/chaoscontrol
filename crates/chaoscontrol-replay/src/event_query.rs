@@ -576,6 +576,7 @@ pub enum EventQueryError {
     SourceDrift,
     TimelineReceiptDrift,
     TimelineBound,
+    TimelineByteBound,
     DuplicateTimelineId,
     MissingTimelineParent,
     TimelineCycle,
@@ -611,6 +612,7 @@ impl core::fmt::Display for EventQueryError {
                 "event timeline receipt does not match the admitted facts and output"
             }
             Self::TimelineBound => "timeline node count exceeds the bound",
+            Self::TimelineByteBound => "timeline output bytes exceed the bound",
             Self::DuplicateTimelineId => "timeline node identity is duplicated",
             Self::MissingTimelineParent => "timeline node parent is missing",
             Self::TimelineCycle => "timeline node parentage contains a cycle",
@@ -988,7 +990,7 @@ pub fn render_timeline_markdown(facts: &[TimelineFact]) -> Result<String, EventQ
             escape_markdown_cell(&fact.label)
         ));
         if output.len() > MAX_TIMELINE_BYTES {
-            return Err(EventQueryError::TimelineBound);
+            return Err(EventQueryError::TimelineByteBound);
         }
     }
     Ok(output)
@@ -1016,7 +1018,7 @@ pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryE
             escape_dot_label(&fact.label)
         ));
         if output.len() > MAX_TIMELINE_BYTES {
-            return Err(EventQueryError::TimelineBound);
+            return Err(EventQueryError::TimelineByteBound);
         }
     }
     for fact in &ordered {
@@ -1024,7 +1026,7 @@ pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryE
             output.push_str(&format!("  n{parent} -> n{};\n", fact.id));
         }
         if output.len() > MAX_TIMELINE_BYTES {
-            return Err(EventQueryError::TimelineBound);
+            return Err(EventQueryError::TimelineByteBound);
         }
     }
     output.push_str("}\n");
@@ -1843,11 +1845,11 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             render_timeline_markdown(&facts).unwrap_err(),
-            EventQueryError::TimelineBound
+            EventQueryError::TimelineByteBound
         );
         assert_eq!(
             render_timeline_dot(&facts).unwrap_err(),
-            EventQueryError::TimelineBound
+            EventQueryError::TimelineByteBound
         );
     }
 

@@ -23,7 +23,6 @@ use chaoscontrol_vmm::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use crc32fast::Hasher;
 use std::env;
-use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -608,7 +607,18 @@ fn print_observation(run_index: usize, fingerprint: &RunFingerprint, reference: 
 }
 
 fn crc32_file(path: &str) -> io::Result<String> {
-    let mut file = File::open(path)?;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "crc input is not a regular file",
+        ));
+    }
     let mut hasher = Hasher::new();
     let mut buf = [0u8; 64 * 1024];
     loop {
@@ -865,6 +875,23 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn crc_reads_reject_symlinks_and_fifos() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.bin");
+        std::fs::write(&target, b"kernel").unwrap();
+        let link = root.path().join("kernel");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(crc32_file(link.to_str().unwrap()).is_err());
+
+        let fifo = root.path().join("kernel.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(crc32_file(fifo.to_str().unwrap()).is_err());
+    }
+
     #[test]
     fn receipt_writer_rejects_symlink_targets() {
         let root = tempfile::tempdir().unwrap();

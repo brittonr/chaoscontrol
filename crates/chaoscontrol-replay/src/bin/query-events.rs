@@ -312,7 +312,15 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .open(path)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     file.write_all(bytes)
-        .map_err(|error| format!("{}: {error}", path.display()))
+        .and_then(|()| file.sync_all())
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("{}: {error}", parent.display()))
 }
 
 #[cfg(test)]

@@ -149,6 +149,18 @@ fn matrix_requires_base_rows_bounds_and_pmu_evidence() {
 }
 
 #[test]
+fn matrix_rejects_unsafe_row_ids() {
+    for id in ["../escape", "nested/row", ".", "..", "bad\\row"] {
+        let mut matrix = sample_matrix();
+        matrix.rows[0].id = id.to_string();
+        assert!(
+            validate_matrix(&matrix).is_err(),
+            "row id should be rejected: {id}"
+        );
+    }
+}
+
+#[test]
 fn missing_stale_and_dirty_evidence_fail_closed() {
     let matrix = sample_matrix();
     let mut missing = sample_receipt(&matrix);

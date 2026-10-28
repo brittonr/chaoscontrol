@@ -18,6 +18,7 @@ pub const REQUIRED_WORKER_ARCH: &str = "x86_64";
 const BLAKE3_PREFIX: &str = "blake3:";
 const BLAKE3_HEX_CHARS: usize = 64;
 const MAX_MATRIX_ROWS: usize = 32;
+const MAX_MATRIX_ROW_ID_BYTES: usize = 128;
 const MAX_MATRIX_CAPABILITIES: usize = 16;
 const MAX_COMMAND_ARGS: usize = 64;
 const MAX_ARTIFACTS_PER_ROW: usize = 4_096;
@@ -287,7 +288,17 @@ fn validate_matrix_row(
     kinds: &mut BTreeSet<RowKind>,
     issues: &mut Vec<String>,
 ) {
-    push_unless(!row.id.is_empty(), issues, "matrix row id is empty");
+    push_unless(
+        !row.id.is_empty()
+            && row.id.len() <= MAX_MATRIX_ROW_ID_BYTES
+            && row.id != "."
+            && row.id != ".."
+            && !row.id.contains('/')
+            && !row.id.contains('\\')
+            && !row.id.contains('\0'),
+        issues,
+        format!("matrix row id is not a safe path component: {}", row.id),
+    );
     push_unless(
         ids.insert(row.id.clone()),
         issues,

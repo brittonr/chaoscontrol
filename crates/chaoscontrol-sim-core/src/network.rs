@@ -9,7 +9,7 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 pub const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
 /// Maximum raw packets retained for later delivery.
@@ -1336,6 +1336,22 @@ impl NetworkFabric {
         if self.partitions.len() >= chaoscontrol_fault::mechanisms::MAX_ACTIVE_NETWORK_FAULTS {
             return false;
         }
+        if side_a.is_empty() || side_b.is_empty() {
+            return false;
+        }
+        let Some(member_count) = side_a.len().checked_add(side_b.len()) else {
+            return false;
+        };
+        if member_count > chaoscontrol_fault::outcomes::MAX_PARTITION_MEMBERS {
+            return false;
+        }
+        let mut members = BTreeSet::new();
+        let num_vms = self.latency.len();
+        for member in side_a.iter().chain(&side_b) {
+            if *member >= num_vms || !members.insert(*member) {
+                return false;
+            }
+        }
         self.partitions.push((side_a, side_b));
         self.partition_attempt_ids.push(Some(attempt_id));
         true
@@ -1806,6 +1822,17 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+
+    #[test]
+    fn partitions_reject_invalid_sides() {
+        let attempt = chaoscontrol_fault::outcomes::FaultAttemptId([1; 32]);
+        let mut fabric = NetworkFabric::new(300, 42);
+        assert!(!fabric.arm_partition(Vec::new(), vec![1], attempt));
+        assert!(!fabric.arm_partition(vec![0, 1], vec![1], attempt));
+        assert!(!fabric.arm_partition(vec![0], vec![300], attempt));
+        assert!(!fabric.arm_partition((0..128).collect(), (128..257).collect(), attempt,));
+        assert!(fabric.arm_partition(vec![0], vec![1], attempt));
     }
 
     #[test]

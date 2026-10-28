@@ -167,6 +167,14 @@ fn matrix_rejects_unsafe_row_ids() {
             "row id should be rejected: {id}"
         );
     }
+
+    let mut matrix = sample_matrix();
+    matrix.rows[0].id = "x".repeat(MAX_MATRIX_ROW_ID_BYTES + 1);
+    assert!(validate_matrix(&matrix).is_err());
+
+    let mut matrix = sample_matrix();
+    matrix.rows[0].id = "x".repeat(MAX_MATRIX_ROW_ID_BYTES);
+    validate_matrix(&matrix).expect("row id at the byte bound is admitted");
 }
 
 #[test]

@@ -1,0 +1,314 @@
+{
+  "anti_claims": [
+    "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
+    "This is not a shared remote queue or cross-machine scheduler.",
+    "This is not universal fleet-scale throughput or a full Antithesis-style product replacement.",
+    "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping.",
+    "Fault coverage is limited to listed deterministic fault classes and workloads; it is not exhaustive validation of all possible failures."
+  ],
+  "artifact_index": {
+    "entries": [
+      {
+        "artifact_id": "artifact-kvm-mh-run-0001",
+        "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-1",
+        "bug_artifacts": [],
+        "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "follow_up_receipts": [],
+        "hypervisor_worker_id": "local-kvm-hv-1",
+        "queue_entry_id": "kvm-mhq-0001",
+        "receipt_path": "/dev/shm/cc-redb2/run1/run-receipts/01-redb-replay-readiness.json",
+        "retention": {
+          "gc_status": "retained",
+          "policy": "bounded-local"
+        },
+        "run_id": "kvm-mh-run-0001"
+      },
+      {
+        "artifact_id": "artifact-kvm-mh-run-0002",
+        "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-2",
+        "bug_artifacts": [],
+        "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "follow_up_receipts": [],
+        "hypervisor_worker_id": "local-kvm-hv-2",
+        "queue_entry_id": "kvm-mhq-0002",
+        "receipt_path": "/dev/shm/cc-redb2/run1/run-receipts/02-rust-workload-replay-readiness.json",
+        "retention": {
+          "gc_status": "retained",
+          "policy": "bounded-local"
+        },
+        "run_id": "kvm-mh-run-0002"
+      }
+    ],
+    "index_path": "/dev/shm/cc-redb2/run1/artifact-index.json",
+    "schema_version": 1
+  },
+  "campaign_id": "local-kvm-smoke-0001",
+  "command": "replay-readiness-local-multi-hypervisor-campaign",
+  "control_plane": {
+    "artifact_index_path": "/dev/shm/cc-redb2/run1/artifact-index.json",
+    "follow_up_policy": {
+      "enabled": false,
+      "minimize": false,
+      "reproduce": false
+    },
+    "kind": "single-machine-local",
+    "max_hypervisors": 2
+  },
+  "fault_coverage": {
+    "by_workload": [
+      {
+        "affected_run_ids": [
+          "mh-run-raft-0001"
+        ],
+        "configured_fault_classes": [
+          "network",
+          "timer",
+          "scheduler"
+        ],
+        "injection_attempts": 3,
+        "not_observed_fault_classes": [
+          "scheduler"
+        ],
+        "observed_injections": 2,
+        "unsupported_fault_classes": [
+          "process"
+        ],
+        "workload": "raft"
+      },
+      {
+        "affected_run_ids": [
+          "mh-run-redb-0001"
+        ],
+        "configured_fault_classes": [
+          "block"
+        ],
+        "injection_attempts": 1,
+        "not_observed_fault_classes": [],
+        "observed_injections": 1,
+        "unsupported_fault_classes": [],
+        "workload": "redb"
+      }
+    ],
+    "schema_version": 1,
+    "scope": "listed deterministic fault classes and workloads only; not exhaustive validation of all possible failures"
+  },
+  "follow_up_jobs": [],
+  "generated_at": "unix:1793189042",
+  "hypervisors": [
+    {
+      "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-1",
+      "hypervisor_worker_id": "local-kvm-hv-1",
+      "node_id": "local-kvm-node-1",
+      "resource_budget": {
+        "memory_mib": 1024,
+        "vcpus": 2
+      }
+    },
+    {
+      "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-2",
+      "hypervisor_worker_id": "local-kvm-hv-2",
+      "node_id": "local-kvm-node-2",
+      "resource_budget": {
+        "memory_mib": 1024,
+        "vcpus": 2
+      }
+    }
+  ],
+  "operator_decisions": [
+    "/dev/shm/cc-redb2/run1/operator-decision-receipt.json"
+  ],
+  "plan_path": "/dev/shm/cc-redb2/run1/campaign-plan.json",
+  "queue": {
+    "entries": [
+      {
+        "hypervisor_worker_id": "local-kvm-hv-1",
+        "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0001",
+        "queue_entry_id": "kvm-mhq-0001",
+        "run_id": "kvm-mh-run-0001",
+        "state": "completed",
+        "workload": "redb"
+      },
+      {
+        "hypervisor_worker_id": "local-kvm-hv-2",
+        "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0002",
+        "queue_entry_id": "kvm-mhq-0002",
+        "run_id": "kvm-mh-run-0002",
+        "state": "completed",
+        "workload": "rust-workload"
+      }
+    ]
+  },
+  "queue_state": {
+    "completed_before_start": 0,
+    "kind": "durable-local-file",
+    "loaded_existing_state": false,
+    "persisted_after_each_run": true,
+    "state_path": "/dev/shm/cc-redb2/run1/campaign-state.json"
+  },
+  "raw_log_scraping": false,
+  "runs": [
+    {
+      "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-1",
+      "campaign_id": "local-kvm-smoke-0001",
+      "command": "/nix/store/9bw4cdk3lq9zqkhydqy77xg3d5i5r8px-replay-readiness/bin/replay-readiness --receipt /dev/shm/cc-redb2/run1/run-receipts/01-redb-replay-readiness.json --dogfood redb -- --output /dev/shm/cc-redb2/run1/dogfood/01-redb",
+      "command_observation": {
+        "cancellation": "not-requested",
+        "command_identity_blake3": "b883dd64707df0a6ebee84dcbebf0b6cccaae121c81efe62972e960aa17fa6be",
+        "completion": "exited",
+        "disposition": "succeeded",
+        "executable_blake3": "fad4140cb856c123b98caf1c37f5c806ad642609e81889b70f72d85b7548ab7d",
+        "exit_code": 0,
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "schema": "chaoscontrol.typed-command-observation.v1",
+        "signal": null,
+        "stderr": {
+          "observed_bytes": 0,
+          "retained_blake3": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "retained_bytes": 0,
+          "truncated": false
+        },
+        "stdout": {
+          "observed_bytes": 3354,
+          "retained_blake3": "e7e321901a31e2e9288002f90d6c9110261631b85567f292ff1b39e649c9fe42",
+          "retained_bytes": 3354,
+          "truncated": false
+        },
+        "teardown": "completed"
+      },
+      "command_plan": {
+        "accepted_exit_codes": [
+          0
+        ],
+        "args": [
+          "--receipt",
+          "/dev/shm/cc-redb2/run1/run-receipts/01-redb-replay-readiness.json",
+          "--dogfood",
+          "redb",
+          "--",
+          "--output",
+          "/dev/shm/cc-redb2/run1/dogfood/01-redb"
+        ],
+        "environment": {
+          "entries": [],
+          "mode": "clear"
+        },
+        "evidence_eligible": true,
+        "executable": {
+          "blake3": "fad4140cb856c123b98caf1c37f5c806ad642609e81889b70f72d85b7548ab7d",
+          "maximum_bytes": 1073741824,
+          "path": "/nix/store/9bw4cdk3lq9zqkhydqy77xg3d5i5r8px-replay-readiness/bin/replay-readiness"
+        },
+        "limits": {
+          "poll_interval_ms": 10,
+          "stderr_max_bytes": 8388608,
+          "stdin_max_bytes": 1024,
+          "stdout_max_bytes": 8388608,
+          "teardown_timeout_ms": 1000,
+          "timeout_ms": 900000
+        },
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "reject_stderr_truncation": true,
+        "reject_stdout_truncation": true,
+        "schema": "chaoscontrol.typed-command-plan.v1",
+        "stdin": {
+          "mode": "null"
+        },
+        "termination_scope": "process-group",
+        "working_directory": "."
+      },
+      "exit_code": 0,
+      "follow_up_jobs": [],
+      "hypervisor_worker_id": "local-kvm-hv-1",
+      "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0001",
+      "queue_entry_id": "kvm-mhq-0001",
+      "receipt_path": "/dev/shm/cc-redb2/run1/run-receipts/01-redb-replay-readiness.json",
+      "receipt_summary": "replay-readiness status=passed exit=0 static_gates=13/13 failed_gates=none dogfood=redb:pass:accepted=true:seed=42:fail_after=1:class=snapshot_backed_reproduced:depth=1 failed_phase=none scope=bounded",
+      "run_id": "kvm-mh-run-0001",
+      "status": "passed",
+      "workload": "redb"
+    },
+    {
+      "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-2",
+      "campaign_id": "local-kvm-smoke-0001",
+      "command": "/nix/store/9bw4cdk3lq9zqkhydqy77xg3d5i5r8px-replay-readiness/bin/replay-readiness --receipt /dev/shm/cc-redb2/run1/run-receipts/02-rust-workload-replay-readiness.json --dogfood rust-workload -- --output /dev/shm/cc-redb2/run1/dogfood/02-rust-workload",
+      "command_observation": {
+        "cancellation": "not-requested",
+        "command_identity_blake3": "04e0345ab62647eaa3089e3e8fe0f3cf8be2bd4eee30d76a257b282320c1a55b",
+        "completion": "exited",
+        "disposition": "succeeded",
+        "executable_blake3": "fad4140cb856c123b98caf1c37f5c806ad642609e81889b70f72d85b7548ab7d",
+        "exit_code": 0,
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "schema": "chaoscontrol.typed-command-observation.v1",
+        "signal": null,
+        "stderr": {
+          "observed_bytes": 49,
+          "retained_blake3": "6ea42a5590a8e7a4661bbaa6d199c2a73ea18a1fdfec5fdcad9f09b20b9eb7a8",
+          "retained_bytes": 49,
+          "truncated": false
+        },
+        "stdout": {
+          "observed_bytes": 3390,
+          "retained_blake3": "5bb9c7e22b760bde43916d93ca61fa462fd2be70c44b8c68a78d13d3c10ee5d4",
+          "retained_bytes": 3390,
+          "truncated": false
+        },
+        "teardown": "completed"
+      },
+      "command_plan": {
+        "accepted_exit_codes": [
+          0
+        ],
+        "args": [
+          "--receipt",
+          "/dev/shm/cc-redb2/run1/run-receipts/02-rust-workload-replay-readiness.json",
+          "--dogfood",
+          "rust-workload",
+          "--",
+          "--output",
+          "/dev/shm/cc-redb2/run1/dogfood/02-rust-workload"
+        ],
+        "environment": {
+          "entries": [],
+          "mode": "clear"
+        },
+        "evidence_eligible": true,
+        "executable": {
+          "blake3": "fad4140cb856c123b98caf1c37f5c806ad642609e81889b70f72d85b7548ab7d",
+          "maximum_bytes": 1073741824,
+          "path": "/nix/store/9bw4cdk3lq9zqkhydqy77xg3d5i5r8px-replay-readiness/bin/replay-readiness"
+        },
+        "limits": {
+          "poll_interval_ms": 10,
+          "stderr_max_bytes": 8388608,
+          "stdin_max_bytes": 1024,
+          "stdout_max_bytes": 8388608,
+          "teardown_timeout_ms": 1000,
+          "timeout_ms": 900000
+        },
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "reject_stderr_truncation": true,
+        "reject_stdout_truncation": true,
+        "schema": "chaoscontrol.typed-command-plan.v1",
+        "stdin": {
+          "mode": "null"
+        },
+        "termination_scope": "process-group",
+        "working_directory": "."
+      },
+      "exit_code": 0,
+      "follow_up_jobs": [],
+      "hypervisor_worker_id": "local-kvm-hv-2",
+      "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0002",
+      "queue_entry_id": "kvm-mhq-0002",
+      "receipt_path": "/dev/shm/cc-redb2/run1/run-receipts/02-rust-workload-replay-readiness.json",
+      "receipt_summary": "replay-readiness status=passed exit=0 static_gates=13/13 failed_gates=none dogfood=rust-workload:pass:accepted=true:seed=43:fail_after=1:class=snapshot_backed_reproduced:depth=1 failed_phase=none scope=bounded",
+      "run_id": "kvm-mh-run-0002",
+      "status": "passed",
+      "workload": "rust-workload"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
+  "status": "recorded"
+}

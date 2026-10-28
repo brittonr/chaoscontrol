@@ -1,0 +1,3 @@
+wrote /dev/shm/cc-redb2/run1/campaign-receipt.json (replay-readiness-local-multi-hypervisor-campaign status=recorded campaign=local-kvm-smoke-0001 hypervisors=2 runs=2 passed=2 restart_persisted=true workloads=redb,rust-workload fault_classes=block,network,scheduler,timer scope=bounded-local-multi-hypervisor)
+local multi-hypervisor KVM smoke artifacts: /dev/shm/cc-redb2/run1
+redb-campaign-exit=0

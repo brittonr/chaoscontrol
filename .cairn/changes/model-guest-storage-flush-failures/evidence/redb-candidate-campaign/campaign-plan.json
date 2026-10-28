@@ -1,0 +1,133 @@
+{
+  "artifact_index_path": "/dev/shm/cc-redb2/run1/artifact-index.json",
+  "campaign_id": "local-kvm-smoke-0001",
+  "follow_up_policy": {
+    "enabled": false,
+    "minimize": false,
+    "reproduce": false
+  },
+  "hypervisors": [
+    {
+      "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-1",
+      "hypervisor_worker_id": "local-kvm-hv-1",
+      "node_id": "local-kvm-node-1",
+      "resource_budget": {
+        "memory_mib": 1024,
+        "vcpus": 2
+      }
+    },
+    {
+      "artifact_root": "/dev/shm/cc-redb2/run1/hypervisors/local-kvm-hv-2",
+      "hypervisor_worker_id": "local-kvm-hv-2",
+      "node_id": "local-kvm-node-2",
+      "resource_budget": {
+        "memory_mib": 1024,
+        "vcpus": 2
+      }
+    }
+  ],
+  "max_hypervisors": 2,
+  "operator_decisions": [
+    "/dev/shm/cc-redb2/run1/operator-decision-receipt.json"
+  ],
+  "queue": {
+    "entries": [
+      {
+        "command_plan": {
+          "accepted_exit_codes": [
+            0
+          ],
+          "args": [
+            "--receipt",
+            "/dev/shm/cc-redb2/run1/run-receipts/01-redb-replay-readiness.json",
+            "--dogfood",
+            "redb",
+            "--",
+            "--output",
+            "/dev/shm/cc-redb2/run1/dogfood/01-redb"
+          ],
+          "environment": {
+            "entries": [],
+            "mode": "clear"
+          },
+          "evidence_eligible": true,
+          "executable": {
+            "blake3": "fad4140cb856c123b98caf1c37f5c806ad642609e81889b70f72d85b7548ab7d",
+            "maximum_bytes": 1073741824,
+            "path": "/nix/store/9bw4cdk3lq9zqkhydqy77xg3d5i5r8px-replay-readiness/bin/replay-readiness"
+          },
+          "limits": {
+            "poll_interval_ms": 10,
+            "stderr_max_bytes": 8388608,
+            "stdin_max_bytes": 1024,
+            "stdout_max_bytes": 8388608,
+            "teardown_timeout_ms": 1000,
+            "timeout_ms": 900000
+          },
+          "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+          "reject_stderr_truncation": true,
+          "reject_stdout_truncation": true,
+          "schema": "chaoscontrol.typed-command-plan.v1",
+          "stdin": {
+            "mode": "null"
+          },
+          "termination_scope": "process-group",
+          "working_directory": "."
+        },
+        "queue_entry_id": "kvm-mhq-0001",
+        "receipt_path": "/dev/shm/cc-redb2/run1/run-receipts/01-redb-replay-readiness.json",
+        "run_id": "kvm-mh-run-0001",
+        "workload": "redb"
+      },
+      {
+        "command_plan": {
+          "accepted_exit_codes": [
+            0
+          ],
+          "args": [
+            "--receipt",
+            "/dev/shm/cc-redb2/run1/run-receipts/02-rust-workload-replay-readiness.json",
+            "--dogfood",
+            "rust-workload",
+            "--",
+            "--output",
+            "/dev/shm/cc-redb2/run1/dogfood/02-rust-workload"
+          ],
+          "environment": {
+            "entries": [],
+            "mode": "clear"
+          },
+          "evidence_eligible": true,
+          "executable": {
+            "blake3": "fad4140cb856c123b98caf1c37f5c806ad642609e81889b70f72d85b7548ab7d",
+            "maximum_bytes": 1073741824,
+            "path": "/nix/store/9bw4cdk3lq9zqkhydqy77xg3d5i5r8px-replay-readiness/bin/replay-readiness"
+          },
+          "limits": {
+            "poll_interval_ms": 10,
+            "stderr_max_bytes": 8388608,
+            "stdin_max_bytes": 1024,
+            "stdout_max_bytes": 8388608,
+            "teardown_timeout_ms": 1000,
+            "timeout_ms": 900000
+          },
+          "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+          "reject_stderr_truncation": true,
+          "reject_stdout_truncation": true,
+          "schema": "chaoscontrol.typed-command-plan.v1",
+          "stdin": {
+            "mode": "null"
+          },
+          "termination_scope": "process-group",
+          "working_directory": "."
+        },
+        "queue_entry_id": "kvm-mhq-0002",
+        "receipt_path": "/dev/shm/cc-redb2/run1/run-receipts/02-rust-workload-replay-readiness.json",
+        "run_id": "kvm-mh-run-0002",
+        "workload": "rust-workload"
+      }
+    ]
+  },
+  "schema_version": 1,
+  "state_path": "/dev/shm/cc-redb2/run1/campaign-state.json"
+}

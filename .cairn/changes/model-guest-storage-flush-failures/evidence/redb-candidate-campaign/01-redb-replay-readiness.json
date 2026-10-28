@@ -1,0 +1,136 @@
+{
+  "command": "replay-readiness",
+  "dogfood": {
+    "evidence_curation": "explicit-follow-up",
+    "expectation": {
+      "assertion_id": 4149728441,
+      "expected": {
+        "accepted": true,
+        "allowed_seeds": [
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "fail_after_values": [
+          1
+        ],
+        "min_replay_parent_depth": 1,
+        "replay_class": "snapshot_backed_reproduced"
+      },
+      "fail_after_key": "redb_snapshot_probe_fail_after",
+      "historical_evidence": {
+        "evidence_dir": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314",
+        "manifest": "dogfood-results/accepted-workload-proofs.json",
+        "promotion_status": "blocked-assertion-identity",
+        "summary": "accepted-snapshot-verdict-summary.json"
+      },
+      "probe_key": "redb_bug",
+      "runner": {
+        "fail_after_values": [
+          1
+        ],
+        "max_attempts": 6
+      }
+    },
+    "expectation_status": "matched",
+    "output": "/dev/shm/cc-redb2/run1/dogfood/01-redb",
+    "selected_workload": "redb",
+    "status": "pass",
+    "summary": {
+      "accepted": true,
+      "accepted_bug": "bug_0.json",
+      "accepted_verdict": "replay-verdict-bug0.json",
+      "bug_count": 2,
+      "export_exit_status": 0,
+      "output": "/dev/shm/cc-redb2/run1/dogfood/01-redb",
+      "reproduce_exit_status": 0,
+      "run_exit_status": 1,
+      "seed": 42,
+      "snapshot_probe_fail_after": 1,
+      "verdict": {
+        "replay_class": "snapshot_backed_reproduced",
+        "replay_parent_depth": 1,
+        "reproduced": true,
+        "snapshot_status": "valid"
+      },
+      "workload": "redb"
+    }
+  },
+  "exit_code": 0,
+  "failed_phase": null,
+  "finished_at": "2026-10-28T12:03:06Z",
+  "schema_version": 1,
+  "scope": "bounded committed replay/evidence readiness; not universal determinism or hosted-product parity",
+  "started_at": "2026-10-28T12:02:25Z",
+  "static_gates": [
+    {
+      "command": "check-contract-registry .",
+      "name": "contract-registry",
+      "status": "pass"
+    },
+    {
+      "command": "check-evidence-contracts --root .",
+      "name": "evidence-contracts",
+      "status": "pass"
+    },
+    {
+      "command": "check-replay-proof-coverage .",
+      "name": "replay-proof-coverage",
+      "status": "pass"
+    },
+    {
+      "command": "check-readiness-promotion-gate --root .",
+      "name": "readiness-promotion",
+      "status": "pass"
+    },
+    {
+      "command": "check-readiness-surface-drift .",
+      "name": "readiness-surface-drift",
+      "status": "pass"
+    },
+    {
+      "command": "generate-replay-readiness-report --check .",
+      "name": "readiness-report",
+      "status": "pass"
+    },
+    {
+      "command": "generate-assertion-readiness-report --check .",
+      "name": "assertion-readiness-report",
+      "status": "pass"
+    },
+    {
+      "command": "check-assertion-readiness-boundary .",
+      "name": "assertion-readiness-boundary",
+      "status": "pass"
+    },
+    {
+      "command": "check-sdk-local-report-tracks",
+      "name": "sdk-local-report-tracks",
+      "status": "pass"
+    },
+    {
+      "command": "check-sdk-assertion-quality",
+      "name": "sdk-assertion-quality",
+      "status": "pass"
+    },
+    {
+      "command": "check-consistency-fixtures .",
+      "name": "consistency-checker-fixtures",
+      "status": "pass"
+    },
+    {
+      "command": "check-dogfood-artifact-sizes",
+      "name": "dogfood-artifact-sizes",
+      "status": "pass"
+    },
+    {
+      "command": "check-accepted-dogfood-config --config <nix-generated>",
+      "name": "accepted-dogfood-config",
+      "status": "pass"
+    }
+  ],
+  "status": "passed"
+}

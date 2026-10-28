@@ -247,7 +247,14 @@ fn write_existing(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .truncate(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
-    file.write_all(bytes)
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "transformed file target is not a regular file",
+        ));
+    }
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 fn shell_error(error: impl ToString) -> (u8, String) {
@@ -325,6 +332,23 @@ mod publication_tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded_text(&fifo, MAX_TEMPLATE_FILE_BYTES).is_err());
+    }
+
+    #[test]
+    fn transformed_file_write_rejects_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("main.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let _reader = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&fifo)
+            .unwrap();
+        assert_eq!(
+            write_existing(&fifo, b"replacement").unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]

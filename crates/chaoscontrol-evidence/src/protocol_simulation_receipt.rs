@@ -8,6 +8,8 @@ use chaoscontrol_sim_core::{
 };
 use std::path::Path;
 
+const MAX_PROTOCOL_RECEIPT_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Build, validate, and write one protocol-simulation receipt as JSON.
 pub fn emit_protocol_simulation_receipt_path(
     output_path: impl AsRef<Path>,
@@ -32,7 +34,10 @@ pub fn emit_protocol_simulation_receipt_path(
 pub fn validate_protocol_simulation_receipt_path(
     receipt_path: impl AsRef<Path>,
 ) -> EvidenceResult<ProtocolSimulationReceipt> {
-    let bytes = std::fs::read(receipt_path)?;
+    let bytes = crate::bounded_file::read_bounded_regular_bytes(
+        receipt_path.as_ref(),
+        MAX_PROTOCOL_RECEIPT_BYTES,
+    )?;
     let receipt: ProtocolSimulationReceipt = serde_json::from_slice(&bytes)?;
     validate_protocol_simulation_receipt(&receipt).map_err(protocol_receipt_error)?;
     Ok(receipt)
@@ -45,6 +50,23 @@ fn protocol_receipt_error(error: impl std::fmt::Display) -> EvidenceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_validation_rejects_symlinks_and_fifos() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(validate_protocol_simulation_receipt_path(&link).is_err());
+
+        let fifo = root.path().join("receipt.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(validate_protocol_simulation_receipt_path(&fifo).is_err());
+    }
     use chaoscontrol_sim_core::{
         ProtocolIdentity, ProtocolRngPolicy, ProtocolScheduleRef, ProtocolSchedulerPolicy,
         ProtocolVirtualClockPolicy, PROTOCOL_SIMULATION_CONFIG_SCHEMA,

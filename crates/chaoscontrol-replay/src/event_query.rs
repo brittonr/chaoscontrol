@@ -1960,6 +1960,25 @@ mod tests {
     }
 
     #[test]
+    fn derived_bytes_enforce_the_byte_boundary() {
+        let mut event = events()[0].clone();
+        event.derived.clear();
+        event
+            .derived
+            .insert("a".repeat(MAX_DERIVED_BYTES), String::new());
+        admit_event(&event).unwrap();
+
+        event.derived.clear();
+        event
+            .derived
+            .insert("a".repeat(MAX_DERIVED_BYTES + 1), String::new());
+        assert_eq!(
+            admit_event(&event).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+    }
+
+    #[test]
     fn query_field_and_pointer_enforce_the_byte_boundary() {
         let field = "a".repeat(MAX_FIELD_BYTES);
         let exact_field = EventQuery::Map {

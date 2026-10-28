@@ -1866,6 +1866,32 @@ mod directional_tests {
     }
 
     #[test]
+    fn baseline_profile_admission_is_enforced() {
+        use chaoscontrol_fault::mechanisms::{
+            NetworkBaselineProfile, MAX_BASELINE_LATENCY_TICKS, MAX_BASELINE_LOSS_PPM,
+        };
+        let mut fabric = NetworkFabric::new(2, 42);
+        let profile = NetworkBaselineProfile {
+            latency_ticks: MAX_BASELINE_LATENCY_TICKS,
+            loss_rate_ppm: MAX_BASELINE_LOSS_PPM,
+        };
+        assert!(fabric.set_baseline_profile(profile));
+        assert_eq!(fabric.baseline_latency_ticks, MAX_BASELINE_LATENCY_TICKS);
+        assert_eq!(fabric.baseline_loss_rate_ppm, MAX_BASELINE_LOSS_PPM);
+
+        assert!(!fabric.set_baseline_profile(NetworkBaselineProfile {
+            latency_ticks: MAX_BASELINE_LATENCY_TICKS + 1,
+            loss_rate_ppm: MAX_BASELINE_LOSS_PPM,
+        }));
+        assert!(!fabric.set_baseline_profile(NetworkBaselineProfile {
+            latency_ticks: MAX_BASELINE_LATENCY_TICKS,
+            loss_rate_ppm: MAX_BASELINE_LOSS_PPM + 1,
+        }));
+        assert_eq!(fabric.baseline_latency_ticks, MAX_BASELINE_LATENCY_TICKS);
+        assert_eq!(fabric.baseline_loss_rate_ppm, MAX_BASELINE_LOSS_PPM);
+    }
+
+    #[test]
     fn rate_setters_enforce_the_ppm_boundary() {
         let max = chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX;
         let mut fabric = NetworkFabric::new(2, 42);

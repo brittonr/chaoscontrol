@@ -492,6 +492,23 @@ mod tests {
     }
 
     #[test]
+    fn pause_control_enforces_the_window_boundary() {
+        let request = PauseControlRequest {
+            requester: "liveness-check".to_string(),
+            start_tick: 0,
+            end_tick: MAX_PAUSE_WINDOW_TICKS,
+        };
+        admit_pause_control(&request).unwrap();
+
+        let mut over = request;
+        over.end_tick = MAX_PAUSE_WINDOW_TICKS + 1;
+        assert_eq!(
+            admit_pause_control(&over).unwrap_err(),
+            MechanismError::WindowTooLong
+        );
+    }
+
+    #[test]
     fn baseline_profile_enforces_named_boundaries() {
         let profile = NetworkBaselineProfile {
             latency_ticks: MAX_BASELINE_LATENCY_TICKS,

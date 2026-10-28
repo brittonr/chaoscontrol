@@ -1917,8 +1917,12 @@ impl LocalAssertionSupport {
 
 fn local_assertion_support(root: &Path, workload: &str) -> EvidenceResult<LocalAssertionSupport> {
     let path = root.join(LOCAL_ASSERTION_HARNESSES_PATH);
-    if !path.exists() {
-        return Ok(LocalAssertionSupport::default());
+    match std::fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LocalAssertionSupport::default());
+        }
+        Err(error) => return Err(error.into()),
+        Ok(_) => {}
     }
     let manifest: LocalAssertionHarnessManifest = load_json(root, &path)?;
     ensure(
@@ -3316,6 +3320,19 @@ mod proof_path_tests {
             Err(error) => error,
         };
         assert!(error.message().contains("escapes the evidence directory"));
+    }
+
+    #[test]
+    fn local_assertion_support_distinguishes_absence_from_broken_links() {
+        let root = tempfile::tempdir().unwrap();
+        let dogfood = root.path().join("dogfood-results");
+        std::fs::create_dir(&dogfood).unwrap();
+        std::os::unix::fs::symlink(
+            dogfood.join("absent.json"),
+            dogfood.join("local-assertion-harnesses.json"),
+        )
+        .unwrap();
+        assert!(local_assertion_support(root.path(), "raft").is_err());
     }
 
     #[test]

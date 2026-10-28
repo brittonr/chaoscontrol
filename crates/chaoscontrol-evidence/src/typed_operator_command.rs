@@ -129,6 +129,15 @@ pub fn parse_plan(value: &Value) -> Result<CommandPlan, String> {
     Ok(plan)
 }
 
+/// Maximum number of argv entries admitted for one typed command.
+pub const MAX_COMMAND_ARGUMENTS: usize = 4_096;
+/// Maximum total bytes across all argv entries.
+pub const MAX_COMMAND_ARGUMENT_BYTES: usize = 1024 * 1024;
+/// Maximum number of environment entries admitted for one typed command.
+pub const MAX_ENVIRONMENT_ENTRIES: usize = 1_024;
+/// Maximum total bytes across environment names and values.
+pub const MAX_ENVIRONMENT_BYTES: usize = 1024 * 1024;
+
 pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
     require(
         plan.schema == PLAN_SCHEMA,
@@ -160,8 +169,21 @@ pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
         plan.environment.mode == EnvironmentMode::Clear,
         "evidence command environment mode must be clear",
     )?;
+    require(
+        plan.environment.entries.len() <= MAX_ENVIRONMENT_ENTRIES,
+        "environment entry count exceeds the bound",
+    )?;
+    let mut environment_bytes = 0_usize;
     let mut environment_names = BTreeSet::new();
     for entry in &plan.environment.entries {
+        environment_bytes = environment_bytes
+            .checked_add(entry.name.len())
+            .and_then(|total| total.checked_add(entry.value.len()))
+            .ok_or_else(|| String::from("environment byte count overflow"))?;
+        require(
+            environment_bytes <= MAX_ENVIRONMENT_BYTES,
+            "environment bytes exceed the bound",
+        )?;
         require(
             !entry.name.is_empty() && !entry.name.contains(['\0', '=']),
             "environment name is invalid",
@@ -176,9 +198,20 @@ pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
         )?;
     }
     require(
-        plan.args.iter().all(|argument| !argument.contains('\0')),
-        "argument contains NUL",
+        plan.args.len() <= MAX_COMMAND_ARGUMENTS,
+        "argument count exceeds the bound",
     )?;
+    let mut argument_bytes = 0_usize;
+    for argument in &plan.args {
+        require(!argument.contains('\0'), "argument contains NUL")?;
+        argument_bytes = argument_bytes
+            .checked_add(argument.len())
+            .ok_or_else(|| String::from("argument byte count overflow"))?;
+        require(
+            argument_bytes <= MAX_COMMAND_ARGUMENT_BYTES,
+            "argument bytes exceed the bound",
+        )?;
+    }
     let limits = execution_limits(plan.limits)?;
     limits
         .validate()

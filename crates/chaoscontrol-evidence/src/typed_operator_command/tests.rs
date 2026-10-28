@@ -87,6 +87,29 @@ fn legacy_traversal_environment_identity_and_limit_fail_closed() {
     assert!(validate_plan(&nul_working_directory)
         .unwrap_err()
         .contains("working directory contains NUL"));
+
+    let mut too_many_arguments = valid_plan();
+    too_many_arguments.args = vec![String::new(); MAX_COMMAND_ARGUMENTS + 1];
+    assert!(validate_plan(&too_many_arguments)
+        .unwrap_err()
+        .contains("argument count"));
+
+    let mut oversized_arguments = valid_plan();
+    oversized_arguments.args = vec![String::from("x").repeat(MAX_COMMAND_ARGUMENT_BYTES + 1)];
+    assert!(validate_plan(&oversized_arguments)
+        .unwrap_err()
+        .contains("argument bytes"));
+
+    let mut too_many_environment_entries = valid_plan();
+    too_many_environment_entries.environment.entries = (0..=MAX_ENVIRONMENT_ENTRIES)
+        .map(|index| EnvironmentEntry {
+            name: format!("K{index}"),
+            value: String::new(),
+        })
+        .collect();
+    assert!(validate_plan(&too_many_environment_entries)
+        .unwrap_err()
+        .contains("environment entry count"));
 }
 
 #[test]

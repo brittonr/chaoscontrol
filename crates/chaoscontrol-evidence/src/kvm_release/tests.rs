@@ -170,6 +170,13 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_rejects_artifact_byte_bounds_above_hash_cap() {
+    let mut matrix = sample_matrix();
+    matrix.rows[0].limits.max_artifact_bytes = MAX_MATRIX_ARTIFACT_BYTES + 1;
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_rejects_retained_policy_above_artifact_bound() {
     let mut matrix = sample_matrix();
     matrix.rows[0].retained_artifacts = (0..=ROW_ARTIFACT_LIMIT)

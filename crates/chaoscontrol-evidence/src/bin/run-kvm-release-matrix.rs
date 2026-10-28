@@ -11,7 +11,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use chaoscontrol_evidence::kvm_release::{
     artifact_set_identity, classify, command_identity, matrix_identity, validate_matrix,
     validate_receipt, ArtifactIdentity, KvmReleaseDecision, KvmReleaseMatrix, KvmReleaseReceipt,
-    ReleaseClass, RowReceipt, RowStatus, SourceFacts, WorkerFacts, RECEIPT_SCHEMA_VERSION,
+    ReleaseClass, RowReceipt, RowStatus, SourceFacts, WorkerFacts, MAX_MATRIX_ARTIFACT_BYTES,
+    RECEIPT_SCHEMA_VERSION,
 };
 use kvm_ioctls::Kvm;
 
@@ -22,7 +23,6 @@ const USAGE_EXIT_CODE: i32 = 2;
 const WAIT_POLL_MILLISECONDS: u64 = 100;
 const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_ARTIFACT_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_ARTIFACT_SCAN_DEPTH: usize = 64;
 const KVM_CAPABILITY: &str = "kvm";
 const X86_64_LINUX_CAPABILITY: &str = "x86_64-linux";
@@ -609,7 +609,7 @@ fn hash_file(path: &Path) -> Result<String, String> {
         total = total
             .checked_add(read as u64)
             .ok_or_else(|| format!("hash byte count overflow for artifact {}", path.display()))?;
-        if total > MAX_ARTIFACT_BYTES {
+        if total > MAX_MATRIX_ARTIFACT_BYTES {
             return Err(format!("artifact exceeds hash bound: {}", path.display()));
         }
         hasher.update(&buffer[..read]);
@@ -629,7 +629,7 @@ fn open_artifact_input(path: &Path) -> std::io::Result<File> {
             "artifact is not a regular file",
         ));
     }
-    if metadata.len() > MAX_ARTIFACT_BYTES {
+    if metadata.len() > MAX_MATRIX_ARTIFACT_BYTES {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "artifact exceeds the hash bound",
@@ -739,7 +739,7 @@ mod publication_tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("artifact.log");
         let file = fs::File::create(&path).unwrap();
-        file.set_len(MAX_ARTIFACT_BYTES + 1).unwrap();
+        file.set_len(MAX_MATRIX_ARTIFACT_BYTES + 1).unwrap();
 
         assert!(hash_file(&path).is_err());
     }

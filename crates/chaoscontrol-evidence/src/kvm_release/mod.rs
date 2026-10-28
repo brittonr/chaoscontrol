@@ -14,6 +14,7 @@ use crate::frontier_policy_gate::{admit_artifact_path, admit_command_args, Relea
 pub const MATRIX_SCHEMA_VERSION: u32 = 1;
 pub const RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const REQUIRED_WORKER_ARCH: &str = "x86_64";
+pub const MAX_MATRIX_ARTIFACT_BYTES: u64 = 1024 * 1024 * 1024;
 
 const BLAKE3_PREFIX: &str = "blake3:";
 const BLAKE3_HEX_CHARS: usize = 64;
@@ -340,7 +341,8 @@ fn validate_matrix_row(
         format!("matrix row artifact count bound is invalid: {}", row.id),
     );
     push_unless(
-        row.limits.max_artifact_bytes > 0,
+        row.limits.max_artifact_bytes > 0
+            && row.limits.max_artifact_bytes <= MAX_MATRIX_ARTIFACT_BYTES,
         issues,
         format!("matrix row artifact byte bound is invalid: {}", row.id),
     );

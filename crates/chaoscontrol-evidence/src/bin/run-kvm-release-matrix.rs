@@ -861,9 +861,14 @@ mod publication_tests {
     #[test]
     fn artifact_directory_entries_are_bounded() {
         let root = tempfile::tempdir().unwrap();
-        for index in 0..=MAX_ARTIFACT_DIRECTORY_ENTRIES {
+        for index in 0..MAX_ARTIFACT_DIRECTORY_ENTRIES {
             fs::write(root.path().join(format!("entry-{index}")), b"").unwrap();
         }
+        assert_eq!(
+            list_artifact_entries(root.path()).unwrap().len(),
+            MAX_ARTIFACT_DIRECTORY_ENTRIES
+        );
+        fs::write(root.path().join("one-too-many"), b"").unwrap();
         assert!(list_artifact_entries(root.path()).is_err());
     }
 

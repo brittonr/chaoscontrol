@@ -1761,6 +1761,25 @@ mod tests {
     }
 
     #[test]
+    fn depth_bound_admits_the_exact_maximum() {
+        let wrap = |input| EventQuery::Window {
+            input: Box::new(input),
+            start_tick: 0,
+            end_tick: u64::MAX,
+        };
+        let mut exact = EventQuery::All;
+        for _ in 0..MAX_QUERY_DEPTH {
+            exact = wrap(exact);
+        }
+        evaluate(&exact, &events(), &EventQueryLimits::default()).unwrap();
+
+        assert_eq!(
+            evaluate(&wrap(exact), &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::QueryDepth
+        );
+    }
+
+    #[test]
     fn node_bound_admits_the_exact_maximum() {
         let exact = EventQuery::Union {
             inputs: vec![EventQuery::All; MAX_QUERY_NODES - 1],

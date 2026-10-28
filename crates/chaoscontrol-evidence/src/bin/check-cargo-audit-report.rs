@@ -55,6 +55,9 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, PathBuf), String> {
     }
     let report =
         report.ok_or_else(|| String::from("--report is required unless --selftest is set"))?;
+    if report.as_os_str().is_empty() || allowlist.as_os_str().is_empty() {
+        return Err(String::from("--report and --allowlist must not be empty"));
+    }
     Ok((report, allowlist))
 }
 
@@ -122,6 +125,18 @@ fn selftest() -> Result<(), String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(parse_args(&["--report".to_string(), String::new()]).is_err());
+        assert!(parse_args(&[
+            "--report".to_string(),
+            "report.json".to_string(),
+            "--allowlist".to_string(),
+            String::new(),
+        ])
+        .is_err());
+    }
 
     #[test]
     fn report_reads_reject_symlinks_and_fifos() {

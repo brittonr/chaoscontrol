@@ -310,7 +310,11 @@ fn validate_campaign_progress(progress: &CampaignProgress, output_dir: &str) -> 
         || progress.seeds.len() > MAX_CAMPAIGN_SEEDS
         || progress.output_dir != output_dir
         || progress.output_dir.is_empty()
-        || progress.output_dir.len() > MAX_CAMPAIGN_PATH_BYTES
+        || progress
+            .output_dir
+            .len()
+            .saturating_add("/campaign_progress.json".len())
+            > MAX_CAMPAIGN_PATH_BYTES
     {
         return Err("campaign progress output or seed bounds are invalid".to_string());
     }
@@ -1745,6 +1749,18 @@ mod tests {
     }
 
     // ── campaign progress checkpoint ────────────────────────────────
+
+    #[test]
+    fn campaign_progress_path_bound_includes_metadata_file() {
+        let max_dir =
+            "d".repeat(MAX_CAMPAIGN_PATH_BYTES.saturating_sub("/campaign_progress.json".len()));
+        let progress = policy_progress(FrontierPolicy::LegacyDiagnostic, &max_dir);
+        assert!(validate_campaign_progress(&progress, &max_dir).is_ok());
+
+        let over_dir = format!("{max_dir}d");
+        let progress = policy_progress(FrontierPolicy::LegacyDiagnostic, &over_dir);
+        assert!(validate_campaign_progress(&progress, &over_dir).is_err());
+    }
 
     #[test]
     fn campaign_progress_serde_roundtrip() {

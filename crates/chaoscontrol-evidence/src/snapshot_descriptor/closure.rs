@@ -72,6 +72,12 @@ pub fn chunked_closure_from_manifest(
     let mut members = Vec::with_capacity(manifest.chunks.len());
     for (index, chunk) in manifest.chunks.iter().enumerate() {
         let path = artifact_root.join(&chunk.path);
+        ensure_chunk_within_root(artifact_root, &path).map_err(|error| {
+            EvidenceError::new(format!(
+                "snapshot chunk missing {}: {error}",
+                path.display()
+            ))
+        })?;
         let bytes = crate::bounded_file::read_bounded_regular_bytes(&path, maximum_bytes).map_err(
             |error| {
                 EvidenceError::new(format!(
@@ -143,6 +149,17 @@ pub fn chunked_closure_from_manifest(
     Ok(closure)
 }
 
+fn ensure_chunk_within_root(root: &Path, path: &Path) -> EvidenceResult<()> {
+    let root = std::fs::canonicalize(root)?;
+    let path = std::fs::canonicalize(path)?;
+    if !path.starts_with(&root) {
+        return Err(EvidenceError::new(
+            "snapshot chunk escapes the artifact root",
+        ));
+    }
+    Ok(())
+}
+
 fn hex_lower(bytes: &[u8]) -> String {
     let capacity = bytes.len().saturating_mul(HEX_CHARACTERS_PER_BYTE);
     let mut output = String::with_capacity(capacity);
@@ -160,6 +177,21 @@ fn hex_lower(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chunk_paths_cannot_escape_the_artifact_root() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("chunk.bin");
+        std::fs::write(&outside_file, b"outside").unwrap();
+        std::fs::create_dir(root.path().join("snapshots")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("snapshots/link")).unwrap();
+        assert!(ensure_chunk_within_root(
+            root.path(),
+            &root.path().join("snapshots/link/chunk.bin")
+        )
+        .is_err());
+    }
 
     #[test]
     fn monolithic_closure_rejects_symlinks() {

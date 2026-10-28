@@ -14,6 +14,7 @@ const CORE_PATHS: &[&str] = &[
 const VMM_SOURCE_PATH: &str = "crates/chaoscontrol-vmm/src";
 const UNSAFE_OWNER_FILE: &str = "unsafe_owner.rs";
 const MAX_SOURCE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_SOURCE_ENTRIES: usize = 4_096;
 
 fn repository_root() -> PathBuf {
     std::env::args_os()
@@ -61,7 +62,14 @@ fn collect_violations(root: &Path) -> Result<Vec<BoundaryViolation>, String> {
     let vmm_source = root.join(VMM_SOURCE_PATH);
     let entries = std::fs::read_dir(&vmm_source)
         .map_err(|error| format!("read {}: {error}", vmm_source.display()))?;
+    let mut entries_seen = 0_usize;
     for entry in entries {
+        entries_seen += 1;
+        if entries_seen > MAX_SOURCE_ENTRIES {
+            return Err(format!(
+                "VMM source entry bound exceeded: maximum={MAX_SOURCE_ENTRIES}"
+            ));
+        }
         let entry = entry.map_err(|error| format!("read VMM source entry: {error}"))?;
         let path = entry.path();
         if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {

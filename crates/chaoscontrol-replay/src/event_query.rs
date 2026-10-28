@@ -1566,11 +1566,21 @@ mod tests {
             EventQueryError::InvalidEvent
         );
 
-        for index in 0..=MAX_DERIVED_FIELDS {
+        event.derived.clear();
+        for index in 0..MAX_DERIVED_FIELDS {
             event
                 .derived
                 .insert(format!("field-{index}"), String::new());
         }
+        assert!(evaluate(
+            &EventQuery::All,
+            &[event.clone()],
+            &EventQueryLimits::default()
+        )
+        .is_ok());
+        event
+            .derived
+            .insert(format!("field-{MAX_DERIVED_FIELDS}"), String::new());
         assert_eq!(
             evaluate(&EventQuery::All, &[event], &EventQueryLimits::default()).unwrap_err(),
             EventQueryError::InvalidEvent

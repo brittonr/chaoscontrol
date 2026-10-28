@@ -1168,6 +1168,12 @@ impl TraceMetadata {
     }
 }
 
+/// Write trace evidence through an `O_NOFOLLOW`, owner-only file.
+pub fn write_trace_json(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = open_trace_output(path)?;
+    file.write_all(bytes)
+}
+
 fn open_trace_output(path: &str) -> std::io::Result<File> {
     OpenOptions::new()
         .write(true)
@@ -1211,8 +1217,7 @@ impl TraceLog {
 
     pub fn save(&self, path: &str) -> std::io::Result<()> {
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
-        let mut file = open_trace_output(path)?;
-        file.write_all(json.as_bytes())
+        write_trace_json(path, json.as_bytes())
     }
 
     pub fn load(path: &str) -> std::io::Result<Self> {

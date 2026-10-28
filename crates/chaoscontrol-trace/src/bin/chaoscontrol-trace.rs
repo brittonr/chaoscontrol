@@ -323,7 +323,8 @@ fn cmd_evidence_verify(
     let json = serde_json::to_string_pretty(&receipt)
         .unwrap_or_else(|error| evidence_blocked("receipt serialization", &error.to_string()));
     if let Some(path) = output {
-        if let Err(error) = std::fs::write(&path, &json) {
+        if let Err(error) = chaoscontrol_trace::collector::write_trace_json(&path, json.as_bytes())
+        {
             evidence_blocked("receipt write", &format!("{path}: {error}"));
         }
     }

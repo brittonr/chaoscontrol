@@ -795,6 +795,15 @@ mod tests {
     }
 
     #[test]
+    fn empty_log_is_clean_eof() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("run.dlog");
+        std::fs::write(&path, b"").unwrap();
+        let mut reader = DlogReader::open(&path).unwrap();
+        assert!(reader.next_record().unwrap().is_none());
+    }
+
+    #[test]
     fn truncated_record_is_rejected() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("run.dlog");

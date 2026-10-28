@@ -10,6 +10,10 @@ fn usage() -> &'static str {
 
 fn main() -> ExitCode {
     let root = parse_root();
+    if admit_root(&root).is_err() {
+        eprintln!("ROOT must not be empty");
+        return ExitCode::from(2);
+    }
     if let Err(error) = chaoscontrol_evidence::profile_projection::admit_nickel_evaluator() {
         eprintln!("error: {error}");
         return ExitCode::FAILURE;
@@ -65,4 +69,21 @@ fn parse_root() -> PathBuf {
         }
     }
     root
+}
+
+fn admit_root(root: &Path) -> Result<(), ()> {
+    if root.as_os_str().is_empty() {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(admit_root(Path::new("")).is_err());
+    }
 }

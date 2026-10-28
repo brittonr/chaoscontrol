@@ -289,8 +289,14 @@ fn format_event(event: &RecordedEvent) -> String {
 
 fn assertion_kind_name(recording: &Recording, assertion_id: u64) -> Option<&'static str> {
     let id = u32::try_from(assertion_id).ok()?;
-    let kind = recording.oracle_report.as_ref()?.assertions.get(&id)?.kind;
-    Some(match kind {
+    let report = recording.oracle_report.as_ref()?;
+    let record = report.assertions.get(&id).or_else(|| {
+        report
+            .structured_assertions
+            .values()
+            .find(|record| record.compatibility_id == Some(id))
+    })?;
+    Some(match record.kind {
         chaoscontrol_fault::oracle::AssertionKind::Always => "always",
         chaoscontrol_fault::oracle::AssertionKind::Sometimes => "sometimes",
         chaoscontrol_fault::oracle::AssertionKind::Reachable => "reachable",
@@ -462,8 +468,8 @@ mod tests {
 
         let mut recording = test_recording();
         let mut oracle = chaoscontrol_fault::oracle::OracleReport::empty();
-        oracle.assertions.insert(
-            1,
+        oracle.structured_assertions.insert(
+            chaoscontrol_protocol::identity::AssertionFingerprint::ZERO,
             AssertionRecord {
                 message: String::from("liveness"),
                 kind: chaoscontrol_fault::oracle::AssertionKind::Sometimes,

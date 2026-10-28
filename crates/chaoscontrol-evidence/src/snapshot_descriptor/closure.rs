@@ -17,17 +17,15 @@ pub fn monolithic_closure_from_file(
     maximum_bytes: u64,
 ) -> EvidenceResult<snapshot_core::PayloadClosure> {
     let path = path.as_ref();
-    let metadata = std::fs::metadata(path)?;
-    if metadata.len() == 0 || metadata.len() > maximum_bytes {
-        return Err(EvidenceError::new(format!(
-            "snapshot payload length {} is outside the declared bound {maximum_bytes}",
-            metadata.len()
-        )));
+    let bytes = crate::bounded_file::read_bounded_regular_bytes(path, maximum_bytes)?;
+    if bytes.is_empty() {
+        return Err(EvidenceError::new(
+            "snapshot payload length 0 is outside the declared bound",
+        ));
     }
-    let bytes = std::fs::read(path)?;
     let logical_payload = snapshot_core::ContentIdentity {
         digest: snapshot_core::digest_bytes(snapshot_core::DigestAlgorithm::Sha256, &bytes),
-        length_bytes: metadata.len(),
+        length_bytes: bytes.len() as u64,
         codec: snapshot_core::CURRENT_PAYLOAD_CODEC.to_string(),
     };
     let closure = snapshot_core::PayloadClosure {
@@ -52,7 +50,10 @@ pub fn chunked_closure_from_manifest(
 ) -> EvidenceResult<snapshot_core::PayloadClosure> {
     let manifest_path = manifest_path.as_ref();
     let artifact_root = artifact_root.as_ref();
-    let manifest_bytes = std::fs::read(manifest_path)?;
+    let manifest_bytes = crate::bounded_file::read_bounded_regular_bytes(
+        manifest_path,
+        crate::MAX_EVIDENCE_JSON_BYTES,
+    )?;
     let manifest: SnapshotChunkManifest = serde_json::from_slice(&manifest_bytes)?;
     manifest.validate_shape()?;
     if manifest.original_size == 0 || manifest.original_size > maximum_bytes {
@@ -71,19 +72,20 @@ pub fn chunked_closure_from_manifest(
     let mut members = Vec::with_capacity(manifest.chunks.len());
     for (index, chunk) in manifest.chunks.iter().enumerate() {
         let path = artifact_root.join(&chunk.path);
-        let metadata = std::fs::metadata(&path).map_err(|error| {
-            EvidenceError::new(format!(
-                "snapshot chunk missing {}: {error}",
-                path.display()
-            ))
-        })?;
-        if metadata.len() != chunk.size || metadata.len() > maximum_bytes {
+        let bytes = crate::bounded_file::read_bounded_regular_bytes(&path, maximum_bytes).map_err(
+            |error| {
+                EvidenceError::new(format!(
+                    "snapshot chunk missing {}: {error}",
+                    path.display()
+                ))
+            },
+        )?;
+        if bytes.len() as u64 != chunk.size {
             return Err(EvidenceError::new(format!(
                 "snapshot chunk length mismatch for {}",
                 path.display()
             )));
         }
-        let bytes = std::fs::read(&path)?;
         let actual = snapshot_core::digest_bytes(snapshot_core::DigestAlgorithm::Sha256, &bytes);
         if !actual.hex.eq_ignore_ascii_case(&chunk.sha256) {
             return Err(EvidenceError::new(format!(
@@ -93,7 +95,7 @@ pub fn chunked_closure_from_manifest(
         }
         aggregate.update(&bytes);
         total_bytes = total_bytes
-            .checked_add(metadata.len())
+            .checked_add(bytes.len() as u64)
             .ok_or_else(|| EvidenceError::new("snapshot chunk length accumulation overflowed"))?;
         let order = u32::try_from(index)
             .map_err(|_| EvidenceError::new("snapshot chunk order exceeds u32"))?;
@@ -102,7 +104,7 @@ pub fn chunked_closure_from_manifest(
             role: snapshot_core::ClosureRole::SnapshotChunk,
             content: snapshot_core::ContentIdentity {
                 digest: actual,
-                length_bytes: metadata.len(),
+                length_bytes: bytes.len() as u64,
                 codec: snapshot_core::SNAPSHOT_CHUNK_CODEC.to_string(),
             },
         });
@@ -153,4 +155,20 @@ fn hex_lower(bytes: &[u8]) -> String {
         ));
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn monolithic_closure_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("payload.bin");
+        std::fs::write(&target, b"snapshot").unwrap();
+        let link = root.path().join("payload-link.bin");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(monolithic_closure_from_file(&link, 1024).is_err());
+        assert!(monolithic_closure_from_file(&target, 1024).is_ok());
+    }
 }

@@ -651,16 +651,50 @@ fn artifact(role: &str, path: &Path) -> Result<Value, String> {
     Ok(json!({"role": role, "path": path, "sha256": sha256(path)?}))
 }
 
+fn open_read_input(path: &Path) -> std::io::Result<fs::File> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "input is not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    let file = open_read_input(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let length = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?
+        .len();
+    if length > limit {
+        return Err(format!("{} exceeds JSON byte bound", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} exceeds JSON byte bound", path.display()));
+    }
+    Ok(bytes)
+}
+
 fn chunk_snapshot(snapshot: &Path) -> Result<(), String> {
-    let size = fs::metadata(snapshot)
+    let file =
+        open_read_input(snapshot).map_err(|error| format!("{}: {error}", snapshot.display()))?;
+    let size = file
+        .metadata()
         .map_err(|error| format!("{}: {error}", snapshot.display()))?
         .len();
     if size <= u64::try_from(SNAPSHOT_CHUNK_BYTES).expect("chunk bound fits") {
         return Ok(());
     }
-    let mut reader = BufReader::new(
-        fs::File::open(snapshot).map_err(|error| format!("{}: {error}", snapshot.display()))?,
-    );
+    let mut reader = BufReader::new(file);
     let mut chunks = Vec::new();
     let mut index = 0_usize;
     loop {
@@ -811,11 +845,7 @@ fn matching_files(root: &Path, prefix: &str, suffix: &str) -> Result<Vec<PathBuf
 }
 
 fn load_json(path: &Path) -> Result<Value, String> {
-    let metadata = fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    if metadata.len() > MAX_JSON_BYTES {
-        return Err(format!("{} exceeds JSON byte bound", path.display()));
-    }
-    let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let bytes = read_bounded(path, MAX_JSON_BYTES)?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))
 }
@@ -848,9 +878,8 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 fn sha256(path: &Path) -> Result<String, String> {
-    let mut reader = BufReader::new(
-        fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?,
-    );
+    let file = open_read_input(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; HASH_BUFFER_BYTES];
     loop {
@@ -927,6 +956,7 @@ fn now() -> Result<String, String> {
 #[cfg(test)]
 mod publication_tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
 
     #[test]
     fn atomic_output_does_not_follow_symlinks() {
@@ -939,6 +969,21 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn input_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("checkpoint.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded(&link, MAX_JSON_BYTES).is_err());
+
+        let fifo = root.path().join("checkpoint.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded(&fifo, MAX_JSON_BYTES).is_err());
     }
 
     #[test]

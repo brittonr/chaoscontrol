@@ -8,20 +8,19 @@ use crate::EvidenceResult;
 
 pub(crate) fn write_bytes(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> EvidenceResult<()> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
 
     let path = path.as_ref();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
-    file.write_all(bytes.as_ref())?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let directory = std::fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes.as_ref())?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()?;
     Ok(())
 }
 
@@ -38,15 +37,16 @@ mod tests {
     }
 
     #[test]
-    fn publication_rejects_symlink_output() {
+    fn publication_replaces_symlink_without_following() {
         let root = tempfile::tempdir().expect("temporary publication root");
         let target = root.path().join("target.txt");
         std::fs::write(&target, b"original").unwrap();
         let link = root.path().join("report.txt");
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        write_bytes(&link, b"replacement").expect_err("symlink output must fail");
+        write_bytes(&link, b"replacement").expect("publish over link");
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        assert_eq!(std::fs::read(&link).unwrap(), b"replacement");
     }
 
     #[test]

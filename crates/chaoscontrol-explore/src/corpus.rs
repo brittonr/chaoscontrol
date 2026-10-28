@@ -134,7 +134,11 @@ impl Corpus {
 
     /// Get corpus statistics.
     pub fn stats(&self) -> CorpusStats {
-        let total_bugs = self.bugs().len();
+        let total_bugs = self
+            .entries
+            .iter()
+            .map(|entry| entry.bugs_found.len())
+            .sum();
         let total_edges = self.global_coverage.count_bits();
         let avg_depth = if self.entries.is_empty() {
             0.0

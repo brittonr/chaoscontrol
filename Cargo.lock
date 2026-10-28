@@ -688,6 +688,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-thread-runtime"
+version = "0.1.0"
+
+[[package]]
 name = "chaoscontrol-trace"
 version = "0.1.0"
 dependencies = [

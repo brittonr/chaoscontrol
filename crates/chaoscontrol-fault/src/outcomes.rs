@@ -407,6 +407,17 @@ fn hash_process_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
             hash_usize(hasher, *target);
             hasher.update(&duration_ns.to_le_bytes());
         }
+        Fault::ThreadPause {
+            target,
+            thread,
+            duration_ticks,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(thread.process.as_bytes());
+            hasher.update(&thread.generation.to_le_bytes());
+            hasher.update(&thread.ordinal.to_le_bytes());
+            hasher.update(&duration_ticks.to_le_bytes());
+        }
         _ => unreachable!("process category must contain a process fault"),
     }
 }
@@ -563,6 +574,7 @@ pub struct VmFaultFacts {
     pub supports_clock_jitter: bool,
     pub supports_cpu_stall: bool,
     pub supports_cpu_throttle: bool,
+    pub supports_thread_pause: bool,
     pub supports_memory_pressure: bool,
     pub virtual_tsc: u64,
     pub tsc_khz: u32,
@@ -617,6 +629,7 @@ pub enum FaultMechanism {
     CpuStall,
     CpuThrottle,
     CustomEffect,
+    ThreadPause,
     MemoryPressure,
 }
 
@@ -648,6 +661,7 @@ impl FaultPlan {
             | FaultPlanEffect::CpuStall { .. }
             | FaultPlanEffect::CpuThrottle { .. }
             | FaultPlanEffect::CustomEffect { .. }
+            | FaultPlanEffect::ThreadPause { .. }
             | FaultPlanEffect::MemoryPressure { .. } => SINGLE_IMMEDIATE_OBSERVATION,
             _ => 0,
         }
@@ -800,6 +814,11 @@ pub enum FaultPlanEffect {
     CustomEffect {
         effect: crate::mechanisms::CustomFaultEffect,
     },
+    ThreadPause {
+        target: u32,
+        thread: crate::thread_pause::LogicalThreadId,
+        release_at_tick: u64,
+    },
     MemoryPressure {
         target: u32,
         limit_bytes: u64,
@@ -844,6 +863,7 @@ impl FaultPlanEffect {
             Self::CpuStall { .. } => FaultMechanism::CpuStall,
             Self::CpuThrottle { .. } => FaultMechanism::CpuThrottle,
             Self::CustomEffect { .. } => FaultMechanism::CustomEffect,
+            Self::ThreadPause { .. } => FaultMechanism::ThreadPause,
             Self::MemoryPressure { .. } => FaultMechanism::MemoryPressure,
         }
     }
@@ -879,6 +899,7 @@ impl FaultPlanEffect {
             | Self::CpuStall { .. }
             | Self::CpuThrottle { .. }
             | Self::CustomEffect { .. }
+            | Self::ThreadPause { .. }
             | Self::MemoryPressure { .. } => FaultEffectTiming::Immediate,
             _ => FaultEffectTiming::Armed,
         }
@@ -967,6 +988,7 @@ pub enum FaultRejectionReason {
         max: u64,
     },
     InvalidCustomEffect,
+    InvalidThreadPause,
     ArithmeticOverflow,
     UnsupportedCapability {
         variant: FaultVariant,
@@ -1251,6 +1273,32 @@ fn plan_process_fault(
             Ok(FaultPlanEffect::ProcessPause {
                 target,
                 resume_at_tick,
+            })
+        }
+        Fault::ThreadPause {
+            target,
+            thread,
+            duration_ticks,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            if !facts.vms[target as usize].supports_thread_pause {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            crate::thread_pause::admit_thread(thread)
+                .map_err(|_| FaultRejectionReason::InvalidThreadPause)?;
+            if *duration_ticks == 0 || *duration_ticks > crate::thread_pause::MAX_PAUSE_TICKS {
+                return Err(FaultRejectionReason::InvalidThreadPause);
+            }
+            let release_at_tick = facts
+                .current_tick
+                .checked_add(*duration_ticks)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::ThreadPause {
+                target,
+                thread: thread.clone(),
+                release_at_tick,
             })
         }
         Fault::ProcessRestart { target } => {
@@ -1769,6 +1817,7 @@ pub enum FaultObservationEffect {
     CpuStallActivated,
     CpuThrottleActivated,
     CustomEffectApplied,
+    ThreadPauseApplied,
     MemoryCeilingChanged,
     InterruptInjected,
     NmiInjected,
@@ -2557,6 +2606,24 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
                 && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
         }
         (
+            Fault::ThreadPause {
+                target: fault_target,
+                thread,
+                duration_ticks,
+            },
+            FaultPlanEffect::ThreadPause {
+                target: planned_target,
+                thread: planned_thread,
+                release_at_tick,
+            },
+        ) => {
+            let selected_tick = attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK;
+            target(*fault_target) == Some(*planned_target)
+                && thread == planned_thread
+                && *duration_ticks > 0
+                && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
+        }
+        (
             Fault::CustomEffect {
                 effect_id,
                 version,
@@ -2800,7 +2867,8 @@ fn observation_effect_subsystem(effect: FaultObservationEffect) -> FaultObservat
         FaultObservationEffect::CpuRegisterChanged
         | FaultObservationEffect::CpuStallActivated
         | FaultObservationEffect::CpuThrottleActivated => FaultObservationSubsystem::Cpu,
-        FaultObservationEffect::CustomEffectApplied => FaultObservationSubsystem::Process,
+        FaultObservationEffect::CustomEffectApplied
+        | FaultObservationEffect::ThreadPauseApplied => FaultObservationSubsystem::Process,
         FaultObservationEffect::MemoryCeilingChanged => FaultObservationSubsystem::Scheduler,
         FaultObservationEffect::InterruptInjected | FaultObservationEffect::NmiInjected => {
             FaultObservationSubsystem::Interrupt
@@ -2896,6 +2964,9 @@ fn mechanism_accepts_observation(
             FaultMechanism::CustomEffect,
             FaultObservationEffect::CustomEffectApplied
         ) | (
+            FaultMechanism::ThreadPause,
+            FaultObservationEffect::ThreadPauseApplied
+        ) | (
             FaultMechanism::MemoryPressure,
             FaultObservationEffect::MemoryCeilingChanged
         ) | (
@@ -2982,6 +3053,7 @@ mod tests {
             supports_clock_jitter: true,
             supports_cpu_stall: true,
             supports_cpu_throttle: true,
+            supports_thread_pause: true,
             supports_memory_pressure: true,
             virtual_tsc: TEST_SELECTED_AT_NS,
             tsc_khz: TEST_TSC_KHZ,
@@ -3498,6 +3570,49 @@ mod tests {
             })
         );
 
+        let thread_pause = plan_fault_application(
+            &attempt(Fault::ThreadPause {
+                target: 0,
+                thread: crate::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                duration_ticks: WINDOW_TICKS,
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(
+            thread_pause.effect,
+            FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: crate::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                release_at_tick: facts.current_tick + WINDOW_TICKS,
+            }
+        );
+        assert_eq!(
+            plan_fault_application(
+                &attempt(Fault::ThreadPause {
+                    target: 0,
+                    thread: crate::thread_pause::LogicalThreadId {
+                        process: String::from("process:v1:writer"),
+                        generation: 1,
+                        ordinal: 1,
+                    },
+                    duration_ticks: 0,
+                }),
+                &facts,
+                &policy,
+            ),
+            Err(FaultRejectionReason::InvalidThreadPause)
+        );
+
         let custom = plan_fault_application(
             &attempt(Fault::CustomEffect {
                 effect_id: String::from("test-effect"),
@@ -3892,6 +4007,15 @@ mod tests {
             Fault::CpuThrottle {
                 target: 0,
                 budget_units: 1,
+                duration_ticks: 1,
+            },
+            Fault::ThreadPause {
+                target: 0,
+                thread: crate::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
                 duration_ticks: 1,
             },
             Fault::CustomEffect {

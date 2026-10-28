@@ -1,0 +1,18 @@
+[package]
+name = "chaoscontrol-thread-guest"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[[bin]]
+name = "chaoscontrol-thread-guest"
+path = "src/main.rs"
+
+[dependencies]
+chaoscontrol-thread-runtime = { path = "../chaoscontrol-thread-runtime" }
+
+
+[workspace]
+
+[profile.release]
+panic = "abort"

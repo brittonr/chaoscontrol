@@ -344,6 +344,11 @@ pub enum SerializableFault {
         version: u32,
         parameters: std::collections::BTreeMap<String, String>,
     },
+    ThreadPause {
+        target: usize,
+        thread: chaoscontrol_fault::thread_pause::LogicalThreadId,
+        duration_ticks: u64,
+    },
     ClockFreeze {
         target: usize,
         duration_ticks: u64,
@@ -531,6 +536,15 @@ impl From<&Fault> for SerializableFault {
                 effect_id: effect_id.clone(),
                 version: *version,
                 parameters: parameters.clone(),
+            },
+            Fault::ThreadPause {
+                target,
+                thread,
+                duration_ticks,
+            } => SerializableFault::ThreadPause {
+                target: *target,
+                thread: thread.clone(),
+                duration_ticks: *duration_ticks,
             },
             Fault::ClockFreeze {
                 target,
@@ -724,6 +738,15 @@ impl From<&SerializableFault> for Fault {
                 effect_id: effect_id.clone(),
                 version: *version,
                 parameters: parameters.clone(),
+            },
+            SerializableFault::ThreadPause {
+                target,
+                thread,
+                duration_ticks,
+            } => Fault::ThreadPause {
+                target: *target,
+                thread: thread.clone(),
+                duration_ticks: *duration_ticks,
             },
             SerializableFault::ClockFreeze {
                 target,
@@ -1395,6 +1418,15 @@ mod tests {
                 target: 0,
                 budget_units: 4,
                 duration_ticks: 8,
+            },
+            Fault::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                duration_ticks: 5,
             },
             Fault::CustomEffect {
                 effect_id: String::from("test-effect"),

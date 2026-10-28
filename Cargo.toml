@@ -24,6 +24,7 @@ members = [
     "crates/chaoscontrol-net-guest",
     "crates/chaoscontrol-redb-guest",
     "crates/chaoscontrol-rust-workload-guest",
+    "crates/chaoscontrol-thread-runtime",
 ]
 resolver = "2"
 
@@ -88,3 +89,4 @@ cargo_check_args = ["--lib"]
 
 [patch."https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"]
 choregraph-history = { git = "rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF", rev = "b3e08e19750f53bdbcae970cdf58a47a791ed20b" }
+

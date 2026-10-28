@@ -9,24 +9,24 @@
 ## Phase 2: Identity, fault, and planner
 
 - [x] [serial] Define stable logical thread identity and pure identity admission. r[chaoscontrol.thread_pause.identity]
-- [ ] [serial] Implement runtime identity assignment, generation tracking, and snapshot-safe lookup. r[chaoscontrol.thread_pause.identity]
+- [x] [serial] Implement runtime identity assignment, generation tracking, and snapshot-safe lookup. r[chaoscontrol.thread_pause.identity]
 - [x] [serial] Implement pure thread-pause plan admission for target, exact window, duplicate active threads, and named bounds. r[chaoscontrol.thread_pause.fault]
-- [ ] [serial] Add the typed thread-pause fault variant to the engine catalogue and planner. r[chaoscontrol.thread_pause.fault]
+- [x] [serial] Add the typed thread-pause fault variant to the engine catalogue and planner. r[chaoscontrol.thread_pause.fault]
 - [x] [parallel] Add negative planner fixtures for unsupported ABI, invalid identity, duplicate active thread, over-long window, and total-pause bound. r[chaoscontrol.thread_pause.fault] r[chaoscontrol.thread_pause.fixtures]
 
 ## Phase 3: Safe-point gate and deterministic release
 
-- [ ] [serial] Implement the cooperative safe-point gate and guest-runtime scheduler transition for paused and runnable threads. r[chaoscontrol.thread_pause.safepoints] r[chaoscontrol.thread_pause.release]
+- [x] [serial] Implement the cooperative safe-point gate and guest-runtime scheduler transition for paused and runnable threads. r[chaoscontrol.thread_pause.safepoints] r[chaoscontrol.thread_pause.release]
 - [x] [serial] Define exact-tick release and paused-at-tick semantics in the pure core. r[chaoscontrol.thread_pause.release]
-- [ ] [serial] Implement bounded deterministic virtual-time advancement when no thread is runnable. r[chaoscontrol.thread_pause.release]
-- [ ] [serial] Bind pause state into snapshots and exact replay validation. r[chaoscontrol.thread_pause.state]
+- [x] [serial] Implement bounded deterministic virtual-time advancement when no thread is runnable. r[chaoscontrol.thread_pause.release]
+- [x] [serial] Bind pause state into snapshots and exact replay validation. r[chaoscontrol.thread_pause.state]
 
 ## Phase 4: Evidence and fixtures
 
 - [ ] [parallel] Extend the fault stage ledger and receipt with thread targets, observed safe points, releases, and paused-tick counts. r[chaoscontrol.thread_pause.evidence]
-- [ ] [parallel] Add positive fixtures for deterministic interleaving, exact release, snapshot continuation, and replay parity. r[chaoscontrol.thread_pause.fixtures]
+- [x] [parallel] Add positive fixtures for deterministic interleaving, exact release, snapshot continuation, and replay parity. r[chaoscontrol.thread_pause.fixtures]
 - [ ] [parallel] Add negative fixtures for unsupported runtime, safe-point starvation, pause overlap, identity drift, snapshot mismatch, replay divergence, and overclaim. r[chaoscontrol.thread_pause.fixtures] r[chaoscontrol.thread_pause.nonclaims]
-- [ ] [serial] Exercise the bounded race fixture under a real KVM run and compare the paused and control continuations. r[chaoscontrol.thread_pause.release] r[chaoscontrol.thread_pause.state]
+- [x] [serial] Exercise the bounded race fixture under a real KVM run and compare the paused and control continuations. r[chaoscontrol.thread_pause.release] r[chaoscontrol.thread_pause.state]
 
 ## Phase 5: Verification and evidence
 

@@ -53,6 +53,20 @@ The VMM exposes the current ceiling through `chaoscontrol_sdk::resources::memory
 
 The ceiling is an observation and policy surface. It does not change mapped guest memory or guarantee an allocation failure.
 
+## Thread pause
+
+The cooperative thread fixture uses `crates/chaoscontrol-thread-runtime` for stable
+logical identities, a safe-point gate, and a deterministic round-robin scheduler.
+`Fault::ThreadPause` names one logical thread and a finite duration. The VMM writes the
+gate at guest-physical `0x6000`; the guest checks it only at task safe points and never
+uses host signals or sleeps. A paused task is skipped while the logical tick advances,
+so release occurs at the exact admitted tick.
+
+The bounded KVM proof runs one guest with two cooperative tasks. The control
+interleaving loses an update (`0x0a`); pausing the second task for five logical ticks
+produces `0x0b` and records paused steps. This proves the admitted cooperative runtime
+and gate, not arbitrary OS-thread preemption.
+
 ## Pause control
 
 An admitted pause-control window suppresses new fault selection while the virtual tick is inside

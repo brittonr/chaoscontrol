@@ -47,6 +47,7 @@ use chaoscontrol_sim_core::{
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use vm_memory::{ByteValued, Bytes, GuestAddress};
 
 const MAX_PENDING_PROCESS_OBSERVATIONS: usize = 4_096;
 const GUEST_ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.guest-artifact.v1";
@@ -1219,6 +1220,7 @@ impl SimulationController {
                 supports_clock_jitter: true,
                 supports_cpu_stall: true,
                 supports_cpu_throttle: true,
+                supports_thread_pause: true,
                 supports_memory_pressure: true,
                 virtual_tsc: slot.vm.virtual_tsc(),
                 tsc_khz: slot.vm.virtual_tsc_ref().tsc_khz(),
@@ -1426,6 +1428,7 @@ impl SimulationController {
             | FaultMechanism::CpuStall
             | FaultMechanism::CpuThrottle => self.apply_cpu_fault_plan(plan),
             FaultMechanism::CustomEffect => self.apply_custom_fault_plan(plan),
+            FaultMechanism::ThreadPause => self.apply_thread_pause_plan(plan),
             FaultMechanism::MemoryPressure => self.apply_resource_fault_plan(plan),
         }
     }
@@ -1835,6 +1838,51 @@ impl SimulationController {
                 plan.attempt_id,
                 FaultObservationSubsystem::Process,
                 FaultObservationEffect::CustomEffectApplied,
+            )
+            .map_err(|_| internal_application_error())?;
+        Ok(vec![observation])
+    }
+
+    fn apply_thread_pause_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        let FaultPlanEffect::ThreadPause {
+            target,
+            thread,
+            release_at_tick,
+        } = &plan.effect
+        else {
+            return Err(internal_application_error());
+        };
+        let duration = release_at_tick.saturating_sub(self.tick);
+        if duration == 0 {
+            return Err(target_state_application_error());
+        }
+        let slot = self.vm_slot_mut_checked(*target)?;
+        let memory = slot.vm.memory().inner();
+        let address = GuestAddress(THREAD_GATE_ADDRESS);
+        let mut gate = memory
+            .read_obj::<ThreadGate>(address)
+            .unwrap_or(ThreadGate {
+                magic: THREAD_GATE_MAGIC,
+                paused_ordinal: u64::MAX,
+                release_tick: 0,
+                logical_tick: 0,
+                paused_steps: 0,
+            });
+        gate.magic = THREAD_GATE_MAGIC;
+        gate.paused_ordinal = u64::from(thread.ordinal);
+        gate.release_tick = gate.logical_tick.saturating_add(duration);
+        gate.paused_steps = 0;
+        memory
+            .write_obj(gate, address)
+            .map_err(|_| target_state_application_error())?;
+        let observation = self
+            .make_shell_observation(
+                plan.attempt_id,
+                FaultObservationSubsystem::Process,
+                FaultObservationEffect::ThreadPauseApplied,
             )
             .map_err(|_| internal_application_error())?;
         Ok(vec![observation])
@@ -3261,6 +3309,21 @@ pub struct SimulationResult {
     pub assertion_checkpoints: Vec<ControllerAssertionCheckpoint>,
 }
 
+const THREAD_GATE_ADDRESS: u64 = 0x6000;
+const THREAD_GATE_MAGIC: u64 = 0x4343_5448_5245_4144;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct ThreadGate {
+    magic: u64,
+    paused_ordinal: u64,
+    release_tick: u64,
+    logical_tick: u64,
+    paused_steps: u64,
+}
+
+unsafe impl ByteValued for ThreadGate {}
+
 /// Active aggregate vCPU exit-budget throttle retained by replay snapshots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CpuThrottleState {
@@ -4152,6 +4215,35 @@ mod tests {
         );
         assert!(!controller.network.send_packet(0, 1, vec![1], 0));
         assert!(custom_observed);
+    }
+
+    #[test]
+    fn thread_pause_plan_writes_the_cooperative_gate() {
+        let mut controller = adapter_test_controller();
+        let plan = FaultPlan {
+            attempt_id: FaultAttemptId([31; 32]),
+            effect: FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                release_at_tick: 5,
+            },
+        };
+        controller
+            .apply_fault_plan(&plan)
+            .expect("thread pause applies");
+        let gate = controller.vms[0]
+            .vm
+            .memory()
+            .inner()
+            .read_obj::<ThreadGate>(GuestAddress(THREAD_GATE_ADDRESS))
+            .expect("read gate");
+        assert_eq!(gate.magic, THREAD_GATE_MAGIC);
+        assert_eq!(gate.paused_ordinal, 1);
+        assert_eq!(gate.release_tick, 5);
     }
 
     #[test]
@@ -5727,6 +5819,18 @@ mod tests {
                     target: 0,
                     limit_bytes: 1,
                     baseline_bytes: TEST_MEMORY_BASELINE_BYTES,
+                    release_at_tick: 1,
+                },
+            ),
+            (
+                FaultVariant::ThreadPause,
+                FaultPlanEffect::ThreadPause {
+                    target: 0,
+                    thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                        process: String::from("process:v1:writer"),
+                        generation: 1,
+                        ordinal: 1,
+                    },
                     release_at_tick: 1,
                 },
             ),

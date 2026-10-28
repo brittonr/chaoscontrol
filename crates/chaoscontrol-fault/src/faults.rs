@@ -115,12 +115,13 @@ pub enum FaultVariant {
     CpuStall,
     CpuThrottle,
     CustomEffect,
+    ThreadPause,
     ClockFreeze,
     ClockJitter,
 }
 
 impl FaultVariant {
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 35] = [
         Self::NetworkPartition,
         Self::NetworkLatency,
         Self::PacketLoss,
@@ -153,6 +154,7 @@ impl FaultVariant {
         Self::CpuStall,
         Self::CpuThrottle,
         Self::CustomEffect,
+        Self::ThreadPause,
         Self::ClockFreeze,
         Self::ClockJitter,
     ];
@@ -458,6 +460,16 @@ pub enum Fault {
         parameters: std::collections::BTreeMap<String, String>,
     },
 
+    /// Pause one cooperative guest logical thread for a finite window.
+    ThreadPause {
+        /// Target VM index.
+        target: usize,
+        /// Stable guest logical thread identity.
+        thread: crate::thread_pause::LogicalThreadId,
+        /// Number of logical scheduler ticks to pause.
+        duration_ticks: u64,
+    },
+
     // ── Advanced clock faults ───────────────────────────────
     /// Freeze the virtual TSC at its current value for a duration.
     ///
@@ -519,6 +531,7 @@ impl Fault {
             Self::CpuStall { .. } => FaultVariant::CpuStall,
             Self::CpuThrottle { .. } => FaultVariant::CpuThrottle,
             Self::CustomEffect { .. } => FaultVariant::CustomEffect,
+            Self::ThreadPause { .. } => FaultVariant::ThreadPause,
             Self::ClockFreeze { .. } => FaultVariant::ClockFreeze,
             Self::ClockJitter { .. } => FaultVariant::ClockJitter,
         }
@@ -559,6 +572,7 @@ impl Fault {
             | Fault::CpuBitflip { target, .. }
             | Fault::CpuStall { target, .. }
             | Fault::CpuThrottle { target, .. }
+            | Fault::ThreadPause { target, .. }
             | Fault::ClockFreeze { target, .. }
             | Fault::ClockJitter { target, .. } => Some(*target),
         }
@@ -606,6 +620,7 @@ impl Fault {
                 FaultCategory::Cpu
             }
             Fault::CustomEffect { .. } => FaultCategory::Custom,
+            Fault::ThreadPause { .. } => FaultCategory::Process,
         }
     }
 }
@@ -739,6 +754,15 @@ impl fmt::Display for Fault {
                 "custom-effect({effect_id}@{version}, {} parameters)",
                 parameters.len()
             ),
+            Fault::ThreadPause {
+                target,
+                thread,
+                duration_ticks,
+            } => write!(
+                f,
+                "thread-pause(vm={target}, {}/{}:{}, {duration_ticks} ticks)",
+                thread.process, thread.generation, thread.ordinal
+            ),
             Fault::ClockFreeze {
                 target,
                 duration_ticks,
@@ -800,6 +824,7 @@ impl Fault {
             Fault::CpuStall { .. } => "cpu-stall",
             Fault::CpuThrottle { .. } => "cpu-throttle",
             Fault::CustomEffect { .. } => "custom-effect",
+            Fault::ThreadPause { .. } => "thread-pause",
             Fault::ClockFreeze { .. } => "clock-freeze",
             Fault::ClockJitter { .. } => "clock-jitter",
         }

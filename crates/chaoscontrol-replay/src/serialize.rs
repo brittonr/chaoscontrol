@@ -4,7 +4,7 @@ use crate::recording::{validate_recording, Recording};
 use crate::text::{escape_markdown_cell, flatten_lines, markdown_code_block};
 use crate::triage::TriageReport;
 use snafu::Snafu;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -79,15 +79,30 @@ pub enum SerializeError {
     EvidenceTooLarge { limit: u64 },
 }
 
-fn create_output_file(path: &Path) -> std::io::Result<File> {
-    use std::os::unix::fs::OpenOptionsExt;
-    OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
+fn write_output(path: &Path, bytes: &[u8]) -> Result<(), SerializeError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "output path is not a regular file",
+            )
+            .into())
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let directory = std::fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()?;
+    Ok(())
 }
 
 /// Save a recording to a JSON file.
@@ -104,11 +119,7 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
             limit: MAX_RECORDING_JSON_BYTES,
         });
     }
-    let mut file = create_output_file(path)?;
-    file.write_all(&bytes)?;
-    file.sync_all()?;
-    sync_parent(path)?;
-    Ok(())
+    write_output(path, &bytes)
 }
 
 /// Load a recording from a JSON file.
@@ -155,20 +166,7 @@ fn write_bounded_output(path: &Path, bytes: &[u8], limit: usize) -> Result<(), S
             limit: u64::try_from(limit).expect("output byte bound fits u64"),
         });
     }
-    let mut file = create_output_file(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    sync_parent(path)?;
-    Ok(())
-}
-
-fn sync_parent(path: &Path) -> Result<(), SerializeError> {
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::fs::File::open(parent)?.sync_all()?;
-    Ok(())
+    write_output(path, bytes)
 }
 
 /// Format a triage report as markdown.
@@ -272,9 +270,7 @@ pub fn save_triage_json(report: &TriageReport, path: &Path) -> Result<(), Serial
             limit: MAX_EVIDENCE_JSON_BYTES,
         });
     }
-    let mut file = create_output_file(path)?;
-    file.write_all(&bytes)?;
-    Ok(())
+    write_output(path, &bytes)
 }
 
 /// Load a triage report from JSON.
@@ -365,6 +361,16 @@ mod tests {
             },
             severity: Severity::Critical,
         }
+    }
+
+    #[test]
+    fn save_recording_replaces_an_existing_regular_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("recording.json");
+        std::fs::write(&path, b"old").unwrap();
+
+        save_recording(&test_recording(), &path).unwrap();
+        assert_eq!(load_recording(&path).unwrap().session_id, "test_session");
     }
 
     #[test]

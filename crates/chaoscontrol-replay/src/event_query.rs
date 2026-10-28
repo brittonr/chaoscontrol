@@ -1761,6 +1761,29 @@ mod tests {
     }
 
     #[test]
+    fn node_bound_admits_the_exact_maximum() {
+        let exact = EventQuery::Union {
+            inputs: vec![EventQuery::All; MAX_QUERY_NODES - 1],
+        };
+        let limits = EventQueryLimits {
+            max_nodes: MAX_QUERY_NODES,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&exact, &events(), &limits).unwrap().matched,
+            events().len() as u64
+        );
+
+        let over = EventQuery::Union {
+            inputs: vec![EventQuery::All; MAX_QUERY_NODES],
+        };
+        assert_eq!(
+            evaluate(&over, &events(), &limits).unwrap_err(),
+            EventQueryError::QueryBound
+        );
+    }
+
+    #[test]
     fn timeline_renders_and_rejects_cycles() {
         let facts = vec![
             TimelineFact {

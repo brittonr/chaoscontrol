@@ -338,8 +338,11 @@ fn cmd_evidence_verify(
 }
 
 fn load_evidence_json<T: serde::de::DeserializeOwned>(path: &str) -> T {
-    let text = std::fs::read_to_string(path)
-        .unwrap_or_else(|error| evidence_blocked("evidence read", &format!("{path}: {error}")));
+    let text = chaoscontrol_trace::collector::read_trace_with_limit(
+        path,
+        chaoscontrol_trace::collector::MAX_TRACE_JSON_BYTES,
+    )
+    .unwrap_or_else(|error| evidence_blocked("evidence read", &format!("{path}: {error}")));
     serde_json::from_str(&text)
         .unwrap_or_else(|error| evidence_blocked("evidence parse", &format!("{path}: {error}")))
 }

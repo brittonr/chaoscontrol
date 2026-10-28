@@ -1178,7 +1178,7 @@ fn open_trace_output(path: &str) -> std::io::Result<File> {
         .open(path)
 }
 
-fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> {
+pub fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)

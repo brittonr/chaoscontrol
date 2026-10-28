@@ -252,6 +252,9 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             }
         }
     }
+    if out.as_os_str().is_empty() {
+        return Err(String::from("--out must not be empty"));
+    }
     let workloads = parse_workloads(&workloads)?;
     Ok(Options {
         out,
@@ -375,7 +378,13 @@ mod tests {
     use chaoscontrol_evidence::sample_replay_readiness_multi_hypervisor_campaign_receipt;
     use serde_json::json;
 
-    use super::campaign_exit_code;
+    use super::{campaign_exit_code, parse_args};
+
+    #[test]
+    fn empty_output_directory_is_rejected() {
+        let args = vec!["--out".to_string(), String::new()];
+        assert!(parse_args(&args).is_err());
+    }
 
     #[test]
     fn recorded_campaign_requires_every_workload_report_to_pass() {

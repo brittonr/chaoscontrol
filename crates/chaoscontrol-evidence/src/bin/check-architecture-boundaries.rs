@@ -56,6 +56,9 @@ fn read_bounded_text(path: &Path) -> Result<String, String> {
     if text.len() as u64 > MAX_SOURCE_BYTES {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
+    if text.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
+    }
     Ok(text)
 }
 
@@ -198,5 +201,6 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded_text(&fifo).is_err());
+        assert!(read_bounded_text(std::path::Path::new("/proc/self/cmdline")).is_err());
     }
 }

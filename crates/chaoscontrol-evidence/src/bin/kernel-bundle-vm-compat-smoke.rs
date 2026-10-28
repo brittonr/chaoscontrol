@@ -1,6 +1,9 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+
+const MAX_TEXT_INPUT_BYTES: u64 = 16 * 1024 * 1024;
 
 use chaoscontrol_evidence::{
     expected_kernel_bundle_kvm_observations, extract_kvm_observations,
@@ -115,7 +118,7 @@ fn run(args: Vec<String>) -> EvidenceResult<()> {
     }
     if args.len() == EXPECTED_KVM_SERIAL_ARG_COUNT && args[1] == ARG_CHECK_KVM_SERIAL {
         let profile = read_profile(Path::new(&args[2]))?;
-        let serial = fs::read_to_string(Path::new(&args[3]))?;
+        let serial = read_text_bounded(Path::new(&args[3]), MAX_TEXT_INPUT_BYTES)?;
         let run = kvm_run_from_serial(&profile, &serial, DEFAULT_KVM_MAX_EXITS)?;
         let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run)?;
         print_json(&receipt)?;
@@ -484,7 +487,7 @@ fn input_digest_blocked_run(
 }
 
 fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
-    let mut file = File::open(path)?;
+    let mut file = open_regular_input(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; FILE_HASH_BUFFER_BYTES];
     loop {
@@ -497,8 +500,42 @@ fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+fn open_regular_input(path: &Path) -> std::io::Result<File> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "input is not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
+fn read_text_bounded(path: &Path, limit: u64) -> EvidenceResult<String> {
+    let file = open_regular_input(path)?;
+    let length = file.metadata()?.len();
+    if length > limit {
+        return Err(EvidenceError::new(format!(
+            "{} exceeds the input byte bound",
+            path.display()
+        )));
+    }
+    let mut text = String::new();
+    file.take(limit + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > limit {
+        return Err(EvidenceError::new(format!(
+            "{} exceeds the input byte bound",
+            path.display()
+        )));
+    }
+    Ok(text)
+}
+
 fn read_profile(path: &Path) -> EvidenceResult<KernelBundleSmokeProfile> {
-    let text = fs::read_to_string(path)?;
+    let text = read_text_bounded(path, MAX_TEXT_INPUT_BYTES)?;
     let profile = serde_json::from_str(&text)?;
     Ok(profile)
 }
@@ -587,6 +624,23 @@ fn print_usage() {
 #[cfg(test)]
 mod publication_tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn input_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("profile.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_text_bounded(&link, MAX_TEXT_INPUT_BYTES).is_err());
+        assert!(hash_file_blake3(&link).is_err());
+
+        let fifo = root.path().join("profile.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_text_bounded(&fifo, MAX_TEXT_INPUT_BYTES).is_err());
+    }
 
     #[test]
     fn atomic_output_does_not_follow_symlinks() {

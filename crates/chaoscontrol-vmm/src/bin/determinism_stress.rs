@@ -885,6 +885,7 @@ mod tests {
         let link = root.path().join("kernel");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(crc32_file(link.to_str().unwrap()).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"kernel");
 
         let fifo = root.path().join("kernel.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

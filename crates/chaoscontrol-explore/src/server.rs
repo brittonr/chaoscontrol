@@ -90,14 +90,20 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
         }
     };
 
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .build()
-            .expect("dashboard tokio runtime");
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            warn!("Dashboard: failed to build tokio runtime: {error}");
+            return None;
+        }
+    };
 
-        rt.block_on(async move {
+    std::thread::spawn(move || {
+        runtime.block_on(async move {
             let state_for_receiver = Arc::clone(&app_state_clone);
             let broadcast_for_receiver = broadcast_tx;
 
@@ -107,14 +113,19 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
 
             let app = build_router(app_state_clone);
 
-            let tokio_listener =
-                tokio::net::TcpListener::from_std(listener).expect("tokio listener from std");
+            let tokio_listener = match tokio::net::TcpListener::from_std(listener) {
+                Ok(listener) => listener,
+                Err(error) => {
+                    warn!("Dashboard: failed to adopt listener: {error}");
+                    return;
+                }
+            };
 
             info!("Dashboard server listening on http://{}", addr);
 
-            axum::serve(tokio_listener, app)
-                .await
-                .expect("dashboard server");
+            if let Err(error) = axum::serve(tokio_listener, app).await {
+                warn!("Dashboard server stopped: {error}");
+            }
         });
     });
 
@@ -378,6 +389,11 @@ async fn event_receiver_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invalid_dashboard_host_returns_none() {
+        assert!(start("not-an-ip", 0).is_none());
+    }
 
     #[test]
     fn poisoned_state_locks_remain_readable() {

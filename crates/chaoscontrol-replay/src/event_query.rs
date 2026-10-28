@@ -117,6 +117,9 @@ pub fn envelopes_from_recording(
         .enumerate()
         .map(|(sequence, event)| envelope_from_recorded_event(source_id, sequence as u64, event))
         .collect();
+    for envelope in &envelopes {
+        admit_event(envelope)?;
+    }
     let stages: &[FaultStageEvent] = if recording.fault_stage_events.is_empty() {
         &recording.fault_outcome_ledger.events
     } else {
@@ -156,7 +159,11 @@ pub fn envelopes_from_fault_stages(
     events
         .iter()
         .enumerate()
-        .map(|(index, event)| envelope_from_fault_stage(source_id, index, event, deltas, ledger))
+        .map(|(index, event)| {
+            let envelope = envelope_from_fault_stage(source_id, index, event, deltas, ledger)?;
+            admit_event(&envelope)?;
+            Ok(envelope)
+        })
         .collect()
 }
 
@@ -352,7 +359,11 @@ pub fn envelopes_from_markers(
     markers
         .iter()
         .enumerate()
-        .map(|(sequence, marker)| envelope_from_marker(source_id, sequence as u64, marker))
+        .map(|(sequence, marker)| {
+            let envelope = envelope_from_marker(source_id, sequence as u64, marker)?;
+            admit_event(&envelope)?;
+            Ok(envelope)
+        })
         .collect()
 }
 
@@ -2335,6 +2346,7 @@ mod tests {
         assert_eq!(envelopes[0].kind, "branch_marker");
         assert_eq!(envelopes[0].text, identity);
         assert!(envelopes[0].details.is_some());
+        admit_event(&envelopes[0]).unwrap();
 
         let mut invalid = marker;
         invalid.marker_identity = "b3:00".to_string();

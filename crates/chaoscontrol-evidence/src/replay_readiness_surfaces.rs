@@ -3710,6 +3710,11 @@ pub fn write_multi_hypervisor_campaign_dashboard_path(
     receipt_path: impl AsRef<Path>,
     output_path: impl AsRef<Path>,
 ) -> EvidenceResult<String> {
+    if same_path(receipt_path.as_ref(), output_path.as_ref()) {
+        return Err(EvidenceError::new(
+            "campaign dashboard output must not overwrite the receipt input",
+        ));
+    }
     let receipt = load_json(receipt_path.as_ref())?;
     let dashboard = render_multi_hypervisor_campaign_dashboard(&receipt)?;
     let output_path = output_path.as_ref();
@@ -4465,6 +4470,17 @@ mod output_overlap_tests {
         std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
         let before = std::fs::read(&path).unwrap();
         assert!(write_dashboard_path(&path, &path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn campaign_dashboard_output_cannot_overwrite_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        let receipt = crate::sample_replay_readiness_multi_hypervisor_campaign_receipt();
+        std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(write_multi_hypervisor_campaign_dashboard_path(&path, &path).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 

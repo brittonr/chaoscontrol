@@ -890,6 +890,12 @@ fn read_trace_bytes(path: &Path) -> Result<Vec<u8>, ParityCheckError> {
             source: io::Error::new(io::ErrorKind::InvalidData, "trace exceeds the byte limit"),
         });
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(ParityCheckError::Read {
+            path: path.to_path_buf(),
+            source: io::Error::new(io::ErrorKind::InvalidData, "trace changed while reading"),
+        });
+    }
     Ok(bytes)
 }
 
@@ -936,6 +942,13 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"{}\n");
         assert!(write_new_file(&path, b"replacement").is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"{}\n");
+    }
+
+    #[test]
+    fn trace_reads_reject_length_changes() {
+        let path = Path::new("/proc/self/cmdline");
+        let error = check_trace_pair(path, path).unwrap_err();
+        assert!(format!("{error:?}").contains("changed while reading"));
     }
 
     #[test]

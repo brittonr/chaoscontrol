@@ -22,6 +22,7 @@ pub const MAX_QUERY_DEPTH: usize = 64;
 pub const MAX_SCANNED_EVENTS: usize = 1_000_000;
 pub const MAX_QUERY_OPERATIONS: usize = 10_000_000;
 pub const MAX_RESULT_ROWS: usize = 100_000;
+pub const MAX_RESULT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_EVENT_TEXT_BYTES: usize = 8 * 1024;
 pub const MAX_EVENT_DETAILS_BYTES: usize = 64 * 1024;
 pub const MAX_DERIVED_FIELDS: usize = MAX_QUERY_NODES;
@@ -486,8 +487,14 @@ pub struct EventQueryLimits {
     pub max_depth: usize,
     pub max_scanned_events: usize,
     pub max_result_rows: usize,
+    #[serde(default = "default_max_result_bytes")]
+    pub max_result_bytes: usize,
     #[serde(default = "default_max_operations")]
     pub max_operations: usize,
+}
+
+fn default_max_result_bytes() -> usize {
+    MAX_RESULT_BYTES
 }
 
 fn default_max_operations() -> usize {
@@ -505,6 +512,7 @@ impl Default for EventQueryLimits {
             max_depth: MAX_QUERY_DEPTH,
             max_scanned_events: MAX_SCANNED_EVENTS,
             max_result_rows: MAX_RESULT_ROWS,
+            max_result_bytes: MAX_RESULT_BYTES,
             max_operations: MAX_QUERY_OPERATIONS,
         }
     }
@@ -561,6 +569,7 @@ pub enum EventQueryError {
     AmbiguousMoment,
     ScanBound,
     RowBound,
+    ResultBound,
     OperationBound,
     InvalidEvent,
     DuplicateSourcePosition,
@@ -588,6 +597,7 @@ impl core::fmt::Display for EventQueryError {
             Self::AmbiguousMoment => "event query union spans more than one moment",
             Self::ScanBound => "event query scan count exceeds the bound",
             Self::RowBound => "event query result rows exceed the bound",
+            Self::ResultBound => "event query result bytes exceed the bound",
             Self::OperationBound => "event query operations exceed the bound",
             Self::InvalidEvent => "event envelope schema or identity is invalid",
             Self::DuplicateSourcePosition => {
@@ -628,6 +638,8 @@ impl EventQueryLimits {
             || self.max_scanned_events > MAX_SCANNED_EVENTS
             || self.max_result_rows == 0
             || self.max_result_rows > MAX_RESULT_ROWS
+            || self.max_result_bytes == 0
+            || self.max_result_bytes > MAX_RESULT_BYTES
             || self.max_operations == 0
             || self.max_operations > MAX_QUERY_OPERATIONS
         {
@@ -732,6 +744,16 @@ pub fn evaluate(
     let truncated = rows.len() > limits.max_result_rows;
     if truncated {
         rows.truncate(limits.max_result_rows);
+    }
+    let mut result_bytes = 0_usize;
+    for row in &rows {
+        let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
+        result_bytes = result_bytes
+            .checked_add(bytes.len())
+            .ok_or(EventQueryError::CounterOverflow)?;
+        if result_bytes > limits.max_result_bytes {
+            return Err(EventQueryError::ResultBound);
+        }
     }
     Ok(EventQueryResult {
         schema: EVENT_QUERY_RESULT_SCHEMA.to_string(),
@@ -1604,6 +1626,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(decoded.max_depth, MAX_QUERY_DEPTH);
+        assert_eq!(decoded.max_result_bytes, MAX_RESULT_BYTES);
         assert_eq!(decoded.max_operations, MAX_QUERY_OPERATIONS);
 
         let narrow_operations = EventQueryLimits {
@@ -1620,6 +1643,22 @@ mod tests {
         };
         assert_eq!(
             evaluate(&EventQuery::All, &events(), &over_bound_operations).unwrap_err(),
+            EventQueryError::QueryBound
+        );
+        let narrow_result = EventQueryLimits {
+            max_result_bytes: 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events(), &narrow_result).unwrap_err(),
+            EventQueryError::ResultBound
+        );
+        let over_bound_result = EventQueryLimits {
+            max_result_bytes: MAX_RESULT_BYTES + 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events(), &over_bound_result).unwrap_err(),
             EventQueryError::QueryBound
         );
     }

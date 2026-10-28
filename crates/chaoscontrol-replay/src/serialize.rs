@@ -384,6 +384,22 @@ mod tests {
         assert_eq!(load_recording(&path).unwrap().session_id, "test_session");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn save_triage_outputs_reject_fifo_targets() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let fifo = temp_dir.path().join("triage.fifo");
+        let path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let report = test_triage_report();
+
+        assert!(save_triage_report(&report, &fifo).is_err());
+        assert!(save_triage_json(&report, &fifo).is_err());
+    }
+
     #[test]
     fn save_triage_outputs_reject_symlink_targets() {
         let temp_dir = TempDir::new().unwrap();

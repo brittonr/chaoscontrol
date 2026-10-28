@@ -254,4 +254,14 @@ mod tests {
         assert!(write_fixture_bundle("").is_err());
         assert!(crate::write_snapshot_chunk_fixture("").is_err());
     }
+
+    #[test]
+    fn fixture_bundle_publishes_into_a_new_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = write_fixture_bundle(root.path()).unwrap();
+        assert!(bundle.restore_completed);
+        assert!(!bundle.monolithic_descriptor.hex.is_empty());
+        assert!(root.path().join(MONOLITHIC_PAYLOAD_FILE).is_file());
+        assert!(root.path().join("snapshots").is_dir());
+    }
 }

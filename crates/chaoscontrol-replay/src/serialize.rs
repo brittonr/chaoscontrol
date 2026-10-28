@@ -1,7 +1,7 @@
 //! Serialization for recordings and triage reports.
 
 use crate::recording::{validate_recording, Recording};
-use crate::text::{escape_markdown_cell, markdown_code_block};
+use crate::text::{escape_markdown_cell, flatten_lines, markdown_code_block};
 use crate::triage::TriageReport;
 use snafu::Snafu;
 use std::fs::File;
@@ -138,16 +138,22 @@ pub fn format_triage_markdown(report: &TriageReport) -> String {
     // Header
     md.push_str(&format!("# Bug Report #{}\n\n", report.bug_id));
     md.push_str(&format!("**Severity:** {:?}\n\n", report.severity));
-    md.push_str(&format!("{}\n\n", report.summary));
+    md.push_str(&format!("{}\n\n", flatten_lines(&report.summary)));
 
     // Assertion details
     md.push_str("## Failed Assertion\n\n");
     md.push_str(&format!("- **ID:** {}\n", report.assertion.id));
-    md.push_str(&format!("- **Type:** {}\n", report.assertion.kind));
-    md.push_str(&format!("- **Location:** {}\n", report.assertion.location));
+    md.push_str(&format!(
+        "- **Type:** {}\n",
+        flatten_lines(&report.assertion.kind)
+    ));
+    md.push_str(&format!(
+        "- **Location:** {}\n",
+        flatten_lines(&report.assertion.location)
+    ));
     md.push_str(&format!(
         "- **Description:** {}\n\n",
-        report.assertion.description
+        flatten_lines(&report.assertion.description)
     ));
 
     // Timeline
@@ -173,7 +179,10 @@ pub fn format_triage_markdown(report: &TriageReport) -> String {
     md.push_str("## VM States at Failure\n\n");
     for vm_state in &report.vm_states {
         md.push_str(&format!("### VM{}\n\n", vm_state.vm_index));
-        md.push_str(&format!("- **Status:** {}\n", vm_state.status));
+        md.push_str(&format!(
+            "- **Status:** {}\n",
+            flatten_lines(&vm_state.status)
+        ));
         md.push_str(&format!("- **RIP:** {:#x}\n", vm_state.rip));
         if !vm_state.serial_tail.is_empty() {
             md.push_str("\n**Serial output (tail):**\n\n");
@@ -183,7 +192,10 @@ pub fn format_triage_markdown(report: &TriageReport) -> String {
 
     // Fault schedule
     md.push_str("## Fault Schedule\n\n");
-    md.push_str(&format!("{}\n\n", report.schedule_description));
+    md.push_str(&format!(
+        "{}\n\n",
+        flatten_lines(&report.schedule_description)
+    ));
 
     // Reproduction
     md.push_str("## How to Reproduce\n\n");

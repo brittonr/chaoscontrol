@@ -32,6 +32,17 @@ pub fn escape_markdown_cell(value: &str) -> String {
     escaped
 }
 
+/// Replace line breaks with spaces for single-line Markdown fields.
+pub fn flatten_lines(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| match character {
+            '\r' | '\n' => ' ',
+            other => other,
+        })
+        .collect()
+}
+
 /// Wrap content in a fenced code block that cannot be closed by its content.
 pub fn markdown_code_block(content: &str) -> String {
     let mut fence_length = 3_usize;
@@ -69,5 +80,6 @@ mod tests {
         let fenced = markdown_code_block("before\n```\nafter");
         assert!(fenced.starts_with("````\n"));
         assert!(fenced.ends_with("\n````\n\n"));
+        assert_eq!(flatten_lines("a\r\nb\nc"), "a  b c");
     }
 }

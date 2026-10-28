@@ -229,6 +229,37 @@ mod tests {
     }
 
     #[test]
+    fn plan_enforces_the_default_duration_boundary() {
+        let limits = ThreadPauseLimits::default();
+        admit_thread_pause(
+            thread(1),
+            ThreadPauseWindow {
+                start_tick: 0,
+                end_tick: MAX_PAUSE_TICKS,
+            },
+            &abi(),
+            &limits,
+            &ThreadPauseFacts::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            admit_thread_pause(
+                thread(1),
+                ThreadPauseWindow {
+                    start_tick: 0,
+                    end_tick: MAX_PAUSE_TICKS + 1,
+                },
+                &abi(),
+                &limits,
+                &ThreadPauseFacts::default(),
+            )
+            .unwrap_err(),
+            ThreadPauseError::PauseTooLong
+        );
+    }
+
+    #[test]
     fn plan_enforces_the_default_total_pause_boundary() {
         let limits = ThreadPauseLimits::default();
         let facts = ThreadPauseFacts {

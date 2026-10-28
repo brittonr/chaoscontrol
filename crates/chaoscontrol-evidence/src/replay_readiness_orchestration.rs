@@ -153,6 +153,16 @@ fn stream_observation(output: &bounded_exec::CapturedOutput) -> StreamObservatio
 }
 
 fn hash_file_bounded(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
+    let link_metadata = std::fs::symlink_metadata(path).map_err(|error| {
+        EvidenceError::new(format!(
+            "typed command executable metadata {}: {error}",
+            path.display()
+        ))
+    })?;
+    ensure(
+        !link_metadata.file_type().is_symlink(),
+        format!("typed command executable is a symlink: {}", path.display()),
+    )?;
     let mut file = File::open(path).map_err(|error| {
         EvidenceError::new(format!(
             "typed command executable open {}: {error}",

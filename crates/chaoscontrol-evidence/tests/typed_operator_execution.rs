@@ -148,6 +148,20 @@ fn signal_termination_is_not_success() {
     assert!(observation.signal.is_some());
 }
 
+#[cfg(unix)]
+#[test]
+fn symlink_executable_is_rejected_before_spawn() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = fixture_plan("exit", "0", "");
+    let link = temp.path().join("tool");
+    std::os::unix::fs::symlink(&plan.executable.path, &link).expect("symlink executable");
+    plan.executable.path = link.display().to_string();
+
+    let error = execute_typed_operator_command(&plan, temp.path())
+        .expect_err("symlink executable must be rejected");
+    assert!(error.message().contains("symlink"));
+}
+
 #[test]
 fn executable_identity_mismatch_fails_before_spawn() {
     let temp = tempfile::tempdir().expect("tempdir");

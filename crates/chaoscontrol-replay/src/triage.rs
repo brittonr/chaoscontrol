@@ -81,7 +81,7 @@ impl TriageEngine {
         let vm_states: Vec<_> = (0..recording.config.num_vms)
             .map(|i| VmStateSnapshot {
                 vm_index: i,
-                status: "Running".to_string(),
+                status: vm_status_at(recording, i, bug_tick),
                 rip: 0, // Would need snapshot access
                 serial_tail: get_serial_tail(recording, i, bug_tick),
             })
@@ -282,6 +282,23 @@ fn format_event(event: &RecordedEvent) -> String {
     }
 }
 
+fn vm_status_at(recording: &Recording, vm_index: usize, tick: u64) -> String {
+    recording
+        .events
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            RecordedEvent::VmStatusChange {
+                tick: observed_tick,
+                vm_index: observed_vm,
+                new_status,
+                ..
+            } if *observed_tick <= tick && *observed_vm == vm_index => Some(new_status.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| String::from("Running"))
+}
+
 fn get_serial_tail(recording: &Recording, vm_index: usize, tick: u64) -> String {
     // Use the nearest checkpoint at or before the bug, not later evidence.
     recording
@@ -409,6 +426,27 @@ mod tests {
         assert_eq!(report.vm_states.len(), 2);
         assert_eq!(report.vm_states[0].vm_index, 0);
         assert_eq!(report.vm_states[1].vm_index, 1);
+    }
+
+    #[test]
+    fn triage_vm_status_uses_the_last_change_at_or_before_the_bug() {
+        let mut recording = test_recording();
+        recording.events.push(RecordedEvent::VmStatusChange {
+            tick: 1_500,
+            vm_index: 0,
+            old_status: String::from("Running"),
+            new_status: String::from("Crashed"),
+        });
+        recording.events.push(RecordedEvent::VmStatusChange {
+            tick: 4_000,
+            vm_index: 0,
+            old_status: String::from("Crashed"),
+            new_status: String::from("Running"),
+        });
+
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+        assert_eq!(report.vm_states[0].status, "Crashed");
+        assert_eq!(report.vm_states[1].status, "Running");
     }
 
     #[test]

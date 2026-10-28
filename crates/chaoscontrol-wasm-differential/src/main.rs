@@ -1013,6 +1013,12 @@ fn hash_file(path: &Path, maximum_bytes: u64) -> Result<String, Error> {
         }
         hasher.update(&buffer[..count]);
     }
+    if total != metadata.len() {
+        return Err(Error::Invalid(format!(
+            "file changed while hashing: {}",
+            path.display()
+        )));
+    }
     Ok(hasher.finalize().to_hex().to_string())
 }
 
@@ -1231,6 +1237,11 @@ mod tests {
         std::fs::remove_file(&runner).unwrap();
         std::fs::write(&runner, b"different").unwrap();
         assert!(stage_bundled_runner(&bundle, &staged, &expected, 1024).is_err());
+    }
+
+    #[test]
+    fn hash_rejects_length_changes() {
+        assert!(hash_file(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

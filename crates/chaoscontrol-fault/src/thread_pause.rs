@@ -229,6 +229,44 @@ mod tests {
     }
 
     #[test]
+    fn plan_enforces_the_total_pause_boundary() {
+        let limits = ThreadPauseLimits {
+            max_total_paused_ticks: 10,
+            ..ThreadPauseLimits::default()
+        };
+        let facts = ThreadPauseFacts {
+            total_paused_ticks: 5,
+            ..ThreadPauseFacts::default()
+        };
+        admit_thread_pause(
+            thread(1),
+            ThreadPauseWindow {
+                start_tick: 10,
+                end_tick: 15,
+            },
+            &abi(),
+            &limits,
+            &facts,
+        )
+        .unwrap();
+
+        assert_eq!(
+            admit_thread_pause(
+                thread(1),
+                ThreadPauseWindow {
+                    start_tick: 10,
+                    end_tick: 16,
+                },
+                &abi(),
+                &limits,
+                &facts,
+            )
+            .unwrap_err(),
+            ThreadPauseError::TotalPauseBound
+        );
+    }
+
+    #[test]
     fn plan_enforces_the_pause_duration_boundary() {
         let limits = ThreadPauseLimits {
             max_pause_ticks: 10,

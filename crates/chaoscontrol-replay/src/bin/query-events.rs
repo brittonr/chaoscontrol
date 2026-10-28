@@ -305,24 +305,31 @@ fn write_json_with_limit<T: Serialize>(path: &Path, value: &T, limit: u64) -> Re
 }
 
 fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    file.write_all(bytes)
-        .and_then(|()| file.sync_all())
-        .map_err(|error| format!("{}: {error}", path.display()))?;
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err(format!("{}: output is not a regular file", path.display()))
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    }
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    std::fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
+    let directory =
+        std::fs::File::open(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| format!("{}: {error}", parent.display()))?;
+    temporary
+        .write_all(bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    temporary
+        .persist(path)
+        .map_err(|error| format!("{}: {}", path.display(), error.error))?;
+    directory
+        .sync_all()
         .map_err(|error| format!("{}: {error}", parent.display()))
 }
 
@@ -536,6 +543,16 @@ mod tests {
             },
         })
         .is_err());
+    }
+
+    #[test]
+    fn query_output_replaces_an_existing_regular_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("out.json");
+        std::fs::write(&path, b"old").unwrap();
+
+        write_bytes(&path, b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
     }
 
     #[test]

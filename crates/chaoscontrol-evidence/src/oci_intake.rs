@@ -8,7 +8,7 @@ use chaoscontrol_protocol::oci_intake::{
     OCI_INTAKE_RECEIPT_SCHEMA,
 };
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
@@ -443,13 +443,11 @@ fn remove_any(path: &Path) -> Result<(), IntakeShellError> {
 }
 
 fn write_json(path: PathBuf, value: &impl serde::Serialize) -> Result<(), IntakeShellError> {
-    let bytes = serde_json::to_vec_pretty(value)
+    let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| IntakeShellError::Plan(error.to_string()))?;
-    let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
-    file.write_all(&bytes)?;
-    file.write_all(b"\n")?;
-    file.sync_all()?;
-    Ok(())
+    bytes.push(b'\n');
+    crate::bounded_file::write_new_bytes(&path, &bytes)
+        .map_err(|error| IntakeShellError::Plan(error.to_string()))
 }
 
 fn sync_tree_root(path: &Path) -> Result<(), IntakeShellError> {
@@ -460,6 +458,18 @@ fn sync_tree_root(path: &Path) -> Result<(), IntakeShellError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_record_publication_is_atomic_and_no_replace() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/bundle-plan.json");
+        write_json(path.clone(), &serde_json::json!({"status": "planned"})).unwrap();
+        assert!(std::fs::read(&path).unwrap().ends_with(b"\n"));
+        assert!(write_json(path.clone(), &serde_json::json!({"status": "changed"})).is_err());
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(value["status"], "planned");
+    }
     use chaoscontrol_protocol::guest_process::{RestartMode, RestartPolicy};
     use chaoscontrol_protocol::oci_intake::{
         ImageService, ImageSource, LayerDescriptor, OCI_TOPOLOGY_SCHEMA,

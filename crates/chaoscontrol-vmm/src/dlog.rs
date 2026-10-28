@@ -859,11 +859,18 @@ mod tests {
         writer
             .emit(DlogRecord::new(0, 10, 1, 0, DlogTag::IoOut, 1))
             .unwrap();
+        writer
+            .emit(DlogRecord::new(0, 20, 1, 0, DlogTag::IoOut, 1))
+            .unwrap();
         writer.sync_all().unwrap();
         drop(writer);
 
         let mut reader = DlogReader::open(&path).unwrap();
-        assert_eq!(reader.next_record().unwrap().unwrap().virtual_tsc, 10);
+        let first = reader.next_record().unwrap().unwrap();
+        let second = reader.next_record().unwrap().unwrap();
+        assert_eq!((first.seq, first.virtual_tsc), (0, 10));
+        assert_eq!((second.seq, second.virtual_tsc), (1, 20));
+        assert!(reader.next_record().unwrap().is_none());
     }
 
     #[test]

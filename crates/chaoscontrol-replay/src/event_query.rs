@@ -388,6 +388,7 @@ pub enum EventQueryError {
     RowBound,
     InvalidEvent,
     DuplicateSourcePosition,
+    InvalidPredicate,
     InvalidText,
     InvalidField,
     InvalidPointer,
@@ -413,6 +414,7 @@ impl core::fmt::Display for EventQueryError {
             Self::DuplicateSourcePosition => {
                 "two events claim one source position with different content"
             }
+            Self::InvalidPredicate => "event predicate is malformed or unsupported",
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidField => "event query field is not supported",
             Self::InvalidPointer => "event query JSON pointer is not confined",
@@ -757,8 +759,11 @@ fn validate_query_inner(
     }
     match query {
         EventQuery::All => Ok(()),
-        EventQuery::Filter { input, .. }
-        | EventQuery::Map { input, .. }
+        EventQuery::Filter { input, predicate } => {
+            validate_predicate(predicate)?;
+            validate_query_inner(input, limits, depth + 1, nodes)
+        }
+        EventQuery::Map { input, .. }
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }
         | EventQuery::Window { input, .. }
@@ -772,6 +777,24 @@ fn validate_query_inner(
             }
             Ok(())
         }
+    }
+}
+
+fn validate_predicate(predicate: &EventPredicate) -> Result<(), EventQueryError> {
+    match predicate {
+        EventPredicate::TickRange {
+            start_tick,
+            end_tick,
+        } if start_tick > end_tick => Err(EventQueryError::InvalidPredicate),
+        EventPredicate::Kind(kind) => {
+            validate_text(kind).map_err(|_| EventQueryError::InvalidPredicate)
+        }
+        EventPredicate::Process(process) => {
+            validate_text(process).map_err(|_| EventQueryError::InvalidPredicate)
+        }
+        EventPredicate::TickRange { .. }
+        | EventPredicate::Vm(_)
+        | EventPredicate::SourceKind(_) => Ok(()),
     }
 }
 
@@ -1072,6 +1095,34 @@ mod tests {
                 .unwrap()
                 .matched,
             0
+        );
+
+        let reversed_range = EventQuery::Filter {
+            input: Box::new(EventQuery::All),
+            predicate: EventPredicate::TickRange {
+                start_tick: 20,
+                end_tick: 10,
+            },
+        };
+        assert_eq!(
+            evaluate(&reversed_range, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidPredicate
+        );
+        let empty_kind = EventQuery::Filter {
+            input: Box::new(EventQuery::All),
+            predicate: EventPredicate::Kind(String::new()),
+        };
+        assert_eq!(
+            evaluate(&empty_kind, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidPredicate
+        );
+        let control_process = EventQuery::Filter {
+            input: Box::new(EventQuery::All),
+            predicate: EventPredicate::Process("guest\n".to_string()),
+        };
+        assert_eq!(
+            evaluate(&control_process, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidPredicate
         );
     }
 

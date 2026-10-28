@@ -53,6 +53,8 @@ pub enum SnapshotStoreError {
     Missing { path: String },
     #[snafu(display("snapshot artifact is not a regular file: {path}"))]
     NotRegular { path: String },
+    #[snafu(display("snapshot directory is not a plain directory: {path}"))]
+    NotDirectory { path: String },
     #[snafu(display("snapshot artifact exceeds {limit} bytes: {path}"))]
     TooLarge { path: String, limit: u64 },
     #[snafu(display("snapshot decompression exceeds {limit} bytes"))]
@@ -348,8 +350,15 @@ impl SnapshotStore for FileSnapshotStore {
             keep.iter().map(|r| r.path.clone()).collect();
         let mut removed = 0;
         let dir = self.snapshots_dir();
-        if !dir.exists() {
-            return Ok(0);
+        let metadata = match fs::symlink_metadata(&dir) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(source) => return Err(SnapshotStoreError::Io { source }),
+        };
+        if !metadata.file_type().is_dir() {
+            return Err(SnapshotStoreError::NotDirectory {
+                path: dir.display().to_string(),
+            });
         }
         for entry in fs::read_dir(&dir).map_err(|source| SnapshotStoreError::Io { source })? {
             let entry = entry.map_err(|source| SnapshotStoreError::Io { source })?;
@@ -651,6 +660,22 @@ mod tests {
             store.get_snapshot_artifact(&reference),
             Err(SnapshotStoreError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn gc_rejects_symlinked_snapshot_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_file = outside.path().join("keep.bin");
+        fs::write(&outside_file, b"keep").unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join(SNAPSHOT_DIR)).unwrap();
+        let store = FileSnapshotStore::new(root.path());
+
+        assert!(matches!(
+            store.gc_unreferenced(&[]),
+            Err(SnapshotStoreError::NotDirectory { .. })
+        ));
+        assert_eq!(fs::read(&outside_file).unwrap(), b"keep");
     }
 
     #[test]

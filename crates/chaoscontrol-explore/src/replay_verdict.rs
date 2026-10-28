@@ -188,6 +188,7 @@ pub fn snapshot_validation_from_error(
         | SnapshotStoreError::UnsupportedSchema { .. }
         | SnapshotStoreError::PathEscape { .. }
         | SnapshotStoreError::NotRegular { .. }
+        | SnapshotStoreError::NotDirectory { .. }
         | SnapshotStoreError::TooLarge { .. }
         | SnapshotStoreError::DecompressedTooLarge { .. }
         | SnapshotStoreError::MetadataMismatch { .. }

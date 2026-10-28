@@ -164,13 +164,33 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 }
 
 fn load_json(path: &Path) -> Result<Value, String> {
-    let metadata = fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    if metadata.len() > MAX_JSON_BYTES {
-        return Err(format!("{} exceeds JSON byte bound", path.display()));
-    }
-    let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let bytes = read_bounded(path, MAX_JSON_BYTES)?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))
+}
+
+fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(bytes)
 }
 
 fn write_json(path: &Path, value: &Value) -> Result<(), String> {
@@ -225,6 +245,22 @@ fn sha256(path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn input_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("checkpoint.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded(&link, MAX_JSON_BYTES).is_err());
+
+        let fifo = root.path().join("checkpoint.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded(&fifo, MAX_JSON_BYTES).is_err());
+    }
 
     #[test]
     fn atomic_output_does_not_follow_symlinks() {

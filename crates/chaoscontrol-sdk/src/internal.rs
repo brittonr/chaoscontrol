@@ -67,13 +67,7 @@ pub(crate) fn acquire_process_transport() -> Result<ProcessTransportGuard, ()> {
         let Ok(path) = std::env::var(PROCESS_TRANSPORT_LOCK) else {
             return ProcessTransportLock::Disabled;
         };
-        match OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .open(path)
-        {
+        match open_process_transport_lock(std::path::Path::new(&path)) {
             Ok(file) => ProcessTransportLock::File(file),
             Err(_) => ProcessTransportLock::Failed,
         }
@@ -133,6 +127,18 @@ fn detect_mode() -> TransportMode {
     }
 
     TransportMode::Noop
+}
+
+/// Open the process transport lock without following symlinks.
+fn open_process_transport_lock(path: &std::path::Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
 }
 
 /// Open the local JSON output without following symlinks or blocking on FIFOs.
@@ -399,6 +405,24 @@ static RANDOM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn process_transport_lock_rejects_symlink_targets() {
+        let root = std::env::temp_dir().join(format!(
+            "chaoscontrol-sdk-process-lock-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let target = root.join("target.lock");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.join("transport.lock");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(open_process_transport_lock(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn local_output_rejects_symlink_targets() {

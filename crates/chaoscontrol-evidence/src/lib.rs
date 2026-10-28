@@ -3349,5 +3349,10 @@ mod proof_path_tests {
         assert!(error.message().contains("bounded file name"));
         nested.summary = "summary.json".to_string();
         nested.validate_shape().unwrap();
+
+        let mut absolute = nested;
+        absolute.evidence_dir = "/tmp/evidence".to_string();
+        let error = absolute.validate_shape().unwrap_err();
+        assert!(error.message().contains("bounded relative artifact path"));
     }
 }

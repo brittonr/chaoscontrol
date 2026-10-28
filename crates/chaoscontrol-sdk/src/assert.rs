@@ -100,6 +100,8 @@ impl AssertionKind {
 /// [`AssertType::to_kind`] with the observed condition to distinguish a
 /// reachable site from an unreachable one.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "full", derive(serde::Serialize))]
+#[cfg_attr(feature = "full", serde(rename_all = "lowercase"))]
 pub enum AssertType {
     /// `always` or `always_or_unreachable`.
     Always,
@@ -1188,7 +1190,7 @@ macro_rules! cc_assert_always_lt {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -1236,7 +1238,7 @@ macro_rules! cc_assert_always_lt {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -1288,7 +1290,7 @@ macro_rules! cc_assert_always_le {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -1336,7 +1338,7 @@ macro_rules! cc_assert_always_le {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -1388,7 +1390,7 @@ macro_rules! cc_assert_always_gt {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1436,7 +1438,7 @@ macro_rules! cc_assert_always_gt {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1488,7 +1490,7 @@ macro_rules! cc_assert_always_ge {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1536,7 +1538,7 @@ macro_rules! cc_assert_always_ge {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1696,7 +1698,7 @@ macro_rules! cc_assert_sometimes_lt {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1744,7 +1746,7 @@ macro_rules! cc_assert_sometimes_lt {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1796,7 +1798,7 @@ macro_rules! cc_assert_sometimes_le {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1844,7 +1846,7 @@ macro_rules! cc_assert_sometimes_le {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             false,
             module_path!(),
             file!(),
@@ -1896,7 +1898,7 @@ macro_rules! cc_assert_sometimes_gt {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -1944,7 +1946,7 @@ macro_rules! cc_assert_sometimes_gt {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -1996,7 +1998,7 @@ macro_rules! cc_assert_sometimes_ge {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -2044,7 +2046,7 @@ macro_rules! cc_assert_sometimes_ge {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "numeric",
+            $crate::guidance::GuidanceType::Numeric,
             true,
             module_path!(),
             file!(),
@@ -2275,7 +2277,7 @@ macro_rules! cc_assert_always_some {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "boolean",
+            $crate::guidance::GuidanceType::Boolean,
             false,
             module_path!(),
             file!(),
@@ -2315,7 +2317,7 @@ macro_rules! cc_assert_always_some {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "boolean",
+            $crate::guidance::GuidanceType::Boolean,
             false,
             module_path!(),
             file!(),
@@ -2449,7 +2451,7 @@ macro_rules! cc_assert_always_any {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "boolean",
+            $crate::guidance::GuidanceType::Boolean,
             false,
             module_path!(),
             file!(),
@@ -2489,7 +2491,7 @@ macro_rules! cc_assert_always_any {
             _ID,
             $crate::assert::AssertionKind::Always,
             $msg,
-            "boolean",
+            $crate::guidance::GuidanceType::Boolean,
             false,
             module_path!(),
             file!(),
@@ -2541,7 +2543,7 @@ macro_rules! cc_assert_sometimes_all {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "boolean",
+            $crate::guidance::GuidanceType::Boolean,
             true,
             module_path!(),
             file!(),
@@ -2581,7 +2583,7 @@ macro_rules! cc_assert_sometimes_all {
             _ID,
             $crate::assert::AssertionKind::Sometimes,
             $msg,
-            "boolean",
+            $crate::guidance::GuidanceType::Boolean,
             true,
             module_path!(),
             file!(),
@@ -3088,6 +3090,36 @@ mod tests {
         assert_eq!(
             AssertType::from(AssertionKind::Unreachable),
             AssertType::Reachability
+        );
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn antithesis_types_serialize_lowercase() {
+        use serde_json::json;
+        assert_eq!(
+            serde_json::to_value(AssertType::Always).expect("serialize"),
+            json!("always")
+        );
+        assert_eq!(
+            serde_json::to_value(AssertType::Sometimes).expect("serialize"),
+            json!("sometimes")
+        );
+        assert_eq!(
+            serde_json::to_value(AssertType::Reachability).expect("serialize"),
+            json!("reachability")
+        );
+        assert_eq!(
+            serde_json::to_value(crate::guidance::GuidanceType::Numeric).expect("serialize"),
+            json!("numeric")
+        );
+        assert_eq!(
+            serde_json::to_value(crate::guidance::GuidanceType::Boolean).expect("serialize"),
+            json!("boolean")
+        );
+        assert_eq!(
+            serde_json::to_value(crate::guidance::GuidanceType::Json).expect("serialize"),
+            json!("json")
         );
     }
 

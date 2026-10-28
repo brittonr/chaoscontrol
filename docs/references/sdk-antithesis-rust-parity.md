@@ -45,7 +45,7 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Reachable | `assert_reachable!` | `cc_assert_reachable!` | equivalent |
 | Unreachable | `assert_unreachable!` | `cc_assert_unreachable!` | equivalent |
 | Raw / third-party | `assert::assert_raw(13 args)` | `cc_assert_raw!(kind, cond, msg[, details])`; no runtime raw binding | divergent |
-| Assertion type enum | `assert::AssertType` | `assert::AssertType` with `to_kind` / `From<AssertionKind>` | equivalent |
+| Assertion type enum | `assert::AssertType` | `assert::AssertType` with lowercase serialization, `to_kind`, and `From<AssertionKind>` | equivalent |
 | Implication | (none) | `cc_assert_implies!` | absent |
 | Result ok | (none) | `cc_assert_{always,sometimes}_ok!` | absent |
 | Result err | (none) | `cc_assert_{always,sometimes}_err!` | absent |
@@ -149,7 +149,7 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 | Fallback JSONL schema | assertion/setup/named-event records | those records plus catalog/random/identity extensions | superset |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
 | Assertion location | `location` with class, function, file, line, column | same object, from the call-site catalog entry | equivalent |
-| Guidance records | `antithesis_guidance` watermarks, JSON guidance, and initialization catalog | same record shape, per-site watermarks, `hit = false` catalog records, and `cc_guidance_json!` for stable sites | equivalent |
+| Guidance records | `antithesis_guidance` watermarks, JSON guidance, and initialization catalog | same record shape, typed `GuidanceType`, per-site watermarks, `hit = false` catalog records, and `cc_guidance_json!` for stable sites | equivalent |
 
 ## Guidance decision
 

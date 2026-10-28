@@ -8,12 +8,21 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value;
 
+/// Guidance record classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GuidanceType {
+    Numeric,
+    Boolean,
+    Json,
+}
+
 /// One guidance site collected at compile time.
 pub struct GuidanceCatalogEntry {
     pub id: u32,
     pub kind: crate::assert::AssertionKind,
     pub message: &'static str,
-    pub guidance_type: &'static str,
+    pub guidance_type: GuidanceType,
     pub maximize: bool,
     pub class: &'static str,
     pub function: fn() -> &'static str,
@@ -177,7 +186,7 @@ pub fn emit_numeric(
     emit(
         id,
         kind,
-        "numeric",
+        GuidanceType::Numeric,
         message,
         class,
         function,
@@ -207,7 +216,7 @@ pub fn emit_boolean(
     emit(
         id,
         kind,
-        "boolean",
+        GuidanceType::Boolean,
         message,
         class,
         function,
@@ -237,7 +246,7 @@ pub fn emit_json(
     emit(
         id,
         kind,
-        "json",
+        GuidanceType::Json,
         message,
         class,
         function,
@@ -302,7 +311,7 @@ pub fn emit_catalog_record(entry: &GuidanceCatalogEntry) {
 fn emit(
     id: u32,
     kind: crate::assert::AssertionKind,
-    guidance_type: &str,
+    guidance_type: GuidanceType,
     message: &str,
     class: &str,
     function: &str,

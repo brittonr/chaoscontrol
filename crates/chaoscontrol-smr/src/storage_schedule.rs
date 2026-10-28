@@ -287,6 +287,86 @@ pub fn validate_storage_recovery_receipt(receipt: &StorageRecoveryReceipt) -> Sm
     Ok(())
 }
 
+/// Declared inputs for one deterministic storage-recovery campaign.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageRecoveryCampaignInput {
+    pub cohort: StorageRecoveryCohortIdentity,
+    pub schedules: Vec<StorageRecoverySchedule>,
+    pub safety: Vec<crate::storage_recovery::StorageRecoveryObservation>,
+    pub progress: Vec<crate::storage_recovery::RecoveryProgressInput>,
+}
+
+/// Campaign result binding schedules, safety, progress, and one receipt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageRecoveryCampaignReport {
+    pub receipt_ref: String,
+    pub schedule_observations: Vec<Vec<ScheduleObservation>>,
+    pub safety: StorageSafetyReport,
+    pub progress: Vec<crate::storage_recovery::RecoveryProgressReport>,
+    pub verdict: crate::storage_recovery::RecoveryProgressVerdict,
+}
+
+fn campaign_verdict(
+    safety: &StorageSafetyReport,
+    progress: &[crate::storage_recovery::RecoveryProgressReport],
+) -> crate::storage_recovery::RecoveryProgressVerdict {
+    use crate::storage_recovery::RecoveryProgressVerdict;
+    if !safety.is_pass
+        || progress
+            .iter()
+            .any(|report| report.verdict == RecoveryProgressVerdict::Fail)
+    {
+        return RecoveryProgressVerdict::Fail;
+    }
+    if progress
+        .iter()
+        .any(|report| report.verdict == RecoveryProgressVerdict::NotEvaluated)
+    {
+        return RecoveryProgressVerdict::NotEvaluated;
+    }
+    if progress
+        .iter()
+        .any(|report| report.verdict == RecoveryProgressVerdict::Incomplete)
+    {
+        return RecoveryProgressVerdict::Incomplete;
+    }
+    RecoveryProgressVerdict::Pass
+}
+
+/// Apply every schedule, evaluate safety and progress, and bind one receipt.
+pub fn run_storage_recovery_campaign(
+    mut cohort: PersistentNodeCohort,
+    input: StorageRecoveryCampaignInput,
+) -> SmrResult<StorageRecoveryCampaignReport> {
+    if input.schedules.is_empty() || input.safety.is_empty() || input.progress.is_empty() {
+        return Err(deny(
+            "storage-campaign-input",
+            "campaign requires schedules, safety observations, and progress inputs",
+        ));
+    }
+    let mut schedule_observations = Vec::with_capacity(input.schedules.len());
+    for schedule in &input.schedules {
+        schedule_observations.push(apply_schedule(&mut cohort, schedule)?);
+    }
+    let safety = crate::storage_recovery::validate_storage_recovery(&input.safety)?;
+    let mut progress = Vec::with_capacity(input.progress.len());
+    for facts in &input.progress {
+        progress.push(crate::storage_recovery::evaluate_recovery_progress(facts)?);
+    }
+    let verdict = campaign_verdict(&safety, &progress);
+    let (receipt_ref, _) =
+        identify_storage_recovery_receipt(input.cohort, &cohort, safety.clone())?;
+    Ok(StorageRecoveryCampaignReport {
+        receipt_ref,
+        schedule_observations,
+        safety,
+        progress,
+        verdict,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,5 +549,183 @@ mod tests {
                 .class,
             "storage-receipt-participants"
         );
+    }
+
+    use crate::storage_recovery::{
+        RecoveryProgressInput, RecoveryProgressIssue, RecoveryProgressVerdict,
+        StorageRecoveryObservation,
+    };
+
+    fn progress_for(participant: &str, is_local_sufficient: bool) -> RecoveryProgressInput {
+        RecoveryProgressInput {
+            participant: participant.to_string(),
+            required_index: 1,
+            is_local_sufficient,
+            admitted_peers: vec!["node-1".to_string()],
+            peer_available: Vec::new(),
+            repair_source: None,
+            is_repair_completed: false,
+            is_fault_disrupted: false,
+            source_sequence: 1,
+            loss_count: 0,
+            is_final_drain_complete: true,
+            virtual_horizon: 100,
+            is_horizon_reached: true,
+            is_commitment_known: true,
+        }
+    }
+
+    fn observation(participant: &str) -> StorageRecoveryObservation {
+        StorageRecoveryObservation {
+            participant: participant.to_string(),
+            term: 4,
+            durable_last_index: 1,
+            acknowledged_last_index: 1,
+            committed_last_index: 1,
+            committed_term: 4,
+            is_voting: true,
+            is_local_sufficient: true,
+            is_repair_completed: false,
+            is_commitment_known: true,
+        }
+    }
+
+    fn campaign(
+        participants: &[&str],
+        progress: Vec<RecoveryProgressInput>,
+        schedules: Vec<StorageRecoverySchedule>,
+    ) -> StorageRecoveryCampaignInput {
+        StorageRecoveryCampaignInput {
+            cohort: identity(),
+            schedules,
+            safety: participants.iter().map(|name| observation(name)).collect(),
+            progress,
+        }
+    }
+
+    #[test]
+    fn local_only_campaign_passes_and_binds_a_receipt() {
+        let report = run_storage_recovery_campaign(
+            cohort(),
+            campaign(
+                &["node-0", "node-1", "node-2"],
+                vec![progress_for("node-0", true)],
+                vec![StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::Restart { node: 0 }],
+                }],
+            ),
+        )
+        .expect("campaign");
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Pass);
+        assert_eq!(report.progress[0].issue, RecoveryProgressIssue::LocalRepair);
+        assert!(report.receipt_ref.starts_with("blake3:"));
+        assert_eq!(report.schedule_observations.len(), 1);
+    }
+
+    #[test]
+    fn peer_repair_campaign_passes() {
+        let mut facts = progress_for("node-0", false);
+        facts.repair_source = Some("node-1".to_string());
+        facts.is_repair_completed = true;
+        let report = run_storage_recovery_campaign(
+            cohort(),
+            campaign(
+                &["node-0", "node-1", "node-2"],
+                vec![facts],
+                vec![StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::LocalRepair { node: 0 }],
+                }],
+            ),
+        )
+        .expect("campaign");
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Pass);
+        assert_eq!(report.progress[0].issue, RecoveryProgressIssue::PeerRepair);
+    }
+
+    #[test]
+    fn unnecessary_and_missed_repair_campaigns_fail() {
+        let mut unnecessary = progress_for("node-0", true);
+        unnecessary.repair_source = Some("node-1".to_string());
+        let report = run_storage_recovery_campaign(
+            cohort(),
+            campaign(
+                &["node-0", "node-1", "node-2"],
+                vec![unnecessary],
+                vec![StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::Restart { node: 0 }],
+                }],
+            ),
+        )
+        .expect("campaign");
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Fail);
+        assert_eq!(
+            report.progress[0].issue,
+            RecoveryProgressIssue::UnnecessaryRemoteRepair
+        );
+
+        let mut missed = progress_for("node-0", false);
+        missed.peer_available = vec!["node-1".to_string()];
+        let report = run_storage_recovery_campaign(
+            cohort(),
+            campaign(
+                &["node-0", "node-1", "node-2"],
+                vec![missed],
+                vec![StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::MakePeerUnavailable {
+                        peer: "node-2".to_string(),
+                    }],
+                }],
+            ),
+        )
+        .expect("campaign");
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Fail);
+        assert_eq!(
+            report.progress[0].issue,
+            RecoveryProgressIssue::MissedAvailableRepair
+        );
+    }
+
+    #[test]
+    fn incomplete_observation_campaign_is_incomplete() {
+        let mut facts = progress_for("node-0", false);
+        facts.is_final_drain_complete = false;
+        let report = run_storage_recovery_campaign(
+            cohort(),
+            campaign(
+                &["node-0", "node-1", "node-2"],
+                vec![facts],
+                vec![StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::LagReplica {
+                        node: 1,
+                        behind_by: 3,
+                    }],
+                }],
+            ),
+        )
+        .expect("campaign");
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Incomplete);
+    }
+
+    #[test]
+    fn quorum_intersection_storage_loss_is_rejected() {
+        let mut lossy = campaign(
+            &["node-0", "node-1"],
+            vec![progress_for("node-0", false)],
+            vec![StorageRecoverySchedule {
+                steps: vec![
+                    RecoveryScheduleStep::Corrupt { node: 0, offset: 0 },
+                    RecoveryScheduleStep::Corrupt { node: 1, offset: 0 },
+                ],
+            }],
+        );
+        for observation in &mut lossy.safety {
+            observation.durable_last_index = 0;
+        }
+        let report = run_storage_recovery_campaign(cohort(), lossy).expect("campaign");
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Fail);
+        assert!(!report.safety.is_pass);
+        assert!(report.safety.findings.iter().any(|finding| finding.class
+            == crate::storage_recovery::StorageSafetyFindingClass::CommittedEntryTruncation));
+        assert_eq!(report.schedule_observations[0].len(), 2);
     }
 }

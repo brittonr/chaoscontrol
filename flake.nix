@@ -644,7 +644,11 @@
             in
             pkgs.runCommand "chaoscontrol-vmlinux" { } ''
               mkdir -p $out
-              ln -s ${kernel.dev}/vmlinux $out/vmlinux
+              # Guest artifacts are hashed through a no-follow capability. Copy
+              # the kernel bytes so the output leaf is a regular file rather
+              # than a symlink into the kernel's dev output.
+              cp --dereference ${kernel.dev}/vmlinux $out/vmlinux
+              chmod 0444 $out/vmlinux
             '';
           # --- Accepted snapshot-backed replay dogfood wrappers ---
 

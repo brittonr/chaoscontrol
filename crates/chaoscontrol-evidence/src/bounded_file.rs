@@ -259,6 +259,7 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded_regular_bytes(&fifo, 16).is_err());
+        assert!(read_bounded_regular_bytes(root.path(), 16).is_err());
     }
 
     #[test]

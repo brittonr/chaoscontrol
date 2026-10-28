@@ -111,6 +111,12 @@ fn legacy_traversal_environment_identity_and_limit_fail_closed() {
         .unwrap_err()
         .contains("environment entry count"));
 
+    let mut too_many_exit_codes = valid_plan();
+    too_many_exit_codes.accepted_exit_codes = (0..=MAX_ACCEPTED_EXIT_CODES as i32).collect();
+    assert!(validate_plan(&too_many_exit_codes)
+        .unwrap_err()
+        .contains("accepted exit code count"));
+
     let mut oversized_environment = valid_plan();
     oversized_environment.environment.entries = vec![EnvironmentEntry {
         name: String::from("BIG"),

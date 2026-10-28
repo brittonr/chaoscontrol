@@ -137,6 +137,8 @@ pub const MAX_COMMAND_ARGUMENT_BYTES: usize = 1024 * 1024;
 pub const MAX_ENVIRONMENT_ENTRIES: usize = 1_024;
 /// Maximum total bytes across environment names and values.
 pub const MAX_ENVIRONMENT_BYTES: usize = 1024 * 1024;
+/// Maximum number of accepted exit codes.
+pub const MAX_ACCEPTED_EXIT_CODES: usize = 256;
 
 pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
     require(
@@ -227,6 +229,10 @@ pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
         input.len() <= limits.stdin_max_bytes,
         "stdin exceeds its admitted byte bound",
     )?;
+    require(
+        plan.accepted_exit_codes.len() <= MAX_ACCEPTED_EXIT_CODES,
+        "accepted exit code count exceeds the bound",
+    )?;
     OutcomePolicy::new(
         plan.accepted_exit_codes.clone(),
         plan.reject_stdout_truncation,
@@ -257,6 +263,10 @@ pub fn execution_limits(spec: LimitSpec) -> Result<ExecutionLimits, String> {
 }
 
 pub fn outcome_policy(plan: &CommandPlan) -> Result<OutcomePolicy, String> {
+    require(
+        plan.accepted_exit_codes.len() <= MAX_ACCEPTED_EXIT_CODES,
+        "accepted exit code count exceeds the bound",
+    )?;
     OutcomePolicy::new(
         plan.accepted_exit_codes.clone(),
         plan.reject_stdout_truncation,

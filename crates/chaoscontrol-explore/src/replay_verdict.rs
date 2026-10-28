@@ -452,6 +452,23 @@ mod tests {
     }
 
     #[test]
+    fn verdict_writer_leaves_no_temp_on_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("verdict.json");
+        std::fs::create_dir(&target).unwrap();
+        let before = std::fs::read_dir(root.path()).unwrap().count();
+        let verdict = ReplayVerdict::no_bug_found(
+            TEST_RUN_ID.to_string(),
+            "chaoscontrol-explore reproduce".to_string(),
+            "none",
+        );
+
+        assert!(write_verdict(&target, &verdict).is_err());
+        let after = std::fs::read_dir(root.path()).unwrap().count();
+        assert_eq!(before, after);
+    }
+
+    #[test]
     fn verdict_writer_is_atomic_and_never_overwrites_or_follows_links() {
         let root = tempfile::tempdir().unwrap();
         let verdict = ReplayVerdict::no_bug_found(

@@ -1,9 +1,10 @@
 //! Bounded local event query and static timeline tool.
 
+use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use chaoscontrol_replay::event_query::{
-    envelopes_from_dlog_bytes, envelopes_from_recording, evaluate, receipt_for,
-    render_timeline_dot, render_timeline_markdown, validate_receipt, EventEnvelope, EventQuery,
-    EventQueryLimits, EventQueryReceipt, EventQueryResult, TimelineFact,
+    envelopes_from_dlog_bytes, envelopes_from_markers, envelopes_from_recording, evaluate,
+    receipt_for, render_timeline_dot, render_timeline_markdown, validate_receipt, EventEnvelope,
+    EventQuery, EventQueryLimits, EventQueryReceipt, EventQueryResult, TimelineFact,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -33,6 +34,9 @@ enum Command {
         /// Optional raw dlog file.
         #[arg(long)]
         dlog: Option<PathBuf>,
+        /// Optional JSON array of retained branch-marker evidence.
+        #[arg(long)]
+        markers: Option<PathBuf>,
         /// Query JSON file.
         query: PathBuf,
         /// Output result JSON file.
@@ -55,6 +59,9 @@ enum Command {
         /// Optional raw dlog file.
         #[arg(long)]
         dlog: Option<PathBuf>,
+        /// Optional JSON array of retained branch-marker evidence.
+        #[arg(long)]
+        markers: Option<PathBuf>,
         /// Query JSON file.
         query: PathBuf,
         /// Result JSON file to validate.
@@ -97,13 +104,14 @@ fn run() -> Result<(), String> {
             events,
             recording,
             dlog,
+            markers,
             query,
             output,
             receipt,
             limits,
         } => {
             let limits = read_limits(limits)?;
-            let events = load_events(events, recording, dlog, &limits)?;
+            let events = load_events(events, recording, dlog, markers, &limits)?;
             let query: EventQuery = read_json(&query)?;
             let result = evaluate(&query, &events, &limits).map_err(|error| error.to_string())?;
             write_json(&output, &result)?;
@@ -123,13 +131,14 @@ fn run() -> Result<(), String> {
             events,
             recording,
             dlog,
+            markers,
             query,
             result,
             receipt,
             limits,
         } => {
             let limits = read_limits(limits)?;
-            let events = load_events(events, recording, dlog, &limits)?;
+            let events = load_events(events, recording, dlog, markers, &limits)?;
             let query: EventQuery = read_json(&query)?;
             let result: EventQueryResult = read_json(&result)?;
             let receipt: EventQueryReceipt = read_json(&receipt)?;
@@ -166,21 +175,30 @@ fn load_events(
     events: Option<PathBuf>,
     recording: Option<PathBuf>,
     dlog: Option<PathBuf>,
+    markers: Option<PathBuf>,
     limits: &EventQueryLimits,
 ) -> Result<Vec<EventEnvelope>, String> {
-    match (events, recording, dlog) {
-        (Some(path), None, None) => read_json(&path),
-        (None, Some(path), None) => {
+    match (events, recording, dlog, markers) {
+        (Some(path), None, None, None) => read_json(&path),
+        (None, Some(path), None, None) => {
             let recording = chaoscontrol_replay::serialize::load_recording(&path)
                 .map_err(|error| error.to_string())?;
             Ok(envelopes_from_recording(&recording))
         }
-        (None, None, Some(path)) => {
+        (None, None, Some(path), None) => {
             let bytes = read_bytes(&path)?;
             envelopes_from_dlog_bytes(&bytes, limits.max_scanned_events)
                 .map_err(|error| error.to_string())
         }
-        (None, None, None) => Err("pass --recording, --dlog, or --events".to_string()),
+        (None, None, None, Some(path)) => {
+            let markers: Vec<MarkerEvidenceContext> = read_json(&path)?;
+            let bytes = serde_json::to_vec(&markers).map_err(|error| error.to_string())?;
+            envelopes_from_markers(*blake3::hash(&bytes).as_bytes(), &markers)
+                .map_err(|error| error.to_string())
+        }
+        (None, None, None, None) => {
+            Err("pass --recording, --dlog, --events, or --markers".to_string())
+        }
         _ => Err("pass exactly one input source".to_string()),
     }
 }
@@ -237,6 +255,7 @@ mod tests {
                 output,
                 recording,
                 dlog,
+                markers,
                 ..
             } => {
                 assert_eq!(events, Some(PathBuf::from("events.json")));
@@ -244,6 +263,7 @@ mod tests {
                 assert_eq!(output, PathBuf::from("out.json"));
                 assert_eq!(recording, None);
                 assert_eq!(dlog, None);
+                assert_eq!(markers, None);
             }
             Command::Timeline { .. } | Command::Validate { .. } => {
                 panic!("expected query command")

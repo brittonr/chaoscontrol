@@ -3,6 +3,7 @@
 //! This module is pure: callers supply admitted events, queries, and facts.
 //! It performs no file, clock, process, network, or environment access.
 
+use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -222,6 +223,51 @@ pub fn envelopes_from_dlog_bytes(
         envelopes.push(envelope_from_dlog(source_id, sequence as u64, &record));
     }
     Ok(envelopes)
+}
+
+/// Build canonical envelopes from retained branch-marker evidence.
+///
+/// The caller supplies the source identity. Each marker keeps its observed
+/// tick and owner; marker order is the retained order.
+pub fn envelopes_from_markers(
+    source_id: [u8; 32],
+    markers: &[MarkerEvidenceContext],
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    if source_id == [0; 32] {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    markers
+        .iter()
+        .enumerate()
+        .map(|(sequence, marker)| envelope_from_marker(source_id, sequence as u64, marker))
+        .collect()
+}
+
+fn envelope_from_marker(
+    source_id: [u8; 32],
+    source_sequence: u64,
+    marker: &MarkerEvidenceContext,
+) -> Result<EventEnvelope, EventQueryError> {
+    marker
+        .validate()
+        .map_err(|_| EventQueryError::InvalidEvent)?;
+    let details = serde_json::to_value(marker).map_err(|_| EventQueryError::InvalidEvent)?;
+    let payload = serde_json::to_vec(&details).map_err(|_| EventQueryError::InvalidEvent)?;
+    Ok(EventEnvelope {
+        schema: EVENT_ENVELOPE_SCHEMA.to_string(),
+        source_id,
+        source_kind: EventSourceKind::BranchMarker,
+        source_sequence,
+        tick: marker.observed_tick,
+        vm_index: None,
+        process: Some(marker.owner.clone()),
+        thread: None,
+        kind: "branch_marker".to_string(),
+        text: marker.marker_identity.clone(),
+        payload_digest: *blake3::hash(&payload).as_bytes(),
+        details: Some(details),
+        derived: BTreeMap::new(),
+    })
 }
 
 fn envelope_from_dlog(
@@ -1274,6 +1320,40 @@ mod tests {
             EventQueryError::ScanBound
         );
         assert_eq!(envelopes_from_dlog_bytes(&two_records, 2).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn branch_markers_become_canonical_envelopes() {
+        let identity =
+            chaoscontrol_protocol::branch_marker::marker_identity("raft", "leader-elected");
+        let marker = MarkerEvidenceContext {
+            marker_identity: identity.clone(),
+            owner: "guest-0".to_string(),
+            state_ref: None,
+            logical_position_ref: None,
+            run_id: 1,
+            observed_tick: 42,
+        };
+        let envelopes = envelopes_from_markers([7; 32], std::slice::from_ref(&marker)).unwrap();
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0].source_kind, EventSourceKind::BranchMarker);
+        assert_eq!(envelopes[0].source_sequence, 0);
+        assert_eq!(envelopes[0].tick, 42);
+        assert_eq!(envelopes[0].process.as_deref(), Some("guest-0"));
+        assert_eq!(envelopes[0].kind, "branch_marker");
+        assert_eq!(envelopes[0].text, identity);
+        assert!(envelopes[0].details.is_some());
+
+        let mut invalid = marker;
+        invalid.marker_identity = "b3:00".to_string();
+        assert_eq!(
+            envelopes_from_markers([7; 32], &[invalid]).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+        assert_eq!(
+            envelopes_from_markers([0; 32], &[]).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
     }
 
     #[test]

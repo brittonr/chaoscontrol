@@ -1907,7 +1907,10 @@ impl SimulationController {
                 logical_tick: 0,
                 paused_steps: 0,
             });
-        if gate.paused_ordinal != u64::MAX && gate.release_tick > gate.logical_tick {
+        if gate.magic == THREAD_GATE_MAGIC
+            && gate.paused_ordinal != u64::MAX
+            && gate.release_tick > gate.logical_tick
+        {
             return Err(target_state_application_error());
         }
         gate.magic = THREAD_GATE_MAGIC;
@@ -4362,6 +4365,41 @@ mod tests {
         assert_eq!(gate.magic, THREAD_GATE_MAGIC);
         assert_eq!(gate.paused_ordinal, 1);
         assert_eq!(gate.release_tick, 5);
+    }
+
+    #[test]
+    fn non_gate_memory_does_not_block_a_thread_pause() {
+        let mut controller = adapter_test_controller();
+        let garbage = [0xAAu8; 40];
+        controller.vms[0]
+            .vm
+            .memory()
+            .inner()
+            .write_slice(&garbage, GuestAddress(THREAD_GATE_ADDRESS))
+            .expect("seed non-gate memory");
+        let plan = FaultPlan {
+            attempt_id: FaultAttemptId([57; 32]),
+            effect: FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                release_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&plan).expect("pause applies");
+        let mut bytes = [0u8; 40];
+        controller.vms[0]
+            .vm
+            .memory()
+            .inner()
+            .read_slice(&mut bytes, GuestAddress(THREAD_GATE_ADDRESS))
+            .expect("read gate");
+        let gate = ThreadGate::from_bytes(&bytes);
+        assert_eq!(gate.magic, THREAD_GATE_MAGIC);
+        assert_eq!(gate.paused_ordinal, 1);
     }
 
     #[test]

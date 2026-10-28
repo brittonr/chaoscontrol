@@ -1673,6 +1673,30 @@ fn materializes_snapshot_chunks_and_rejects_existing_raw_without_force() {
 }
 
 #[test]
+fn materialize_accepts_case_insensitive_sha256() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");
+    let mut manifest: SnapshotChunkManifest =
+        serde_json::from_slice(&std::fs::read(&manifest_path).expect("read manifest"))
+            .expect("manifest");
+    manifest.original_sha256 = manifest.original_sha256.to_ascii_uppercase();
+    for chunk in &mut manifest.chunks {
+        chunk.sha256 = chunk.sha256.to_ascii_uppercase();
+    }
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let materialized = materialize_snapshot_chunks(&manifest_path, false).expect("materializes");
+    assert_eq!(
+        std::fs::read(materialized.path).unwrap(),
+        b"alpha-beta-gamma"
+    );
+}
+
+#[test]
 fn snapshot_chunk_manifest_rejects_overlong_paths() {
     let chunk = chaoscontrol_evidence::SnapshotChunk {
         path: format!(

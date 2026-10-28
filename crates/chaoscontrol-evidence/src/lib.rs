@@ -579,7 +579,7 @@ fn write_materialized_snapshot(
         )?;
         let actual_chunk_sha = sha256_file(&chunk_path)?;
         ensure(
-            actual_chunk_sha == chunk.sha256,
+            actual_chunk_sha.eq_ignore_ascii_case(&chunk.sha256),
             format!(
                 "snapshot chunk hash mismatch: {} expected={} actual={}",
                 chunk_path.display(),
@@ -601,7 +601,7 @@ fn write_materialized_snapshot(
     )?;
     let actual = format!("{:x}", aggregate.finalize());
     ensure(
-        actual == manifest.original_sha256,
+        actual.eq_ignore_ascii_case(&manifest.original_sha256),
         format!(
             "aggregate hash mismatch: {} expected={} actual={}",
             original_path.display(),

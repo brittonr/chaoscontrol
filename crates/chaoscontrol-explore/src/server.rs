@@ -36,6 +36,9 @@ pub const DEFAULT_DASHBOARD_HOST: &str = "127.0.0.1";
 ///
 /// Pure core: no I/O. Returns `None` for unparseable hosts.
 fn parse_dashboard_host(host: &str) -> Option<std::net::IpAddr> {
+    if host.eq_ignore_ascii_case("localhost") {
+        return Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+    }
     host.parse::<std::net::IpAddr>().ok()
 }
 
@@ -360,4 +363,26 @@ async fn event_receiver_loop(
     })
     .await
     .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dashboard_host_accepts_loopback_names_and_addresses() {
+        assert_eq!(
+            parse_dashboard_host("localhost"),
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+        );
+        assert_eq!(
+            parse_dashboard_host("127.0.0.1"),
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+        );
+        assert_eq!(
+            parse_dashboard_host("0.0.0.0"),
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED))
+        );
+        assert_eq!(parse_dashboard_host("not-an-address"), None);
+    }
 }

@@ -32,6 +32,9 @@ pub fn open_regular_write(path: &Path) -> std::io::Result<File> {
 }
 
 pub fn write_new_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
+    if path.as_os_str().is_empty() {
+        return Err(EvidenceError::new("output path must not be empty"));
+    }
     let parent = output_parent(path);
     std::fs::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
@@ -45,6 +48,9 @@ pub fn write_new_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
 }
 
 pub fn write_bytes_replace(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
+    if path.as_os_str().is_empty() {
+        return Err(EvidenceError::new("output path must not be empty"));
+    }
     let parent = output_parent(path);
     std::fs::create_dir_all(parent)?;
     let directory = File::open(parent)?;
@@ -148,6 +154,12 @@ mod tests {
             open_regular_write(&fifo).unwrap_err().kind(),
             std::io::ErrorKind::InvalidInput
         );
+    }
+
+    #[test]
+    fn publication_rejects_empty_paths() {
+        assert!(write_bytes_replace(Path::new(""), b"value").is_err());
+        assert!(write_new_bytes(Path::new(""), b"value").is_err());
     }
 
     #[test]

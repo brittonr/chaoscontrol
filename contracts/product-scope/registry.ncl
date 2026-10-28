@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "add-native-process-record-replay-profile",
+      owner = "chaoscontrol-protocol",
+      target_state = "experimental",
+      evidence_prerequisite = "The bounded profile and descriptor types, canonical identity, lifecycle record validation, non-claim and text guards, and the declared positive and negative protocol tests must pass.",
+      non_claims = ["A descriptor does not prove that any process ran as described or that a replay reproduces behaviour.", "No semantic observation, world root, authority, repair, voting, or release decision follows from a descriptor."],
+    },
+    {
       change = "add-assertion-hit-checkpoints",
       owner = "chaoscontrol-explore",
       target_state = "experimental",

@@ -330,6 +330,16 @@
   ],
   "change_intents": [
     {
+      "change": "add-native-process-record-replay-profile",
+      "evidence_prerequisite": "The bounded profile and descriptor types, canonical identity, lifecycle record validation, non-claim and text guards, and the declared positive and negative protocol tests must pass.",
+      "non_claims": [
+        "A descriptor does not prove that any process ran as described or that a replay reproduces behaviour.",
+        "No semantic observation, world root, authority, repair, voting, or release decision follows from a descriptor."
+      ],
+      "owner": "chaoscontrol-protocol",
+      "target_state": "experimental"
+    },
+    {
       "change": "add-assertion-hit-checkpoints",
       "evidence_prerequisite": "Exact post-hit boundary observation, pure seeded selection, snapshot capture, frontier restore, bounded receipts, and positive and negative fixtures must pass.",
       "non_claims": [

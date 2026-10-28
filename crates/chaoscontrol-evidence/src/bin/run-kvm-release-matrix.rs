@@ -860,6 +860,29 @@ mod publication_tests {
     }
 
     #[test]
+    fn artifact_count_and_bytes_are_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let row_output = root.path().join("row");
+        fs::create_dir(&row_output).unwrap();
+        for index in 0..=artifact_row().limits.max_artifacts {
+            fs::write(row_output.join(format!("artifact-{index}.log")), b"").unwrap();
+        }
+        let (_, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(error.unwrap().contains("artifact count exceeds bound"));
+
+        let root = tempfile::tempdir().unwrap();
+        let row_output = root.path().join("row");
+        fs::create_dir(&row_output).unwrap();
+        fs::write(
+            row_output.join("artifact.log"),
+            vec![0_u8; artifact_row().limits.max_artifact_bytes as usize + 1],
+        )
+        .unwrap();
+        let (_, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(error.unwrap().contains("artifact bytes exceed bound"));
+    }
+
+    #[test]
     fn artifact_depth_is_bounded() {
         let root = tempfile::tempdir().unwrap();
         let row_output = root.path().join("row");

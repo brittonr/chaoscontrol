@@ -349,6 +349,9 @@ fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
+    }
     Ok(bytes)
 }
 
@@ -396,6 +399,11 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn input_reads_reject_length_changes() {
+        assert!(read_bytes(Path::new("/proc/self/cmdline")).is_err());
+    }
 
     #[test]
     fn cli_exposes_a_version() {

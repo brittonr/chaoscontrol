@@ -165,6 +165,9 @@ mod tests {
             open_regular_write(&fifo).unwrap_err().kind(),
             std::io::ErrorKind::InvalidInput
         );
+        let directory = root.path().join("output");
+        std::fs::create_dir(&directory).unwrap();
+        assert!(open_regular_write(&directory).is_err());
     }
 
     #[test]

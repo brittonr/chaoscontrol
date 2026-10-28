@@ -492,6 +492,20 @@ mod tests {
     }
 
     #[test]
+    fn directional_network_enforces_the_window_boundary() {
+        let mut fault = network(NetworkDisruption::Stopped);
+        fault.start_tick = 0;
+        fault.end_tick = MAX_PAUSE_WINDOW_TICKS;
+        admit_directional_network(&fault).unwrap();
+
+        fault.end_tick = MAX_PAUSE_WINDOW_TICKS + 1;
+        assert_eq!(
+            admit_directional_network(&fault).unwrap_err(),
+            MechanismError::WindowTooLong
+        );
+    }
+
+    #[test]
     fn pause_control_enforces_the_window_boundary() {
         let request = PauseControlRequest {
             requester: "liveness-check".to_string(),

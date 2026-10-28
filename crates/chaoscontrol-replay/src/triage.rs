@@ -42,15 +42,17 @@ impl TriageEngine {
                 } = e
                 {
                     if *tick <= bug_tick && !passed {
+                        let record = assertion_record(recording, *assertion_id);
                         return Some((
                             *tick,
                             AssertionInfo {
                                 id: *assertion_id,
                                 location: location.clone(),
-                                kind: assertion_kind_name(recording, *assertion_id)
-                                    .unwrap_or("unknown")
-                                    .to_string(),
-                                description: description.clone(),
+                                kind: record.map_or("unknown", assertion_kind_name).to_string(),
+                                description: record.map_or_else(
+                                    || description.clone(),
+                                    |record| record.message.clone(),
+                                ),
                                 details: None,
                             },
                         ));
@@ -287,21 +289,27 @@ fn format_event(event: &RecordedEvent) -> String {
     }
 }
 
-fn assertion_kind_name(recording: &Recording, assertion_id: u64) -> Option<&'static str> {
+fn assertion_record(
+    recording: &Recording,
+    assertion_id: u64,
+) -> Option<&chaoscontrol_fault::oracle::AssertionRecord> {
     let id = u32::try_from(assertion_id).ok()?;
     let report = recording.oracle_report.as_ref()?;
-    let record = report.assertions.get(&id).or_else(|| {
+    report.assertions.get(&id).or_else(|| {
         report
             .structured_assertions
             .values()
             .find(|record| record.compatibility_id == Some(id))
-    })?;
-    Some(match record.kind {
+    })
+}
+
+fn assertion_kind_name(record: &chaoscontrol_fault::oracle::AssertionRecord) -> &'static str {
+    match record.kind {
         chaoscontrol_fault::oracle::AssertionKind::Always => "always",
         chaoscontrol_fault::oracle::AssertionKind::Sometimes => "sometimes",
         chaoscontrol_fault::oracle::AssertionKind::Reachable => "reachable",
         chaoscontrol_fault::oracle::AssertionKind::Unreachable => "unreachable",
-    })
+    }
 }
 
 fn vm_status_at(recording: &Recording, vm_index: usize, tick: u64) -> String {
@@ -494,6 +502,7 @@ mod tests {
 
         let report = TriageEngine::triage(&recording, 1).unwrap();
         assert_eq!(report.assertion.kind, "sometimes");
+        assert_eq!(report.assertion.description, "liveness");
         assert_eq!(report.severity, Severity::Medium);
     }
 

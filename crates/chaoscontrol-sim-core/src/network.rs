@@ -1840,8 +1840,8 @@ mod directional_tests {
         assert!(!fabric.arm_partition(Vec::new(), vec![1], attempt));
         assert!(!fabric.arm_partition(vec![0, 1], vec![1], attempt));
         assert!(!fabric.arm_partition(vec![0], vec![300], attempt));
-        assert!(!fabric.arm_partition((0..128).collect(), (128..257).collect(), attempt,));
-        assert!(fabric.arm_partition(vec![0], vec![1], attempt));
+        assert!(fabric.arm_partition((0..128).collect(), (128..256).collect(), attempt,));
+        assert!(!fabric.arm_partition((0..129).collect(), (129..257).collect(), attempt,));
     }
 
     #[test]

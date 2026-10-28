@@ -25,6 +25,7 @@ const DOCS_PATH_PREFIX: &str = "docs/";
 const CARGO_WORKSPACE_HEADER: &str = "[workspace]";
 const CARGO_MEMBERS_PREFIX: &str = "members = [";
 const ACTIVE_CHANGES_DIRECTORY: &str = ".cairn/changes";
+const MAX_ACTIVE_CHANGES: usize = 1024;
 const TEST_INVENTORY_NOTE: &str =
     "The selected Cargo command owns the test inventory. This projection does not copy a test count.";
 
@@ -660,6 +661,10 @@ fn discover_active_changes(root: &Path) -> EvidenceResult<Vec<String>> {
     for entry in std::fs::read_dir(&directory)
         .map_err(|error| EvidenceError::new(format!("failed to read active changes: {error}")))?
     {
+        ensure(
+            changes.len() < MAX_ACTIVE_CHANGES,
+            "active change count exceeds the bound",
+        )?;
         let entry = entry.map_err(|error| {
             EvidenceError::new(format!("failed to list active changes: {error}"))
         })?;
@@ -936,5 +941,21 @@ mod fixture_admission_tests {
         admit_fixture_entry(&entry(&valid)).expect("valid fixture");
         assert!(admit_fixture_entry(&entry(&link)).is_err());
         assert!(admit_fixture_entry(&entry(&wrong)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod active_change_bound_tests {
+    use super::*;
+
+    #[test]
+    fn active_change_scan_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join(ACTIVE_CHANGES_DIRECTORY);
+        std::fs::create_dir_all(&directory).unwrap();
+        for index in 0..=MAX_ACTIVE_CHANGES {
+            std::fs::create_dir(directory.join(format!("change-{index}"))).unwrap();
+        }
+        assert!(discover_active_changes(root.path()).is_err());
     }
 }

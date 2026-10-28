@@ -116,14 +116,17 @@ pub fn write_envelope(
         ));
     }
     let bytes = serde_json::to_vec_pretty(envelope)?;
-    std::fs::write(path, bytes)?;
+    crate::replay_readiness_publication::write_bytes(path, bytes)?;
     Ok(())
 }
 
 pub fn read_envelope(
     path: impl AsRef<Path>,
 ) -> EvidenceResult<snapshot_core::SnapshotDescriptorEnvelope> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::bounded_file::read_bounded_regular_bytes(
+        path.as_ref(),
+        crate::MAX_EVIDENCE_JSON_BYTES,
+    )?;
     let envelope: snapshot_core::SnapshotDescriptorEnvelope = serde_json::from_slice(&bytes)?;
     let expected = snapshot_core::descriptor_identity(&envelope.descriptor)
         .map_err(|error| EvidenceError::new(error.to_string()))?;
@@ -230,5 +233,20 @@ fn backend_for_device(device_id: u32) -> EvidenceResult<snapshot_core::DeviceBac
         _ => Err(EvidenceError::new(format!(
             "unsupported exact-snapshot virtio device id {device_id}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_envelope_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("envelope.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_envelope(&link).is_err());
     }
 }

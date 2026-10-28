@@ -44,12 +44,22 @@ fn open_bounded_evidence_file(path: &Path) -> std::io::Result<File> {
 }
 
 /// Load bounded JSON from a path. The byte cap is enforced twice: file
-/// metadata before reading, and a sentinel-limited reader during parse.
+/// metadata before reading, and the exact byte count after the bounded read.
 fn read_bounded_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, SerializeError> {
     let file = open_bounded_evidence_file(path)?;
-    let limited = file.take(MAX_EVIDENCE_JSON_BYTES + READ_LIMIT_SENTINEL_BYTES);
-    let value = serde_json::from_reader(limited)?;
-    Ok(value)
+    let mut bytes = Vec::new();
+    file.take(MAX_EVIDENCE_JSON_BYTES + READ_LIMIT_SENTINEL_BYTES)
+        .read_to_end(&mut bytes)?;
+    parse_bounded_json(bytes)
+}
+
+fn parse_bounded_json<T: serde::de::DeserializeOwned>(bytes: Vec<u8>) -> Result<T, SerializeError> {
+    if bytes.len() as u64 > MAX_EVIDENCE_JSON_BYTES {
+        return Err(SerializeError::EvidenceTooLarge {
+            limit: MAX_EVIDENCE_JSON_BYTES,
+        });
+    }
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 /// Errors that can occur during serialization.
@@ -63,6 +73,8 @@ pub enum SerializeError {
     InvalidRecording { message: String },
     #[snafu(display("Recording JSON exceeds {limit} bytes"))]
     RecordingTooLarge { limit: usize },
+    #[snafu(display("Evidence JSON exceeds {limit} bytes"))]
+    EvidenceTooLarge { limit: u64 },
 }
 
 /// Save a recording to a JSON file.
@@ -452,6 +464,17 @@ mod tests {
     fn test_load_recording_rejects_directory() {
         let temp_dir = TempDir::new().unwrap();
         assert!(load_recording(temp_dir.path()).is_err());
+    }
+
+    #[test]
+    fn bounded_json_rejects_oversize_bytes_and_accepts_small_input() {
+        let oversized = vec![b' '; usize::try_from(MAX_EVIDENCE_JSON_BYTES).unwrap() + 1];
+        assert!(matches!(
+            parse_bounded_json::<serde_json::Value>(oversized).unwrap_err(),
+            SerializeError::EvidenceTooLarge { .. }
+        ));
+        let value: serde_json::Value = parse_bounded_json(b"{\"ok\":true}".to_vec()).unwrap();
+        assert_eq!(value["ok"], true);
     }
 
     #[test]

@@ -37,8 +37,12 @@ unsafe impl Sync for TransportMode {}
 /// Set `CHAOSCONTROL_SDK_LOCAL_OUTPUT=/path/to/file.json` to enable
 /// local assertion logging when running outside a ChaosControl VM.
 ///
-/// This mirrors Antithesis's `ANTITHESIS_SDK_LOCAL_OUTPUT`.
+/// This mirrors Antithesis's `ANTITHESIS_SDK_LOCAL_OUTPUT`, which is also
+/// accepted as a fallback when the ChaosControl variable is unset.
 pub const LOCAL_OUTPUT: &str = "CHAOSCONTROL_SDK_LOCAL_OUTPUT";
+/// Antithesis-compatible local output variable, used when [`LOCAL_OUTPUT`]
+/// is unset.
+pub const ANTITHESIS_LOCAL_OUTPUT: &str = "ANTITHESIS_SDK_LOCAL_OUTPUT";
 pub const PROCESS_TRANSPORT_LOCK: &str = "CHAOSCONTROL_SDK_TRANSPORT_LOCK";
 
 enum ProcessTransportLock {
@@ -114,19 +118,32 @@ fn detect_mode() -> TransportMode {
         }
     }
 
-    // Not in a VM — check for local output env var.
-    if let Ok(path) = std::env::var(LOCAL_OUTPUT) {
+    // Not in a VM — check for local output env vars. ChaosControl's
+    // variable wins; the Antithesis name is accepted for fallback-schema
+    // tooling parity.
+    if let Some((variable, path)) = local_output_path() {
         if let Ok(file) = open_local_output(std::path::Path::new(&path)) {
             return TransportMode::LocalOutput {
                 writer: Mutex::new(BufWriter::new(file)),
             };
         }
         eprintln!(
-            "chaoscontrol-sdk: warning: could not open {LOCAL_OUTPUT}={path}, falling back to no-op"
+            "chaoscontrol-sdk: warning: could not open {variable}={path}, falling back to no-op"
         );
     }
 
     TransportMode::Noop
+}
+
+/// Return the configured local output variable and path, preferring the
+/// ChaosControl name.
+fn local_output_path() -> Option<(&'static str, String)> {
+    for variable in [LOCAL_OUTPUT, ANTITHESIS_LOCAL_OUTPUT] {
+        if let Ok(path) = std::env::var(variable) {
+            return Some((variable, path));
+        }
+    }
+    None
 }
 
 /// Open the process transport lock without following symlinks.

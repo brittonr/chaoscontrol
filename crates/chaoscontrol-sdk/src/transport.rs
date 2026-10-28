@@ -4,8 +4,9 @@
 //!
 //! Auto-detects whether we're inside a ChaosControl VM:
 //! - **In VM**: uses shared memory page at [`HYPERCALL_PAGE_ADDR`] + `vmcall`
-//! - **Outside VM**: logs to `CHAOSCONTROL_SDK_LOCAL_OUTPUT` file (JSON), or
-//!   silently discards if the env var is not set.
+//! - **Outside VM**: logs to the path in `CHAOSCONTROL_SDK_LOCAL_OUTPUT`,
+//!   falling back to `ANTITHESIS_SDK_LOCAL_OUTPUT` (JSON), or silently
+//!   discards if neither env var is set.
 //!
 //! ## No-op mode (`default-features = false`)
 //!

@@ -51,7 +51,9 @@ pub fn setup_complete<T: ?Sized>(_details: &T) {
 ///
 /// Events are recorded in the execution trace and can be used to
 /// correlate behavior across VMs and across runs.  Use them to mark
-/// significant application-level milestones.
+/// significant application-level milestones. Names are trimmed, and an
+/// empty name is recorded as `anonymous`, matching the Antithesis fallback
+/// behavior.
 ///
 /// # Example
 ///
@@ -64,6 +66,12 @@ pub fn setup_complete<T: ?Sized>(_details: &T) {
 /// ```
 #[cfg(feature = "full")]
 pub fn send_event(name: &str, details: &serde_json::Value) {
+    let trimmed_name = name.trim();
+    let name = if trimmed_name.is_empty() {
+        "anonymous"
+    } else {
+        trimmed_name
+    };
     let id = crate::assert::location_id(name);
     let json_bytes = serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec());
     transport::hypercall(CMD_LIFECYCLE_SEND_EVENT, 0, id, name, &json_bytes);

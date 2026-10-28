@@ -30,8 +30,8 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | VM detection | (none) | `is_in_vm()`, `is_local_output()` | absent |
 | Guest shell | (none) | `runtime::guest_init()` | absent |
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |
-| Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full` | equivalent |
-| Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` | divergent |
+| Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full`; trims and maps empty names to `anonymous` | equivalent |
+| Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` (primary) or `ANTITHESIS_SDK_LOCAL_OUTPUT` (fallback) | equivalent |
 | Convenience imports | `prelude` | `prelude` with ChaosControl-specific extensions | divergent |
 
 ## Assertion macros

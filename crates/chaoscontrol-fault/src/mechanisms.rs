@@ -492,6 +492,31 @@ mod tests {
     }
 
     #[test]
+    fn cpu_throttle_enforces_named_boundaries() {
+        let throttle = CpuThrottle {
+            target: ThrottleTarget::Vm(1),
+            budget_units: MAX_THROTTLE_WINDOW_TICKS,
+            start_tick: 0,
+            end_tick: MAX_THROTTLE_WINDOW_TICKS,
+        };
+        admit_cpu_throttle(&throttle).unwrap();
+
+        let mut over_budget = throttle.clone();
+        over_budget.budget_units = MAX_THROTTLE_WINDOW_TICKS + 1;
+        assert_eq!(
+            admit_cpu_throttle(&over_budget).unwrap_err(),
+            MechanismError::InvalidThrottleBudget
+        );
+
+        let mut over_window = throttle;
+        over_window.end_tick = MAX_THROTTLE_WINDOW_TICKS + 1;
+        assert_eq!(
+            admit_cpu_throttle(&over_window).unwrap_err(),
+            MechanismError::WindowTooLong
+        );
+    }
+
+    #[test]
     fn custom_effects_reject_ambient_command_strings() {
         let effect = CustomFaultEffect {
             effect_id: "reconfigure".to_string(),

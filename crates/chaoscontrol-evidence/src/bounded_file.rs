@@ -157,6 +157,17 @@ mod tests {
     }
 
     #[test]
+    fn no_replace_publication_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.txt");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("report.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(write_new_bytes(&link, b"replacement").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
     fn publication_rejects_empty_paths() {
         assert!(write_bytes_replace(Path::new(""), b"value").is_err());
         assert!(write_new_bytes(Path::new(""), b"value").is_err());

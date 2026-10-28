@@ -38,6 +38,8 @@ fn run(args: Vec<String>) -> Result<String, String> {
         return Err(String::from("OUTPUT must not overwrite the matrix receipt"));
     }
     let bytes = read_bounded(&receipt_path, MAX_MATRIX_RECEIPT_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {}", receipt_path.display(), error))?;
     let receipt: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", receipt_path.display()))?;
     let summary = matrix_summary(&receipt)?;
@@ -121,6 +123,19 @@ mod tests {
     fn empty_paths_are_rejected() {
         assert!(run(vec![String::new(), "out.md".to_string()]).is_err());
         assert!(run(vec!["receipt.json".to_string(), String::new()]).is_err());
+    }
+
+    #[test]
+    fn receipt_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = run(vec![
+            path.display().to_string(),
+            root.path().join("out.md").display().to_string(),
+        ])
+        .unwrap_err();
+        assert!(error.contains("JSON nesting depth exceeded"));
     }
 
     #[test]

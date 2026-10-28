@@ -913,11 +913,15 @@ mod publication_tests {
         let root = tempfile::tempdir().unwrap();
         let row_output = root.path().join("row");
         fs::create_dir(&row_output).unwrap();
-        for index in 0..=MAX_ARTIFACT_DIRECTORIES {
+        for index in 0..MAX_ARTIFACT_DIRECTORIES - 1 {
             fs::create_dir(row_output.join(format!("dir-{index}"))).unwrap();
         }
         let (artifacts, error) = collect_artifacts(&row_output, &artifact_row());
         assert!(artifacts.is_empty());
+        assert!(error.is_none());
+
+        fs::create_dir(row_output.join("one-too-many")).unwrap();
+        let (_, error) = collect_artifacts(&row_output, &artifact_row());
         assert!(error
             .unwrap()
             .contains("artifact directory count bound exceeded"));

@@ -96,7 +96,7 @@ pub(crate) fn read_bounded_regular_bytes(
     Ok(bytes)
 }
 
-fn open_regular_file(path: &Path) -> EvidenceResult<File> {
+pub(crate) fn open_regular_file(path: &Path) -> EvidenceResult<File> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)

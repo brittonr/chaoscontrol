@@ -562,7 +562,15 @@ fn write_materialized_snapshot(
                 chunk_path.display()
             ),
         )?;
-        let metadata = chunk_path.metadata().map_err(|err| {
+        let mut chunk_file =
+            crate::bounded_file::open_regular_file(&chunk_path).map_err(|err| {
+                EvidenceError::new(format!(
+                    "snapshot chunk unreadable: {}: {}",
+                    chunk_path.display(),
+                    err.message()
+                ))
+            })?;
+        let metadata = chunk_file.metadata().map_err(|err| {
             EvidenceError::new(format!(
                 "snapshot chunk unreadable: {}: {err}",
                 chunk_path.display()
@@ -577,7 +585,21 @@ fn write_materialized_snapshot(
                 metadata.len()
             ),
         )?;
-        let actual_chunk_sha = sha256_file(&chunk_path)?;
+        let mut chunk_hasher = Sha256::new();
+        let copied = copy_open_chunk(
+            &mut chunk_file,
+            output.as_file_mut(),
+            &mut aggregate,
+            &mut chunk_hasher,
+        )?;
+        ensure(
+            copied == metadata.len(),
+            format!(
+                "snapshot chunk changed while reading: {}",
+                chunk_path.display()
+            ),
+        )?;
+        let actual_chunk_sha = format!("{:x}", chunk_hasher.finalize());
         ensure(
             actual_chunk_sha.eq_ignore_ascii_case(&chunk.sha256),
             format!(
@@ -587,8 +609,9 @@ fn write_materialized_snapshot(
                 actual_chunk_sha
             ),
         )?;
-        copy_file_into(&chunk_path, output.as_file_mut(), &mut aggregate)?;
-        total_size += metadata.len();
+        total_size = total_size
+            .checked_add(metadata.len())
+            .ok_or_else(|| EvidenceError::new("snapshot chunk aggregate size overflowed"))?;
     }
     ensure(
         total_size == manifest.original_size,
@@ -2455,21 +2478,35 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn copy_file_into(path: &Path, writer: &mut impl Write, hasher: &mut Sha256) -> EvidenceResult<()> {
-    let mut file =
-        File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+fn copy_open_chunk(
+    file: &mut File,
+    writer: &mut impl Write,
+    aggregate: &mut Sha256,
+    chunk: &mut Sha256,
+) -> EvidenceResult<u64> {
     let mut buffer = [0_u8; SNAPSHOT_COPY_BUFFER_BYTES];
+    let mut copied = 0_u64;
     loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|err| EvidenceError::new(format!("snapshot chunk read failed: {err}")))?;
+        if count == 0 {
             break;
         }
-        hasher.update(&buffer[..read]);
-        writer.write_all(&buffer[..read])?;
+        writer
+            .write_all(&buffer[..count])
+            .map_err(|err| EvidenceError::new(format!("snapshot chunk write failed: {err}")))?;
+        aggregate.update(&buffer[..count]);
+        chunk.update(&buffer[..count]);
+        copied = copied
+            .checked_add(
+                u64::try_from(count)
+                    .map_err(|_| EvidenceError::new("snapshot chunk read length exceeds u64"))?,
+            )
+            .ok_or_else(|| EvidenceError::new("snapshot chunk read length overflowed"))?;
     }
-    Ok(())
+    Ok(copied)
 }
-
 fn hash_file_into(path: &Path, hasher: &mut Sha256) -> EvidenceResult<()> {
     let mut file =
         File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;

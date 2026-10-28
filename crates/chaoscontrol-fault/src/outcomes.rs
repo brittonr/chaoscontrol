@@ -3612,6 +3612,26 @@ mod tests {
             ),
             Err(FaultRejectionReason::InvalidThreadPause)
         );
+        let mut without_runtime = facts.clone();
+        without_runtime.vms[0].supports_thread_pause = false;
+        assert_eq!(
+            plan_fault_application(
+                &attempt(Fault::ThreadPause {
+                    target: 0,
+                    thread: crate::thread_pause::LogicalThreadId {
+                        process: String::from("process:v1:writer"),
+                        generation: 1,
+                        ordinal: 1,
+                    },
+                    duration_ticks: WINDOW_TICKS,
+                }),
+                &without_runtime,
+                &policy,
+            ),
+            Err(FaultRejectionReason::UnsupportedCapability {
+                variant: FaultVariant::ThreadPause,
+            })
+        );
 
         let custom = plan_fault_application(
             &attempt(Fault::CustomEffect {

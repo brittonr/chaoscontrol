@@ -23,15 +23,15 @@
 
 ## Phase 4: Evidence and fixtures
 
-- [ ] [parallel] Extend the fault stage ledger and receipt with thread targets, observed safe points, releases, and paused-tick counts. r[chaoscontrol.thread_pause.evidence]
+- [x] [parallel] Extend the fault stage ledger and receipt with thread targets, observed safe points, releases, and paused-tick counts. r[chaoscontrol.thread_pause.evidence]
 - [x] [parallel] Add positive fixtures for deterministic interleaving, exact release, snapshot continuation, and replay parity. r[chaoscontrol.thread_pause.fixtures]
-- [ ] [parallel] Add negative fixtures for unsupported runtime, safe-point starvation, pause overlap, identity drift, snapshot mismatch, replay divergence, and overclaim. r[chaoscontrol.thread_pause.fixtures] r[chaoscontrol.thread_pause.nonclaims]
+- [x] [parallel] Add negative fixtures for unsupported runtime, safe-point starvation, pause overlap, identity drift, snapshot mismatch, replay divergence, and overclaim. r[chaoscontrol.thread_pause.fixtures] r[chaoscontrol.thread_pause.nonclaims]
 - [x] [serial] Exercise the bounded race fixture under a real KVM run and compare the paused and control continuations. r[chaoscontrol.thread_pause.release] r[chaoscontrol.thread_pause.state]
 
 ## Phase 5: Verification and evidence
 
-- [ ] [serial] Run focused fault, SDK, VMM, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.thread_pause.fixtures]
-- [ ] [serial] Record the bounded KVM receipt, runtime ABI and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.thread_pause.evidence] r[chaoscontrol.thread_pause.nonclaims]
+- [x] [serial] Run focused fault, SDK, VMM, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.thread_pause.fixtures]
+- [x] [serial] Record the bounded KVM receipt, runtime ABI and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.thread_pause.evidence] r[chaoscontrol.thread_pause.nonclaims]
 
 ## Blocked prerequisite
 

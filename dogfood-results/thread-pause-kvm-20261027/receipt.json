@@ -1,0 +1,39 @@
+{
+ "schema_version": 1,
+ "status": "accepted",
+ "scope": "bounded cooperative logical-thread pause and KVM race fixture",
+ "source_revision": "a2b90c4",
+ "guest_elf": {
+  "path": "/home/brittonr/.cargo-target/x86_64-unknown-linux-musl/release/chaoscontrol-thread-guest",
+  "sha256": "sha256:735693d28f0ba385fafa92244563b626fdf241670b9e0a1305d6a817d6f7f75e"
+ },
+ "runtime_source": {
+  "path": "crates/chaoscontrol-thread-runtime/src/lib.rs",
+  "sha256": "sha256:4134440220651d107246603d22abe25abbd8e3b7584e7b4e9e88254c7dbe724d"
+ },
+ "guest_source": {
+  "path": "crates/chaoscontrol-thread-guest/src/main.rs",
+  "sha256": "sha256:4f038d23d0448c5b596e4f30831d817c00dfa659860fb9bdb2815de6b14751da"
+ },
+ "test_source": {
+  "path": "crates/chaoscontrol-vmm/tests/thread_pause_kvm.rs",
+  "sha256": "sha256:ecddf5a2a87683f56a1fdc00d72e83b0e57c8189a725523cb504b98eb770b694"
+ },
+ "control": {
+  "serial": "R0a P0",
+  "exits": 22,
+  "halted": true
+ },
+ "paused": {
+  "serial": "R0b P1",
+  "exits": 22,
+  "halted": true,
+  "release_tick": 5
+ },
+ "command": "scripts/check-thread-pause-kvm.sh",
+ "non_claims": [
+  "Proves only the admitted cooperative two-task runtime and fixed gate page.",
+  "Does not prove preemption of arbitrary OS threads, host thread control, race absence, or Antithesis parity.",
+  "Does not establish release eligibility or whole-system determinism."
+ ]
+}

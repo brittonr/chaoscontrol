@@ -133,6 +133,13 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     {
         return Err("--out must not be empty".to_string());
     }
+    if config
+        .expected_revision
+        .as_deref()
+        .is_some_and(str::is_empty)
+    {
+        return Err("--expected-revision must not be empty".to_string());
+    }
     if !config.dry_run && (config.output.is_none() || config.expected_revision.is_none()) {
         return Err("--out and --expected-revision are required without --dry-run".to_string());
     }
@@ -872,6 +879,13 @@ mod publication_tests {
         assert!(parse_args(base("", "matrix.json", "out")).is_err());
         assert!(parse_args(base(".", "", "out")).is_err());
         assert!(parse_args(base(".", "matrix.json", "")).is_err());
+        let mut args = base(".", "matrix.json", "out");
+        let revision = args
+            .iter()
+            .position(|argument| argument == "--expected-revision")
+            .unwrap();
+        args[revision + 1] = OsString::new();
+        assert!(parse_args(args).is_err());
     }
 
     #[test]

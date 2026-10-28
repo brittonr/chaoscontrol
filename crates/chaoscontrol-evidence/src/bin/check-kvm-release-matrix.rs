@@ -189,6 +189,9 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     {
         return Err("--receipt and --curated-out must not be empty".to_string());
     }
+    if expected_revision.as_deref().is_some_and(str::is_empty) {
+        return Err("--expected-revision must not be empty".to_string());
+    }
     if receipt.is_some() != expected_revision.is_some() {
         return Err("--receipt and --expected-revision must be supplied together".to_string());
     }
@@ -636,6 +639,13 @@ mod tests {
             OsString::from("--expected-revision"),
             OsString::from("rev"),
             OsString::from("--curated-out"),
+            OsString::from(""),
+        ])
+        .is_err());
+        assert!(parse_args(vec![
+            OsString::from("--receipt"),
+            OsString::from("receipt.json"),
+            OsString::from("--expected-revision"),
             OsString::from(""),
         ])
         .is_err());

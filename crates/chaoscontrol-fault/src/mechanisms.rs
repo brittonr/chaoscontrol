@@ -594,6 +594,22 @@ mod tests {
     }
 
     #[test]
+    fn custom_effect_identity_enforces_the_byte_boundary() {
+        let mut effect = CustomFaultEffect {
+            effect_id: "a".repeat(MAX_CUSTOM_STRING_BYTES),
+            version: 1,
+            parameters: BTreeMap::new(),
+        };
+        admit_custom_effect(&effect).unwrap();
+
+        effect.effect_id.push('a');
+        assert_eq!(
+            admit_custom_effect(&effect).unwrap_err(),
+            MechanismError::InvalidEffectId
+        );
+    }
+
+    #[test]
     fn custom_effects_reject_ambient_command_strings() {
         let effect = CustomFaultEffect {
             effect_id: "reconfigure".to_string(),

@@ -674,7 +674,9 @@ enum Commands {
 
 fn main() {
     env_logger::init();
-    chaoscontrol_explore::signal::install_signal_handlers();
+    if let Err(error) = chaoscontrol_explore::signal::try_install_signal_handlers() {
+        eprintln!("warning: failed to install signal handlers: {error}");
+    }
 
     let cli = Cli::parse();
 

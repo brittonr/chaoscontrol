@@ -4,8 +4,9 @@
 //! force-exit on second signal. The explorer and campaign runner poll
 //! [`shutdown_requested()`] after each round/seed to stop cleanly.
 
+use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Once;
+use std::sync::OnceLock;
 
 /// Global shutdown flag — set by signal handler, polled by explorer.
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
@@ -13,8 +14,8 @@ static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 /// How many signals have been received. Second signal force-exits.
 static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
 
-/// Ensures the signal handlers are installed at most once.
-static HANDLERS_INSTALLED: Once = Once::new();
+/// Result of the one-time handler installation.
+static HANDLERS_INSTALLED: OnceLock<Result<(), i32>> = OnceLock::new();
 
 /// Returns `true` if a shutdown signal has been received.
 pub fn shutdown_requested() -> bool {
@@ -36,7 +37,22 @@ pub fn request_shutdown() {
 ///
 /// Safe to call multiple times — subsequent calls are no-ops.
 pub fn install_signal_handlers() {
-    HANDLERS_INSTALLED.call_once(|| unsafe {
+    let _ = try_install_signal_handlers();
+}
+
+/// Install signal handlers and report the first installation failure.
+///
+/// Repeated calls return the result of the original installation and never
+/// reinstall, preserving the first-signal/second-signal state machine.
+pub fn try_install_signal_handlers() -> io::Result<()> {
+    match HANDLERS_INSTALLED.get_or_init(install_raw_handlers) {
+        Ok(()) => Ok(()),
+        Err(errno) => Err(io::Error::from_raw_os_error(*errno)),
+    }
+}
+
+fn install_raw_handlers() -> Result<(), i32> {
+    unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
         sa.sa_sigaction = signal_handler as *const () as usize;
         sa.sa_flags = libc::SA_SIGINFO;
@@ -45,9 +61,20 @@ pub fn install_signal_handlers() {
         libc::sigemptyset(&mut sa.sa_mask);
         libc::sigaddset(&mut sa.sa_mask, libc::SIGALRM);
 
-        libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
-        libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
-    });
+        if libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut()) != 0 {
+            return Err(last_errno());
+        }
+        if libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut()) != 0 {
+            return Err(last_errno());
+        }
+    }
+    Ok(())
+}
+
+fn last_errno() -> i32 {
+    io::Error::last_os_error()
+        .raw_os_error()
+        .unwrap_or(libc::EINVAL)
 }
 
 /// Signal handler — async-signal-safe (only atomics + process::exit).
@@ -110,7 +137,7 @@ mod tests {
     #[test]
     fn signals_request_shutdown_then_force_exit() {
         isolated("signals_request_shutdown_then_force_exit", 1, || {
-            install_signal_handlers();
+            try_install_signal_handlers().expect("install signal handlers");
             install_signal_handlers();
             assert!(!shutdown_requested());
             assert_eq!(unsafe { libc::raise(libc::SIGTERM) }, 0);

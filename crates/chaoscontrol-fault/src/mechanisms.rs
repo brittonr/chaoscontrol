@@ -394,6 +394,14 @@ mod tests {
         let link = LinkId::new(9, 3).unwrap();
         assert_eq!((link.low, link.high), (3, 9));
         assert_eq!(LinkId::new(3, 3).unwrap_err(), MechanismError::InvalidLink);
+        assert_eq!(
+            LinkId::new(0, MAX_LINK_ID - 1).unwrap().high,
+            MAX_LINK_ID - 1
+        );
+        assert_eq!(
+            LinkId::new(0, MAX_LINK_ID).unwrap_err(),
+            MechanismError::InvalidLink
+        );
     }
 
     #[test]

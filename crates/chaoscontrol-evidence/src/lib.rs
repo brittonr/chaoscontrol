@@ -1031,7 +1031,7 @@ fn render_replay_readiness_proof_row(
     proof: &AcceptedWorkloadProof,
     review: &ReplayProofCoverageLine,
 ) -> EvidenceResult<String> {
-    let evidence_dir = root.join(&proof.evidence_dir);
+    let evidence_dir = canonical_proof_evidence_dir(root, proof)?;
     let verdict: ReplayVerdict = load_json(root, &evidence_dir.join(&proof.verdict))?;
     let summary: AcceptedVerdictSummary = load_json(root, &evidence_dir.join(&proof.summary))?;
     let status = if review.replay_class == REQUIRED_REPLAY_CLASS {
@@ -1768,7 +1768,7 @@ fn load_assertion_admission(
     root: &Path,
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<assertion::readiness::IdentityAdmission> {
-    let path = root.join(&proof.evidence_dir).join("assertions.json");
+    let path = canonical_proof_evidence_dir(root, proof)?.join("assertions.json");
     let value: serde_json::Value = load_json(root, &path)?;
     assertion::readiness::classify(&value).map_err(|error| {
         EvidenceError::new(format!("{}: {}", rel_display(root, &path), error.message()))
@@ -2161,6 +2161,22 @@ fn validate_proof_file_name(field: &str, value: &str) -> EvidenceResult<()> {
     )
 }
 
+fn canonical_proof_evidence_dir(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<PathBuf> {
+    let evidence_dir = std::fs::canonicalize(root.join(&proof.evidence_dir))?;
+    let canonical_root = std::fs::canonicalize(root)?;
+    ensure(
+        evidence_dir.starts_with(&canonical_root),
+        format!(
+            "{}: proof evidence_dir escapes the repository root",
+            proof.workload
+        ),
+    )?;
+    Ok(evidence_dir)
+}
+
 fn validate_proof_path(field: &str, value: &str) -> EvidenceResult<()> {
     let path = Path::new(value);
     ensure(
@@ -2178,15 +2194,7 @@ fn validate_workload_replay_artifacts(
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<ReplayArtifactReview> {
     proof.validate_shape()?;
-    let evidence_dir = std::fs::canonicalize(root.join(&proof.evidence_dir))?;
-    let canonical_root = std::fs::canonicalize(root)?;
-    ensure(
-        evidence_dir.starts_with(&canonical_root),
-        format!(
-            "{}: proof evidence_dir escapes the repository root",
-            proof.workload
-        ),
-    )?;
+    let evidence_dir = canonical_proof_evidence_dir(root, proof)?;
     let summary_path = evidence_dir.join(&proof.summary);
     let bug_path = evidence_dir.join(&proof.bug);
     let verdict_path = evidence_dir.join(&proof.verdict);
@@ -2308,7 +2316,7 @@ fn validate_fresh_proof_receipt(
             proof.workload
         ))
     })?;
-    let evidence_dir = std::fs::canonicalize(root.join(&proof.evidence_dir))?;
+    let evidence_dir = canonical_proof_evidence_dir(root, proof)?;
     let receipt_path = evidence_dir.join(receipt_name);
     let receipt: serde_json::Value = load_json(root, &receipt_path)?;
     let cohort: serde_json::Value = load_json(

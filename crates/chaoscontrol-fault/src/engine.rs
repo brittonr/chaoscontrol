@@ -475,6 +475,8 @@ impl FaultEngine {
         self.choice_history.clear();
         self.process_fault_queue.clear();
         self.pause_control.clear();
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
     }
 
     /// Start a clean counterfactual run after the current bounded run.
@@ -504,6 +506,8 @@ impl FaultEngine {
         self.choice_history.clear();
         self.process_fault_queue.clear();
         self.pause_control.clear();
+        self.assertion_hits.clear();
+        self.assertion_hit_overflow = 0;
         Ok(())
     }
 
@@ -1796,6 +1800,41 @@ mod tests {
         engine.rebind_fresh_run_at(schedule, 9);
         engine.force_setup_complete();
         assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn fresh_runs_clear_pending_assertion_hits() {
+        use chaoscontrol_protocol::identity::AssertionFingerprint;
+
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        engine.force_setup_complete();
+        let run_id = engine.run_id;
+        let run_sequence = engine.run_sequence;
+        let hit = || AssertionHitEvent {
+            run_id,
+            run_sequence,
+            fingerprint: AssertionFingerprint::ZERO,
+            kind: crate::oracle::AssertionKind::Always,
+            condition: true,
+            compatibility_id: None,
+            guest: String::from("guest"),
+            category: String::from("fixture"),
+            process_identity: None,
+        };
+        engine.assertion_hits.push_back(hit());
+        engine.assertion_hit_overflow = 1;
+        engine
+            .begin_counterfactual_run(FaultSchedule::new())
+            .expect("counterfactual run");
+        assert!(engine.take_assertion_hits().is_empty());
+        assert_eq!(engine.assertion_hit_overflow(), 0);
+
+        engine.assertion_hits.push_back(hit());
+        engine.assertion_hit_overflow = 2;
+        engine.rebind_fresh_run_at(FaultSchedule::new(), 9);
+        assert!(engine.take_assertion_hits().is_empty());
+        assert_eq!(engine.assertion_hit_overflow(), 0);
     }
 
     #[test]

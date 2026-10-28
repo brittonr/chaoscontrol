@@ -510,6 +510,29 @@ mod tests {
     }
 
     #[test]
+    fn custom_effects_enforce_the_parameter_boundary() {
+        let mut effect = CustomFaultEffect {
+            effect_id: "reconfigure".to_string(),
+            version: 1,
+            parameters: BTreeMap::new(),
+        };
+        for index in 0..MAX_CUSTOM_PARAMETERS {
+            effect
+                .parameters
+                .insert(format!("parameter-{index}"), "value".to_string());
+        }
+        admit_custom_effect(&effect).unwrap();
+
+        effect
+            .parameters
+            .insert("one-too-many".to_string(), "value".to_string());
+        assert_eq!(
+            admit_custom_effect(&effect).unwrap_err(),
+            MechanismError::TooManyParameters
+        );
+    }
+
+    #[test]
     fn network_faults_enforce_the_count_boundary() {
         let admitted = vec![network(NetworkDisruption::Stopped); MAX_ACTIVE_NETWORK_FAULTS];
         admit_network_faults(&admitted).unwrap();

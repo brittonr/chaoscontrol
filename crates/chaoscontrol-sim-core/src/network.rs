@@ -1357,8 +1357,15 @@ impl NetworkFabric {
         mut fault: DirectionalLinkFault,
         attempt_id: Option<FaultAttemptId>,
     ) -> bool {
+        use chaoscontrol_fault::mechanisms::NetworkDisruption;
+
         let num_vms = self.loss_rate_ppm.len();
         if fault.node == fault.peer || fault.node >= num_vms || fault.peer >= num_vms {
+            return false;
+        }
+        if (fault.disruption == NetworkDisruption::Slowed && fault.delay_ticks == 0)
+            || (fault.disruption == NetworkDisruption::Jammed && fault.queue_limit == 0)
+        {
             return false;
         }
         fault.attempt_id = attempt_id;
@@ -1740,6 +1747,34 @@ mod directional_tests {
             chaoscontrol_fault::outcomes::FaultObservationEffect::PacketDroppedByDirectional
         );
         assert_eq!(fabric.fault_observations[0].attempt_id, attempt);
+    }
+
+    #[test]
+    fn invalid_directional_mode_parameters_are_rejected() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        assert!(!fabric.arm_directional(fault(
+            0,
+            1,
+            NetworkDirection::Outbound,
+            NetworkDisruption::Slowed,
+            0,
+        )));
+        let mut jammed = fault(
+            0,
+            1,
+            NetworkDirection::Outbound,
+            NetworkDisruption::Jammed,
+            0,
+        );
+        jammed.queue_limit = 0;
+        assert!(!fabric.arm_directional(jammed));
+        assert!(fabric.arm_directional(fault(
+            0,
+            1,
+            NetworkDirection::Outbound,
+            NetworkDisruption::Stopped,
+            0,
+        )));
     }
 
     #[test]

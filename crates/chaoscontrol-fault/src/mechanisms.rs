@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 
 pub const MAX_LINK_ID: u32 = 1_000_000;
 pub const MAX_THROTTLE_WINDOW_TICKS: u64 = 1_000_000;
+/// Maximum admitted depth for a jammed directional network queue.
+pub const MAX_NETWORK_QUEUE_PACKETS: u32 = 4_096;
 pub const MAX_CUSTOM_PARAMETERS: usize = 64;
 pub const MAX_CUSTOM_STRING_BYTES: usize = 256;
 pub const MAX_PAUSE_WINDOW_TICKS: u64 = 1_000_000;
@@ -206,7 +208,7 @@ impl core::fmt::Display for MechanismError {
             Self::WindowTooLong => "fault window exceeds the admitted bound",
             Self::InvalidDirection => "network direction is invalid",
             Self::InvalidDelay => "slowed network fault requires a nonzero delay",
-            Self::InvalidQueue => "jammed network fault requires a nonzero queue limit",
+            Self::InvalidQueue => "jammed network fault requires a queue limit within the bound",
             Self::InvalidRate => "network rate exceeds one million parts per million",
             Self::InvalidThrottleTarget => "CPU throttle target is invalid",
             Self::InvalidThrottleBudget => "CPU throttle budget is zero or over-bound",
@@ -252,7 +254,9 @@ pub fn admit_directional_network(fault: &DirectionalNetworkFault) -> Result<(), 
         NetworkDisruption::Slowed if fault.delay_ns == 0 => {
             return Err(MechanismError::InvalidDelay);
         }
-        NetworkDisruption::Jammed if fault.queue_limit == 0 => {
+        NetworkDisruption::Jammed
+            if fault.queue_limit == 0 || fault.queue_limit > MAX_NETWORK_QUEUE_PACKETS =>
+        {
             return Err(MechanismError::InvalidQueue);
         }
         _ => {}
@@ -453,6 +457,13 @@ mod tests {
         );
         let mut jammed = network(NetworkDisruption::Jammed);
         jammed.queue_limit = 0;
+        assert_eq!(
+            admit_directional_network(&jammed).unwrap_err(),
+            MechanismError::InvalidQueue
+        );
+        jammed.queue_limit = MAX_NETWORK_QUEUE_PACKETS;
+        admit_directional_network(&jammed).unwrap();
+        jammed.queue_limit = MAX_NETWORK_QUEUE_PACKETS + 1;
         assert_eq!(
             admit_directional_network(&jammed).unwrap_err(),
             MechanismError::InvalidQueue

@@ -1097,7 +1097,10 @@ fn plan_network_fault(
             if node == peer {
                 return Err(FaultRejectionReason::InvalidDirectionalLink);
             }
-            if *queue_limit == 0 && *disruption == crate::mechanisms::NetworkDisruption::Jammed {
+            if *disruption == crate::mechanisms::NetworkDisruption::Jammed
+                && (*queue_limit == 0
+                    || *queue_limit > crate::mechanisms::MAX_NETWORK_QUEUE_PACKETS)
+            {
                 return Err(FaultRejectionReason::InvalidDirectionalQueue);
             }
             let delay_ticks = match disruption {
@@ -3180,6 +3183,19 @@ mod tests {
         });
         assert_eq!(
             plan_fault_application(&missing_queue, &facts, &policy).unwrap_err(),
+            FaultRejectionReason::InvalidDirectionalQueue
+        );
+
+        let over_bound_queue = attempt(Fault::NetworkDirectional {
+            node: 0,
+            peer: 1,
+            direction: NetworkDirection::Outbound,
+            disruption: NetworkDisruption::Jammed,
+            delay_ns: 1,
+            queue_limit: crate::mechanisms::MAX_NETWORK_QUEUE_PACKETS + 1,
+        });
+        assert_eq!(
+            plan_fault_application(&over_bound_queue, &facts, &policy).unwrap_err(),
             FaultRejectionReason::InvalidDirectionalQueue
         );
     }

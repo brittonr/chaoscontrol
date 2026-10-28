@@ -1364,7 +1364,10 @@ impl NetworkFabric {
             return false;
         }
         if (fault.disruption == NetworkDisruption::Slowed && fault.delay_ticks == 0)
-            || (fault.disruption == NetworkDisruption::Jammed && fault.queue_limit == 0)
+            || (fault.disruption == NetworkDisruption::Jammed
+                && (fault.queue_limit == 0
+                    || fault.queue_limit
+                        > chaoscontrol_fault::mechanisms::MAX_NETWORK_QUEUE_PACKETS))
         {
             return false;
         }
@@ -1767,6 +1770,10 @@ mod directional_tests {
             0,
         );
         jammed.queue_limit = 0;
+        assert!(!fabric.arm_directional(jammed.clone()));
+        jammed.queue_limit = chaoscontrol_fault::mechanisms::MAX_NETWORK_QUEUE_PACKETS;
+        assert!(fabric.arm_directional(jammed.clone()));
+        jammed.queue_limit = chaoscontrol_fault::mechanisms::MAX_NETWORK_QUEUE_PACKETS + 1;
         assert!(!fabric.arm_directional(jammed));
         assert!(fabric.arm_directional(fault(
             0,

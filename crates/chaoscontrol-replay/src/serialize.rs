@@ -155,6 +155,11 @@ pub fn format_triage_markdown(report: &TriageReport) -> String {
         "- **Description:** {}\n\n",
         flatten_lines(&report.assertion.description)
     ));
+    if let Some(details) = &report.assertion.details {
+        md.push_str("**Details:**\n\n");
+        let details = serde_json::to_string_pretty(details).unwrap_or_else(|_| details.to_string());
+        md.push_str(&markdown_code_block(&details));
+    }
 
     // Timeline
     md.push_str("## Timeline\n\n");
@@ -397,6 +402,15 @@ mod tests {
         assert_eq!(loaded.assertion.id, 10);
         assert_eq!(loaded.timeline.len(), 2);
         assert_eq!(loaded.vm_states.len(), 1);
+    }
+
+    #[test]
+    fn triage_markdown_renders_assertion_details() {
+        let mut report = test_triage_report();
+        report.assertion.details = Some(serde_json::json!({"value": 7}));
+        let md = format_triage_markdown(&report);
+        assert!(md.contains("**Details:**"));
+        assert!(md.contains("\"value\": 7"));
     }
 
     #[test]

@@ -990,6 +990,18 @@ mod tests {
     const TWO_REPORT_SECONDS: f64 = 2.0;
 
     #[test]
+    fn campaign_report_writer_leaves_no_temp_on_failure() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let target = temporary.path().join("report");
+        std::fs::create_dir(&target).unwrap();
+        let before = std::fs::read_dir(temporary.path()).unwrap().count();
+
+        assert!(write_campaign_report(target.to_str().unwrap(), b"report").is_err());
+        let after = std::fs::read_dir(temporary.path()).unwrap().count();
+        assert_eq!(before, after);
+    }
+
+    #[test]
     fn campaign_report_writer_replaces_symlink_without_following() {
         let temporary = tempfile::tempdir().expect("temporary directory");
         let target = temporary.path().join("target.txt");

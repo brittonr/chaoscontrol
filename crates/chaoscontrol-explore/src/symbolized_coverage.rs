@@ -924,6 +924,22 @@ mod tests {
     }
 
     #[test]
+    fn instrumented_ids_enforce_the_per_location_bound() {
+        let ids: Vec<u64> = (0..MAX_INSTRUMENTED_IDS_PER_LOCATION as u64).collect();
+        let exact = catalog(1, "src/lib.rs", vec![location("src/lib.rs", 10, &ids)]);
+        admit_catalog(&exact, &SymbolCoverageLimits::default()).unwrap();
+
+        let mut over = exact;
+        over.locations[0]
+            .instrumented_ids
+            .push(MAX_INSTRUMENTED_IDS_PER_LOCATION as u64);
+        assert_eq!(
+            admit_catalog(&over, &SymbolCoverageLimits::default()).unwrap_err(),
+            SymbolCoverageError::IdBound
+        );
+    }
+
+    #[test]
     fn limits_enforce_each_named_bound() {
         SymbolCoverageLimits::default().validate().unwrap();
         let over = [

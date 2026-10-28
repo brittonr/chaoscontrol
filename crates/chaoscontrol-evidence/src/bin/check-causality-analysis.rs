@@ -10,7 +10,13 @@ fn main() {
 }
 
 fn run() -> EvidenceResult<()> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    run_with(std::env::args().skip(1).collect())
+}
+
+fn run_with(args: Vec<String>) -> EvidenceResult<()> {
+    if args.iter().any(String::is_empty) {
+        return Err(EvidenceError::new("path arguments must not be empty"));
+    }
     match args.as_slice() {
         [command, request_path] if command == "validate" => {
             let request = read_causality_request_path(request_path)?;
@@ -38,5 +44,15 @@ fn run() -> EvidenceResult<()> {
         _ => Err(EvidenceError::new(
             "usage: check-causality-analysis validate <request.json> [receipt.json]",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(run_with(vec!["validate".to_string(), String::new()]).is_err());
     }
 }

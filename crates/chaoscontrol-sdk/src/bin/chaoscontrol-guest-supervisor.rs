@@ -103,11 +103,7 @@ fn run() -> Result<(), String> {
     if manifest_path.len() > MAX_PATH_BYTES || !Path::new(&manifest_path).is_absolute() {
         return Err("manifest path must be a bounded absolute path".to_string());
     }
-    let metadata = std::fs::symlink_metadata(&manifest_path).map_err(|error| error.to_string())?;
-    if !metadata.file_type().is_file() || metadata.len() > MAX_MANIFEST_BYTES {
-        return Err("manifest must be a bounded regular file".to_string());
-    }
-    let bytes = std::fs::read(&manifest_path).map_err(|error| error.to_string())?;
+    let bytes = read_manifest(Path::new(&manifest_path))?;
     let manifest: ProcessManifest =
         serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
     let admitted = admit_manifest(&manifest).map_err(|error| format!("{error:?}"))?;
@@ -153,6 +149,30 @@ fn emit_events(events: Vec<ProcessLifecycleEvent>) {
     }
 }
 
+fn read_manifest(path: &Path) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.file_type().is_file() || metadata.len() > MAX_MANIFEST_BYTES {
+        return Err("manifest must be a bounded regular file".to_string());
+    }
+    let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    let mut bytes = Vec::with_capacity(capacity);
+    file.take(MAX_MANIFEST_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_MANIFEST_BYTES {
+        return Err("manifest must be a bounded regular file".to_string());
+    }
+    Ok(bytes)
+}
+
 fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
 
@@ -170,6 +190,27 @@ fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn manifest_reads_reject_symlinks_and_fifos() {
+        let root = std::env::temp_dir().join(format!(
+            "chaoscontrol-supervisor-manifest-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let target = root.join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.join("manifest.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_manifest(&link).is_err());
+
+        let fifo = root.join("manifest.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_manifest(&fifo).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn fixture_writes_reject_symlinks_and_fifos() {

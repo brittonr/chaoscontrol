@@ -93,6 +93,13 @@ corrective slots are consumed. No failed or historical source is relabeled.
 
 Use the Nix development shell for the pinned Campaign dependency. It supplies a scoped Cargo transport repair without changing the Rust compiler. See [the source contract and checks](docs/campaign-source-acquisition.md).
 
+## Local event queries
+
+`query-events` exposes bounded queries, receipt validation, and static Markdown
+or DOT timelines over recordings, dlogs, event envelopes, branch markers, and
+canonical fault-stage traces. See [the local event query guide](docs/local-event-query.md)
+for inputs, limits, receipt fields, and non-claims.
+
 ## Features
 
 ### Deterministic Execution

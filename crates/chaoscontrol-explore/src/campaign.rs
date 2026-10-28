@@ -401,6 +401,13 @@ fn write_campaign_report(path: &str, bytes: &[u8]) -> std::io::Result<()> {
 
 /// Load campaign progress from `{dir}/campaign_progress.json`.
 pub fn load_campaign_progress(dir: &str) -> Result<CampaignProgress, std::io::Error> {
+    if dir.is_empty()
+        || dir.len().saturating_add("/campaign_progress.json".len()) > MAX_CAMPAIGN_PATH_BYTES
+    {
+        return Err(std::io::Error::other(
+            "campaign progress path exceeds the path bound",
+        ));
+    }
     let path = Path::new(dir).join("campaign_progress.json");
     let json = crate::bounded_json::read_bounded_json(&path, MAX_CAMPAIGN_PROGRESS_BYTES)?;
     let progress: CampaignProgress = serde_json::from_str(&json).map_err(std::io::Error::other)?;
@@ -1749,6 +1756,13 @@ mod tests {
     }
 
     // ── campaign progress checkpoint ────────────────────────────────
+
+    #[test]
+    fn campaign_progress_load_rejects_oversized_output_dir() {
+        let dir = "d".repeat(MAX_CAMPAIGN_PATH_BYTES);
+        let error = load_campaign_progress(&dir).expect_err("oversized path");
+        assert!(error.to_string().contains("path bound"));
+    }
 
     #[test]
     fn campaign_progress_path_bound_includes_metadata_file() {

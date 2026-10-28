@@ -562,6 +562,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn artifact_depth_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let mut depth = root.path().to_path_buf();
+        for index in 0..=MAX_DOGFOOD_SCAN_DEPTH {
+            depth.push(format!("d{index}"));
+        }
+        std::fs::create_dir_all(&depth).unwrap();
+        let error = check_dogfood_artifact_sizes(root.path(), 1024).unwrap_err();
+        assert!(error.message().contains("depth bound"));
+    }
+
+    #[test]
     fn artifact_root_symlinks_are_rejected() {
         let target = tempfile::tempdir().unwrap();
         std::fs::write(target.path().join("artifact"), b"oversized").unwrap();

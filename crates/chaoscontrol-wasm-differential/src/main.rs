@@ -807,6 +807,58 @@ fn read_wasmtime_version(profile: &DifferentialProfile, wasmtime: &Path) -> Resu
     Ok(version.to_owned())
 }
 
+fn apply_command_limits(
+    command: &mut Command,
+    maximum_output_bytes: u64,
+    maximum_data_bytes: Option<u64>,
+) -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        let maximum_output_bytes = libc::rlim_t::try_from(maximum_output_bytes)
+            .map_err(|_| Error::Invalid(String::from("output limit exceeds rlim_t")))?;
+        let data_limit = maximum_data_bytes
+            .map(libc::rlim_t::try_from)
+            .transpose()
+            .map_err(|_| Error::Invalid(String::from("data limit exceeds rlim_t")))?;
+        // The pinned runner allocates through the system allocator. On Linux,
+        // RLIMIT_DATA also bounds anonymous mmap allocations. RLIMIT_FSIZE
+        // keeps child stdout, stderr, and reports from filling the disk.
+        // Only async-signal-safe syscalls run between fork and exec.
+        unsafe {
+            command.pre_exec(move || {
+                let file_limit = libc::rlimit {
+                    rlim_cur: maximum_output_bytes,
+                    rlim_max: maximum_output_bytes,
+                };
+                if libc::setrlimit(libc::RLIMIT_FSIZE, &file_limit) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if let Some(limit) = data_limit {
+                    let data_limit = libc::rlimit {
+                        rlim_cur: limit,
+                        rlim_max: limit,
+                    };
+                    if libc::setrlimit(libc::RLIMIT_DATA, &data_limit) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                }
+                Ok(())
+            });
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        if let Some(maximum_data_bytes) = maximum_data_bytes {
+            return Err(Error::Invalid(format!(
+                "interpreter data limit {maximum_data_bytes} is unsupported on this platform"
+            )));
+        }
+        Ok(())
+    }
+}
+
 fn run_command(
     program: &Path,
     arguments: &[&std::ffi::OsStr],
@@ -827,33 +879,11 @@ fn run_command(
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
-    if let Some(maximum_data_bytes) = maximum_data_bytes {
-        #[cfg(target_os = "linux")]
-        {
-            use std::os::unix::process::CommandExt;
-            let limit = libc::rlimit {
-                rlim_cur: maximum_data_bytes as libc::rlim_t,
-                rlim_max: maximum_data_bytes as libc::rlim_t,
-            };
-            // The pinned runner allocates through the system allocator. On Linux,
-            // RLIMIT_DATA also bounds anonymous mmap allocations. Including host
-            // overhead makes this stricter than the interpreter-only ceiling.
-            // Only this async-signal-safe syscall runs between fork and exec.
-            unsafe {
-                command.pre_exec(move || {
-                    if libc::setrlimit(libc::RLIMIT_DATA, &limit) == 0 {
-                        Ok(())
-                    } else {
-                        Err(std::io::Error::last_os_error())
-                    }
-                });
-            }
-        }
-        #[cfg(not(target_os = "linux"))]
-        return Err(Error::Invalid(format!(
-            "interpreter data limit {maximum_data_bytes} is unsupported on this platform"
-        )));
-    }
+    apply_command_limits(
+        &mut command,
+        profile.bounds.maximum_output_bytes,
+        maximum_data_bytes,
+    )?;
     let mut child = command.spawn().map_err(|source| Error::Process {
         program: program.to_path_buf(),
         source,
@@ -1131,6 +1161,21 @@ mod tests {
         std::fs::remove_file(&member).unwrap();
         std::os::unix::fs::symlink(&target, &member).unwrap();
         assert!(stage_fixture_set(&source, &destination, 1024).is_err());
+    }
+
+    #[test]
+    fn command_limits_bound_child_file_output() {
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("stdout");
+        let file = File::create(&output).unwrap();
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "head -c 4096 /dev/zero"])
+            .stdout(Stdio::from(file));
+        apply_command_limits(&mut command, 16, None).unwrap();
+        let status = command.status().unwrap();
+        assert!(!status.success());
+        assert!(std::fs::metadata(&output).unwrap().len() <= 16);
     }
 
     #[test]

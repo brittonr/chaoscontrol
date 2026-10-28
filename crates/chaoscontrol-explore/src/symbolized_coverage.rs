@@ -875,13 +875,45 @@ mod tests {
             SymbolCoverageError::ReceiptDrift
         );
 
-        let mut wrong_digest = receipt;
+        let mut wrong_digest = receipt.clone();
         wrong_digest.report_digest[0] ^= 1;
         assert_eq!(
             validate_receipt(
                 &wrong_digest,
                 &catalogs,
                 &loads,
+                &observations,
+                [4; 32],
+                &limits
+            )
+            .unwrap_err(),
+            SymbolCoverageError::ReceiptDrift
+        );
+
+        let changed_catalogs = vec![catalog(
+            1,
+            "src/lib.rs",
+            vec![location("src/lib.rs", 11, &[1])],
+        )];
+        assert_eq!(
+            validate_receipt(
+                &receipt,
+                &changed_catalogs,
+                &loads,
+                &observations,
+                [4; 32],
+                &limits
+            )
+            .unwrap_err(),
+            SymbolCoverageError::ReceiptDrift
+        );
+
+        let changed_loads = vec![load(1, "src/lib.rs", 1)];
+        assert_eq!(
+            validate_receipt(
+                &receipt,
+                &catalogs,
+                &changed_loads,
                 &observations,
                 [4; 32],
                 &limits

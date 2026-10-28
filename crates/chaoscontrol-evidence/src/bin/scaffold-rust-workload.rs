@@ -42,6 +42,7 @@ fn run(args: Vec<String>) -> Result<String, (u8, String)> {
         ));
     }
     let destination = PathBuf::from(&args[0]);
+    admit_destination(&destination).map_err(|error| (USAGE_EXIT, error))?;
     let workload = args.get(1).map_or(DEFAULT_WORKLOAD, String::as_str);
     let template = PathBuf::from(required_env("CHAOSCONTROL_SCAFFOLD_TEMPLATE")?);
     let source_root = required_env("CHAOSCONTROL_SOURCE_ROOT")?;
@@ -69,6 +70,13 @@ fn run(args: Vec<String>) -> Result<String, (u8, String)> {
         destination.display(),
         destination.join(MANIFEST_FILE).display()
     ))
+}
+
+fn admit_destination(destination: &Path) -> Result<(), String> {
+    if destination.as_os_str().is_empty() {
+        return Err(String::from("scaffold destination must not be empty"));
+    }
+    Ok(())
 }
 
 fn required_env(name: &str) -> Result<String, (u8, String)> {
@@ -262,6 +270,12 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn empty_destination_is_rejected() {
+        assert!(admit_destination(Path::new("")).is_err());
+        assert!(admit_destination(Path::new("workload")).is_ok());
     }
 
     #[test]

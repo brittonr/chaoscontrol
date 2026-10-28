@@ -847,6 +847,7 @@ mod tests {
         let mut reader = DlogReader::open(&path).unwrap();
         assert!(reader.next_record().unwrap().is_some());
         assert!(reader.next_record().is_err());
+        assert!(dlog_stats(&path).is_err());
     }
 
     #[test]

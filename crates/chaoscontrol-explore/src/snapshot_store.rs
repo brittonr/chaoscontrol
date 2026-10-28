@@ -378,8 +378,12 @@ impl SnapshotStore for FileSnapshotStore {
                 path: dir.display().to_string(),
             });
         }
-        for entry in fs::read_dir(&dir).map_err(|source| SnapshotStoreError::Io { source })? {
-            let entry = entry.map_err(|source| SnapshotStoreError::Io { source })?;
+        let mut entries = fs::read_dir(&dir)
+            .map_err(|source| SnapshotStoreError::Io { source })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| SnapshotStoreError::Io { source })?;
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in entries {
             let rel = format!("{SNAPSHOT_DIR}/{}", entry.file_name().to_string_lossy());
             if !keep.contains(&rel) {
                 fs::remove_file(entry.path())
@@ -729,6 +733,21 @@ mod tests {
             Err(SnapshotStoreError::NotDirectory { .. })
         ));
         assert_eq!(fs::read(&outside_file).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn gc_removes_only_unreferenced_snapshots() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileSnapshotStore::new(dir.path());
+        let first = store.put_snapshot(&dummy_snapshot(1), 0).unwrap();
+        let second = store.put_snapshot(&dummy_snapshot(2), 0).unwrap();
+
+        assert_eq!(
+            store.gc_unreferenced(std::slice::from_ref(&first)).unwrap(),
+            1
+        );
+        assert!(store.has_snapshot(&first));
+        assert!(!store.has_snapshot(&second));
     }
 
     #[test]

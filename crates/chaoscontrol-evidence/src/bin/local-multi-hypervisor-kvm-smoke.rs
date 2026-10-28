@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -23,6 +23,7 @@ const EXECUTABLE_MAX_BYTES: u64 = 1_073_741_824;
 const ORCHESTRATOR_TIMEOUT_MS: u64 = 900_000;
 const STDIN_MAX_BYTES: u64 = 1_024;
 const OUTPUT_MAX_BYTES: u64 = 8_388_608;
+const MAX_RECEIPT_BYTES: u64 = 64 * 1024 * 1024;
 const POLL_INTERVAL_MS: u64 = 10;
 const TEARDOWN_TIMEOUT_MS: u64 = 1_000;
 const USAGE_EXIT: u8 = 2;
@@ -113,8 +114,7 @@ fn run(args: Vec<String>) -> Result<i32, String> {
         .map_err(|error| error.to_string())?;
     let scheduler_exit_code = captured.observation.exit_code.unwrap_or(1);
     let exit_code = if scheduler_exit_code == 0 && captured.observation.disposition == "succeeded" {
-        let bytes = fs::read(&receipt_path)
-            .map_err(|error| format!("{}: {error}", receipt_path.display()))?;
+        let bytes = read_bounded(&receipt_path, MAX_RECEIPT_BYTES)?;
         let receipt = serde_json::from_slice(&bytes)
             .map_err(|error| format!("{}: {error}", receipt_path.display()))?;
         campaign_exit_code(&receipt)?
@@ -321,6 +321,30 @@ fn write_summary(
         .map_err(|error| format!("{}: {error}", out.join("summary.txt").display()))
 }
 
+fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(bytes)
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
@@ -386,6 +410,22 @@ mod tests {
 #[cfg(test)]
 mod publication_tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn receipt_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded(&link, MAX_RECEIPT_BYTES).is_err());
+
+        let fifo = root.path().join("receipt.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded(&fifo, MAX_RECEIPT_BYTES).is_err());
+    }
 
     #[test]
     fn atomic_output_does_not_follow_symlinks() {

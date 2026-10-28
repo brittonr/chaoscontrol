@@ -61,6 +61,7 @@ fn write_report(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
     let directory = std::fs::File::open(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;
@@ -124,6 +125,14 @@ mod tests {
 
         assert!(write_report(&target, b"receipt").is_err());
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), before);
+    }
+
+    #[test]
+    fn report_writer_creates_parent_directories() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let path = root.path().join("nested/receipt.json");
+        write_report(&path, b"receipt").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"receipt");
     }
 
     #[test]

@@ -76,9 +76,7 @@ pub(crate) fn read_bounded_regular_bytes(
             path.display()
         )));
     }
-    let bounded_length = maximum_bytes
-        .checked_add(1)
-        .ok_or_else(|| EvidenceError::new("input byte limit overflow"))?;
+    let bounded_length = maximum_bytes.saturating_add(1);
     let capacity = usize::try_from(metadata.len())
         .unwrap_or(usize::MAX)
         .min(usize::try_from(maximum_bytes).unwrap_or(usize::MAX));
@@ -181,6 +179,10 @@ mod tests {
         );
         assert!(read_bounded_regular_bytes(&path, 3).is_err());
         assert_eq!(read_bounded_regular_file(&path, 4).unwrap(), "abcd");
+        assert_eq!(
+            read_bounded_regular_bytes(&path, u64::MAX).unwrap(),
+            b"abcd".to_vec()
+        );
     }
 
     #[test]

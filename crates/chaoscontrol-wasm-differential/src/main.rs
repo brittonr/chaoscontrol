@@ -336,7 +336,15 @@ fn execute_corpus(
     wasmtime: &Path,
     artifacts: &Path,
 ) -> Result<Vec<CaseComparison>, Error> {
-    let fixture_root = bundle.join(FIXTURE_DIRECTORY);
+    let bundle_fixtures = bundle.join(FIXTURE_DIRECTORY);
+    let staged_fixtures = TempDir::new()
+        .map_err(|source| io_error(Path::new("temporary fixture directory"), source))?;
+    stage_fixture_set(
+        &bundle_fixtures,
+        staged_fixtures.path(),
+        profile.bounds.maximum_input_bytes,
+    )?;
+    let fixture_root = staged_fixtures.path();
     // Admit every selected binary before invoking either runtime shell.
     for case in FIXED_CASES {
         let bytes = read_bounded(
@@ -368,7 +376,7 @@ fn execute_corpus(
         .ok_or_else(|| Error::Invalid(String::from("host runner is not in bundle manifest")))?
         .digest_blake3
         .as_str();
-    let base_report = run_spacewasm(profile, bundle, &fixture_root, expected_runner_digest)?;
+    let base_report = run_spacewasm(profile, bundle, fixture_root, expected_runner_digest)?;
     if base_report.source_revision != profile.spacewasm_revision {
         return Err(Error::Invalid(String::from(
             "SpaceWasm runner source revision drift",
@@ -427,7 +435,7 @@ fn execute_corpus(
             profile,
             bundle,
             wasmtime,
-            &fixture_root,
+            fixture_root,
             expected_runner_digest,
             &case,
         )?;
@@ -435,7 +443,7 @@ fn execute_corpus(
             profile,
             bundle,
             wasmtime,
-            &fixture_root,
+            fixture_root,
             expected_runner_digest,
             &case,
             comparison,
@@ -467,7 +475,7 @@ fn execute_corpus(
             profile,
             bundle,
             wasmtime,
-            &fixture_root,
+            fixture_root,
             expected_runner_digest,
             &case,
         )?;
@@ -475,7 +483,7 @@ fn execute_corpus(
             profile,
             bundle,
             wasmtime,
-            &fixture_root,
+            fixture_root,
             expected_runner_digest,
             &case,
             comparison,
@@ -680,6 +688,15 @@ fn minimize_generated_mismatch(
         minimized_module_hex: encode_hex(&minimized_module),
     });
     Ok(minimized_comparison)
+}
+
+fn stage_fixture_set(source: &Path, destination: &Path, maximum_bytes: u64) -> Result<(), Error> {
+    for file_name in FIXTURE_FILES {
+        let bytes = read_bounded(&source.join(file_name), maximum_bytes)?;
+        let path = destination.join(file_name);
+        fs::write(&path, &bytes).map_err(|source| io_error(&path, source))?;
+    }
+    Ok(())
 }
 
 fn copy_fixture_set(source: &Path, destination: &Path, maximum_bytes: u64) -> Result<(), Error> {
@@ -1088,6 +1105,32 @@ mod tests {
                 ["status"],
             "passed"
         );
+    }
+
+    #[test]
+    fn fixture_set_is_staged_and_rejects_symlink_members() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        for (index, file_name) in FIXTURE_FILES.iter().enumerate() {
+            std::fs::write(source.join(file_name), format!("fixture-{index}")).unwrap();
+        }
+        let destination = root.path().join("destination");
+        std::fs::create_dir(&destination).unwrap();
+        stage_fixture_set(&source, &destination, 1024).unwrap();
+        for (index, file_name) in FIXTURE_FILES.iter().enumerate() {
+            assert_eq!(
+                std::fs::read(destination.join(file_name)).unwrap(),
+                format!("fixture-{index}").into_bytes()
+            );
+        }
+
+        let target = root.path().join("target");
+        std::fs::write(&target, b"target").unwrap();
+        let member = source.join(FIXTURE_FILES[0]);
+        std::fs::remove_file(&member).unwrap();
+        std::os::unix::fs::symlink(&target, &member).unwrap();
+        assert!(stage_fixture_set(&source, &destination, 1024).is_err());
     }
 
     #[test]

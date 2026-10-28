@@ -1,6 +1,6 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::Duration;
@@ -841,9 +841,29 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path, maximum_bytes: u64) ->
     })
 }
 
+fn open_regular_input(path: &Path) -> Result<File, Error> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|source| io_error(path, source))?;
+    if !file
+        .metadata()
+        .map_err(|source| io_error(path, source))?
+        .file_type()
+        .is_file()
+    {
+        return Err(Error::Invalid(format!(
+            "path is not one regular no-follow file: {}",
+            path.display()
+        )));
+    }
+    Ok(file)
+}
+
 fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
-    ensure_regular_file(path)?;
-    let metadata = fs::metadata(path).map_err(|source| io_error(path, source))?;
+    let file = open_regular_input(path)?;
+    let metadata = file.metadata().map_err(|source| io_error(path, source))?;
     if metadata.len() > maximum_bytes {
         return Err(Error::Invalid(format!(
             "file exceeds byte bound at {}: actual={} maximum={maximum_bytes}",
@@ -851,19 +871,28 @@ fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
             metadata.len()
         )));
     }
-    fs::read(path).map_err(|source| io_error(path, source))
+    let mut bytes = Vec::new();
+    file.take(maximum_bytes + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|source| io_error(path, source))?;
+    if bytes.len() as u64 > maximum_bytes {
+        return Err(Error::Invalid(format!(
+            "file exceeds byte bound at {}: maximum={maximum_bytes}",
+            path.display()
+        )));
+    }
+    Ok(bytes)
 }
 
 fn hash_file(path: &Path, maximum_bytes: u64) -> Result<String, Error> {
-    ensure_regular_file(path)?;
-    let metadata = fs::metadata(path).map_err(|source| io_error(path, source))?;
+    let mut input = open_regular_input(path)?;
+    let metadata = input.metadata().map_err(|source| io_error(path, source))?;
     if metadata.len() > maximum_bytes {
         return Err(Error::Invalid(format!(
             "file exceeds hash bound: {}",
             path.display()
         )));
     }
-    let mut input = File::open(path).map_err(|source| io_error(path, source))?;
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; HASH_BUFFER_BYTES];
     loop {
@@ -911,5 +940,27 @@ fn io_error(path: &Path, source: std::io::Error) -> Error {
     Error::Io {
         path: path.to_path_buf(),
         source,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn input_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("input.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded(&link, 16).is_err());
+        assert!(hash_file(&link, 16).is_err());
+
+        let fifo = root.path().join("input.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded(&fifo, 16).is_err());
     }
 }

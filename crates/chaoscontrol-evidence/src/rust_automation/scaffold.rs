@@ -15,6 +15,7 @@ pub struct ScaffoldPlan {
 }
 
 const MAX_SCAFFOLD_WORKLOAD_NAME_BYTES: usize = 128;
+const MAX_SCAFFOLD_SOURCE_ROOT_BYTES: usize = 4_096;
 
 pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
     if workload.is_empty()
@@ -27,9 +28,12 @@ pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
             "workload name is empty or contains unsupported characters",
         ));
     }
-    if source_root.is_empty() || source_root.contains(['\0', '\n', '\r', '"', '\\']) {
+    if source_root.is_empty()
+        || source_root.len() > MAX_SCAFFOLD_SOURCE_ROOT_BYTES
+        || source_root.contains(['\0', '\n', '\r', '"', '\\'])
+    {
         return Err(String::from(
-            "source root is empty or contains unsupported characters",
+            "source root is empty, oversized, or contains unsupported characters",
         ));
     }
     let package = format!(
@@ -69,7 +73,9 @@ pub fn transform_text(text: &str, replacements: &[(String, String)]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{plan, transform_text, MAX_SCAFFOLD_WORKLOAD_NAME_BYTES};
+    use super::{
+        plan, transform_text, MAX_SCAFFOLD_SOURCE_ROOT_BYTES, MAX_SCAFFOLD_WORKLOAD_NAME_BYTES,
+    };
 
     #[test]
     fn projection_preserves_public_manifest_and_replacements() {
@@ -96,5 +102,10 @@ mod tests {
         assert!(plan("valid", "").is_err());
         assert!(plan("valid", "/bad\"root").is_err());
         assert!(plan("valid", "/bad\\root").is_err());
+        assert!(plan(
+            "valid",
+            &format!("/{}", "x".repeat(MAX_SCAFFOLD_SOURCE_ROOT_BYTES))
+        )
+        .is_err());
     }
 }

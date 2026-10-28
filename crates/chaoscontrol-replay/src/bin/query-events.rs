@@ -546,6 +546,17 @@ mod tests {
     }
 
     #[test]
+    fn failed_query_output_leaves_no_temporary_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("out");
+        std::fs::create_dir(&target).unwrap();
+        let before = std::fs::read_dir(temp.path()).unwrap().count();
+
+        assert!(write_bytes(&target, b"body").is_err());
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), before);
+    }
+
+    #[test]
     fn query_output_replaces_an_existing_regular_file() {
         let temp = tempfile::tempdir().expect("tempdir");
         let path = temp.path().join("out.json");

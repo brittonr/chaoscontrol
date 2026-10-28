@@ -510,6 +510,24 @@ mod tests {
     }
 
     #[test]
+    fn pause_requests_enforce_the_count_boundary() {
+        let request = |index: usize| PauseControlRequest {
+            requester: "liveness-check".to_string(),
+            start_tick: (index as u64) * 2,
+            end_tick: (index as u64) * 2 + 1,
+        };
+        let admitted = (0..MAX_PAUSE_REQUESTS).map(request).collect::<Vec<_>>();
+        admit_pause_requests(&admitted).unwrap();
+
+        let mut exceeded = admitted;
+        exceeded.push(request(MAX_PAUSE_REQUESTS));
+        assert_eq!(
+            admit_pause_requests(&exceeded).unwrap_err(),
+            MechanismError::TooManyPauseRequests
+        );
+    }
+
+    #[test]
     fn pause_requests_reject_overlapping_windows() {
         let first = PauseControlRequest {
             requester: "liveness-check".to_string(),

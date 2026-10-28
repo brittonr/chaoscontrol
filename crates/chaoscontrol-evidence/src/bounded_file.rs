@@ -198,6 +198,15 @@ mod tests {
     }
 
     #[test]
+    fn no_replace_publication_rejects_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("report.txt");
+        std::fs::create_dir(&target).unwrap();
+        assert!(write_new_bytes(&target, b"replacement").is_err());
+        assert!(target.is_dir());
+    }
+
+    #[test]
     fn publication_rejects_empty_paths() {
         assert!(write_bytes_replace(Path::new(""), b"value").is_err());
         assert!(write_new_bytes(Path::new(""), b"value").is_err());

@@ -344,6 +344,13 @@ impl DashboardState {
 
     /// Update state from a BugFound event.
     pub fn apply_bug_found(&mut self, bug: DashboardBug) {
+        if self
+            .bugs
+            .iter()
+            .any(|existing| existing.bug_id == bug.bug_id)
+        {
+            return;
+        }
         self.bugs.push(bug);
     }
 }
@@ -420,6 +427,22 @@ mod tests {
         assert_eq!(state.total_edges, 42);
         assert_eq!(state.round_history.len(), 1);
         assert_eq!(state.round_history[0].new_edges, 42);
+    }
+
+    #[test]
+    fn test_dashboard_state_ignores_duplicate_bug_events() {
+        let mut state = DashboardState::empty();
+        let bug = DashboardBug {
+            bug_id: 7,
+            assertion_id: 12345,
+            assertion_message: "leader completeness".to_string(),
+            round: 3,
+            tick: 500,
+            schedule_length: 5,
+        };
+        state.apply_bug_found(bug.clone());
+        state.apply_bug_found(bug);
+        assert_eq!(state.bugs.len(), 1);
     }
 
     #[test]

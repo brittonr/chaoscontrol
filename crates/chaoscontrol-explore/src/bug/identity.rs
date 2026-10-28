@@ -86,6 +86,25 @@ pub fn validate_reported_bug_identities(
     bugs: &[BugReport],
     assertions: &[AssertionDetail],
 ) -> Result<(), BugSetIdentityError> {
+    let mut bug_ids = std::collections::BTreeSet::new();
+    for bug in bugs {
+        if !bug_ids.insert(bug.bug_id) {
+            return Err(BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source: BugIdentityError::Duplicate,
+            });
+        }
+    }
+    let mut details_by_fingerprint: std::collections::BTreeMap<_, Vec<_>> =
+        std::collections::BTreeMap::new();
+    for detail in assertions {
+        if let Some(candidate) = detail.identity.as_ref() {
+            details_by_fingerprint
+                .entry(candidate.fingerprint)
+                .or_insert_with(Vec::new)
+                .push(detail);
+        }
+    }
     for bug in bugs {
         let identity = validate_carrier(bug.assertion_id, Some(&bug.assertion_identity)).map_err(
             |source| BugSetIdentityError {
@@ -99,13 +118,18 @@ pub fn validate_reported_bug_identities(
                 source,
             }
         })?;
-        let exact_matches = assertions
-            .iter()
-            .filter(|detail| {
-                detail_matches_identity(detail, identity)
-                    && bug.process_instances.is_subset(&detail.process_instances)
-            })
-            .count();
+        let exact_matches =
+            details_by_fingerprint
+                .get(&identity.fingerprint)
+                .map_or(0, |details| {
+                    details
+                        .iter()
+                        .filter(|detail| {
+                            detail_matches_identity(detail, identity)
+                                && bug.process_instances.is_subset(&detail.process_instances)
+                        })
+                        .count()
+                });
         if exact_matches != 1 {
             return Err(BugSetIdentityError {
                 bug_id: bug.bug_id,
@@ -119,7 +143,8 @@ pub fn validate_reported_bug_identities(
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_restored_report, validate_carrier, validate_fallback_scope, BugIdentityError,
+        resolve_restored_report, validate_carrier, validate_fallback_scope,
+        validate_reported_bug_identities, BugIdentityError,
     };
     use chaoscontrol_fault::oracle::{PropertyOracle, Verdict};
     use chaoscontrol_protocol::admission::{
@@ -353,5 +378,31 @@ mod tests {
             validate_carrier(SHARED_ALIAS.into(), None),
             Err(BugIdentityError::Missing)
         );
+    }
+
+    #[test]
+    fn reported_bug_identities_reject_duplicate_ids() {
+        let bug = crate::corpus::BugReport {
+            bug_id: 1,
+            assertion_id: 1,
+            assertion_identity: crate::test_support::assertion_identity(1),
+            fallback_scope: None,
+            process_instances: Default::default(),
+            marker_context: None,
+            assertion_location: "assertion 1".to_string(),
+            schedule: chaoscontrol_fault::schedule::FaultSchedule::new(),
+            snapshot: None,
+            tick: 0,
+            replay_parent_depth: 0,
+            replay_parent_snapshot_ref: None,
+            dedup_key: 1,
+            schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
+            random_faults: false,
+        };
+        let error = validate_reported_bug_identities(&[bug.clone(), bug], &[]).unwrap_err();
+        assert_eq!(error.bug_id, 1);
+        assert_eq!(error.source, BugIdentityError::Duplicate);
     }
 }

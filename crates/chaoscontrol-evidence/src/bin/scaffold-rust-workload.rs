@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -155,8 +155,7 @@ fn transform_files(root: &Path, replacements: &[(String, String)]) -> Result<(),
                 metadata.len(),
                 MAX_TEMPLATE_FILE_BYTES,
             )?;
-            let text = fs::read_to_string(entry.path())
-                .map_err(|error| format!("{}: {error}", entry.path().display()))?;
+            let text = read_bounded_text(&entry.path(), MAX_TEMPLATE_FILE_BYTES)?;
             write_existing(
                 &entry.path(),
                 transform_text(&text, replacements).as_bytes(),
@@ -171,6 +170,30 @@ fn has_text_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
         .is_some_and(|value| TEXT_EXTENSIONS.contains(&value))
+}
+
+fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut text = String::new();
+    file.take(limit + 1)
+        .read_to_string(&mut text)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if text.len() as u64 > limit {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(text)
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -201,6 +224,7 @@ fn shell_error(error: impl ToString) -> (u8, String) {
 #[cfg(test)]
 mod publication_tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
 
     #[test]
     fn atomic_manifest_does_not_follow_symlinks() {
@@ -213,6 +237,21 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn template_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.rs");
+        fs::write(&target, b"source").unwrap();
+        let link = root.path().join("module.rs");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded_text(&link, MAX_TEMPLATE_FILE_BYTES).is_err());
+
+        let fifo = root.path().join("module.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded_text(&fifo, MAX_TEMPLATE_FILE_BYTES).is_err());
     }
 
     #[test]

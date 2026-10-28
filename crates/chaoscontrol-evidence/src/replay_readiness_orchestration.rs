@@ -6,7 +6,6 @@
 // r[impl chaoscontrol.typed_operator_commands.evidence]
 
 use std::ffi::OsString;
-use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -163,12 +162,17 @@ fn hash_file_bounded(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> 
         !link_metadata.file_type().is_symlink(),
         format!("typed command executable is a symlink: {}", path.display()),
     )?;
-    let mut file = File::open(path).map_err(|error| {
-        EvidenceError::new(format!(
-            "typed command executable open {}: {error}",
-            path.display()
-        ))
-    })?;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|error| {
+            EvidenceError::new(format!(
+                "typed command executable open {}: {error}",
+                path.display()
+            ))
+        })?;
     let metadata = file.metadata().map_err(|error| {
         EvidenceError::new(format!(
             "typed command executable metadata {}: {error}",

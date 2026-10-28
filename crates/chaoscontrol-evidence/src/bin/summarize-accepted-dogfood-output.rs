@@ -93,6 +93,9 @@ fn read_optional(path: &Path) -> Result<Option<Value>, String> {
     if bytes.len() as u64 > MAX_SUMMARY_BYTES {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
+    }
     chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
         .map_err(|error| format!("{}: {}", path.display(), error))?;
     let value: Value = serde_json::from_slice(&bytes)
@@ -106,6 +109,11 @@ fn read_optional(path: &Path) -> Result<Option<Value>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_reads_reject_length_changes() {
+        assert!(read_optional(std::path::Path::new("/proc/self/cmdline")).is_err());
+    }
 
     #[test]
     fn summary_reads_reject_excessive_nesting() {

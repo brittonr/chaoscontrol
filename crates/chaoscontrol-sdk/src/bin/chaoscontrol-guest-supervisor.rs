@@ -212,6 +212,14 @@ mod tests {
         assert!(read_manifest(&link).is_err());
         assert!(read_bounded_regular(&link, MAX_FIXTURE_STATE_BYTES, "fixture state").is_err());
         assert!(read_manifest(&root).is_err());
+        let oversized = root.join("oversized.json");
+        std::fs::File::create(&oversized)
+            .unwrap()
+            .set_len(MAX_FIXTURE_STATE_BYTES + 1)
+            .unwrap();
+        assert!(
+            read_bounded_regular(&oversized, MAX_FIXTURE_STATE_BYTES, "fixture state").is_err()
+        );
 
         let fifo = root.join("manifest.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

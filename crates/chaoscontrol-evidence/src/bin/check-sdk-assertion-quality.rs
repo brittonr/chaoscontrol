@@ -30,6 +30,10 @@ fn main() {
         }
     }
 
+    if admit_input(&input).is_err() {
+        eprintln!("--input must not be empty");
+        std::process::exit(2);
+    }
     let result = if let Some(input) = input {
         check_sdk_assertion_quality_path(input).map(|gate| {
             println!(
@@ -55,5 +59,26 @@ fn main() {
             eprintln!("{err}");
             std::process::exit(1);
         }
+    }
+}
+
+fn admit_input(input: &Option<PathBuf>) -> Result<(), ()> {
+    if input
+        .as_ref()
+        .is_some_and(|path| path.as_os_str().is_empty())
+    {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_input_is_rejected() {
+        assert!(admit_input(&Some(PathBuf::new())).is_err());
+        assert!(admit_input(&None).is_ok());
     }
 }

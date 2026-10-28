@@ -68,7 +68,7 @@ impl TriageEngine {
 
         // Build timeline: events leading up to the bug
         let timeline_start = bug_tick.saturating_sub(1000);
-        let timeline: Vec<_> = recording
+        let mut timeline: Vec<_> = recording
             .events
             .iter()
             .filter(|e| {
@@ -81,6 +81,7 @@ impl TriageEngine {
                 vm_index: event_vm_index(e),
             })
             .collect();
+        timeline.sort_by_key(|entry| entry.tick);
 
         // VM states (simplified - would need actual snapshot access)
         let vm_states: Vec<_> = (0..recording.config.num_vms)
@@ -421,6 +422,17 @@ mod tests {
 
         assert!(has_fault);
         assert!(has_assertion);
+    }
+
+    #[test]
+    fn triage_timeline_is_sorted_by_tick() {
+        let mut recording = test_recording();
+        recording.events.reverse();
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+        assert!(report
+            .timeline
+            .windows(2)
+            .all(|pair| pair[0].tick <= pair[1].tick));
     }
 
     #[test]

@@ -1286,6 +1286,35 @@ mod tests {
             evaluate(&control_process, &events(), &EventQueryLimits::default()).unwrap_err(),
             EventQueryError::InvalidPredicate
         );
+
+        let nested = EventQuery::Filter {
+            input: Box::new(EventQuery::Filter {
+                input: Box::new(EventQuery::All),
+                predicate: EventPredicate::Kind("assert".to_string()),
+            }),
+            predicate: EventPredicate::Kind("assert".to_string()),
+        };
+        let shallow = EventQueryLimits {
+            max_depth: 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&nested, &events(), &shallow).unwrap_err(),
+            EventQueryError::QueryDepth
+        );
+        let over_bound = EventQueryLimits {
+            max_depth: MAX_QUERY_DEPTH + 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events(), &over_bound).unwrap_err(),
+            EventQueryError::QueryBound
+        );
+        let decoded: EventQueryLimits = serde_json::from_str(
+            r#"{"max_nodes":256,"max_scanned_events":100,"max_result_rows":10}"#,
+        )
+        .unwrap();
+        assert_eq!(decoded.max_depth, MAX_QUERY_DEPTH);
     }
 
     #[test]

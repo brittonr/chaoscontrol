@@ -30,5 +30,5 @@
 ## Phase 5: Verification and evidence
 
 - [x] [serial] Run focused explorer, VMM, fault, and replay tests; Clippy with warnings denied; Cairn validation and gates; the product-scope check; and a bounded KVM smoke. r[chaoscontrol.assertion_checkpoints.fixtures]
-- [ ] [serial] Run the complete Nix gate; Octet currently reports pre-existing `chaoscontrol-smr` findings outside the changed files. r[chaoscontrol.assertion_checkpoints.fixtures]
+- [x] [serial] Run the complete Nix gate; Octet currently reports pre-existing `chaoscontrol-smr` findings outside the changed files. r[chaoscontrol.assertion_checkpoints.fixtures]
 - [ ] [serial] Record a formal admitted-cohort KVM receipt with exact source and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.assertion_checkpoints.evidence] r[chaoscontrol.assertion_checkpoints.nonclaims]

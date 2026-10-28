@@ -43,9 +43,9 @@ pub fn check_dogfood_artifact_sizes(
     )?;
     let mut scanned = 0usize;
     let mut oversized = Vec::new();
-    scan_files(root, &mut |path| {
+    scan_files(root, &mut |path, metadata| {
         scanned += 1;
-        let size = path.metadata()?.len();
+        let size = metadata.len();
         if size > max_bytes {
             oversized.push((path.to_path_buf(), size));
         }
@@ -429,7 +429,7 @@ pub fn run_dogfood_guards_selftest() -> EvidenceResult<()> {
 
 fn scan_files(
     root: &Path,
-    visit: &mut impl FnMut(&Path) -> EvidenceResult<()>,
+    visit: &mut impl FnMut(&Path, &std::fs::Metadata) -> EvidenceResult<()>,
 ) -> EvidenceResult<()> {
     let mut discovered = 0_usize;
     scan_files_at(root, 0, &mut discovered, visit)
@@ -439,7 +439,7 @@ fn scan_files_at(
     root: &Path,
     depth: usize,
     discovered: &mut usize,
-    visit: &mut impl FnMut(&Path) -> EvidenceResult<()>,
+    visit: &mut impl FnMut(&Path, &std::fs::Metadata) -> EvidenceResult<()>,
 ) -> EvidenceResult<()> {
     ensure(
         depth <= MAX_DOGFOOD_SCAN_DEPTH,
@@ -460,14 +460,15 @@ fn scan_files_at(
             *discovered <= MAX_DOGFOOD_SCAN_ENTRIES,
             "dogfood artifact scan exceeds entry bound",
         )?;
-        let file_type = std::fs::symlink_metadata(&path)?.file_type();
+        let metadata = std::fs::symlink_metadata(&path)?;
+        let file_type = metadata.file_type();
         if file_type.is_symlink() {
             continue;
         }
         if file_type.is_dir() {
             scan_files_at(&path, depth + 1, discovered, visit)?;
         } else if file_type.is_file() {
-            visit(&path)?;
+            visit(&path, &metadata)?;
         }
     }
     Ok(())

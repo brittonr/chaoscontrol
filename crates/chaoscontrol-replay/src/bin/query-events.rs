@@ -140,6 +140,21 @@ fn execute(cli: Cli) -> Result<(), String> {
             limits,
         } => {
             ensure_distinct_outputs(&output, &receipt)?;
+            let mut outputs = vec![("result", output.as_path())];
+            if let Some(receipt) = receipt.as_deref() {
+                outputs.push(("receipt", receipt));
+            }
+            ensure_outputs_do_not_overwrite_inputs(
+                &outputs,
+                &[
+                    ("events", events.as_deref()),
+                    ("recording", recording.as_deref()),
+                    ("dlog", dlog.as_deref()),
+                    ("markers", markers.as_deref()),
+                    ("query", Some(query.as_path())),
+                    ("limits", limits.as_deref()),
+                ],
+            )?;
             let limits = read_limits(limits)?;
             let events = load_events(events, recording, dlog, markers, &limits)?;
             let query: EventQuery = read_json(&query)?;
@@ -194,6 +209,11 @@ fn execute(cli: Cli) -> Result<(), String> {
             receipt,
         } => {
             ensure_distinct_outputs(&output, &receipt)?;
+            let mut outputs = vec![("rendered", output.as_path())];
+            if let Some(receipt) = receipt.as_deref() {
+                outputs.push(("receipt", receipt));
+            }
+            ensure_outputs_do_not_overwrite_inputs(&outputs, &[("facts", Some(facts.as_path()))])?;
             let facts: Vec<TimelineFact> = read_json(&facts)?;
             let rendered = match format {
                 TimelineFormat::Markdown => render_timeline_markdown(&facts),
@@ -235,6 +255,22 @@ fn ensure_distinct_outputs(output: &Path, receipt: &Option<PathBuf>) -> Result<(
         return Err(String::from(
             "receipt path must differ from the rendered output path",
         ));
+    }
+    Ok(())
+}
+
+fn ensure_outputs_do_not_overwrite_inputs(
+    outputs: &[(&str, &Path)],
+    inputs: &[(&str, Option<&Path>)],
+) -> Result<(), String> {
+    for (output_label, output) in outputs {
+        for (input_label, input) in inputs {
+            if input.is_some_and(|input| same_output_path(output, input)) {
+                return Err(format!(
+                    "{output_label} path must differ from the {input_label} input path"
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -522,6 +558,29 @@ mod tests {
         })
         .is_err());
         assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn outputs_must_not_overwrite_inputs() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("artifact.json");
+        assert!(ensure_outputs_do_not_overwrite_inputs(
+            &[("result", path.as_path())],
+            &[("events", Some(path.as_path()))],
+        )
+        .is_err());
+        let indirect = temp.path().join(".").join("artifact.json");
+        assert!(ensure_outputs_do_not_overwrite_inputs(
+            &[("result", path.as_path())],
+            &[("events", Some(indirect.as_path()))],
+        )
+        .is_err());
+        let other = temp.path().join("other.json");
+        ensure_outputs_do_not_overwrite_inputs(
+            &[("result", path.as_path())],
+            &[("events", Some(other.as_path()))],
+        )
+        .unwrap();
     }
 
     #[test]

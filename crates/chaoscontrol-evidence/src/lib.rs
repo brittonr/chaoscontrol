@@ -1917,6 +1917,21 @@ impl LocalAssertionSupport {
 
 fn local_assertion_support(root: &Path, workload: &str) -> EvidenceResult<LocalAssertionSupport> {
     let path = root.join(LOCAL_ASSERTION_HARNESSES_PATH);
+    let parent = path
+        .parent()
+        .ok_or_else(|| EvidenceError::new("local assertion harness path lacks parent"))?;
+    match std::fs::canonicalize(parent) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LocalAssertionSupport::default());
+        }
+        Err(error) => return Err(error.into()),
+        Ok(parent) => {
+            ensure(
+                parent.starts_with(std::fs::canonicalize(root)?),
+                "local assertion harness path escapes the repository root",
+            )?;
+        }
+    }
     match std::fs::symlink_metadata(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(LocalAssertionSupport::default());
@@ -3333,6 +3348,15 @@ mod proof_path_tests {
             Err(error) => error,
         };
         assert!(error.message().contains("escapes the evidence directory"));
+    }
+
+    #[test]
+    fn local_assertion_support_rejects_symlinked_parent() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("dogfood-results")).unwrap();
+        let error = local_assertion_support(root.path(), "raft").unwrap_err();
+        assert!(error.message().contains("escapes the repository root"));
     }
 
     #[test]

@@ -583,6 +583,7 @@ pub enum EventQueryError {
     InvalidPredicate,
     InvalidText,
     InvalidWindow,
+    InvalidFormat,
     InvalidField,
     InvalidPointer,
     ReceiptDrift,
@@ -616,6 +617,7 @@ impl core::fmt::Display for EventQueryError {
             Self::InvalidPredicate => "event predicate is malformed or unsupported",
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidWindow => "event query window is reversed",
+            Self::InvalidFormat => "event timeline format is not markdown or dot",
             Self::InvalidField => "event query field is not supported",
             Self::InvalidPointer => "event query JSON pointer is not confined",
             Self::ReceiptDrift => "event query receipt does not match the admitted query facts",
@@ -969,7 +971,7 @@ pub fn timeline_receipt(
     let expected = match format {
         "markdown" => render_timeline_markdown(&ordered)?,
         "dot" => render_timeline_dot(&ordered)?,
-        _ => return Err(EventQueryError::InvalidText),
+        _ => return Err(EventQueryError::InvalidFormat),
     };
     if expected != rendered {
         return Err(EventQueryError::TimelineReceiptDrift);
@@ -2133,7 +2135,7 @@ mod tests {
         );
         assert_eq!(
             timeline_receipt(&facts, "yaml", &markdown).unwrap_err(),
-            EventQueryError::InvalidText
+            EventQueryError::InvalidFormat
         );
     }
 

@@ -1298,6 +1298,12 @@ mod tests {
         assert!(write_trace_json_with_limit(bounded.to_str().unwrap(), b"abcd", 3).is_err());
         assert!(!bounded.exists());
         write_trace_json_with_limit(bounded.to_str().unwrap(), b"abc", 3).unwrap();
+
+        let log_path = dir.path().join("log.json");
+        log.save(log_path.to_str().unwrap()).unwrap();
+        let loaded = TraceLog::load(log_path.to_str().unwrap()).unwrap();
+        assert_eq!(loaded.pid, TEST_PID);
+        assert!(loaded.is_empty());
     }
 
     #[test]

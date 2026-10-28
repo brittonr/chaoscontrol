@@ -1779,6 +1779,12 @@ fn materialize_without_force_does_not_replace_a_dangling_symlink() {
 }
 
 #[test]
+fn empty_replay_proof_coverage_root_is_rejected() {
+    assert!(render_replay_proof_coverage_doc("").is_err());
+    assert!(check_replay_proof_coverage_doc("").is_err());
+}
+
+#[test]
 fn materialize_snapshot_chunks_rejects_chunk_symlink_escapes() {
     let temp = tempfile::tempdir().expect("tempdir");
     let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");

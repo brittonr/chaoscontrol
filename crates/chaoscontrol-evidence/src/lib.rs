@@ -849,6 +849,10 @@ pub fn render_replay_proof_coverage(lines: &[ReplayProofCoverageLine]) -> String
 
 pub fn render_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResult<String> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "replay proof coverage root must not be empty",
+    )?;
     let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
     let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
         EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
@@ -864,6 +868,10 @@ pub fn render_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResul
 
 pub fn check_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "replay proof coverage root must not be empty",
+    )?;
     let expected = render_replay_proof_coverage_doc(root)?;
     let doc_path = root.join(REPLAY_PROOF_COVERAGE_DOC);
     let actual = bounded_file::read_bounded_regular_file(&doc_path, MAX_EVIDENCE_JSON_BYTES)?;

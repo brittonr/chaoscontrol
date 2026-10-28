@@ -492,7 +492,20 @@ fn collect_artifacts(
         total_bytes: 0,
         visited_directories: BTreeSet::new(),
     };
+    let root = match fs::canonicalize(row_output) {
+        Ok(root) => root,
+        Err(error) => {
+            return (
+                Vec::new(),
+                Some(format!(
+                    "failed to resolve artifact root {}: {error}",
+                    row_output.display()
+                )),
+            )
+        }
+    };
     let result = collect_node(
+        &root,
         row_output,
         Path::new("."),
         0,
@@ -505,6 +518,7 @@ fn collect_artifacts(
 }
 
 fn collect_node(
+    root: &Path,
     actual_path: &Path,
     logical_path: &Path,
     depth: usize,
@@ -531,7 +545,14 @@ fn collect_node(
                 actual_path.display()
             )
         })?;
+        if !target.starts_with(root) {
+            return Err(format!(
+                "artifact symlink escapes row output: {}",
+                actual_path.display()
+            ));
+        }
         return collect_node(
+            root,
             &target,
             logical_path,
             depth + 1,
@@ -547,6 +568,12 @@ fn collect_node(
                 actual_path.display()
             )
         })?;
+        if !canonical.starts_with(root) {
+            return Err(format!(
+                "artifact directory escapes row output: {}",
+                actual_path.display()
+            ));
+        }
         if !collector.visited_directories.insert(canonical) {
             return Ok(());
         }
@@ -557,6 +584,7 @@ fn collect_node(
         entries.sort_by_key(std::fs::DirEntry::file_name);
         for entry in entries {
             collect_node(
+                root,
                 &entry.path(),
                 &logical_path.join(entry.file_name()),
                 depth + 1,
@@ -729,7 +757,42 @@ fn unix_seconds() -> Result<u64, String> {
 #[cfg(test)]
 mod publication_tests {
     use super::*;
+    use chaoscontrol_evidence::kvm_release::{CommandSpec, MatrixRow, RowKind, RowLimits};
     use std::os::unix::ffi::OsStrExt;
+
+    fn artifact_row() -> MatrixRow {
+        MatrixRow {
+            id: "row".to_string(),
+            kind: RowKind::DeterministicSmp,
+            required: true,
+            required_capabilities: vec!["kvm".to_string()],
+            command: CommandSpec {
+                program: "true".to_string(),
+                args: vec!["--version".to_string()],
+            },
+            limits: RowLimits {
+                timeout_seconds: 1,
+                max_artifacts: 8,
+                max_artifact_bytes: 1_024,
+            },
+            retained_artifacts: vec!["stdout.log".to_string()],
+        }
+    }
+
+    #[test]
+    fn artifact_scan_rejects_symlinks_outside_row_output() {
+        let root = tempfile::tempdir().unwrap();
+        let row_output = root.path().join("row");
+        fs::create_dir(&row_output).unwrap();
+        let outside = root.path().join("outside.log");
+        fs::write(&outside, b"outside").unwrap();
+        std::os::unix::fs::symlink(&outside, row_output.join("escape.log")).unwrap();
+
+        let (artifacts, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(artifacts.is_empty());
+        assert!(error.unwrap().contains("escapes row output"));
+        assert_eq!(fs::read(&outside).unwrap(), b"outside");
+    }
 
     #[test]
     fn atomic_output_does_not_follow_symlinks() {

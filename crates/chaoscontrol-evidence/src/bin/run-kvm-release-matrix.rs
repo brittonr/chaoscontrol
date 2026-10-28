@@ -308,9 +308,12 @@ fn run_row(
             "worker lacks required capabilities: {}",
             missing_capabilities.join(",")
         );
-        fs::write(row_output.join("stderr.log"), format!("{note}\n"))
-            .map_err(|error| format!("failed to write unsupported row log: {error}"))?;
-        fs::write(row_output.join("stdout.log"), [])
+        write_atomic(
+            &row_output.join("stderr.log"),
+            format!("{note}\n").as_bytes(),
+        )
+        .map_err(|error| format!("failed to write unsupported row log: {error}"))?;
+        write_atomic(&row_output.join("stdout.log"), b"")
             .map_err(|error| format!("failed to write unsupported row output: {error}"))?;
         ExecutionResult {
             status: RowStatus::Unsupported,

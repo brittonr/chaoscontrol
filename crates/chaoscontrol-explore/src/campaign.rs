@@ -430,6 +430,9 @@ fn validate_unique_seeds(seeds: &[u64]) -> Result<(), &'static str> {
     if seeds.is_empty() {
         return Err("campaign must include at least one seed");
     }
+    if seeds.len() > MAX_CAMPAIGN_SEEDS {
+        return Err("campaign seed count exceeds the supported bound");
+    }
     let mut seen = BTreeSet::new();
     for seed in seeds {
         if !seen.insert(*seed) {
@@ -1864,6 +1867,15 @@ mod tests {
             },
             output_dir: "campaign-out".to_string(),
         })
+    }
+
+    #[test]
+    fn campaign_rejects_excessive_seed_counts() {
+        let mut runner = runner_with_policy(FrontierPolicy::Campaign);
+        runner.config.seeds = (0..=MAX_CAMPAIGN_SEEDS as u64).collect();
+
+        let error = runner.run().expect_err("excessive seed set must fail");
+        assert!(format!("{error}").contains("seed count"));
     }
 
     #[test]

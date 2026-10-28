@@ -19,6 +19,7 @@ const BLAKE3_PREFIX: &str = "blake3:";
 const BLAKE3_HEX_CHARS: usize = 64;
 const MAX_MATRIX_ROWS: usize = 32;
 const MAX_MATRIX_ROW_ID_BYTES: usize = 128;
+const MAX_RETAINED_ARTIFACT_PATH_BYTES: usize = 256;
 const MAX_MATRIX_CAPABILITIES: usize = 16;
 const MAX_COMMAND_ARGS: usize = 64;
 const MAX_ARTIFACTS_PER_ROW: usize = 4_096;
@@ -344,9 +345,13 @@ fn validate_matrix_row(
         format!("matrix row artifact byte bound is invalid: {}", row.id),
     );
     push_unless(
-        !row.retained_artifacts.is_empty(),
+        !row.retained_artifacts.is_empty()
+            && row
+                .retained_artifacts
+                .iter()
+                .all(|path| safe_relative_artifact(path)),
         issues,
-        format!("matrix row retained artifact policy is empty: {}", row.id),
+        format!("matrix row retained artifact policy is invalid: {}", row.id),
     );
     // r[impl chaoscontrol.campaign_policy.rollback]
     if let Err(refusal) = admit_command_args(
@@ -356,6 +361,16 @@ fn validate_matrix_row(
     ) {
         issues.push(refusal.to_string());
     }
+}
+
+fn safe_relative_artifact(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_RETAINED_ARTIFACT_PATH_BYTES
+        && !value.contains('\\')
+        && !value.contains('\0')
+        && value
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 fn validate_non_claims(non_claims: &[String], issues: &mut Vec<String>) {

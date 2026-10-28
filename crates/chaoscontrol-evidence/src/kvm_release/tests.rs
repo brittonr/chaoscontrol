@@ -161,6 +161,18 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_rejects_unsafe_retained_artifact_paths() {
+    for path in ["../escape", "/absolute", "nested/../escape", "bad\\path"] {
+        let mut matrix = sample_matrix();
+        matrix.rows[0].retained_artifacts = vec![path.to_string()];
+        assert!(
+            validate_matrix(&matrix).is_err(),
+            "retained artifact path should be rejected: {path}"
+        );
+    }
+}
+
+#[test]
 fn missing_stale_and_dirty_evidence_fail_closed() {
     let matrix = sample_matrix();
     let mut missing = sample_receipt(&matrix);

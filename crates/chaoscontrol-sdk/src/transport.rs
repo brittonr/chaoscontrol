@@ -277,8 +277,11 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
                 json_details,
             });
         }
-        CMD_LIFECYCLE_SETUP_COMPLETE | CMD_LIFECYCLE_SEND_EVENT => {
-            crate::internal::local_emit_lifecycle(message, json_details);
+        CMD_LIFECYCLE_SETUP_COMPLETE => {
+            crate::internal::local_emit_setup(json_details);
+        }
+        CMD_LIFECYCLE_SEND_EVENT => {
+            crate::internal::local_emit_event(message, json_details);
         }
         _ => {}
     }

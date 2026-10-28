@@ -21,6 +21,7 @@ fn antithesis_local_output_env_var_is_accepted() {
     );
     send_event("  milestone  ", &json!({"step": 1}));
     send_event("   ", &json!({"step": 2}));
+    send_event("setup_complete", &json!({"step": 3}));
 
     let content = std::fs::read_to_string(&output).expect("local output");
     let records = content
@@ -48,6 +49,19 @@ fn antithesis_local_output_env_var_is_accepted() {
             .find_map(|record| record.get("   "))
             .expect("verbatim empty-name event record")["step"],
         2
+    );
+    assert_eq!(
+        records
+            .iter()
+            .find_map(|record| record.get("setup_complete"))
+            .expect("event named setup_complete")["step"],
+        3
+    );
+    assert!(
+        records
+            .iter()
+            .all(|record| record.get("antithesis_setup").is_none()),
+        "send_event must not be rewritten as a setup record"
     );
 
     std::fs::remove_file(output).expect("remove local output");

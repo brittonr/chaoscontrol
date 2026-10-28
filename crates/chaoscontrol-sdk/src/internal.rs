@@ -407,23 +407,29 @@ pub(crate) fn local_emit_value(value: &serde_json::Value) {
 }
 
 /// Write a local lifecycle event to the output file.
-pub(crate) fn local_emit_lifecycle(event_name: &str, json_details: &[u8]) {
+pub(crate) fn local_emit_setup(json_details: &[u8]) {
+    let details_str = std::str::from_utf8(json_details).unwrap_or("{}");
+    local_write_line(format!(
+        "{{\"antithesis_setup\": {{\"status\": \"complete\", \"details\": {}}}}}\n",
+        details_str
+    ));
+}
+
+/// Write a named lifecycle event to the output file.
+pub(crate) fn local_emit_event(event_name: &str, json_details: &[u8]) {
+    let details_str = std::str::from_utf8(json_details).unwrap_or("{}");
+    local_write_line(format!(
+        "{{\"{}\": {}}}\n",
+        escape_json(event_name),
+        details_str
+    ));
+}
+
+fn local_write_line(record: String) {
     let mode = get_mode();
     let TransportMode::LocalOutput { writer } = mode else {
         return;
     };
-
-    let details_str = std::str::from_utf8(json_details).unwrap_or("{}");
-
-    let record = if event_name == "setup_complete" {
-        format!(
-            "{{\"antithesis_setup\": {{\"status\": \"complete\", \"details\": {}}}}}\n",
-            details_str
-        )
-    } else {
-        format!("{{\"{}\": {}}}\n", escape_json(event_name), details_str)
-    };
-
     if let Ok(mut guard) = writer.lock() {
         let _ = guard.write_all(record.as_bytes());
         let _ = guard.flush();

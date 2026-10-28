@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -64,17 +65,44 @@ fn value_after<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a s
 }
 
 fn load_json(path: &Path) -> Result<Value, String> {
-    let metadata = fs::metadata(path)
+    let bytes = read_bounded(path, MAX_AUDIT_JSON_BYTES)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))
+}
+
+fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
         .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))?;
     validate_byte_length(
         &format!("invalid JSON in {}", path.display()),
         metadata.len(),
-        MAX_AUDIT_JSON_BYTES,
+        limit,
     )?;
-    let bytes =
-        fs::read(path).map_err(|error| format!("invalid JSON in {}: {error}", path.display()))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))
+    if !metadata.is_file() {
+        return Err(format!(
+            "invalid JSON in {}: not a regular file",
+            path.display()
+        ));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!(
+            "invalid JSON in {}: exceeds the input byte bound",
+            path.display()
+        ));
+    }
+    Ok(bytes)
 }
 
 fn selftest() -> Result<(), String> {
@@ -88,4 +116,25 @@ fn selftest() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn report_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("audit.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded(&link, MAX_AUDIT_JSON_BYTES).is_err());
+
+        let fifo = root.path().join("audit.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded(&fifo, MAX_AUDIT_JSON_BYTES).is_err());
+    }
 }

@@ -1960,6 +1960,45 @@ mod tests {
     }
 
     #[test]
+    fn query_field_and_pointer_enforce_the_byte_boundary() {
+        let field = "a".repeat(MAX_FIELD_BYTES);
+        let exact_field = EventQuery::Map {
+            input: Box::new(EventQuery::All),
+            field,
+            pointer: "/x".to_string(),
+        };
+        evaluate(&exact_field, &events(), &EventQueryLimits::default()).unwrap();
+
+        let over_field = EventQuery::Map {
+            input: Box::new(EventQuery::All),
+            field: "a".repeat(MAX_FIELD_BYTES + 1),
+            pointer: "/x".to_string(),
+        };
+        assert_eq!(
+            evaluate(&over_field, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidField
+        );
+
+        let pointer = format!("/{}", "a".repeat(MAX_FIELD_BYTES - 1));
+        let exact_pointer = EventQuery::Map {
+            input: Box::new(EventQuery::All),
+            field: "x".to_string(),
+            pointer,
+        };
+        evaluate(&exact_pointer, &events(), &EventQueryLimits::default()).unwrap();
+
+        let over_pointer = EventQuery::Map {
+            input: Box::new(EventQuery::All),
+            field: "x".to_string(),
+            pointer: format!("/{}", "a".repeat(MAX_FIELD_BYTES)),
+        };
+        assert_eq!(
+            evaluate(&over_pointer, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidPointer
+        );
+    }
+
+    #[test]
     fn event_text_enforces_the_byte_boundary() {
         let mut event = events()[0].clone();
         event.text = "a".repeat(MAX_EVENT_TEXT_BYTES);

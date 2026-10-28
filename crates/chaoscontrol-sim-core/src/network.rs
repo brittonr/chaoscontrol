@@ -14,6 +14,8 @@ use std::collections::VecDeque;
 pub const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
 /// Maximum raw packets retained for later delivery.
 pub const MAX_NETWORK_IN_FLIGHT_PACKETS: usize = 4_096;
+/// Maximum admitted size of one raw network packet.
+pub const MAX_NETWORK_PACKET_BYTES: usize = 64 * 1024;
 const NETWORK_TICKS_PER_SECOND: u64 = 1_000;
 const DUPLICATE_OFFSET_CHOICES: u64 = 3;
 const MAX_DUPLICATE_OFFSET_TICKS: u64 = DUPLICATE_OFFSET_CHOICES - 1;
@@ -26,6 +28,7 @@ pub enum NetworkSendError {
     ObservationSequence,
     CounterCapacity,
     PacketCapacity,
+    PacketTooLarge,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -414,6 +417,9 @@ impl NetworkFabric {
     ) -> Result<CheckedPacketEffectPlan, NetworkSendError> {
         if from >= self.latency.len() || to >= self.latency.len() {
             return Err(NetworkSendError::InvalidEndpoint);
+        }
+        if packet_bytes > MAX_NETWORK_PACKET_BYTES {
+            return Err(NetworkSendError::PacketTooLarge);
         }
         let partition_observations =
             usize::from(!self.can_reach(from, to) && self.partition_attempt(from, to).is_some());
@@ -1794,6 +1800,20 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+
+    #[test]
+    fn network_packet_size_is_bounded() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        assert!(fabric
+            .try_send_packet(0, 1, vec![0; MAX_NETWORK_PACKET_BYTES], 0)
+            .unwrap());
+        assert_eq!(
+            fabric
+                .try_send_packet(0, 1, vec![0; MAX_NETWORK_PACKET_BYTES + 1], 0)
+                .unwrap_err(),
+            NetworkSendError::PacketTooLarge
+        );
     }
 
     #[test]

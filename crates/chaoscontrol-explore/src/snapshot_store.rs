@@ -25,6 +25,7 @@ const KIB_PER_MIB: u64 = 1024;
 const BYTES_PER_MIB: u64 = BYTES_PER_KIB * KIB_PER_MIB;
 const MAX_COMPRESSED_SNAPSHOT_BYTES: u64 = 256 * BYTES_PER_MIB;
 const MAX_DECOMPRESSED_SNAPSHOT_BYTES: u64 = 2048 * BYTES_PER_MIB;
+const MAX_SNAPSHOT_DIRECTORY_ENTRIES: usize = 4_096;
 const READ_LIMIT_SENTINEL_BYTES: u64 = 1;
 const SNAPSHOT_COMPRESSION_LEVEL: i32 = 3;
 
@@ -378,10 +379,7 @@ impl SnapshotStore for FileSnapshotStore {
                 path: dir.display().to_string(),
             });
         }
-        let mut entries = fs::read_dir(&dir)
-            .map_err(|source| SnapshotStoreError::Io { source })?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|source| SnapshotStoreError::Io { source })?;
+        let mut entries = list_snapshot_entries(&dir)?;
         entries.sort_by_key(std::fs::DirEntry::file_name);
         for entry in entries {
             let rel = format!("{SNAPSHOT_DIR}/{}", entry.file_name().to_string_lossy());
@@ -393,6 +391,19 @@ impl SnapshotStore for FileSnapshotStore {
         }
         Ok(removed)
     }
+}
+
+fn list_snapshot_entries(dir: &Path) -> Result<Vec<fs::DirEntry>, SnapshotStoreError> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|source| SnapshotStoreError::Io { source })? {
+        if entries.len() >= MAX_SNAPSHOT_DIRECTORY_ENTRIES {
+            return Err(SnapshotStoreError::Io {
+                source: std::io::Error::other("snapshot directory entry bound exceeded"),
+            });
+        }
+        entries.push(entry.map_err(|source| SnapshotStoreError::Io { source })?);
+    }
+    Ok(entries)
 }
 
 pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), SnapshotStoreError> {
@@ -432,6 +443,15 @@ pub mod host_snapshot_store_redb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_directory_scan_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..=MAX_SNAPSHOT_DIRECTORY_ENTRIES {
+            std::fs::write(root.path().join(format!("entry-{index}")), b"").unwrap();
+        }
+        assert!(list_snapshot_entries(root.path()).is_err());
+    }
 
     fn dummy_snapshot(tick: u64) -> SimulationSnapshot {
         let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);

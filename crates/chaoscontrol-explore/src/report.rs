@@ -554,7 +554,10 @@ pub fn format_bug(bug: &BugReport) -> String {
     let mut output = String::new();
 
     output.push_str(&format!("   Assertion ID: {}\n", bug.assertion_id));
-    output.push_str(&format!("   Location:     {}\n", bug.assertion_location));
+    output.push_str(&format!(
+        "   Location:     {}\n",
+        flatten_lines(&bug.assertion_location)
+    ));
     if !bug.process_instances.is_empty() {
         output.push_str(&format!(
             "   Process scope: {:?} (not whole-guest evidence)\n",
@@ -1048,6 +1051,13 @@ mod tests {
         assert!(formatted.contains("critical.rs:999"));
         assert!(formatted.contains("Tick:         1000"));
         assert!(formatted.contains("Snapshot:     Not captured"));
+    }
+
+    #[test]
+    fn format_bug_keeps_the_location_on_one_line() {
+        let bug = make_bug(7, 100, "a\nb");
+        let formatted = format_bug(&bug);
+        assert!(formatted.contains("Location:     a b"));
     }
 
     #[test]

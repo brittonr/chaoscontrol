@@ -21,7 +21,10 @@ pub fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> 
     let read_limit = maximum_bytes
         .checked_add(1)
         .ok_or_else(|| invalid_data("JSON input read limit overflow"))?;
-    let mut input = String::new();
+    let capacity = usize::try_from(metadata.len())
+        .unwrap_or(usize::MAX)
+        .min(usize::try_from(maximum_bytes).unwrap_or(usize::MAX));
+    let mut input = String::with_capacity(capacity);
     file.by_ref().take(read_limit).read_to_string(&mut input)?;
     if input.len() as u64 > maximum_bytes {
         return Err(invalid_data("JSON input exceeds the byte limit"));

@@ -131,7 +131,10 @@ fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, Snaps
             path: display_path.to_string(),
             limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
         })?;
-    let mut bytes = Vec::new();
+    let capacity = usize::try_from(metadata.len())
+        .unwrap_or(usize::MAX)
+        .min(usize::try_from(MAX_COMPRESSED_SNAPSHOT_BYTES).unwrap_or(usize::MAX));
+    let mut bytes = Vec::with_capacity(capacity);
     Read::by_ref(&mut file)
         .take(read_limit)
         .read_to_end(&mut bytes)

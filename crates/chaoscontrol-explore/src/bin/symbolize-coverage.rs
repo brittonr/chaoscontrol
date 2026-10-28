@@ -7,7 +7,7 @@ use chaoscontrol_explore::symbolized_coverage::{
 use clap::{Parser, Subcommand};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
@@ -131,34 +131,9 @@ fn run() -> Result<(), String> {
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let bytes = read_bytes_with_limit(path, MAX_INPUT_BYTES)?;
-    serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))
-}
-
-fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
+    let text = chaoscontrol_explore::bounded_json::read_bounded_json(path, MAX_INPUT_BYTES)
         .map_err(|error| format!("{}: {error}", path.display()))?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    if !metadata.is_file() {
-        return Err(format!("{} is not a regular file", path.display()));
-    }
-    if metadata.len() > limit {
-        return Err(format!("{} exceeds the input byte bound", path.display()));
-    }
-    let mut bytes = Vec::new();
-    file.take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    if bytes.len() as u64 > limit {
-        return Err(format!("{} exceeds the input byte bound", path.display()));
-    }
-    Ok(bytes)
+    serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -228,13 +203,8 @@ mod tests {
     }
 
     #[test]
-    fn bounded_reads_and_json_writes_keep_their_limits() {
+    fn json_writes_keep_their_limit() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let path = temp.path().join("input");
-        std::fs::write(&path, b"abc").expect("write");
-        assert_eq!(read_bytes_with_limit(&path, 3).unwrap(), b"abc");
-        assert!(read_bytes_with_limit(&path, 2).is_err());
-
         let json = temp.path().join("out.json");
         assert!(write_json_with_limit(&json, &"abcd", 5).is_err());
         assert!(!json.exists());
@@ -245,12 +215,12 @@ mod tests {
     #[test]
     fn symlink_inputs_and_outputs_are_rejected() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let target = temp.path().join("target");
-        std::fs::write(&target, b"abc").unwrap();
-        let link = temp.path().join("link");
+        let target = temp.path().join("target.json");
+        std::fs::write(&target, b"null").unwrap();
+        let link = temp.path().join("link.json");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        assert!(read_bytes_with_limit(&link, 10).is_err());
+        assert!(read_json::<serde_json::Value>(&link).is_err());
         assert!(write_json(&link, &"abcd").is_err());
-        assert_eq!(std::fs::read(&target).unwrap(), b"abc");
+        assert_eq!(std::fs::read(&target).unwrap(), b"null");
     }
 }

@@ -3,16 +3,16 @@ use std::io::{self, Read};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
-pub(crate) const MAX_CHECKPOINT_BYTES: u64 = 16 * 1024 * 1024;
+pub const MAX_CHECKPOINT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_JSON_DEPTH: usize = 64;
 const MAX_JSON_STRUCTURAL_TOKENS: usize = 500_000;
 const MAX_JSON_STRING_BYTES: usize = 8 * 1024 * 1024;
 
-pub(crate) fn read_checkpoint(path: &Path) -> io::Result<String> {
+pub fn read_checkpoint(path: &Path) -> io::Result<String> {
     read_bounded_json(path, MAX_CHECKPOINT_BYTES)
 }
 
-pub(crate) fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> {
+pub fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> {
     let mut file = open_regular_file(path)?;
     let metadata = file.metadata()?;
     if metadata.len() > maximum_bytes {

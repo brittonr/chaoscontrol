@@ -2271,6 +2271,22 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_dedup_keys_enforce_the_exact_boundary() {
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        checkpoint.seen_dedup_keys = Some((0..MAX_CHECKPOINT_DEDUP_KEYS as u64).collect());
+        validate_checkpoint(&checkpoint).expect("exact dedup bound");
+        checkpoint
+            .seen_dedup_keys
+            .as_mut()
+            .expect("dedup keys")
+            .push(MAX_CHECKPOINT_DEDUP_KEYS as u64);
+        assert!(matches!(
+            validate_checkpoint(&checkpoint),
+            Err(CheckpointError::InvalidBounds { .. })
+        ));
+    }
+
+    #[test]
     fn duplicate_bug_ids_are_rejected() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("checkpoint.json");

@@ -1400,9 +1400,52 @@ macro_rules! cc_assert_sometimes_less_than_or_equal_to {
     };
 }
 
-/// Assert that an option is `Some` every time. Captures `{"value": "None"}` on failure.
+/// Assert that at least one named condition holds, or that an option is
+/// `Some` every time.
+///
+/// The brace-bundle form matches Antithesis's `assert_always_some!`:
+/// `cc_assert_always_some!({name: cond, ...}, "message")` asserts the
+/// disjunction, evaluates every condition, and merges the named booleans
+/// into the details. [`cc_assert_always_any!`] is the unambiguous spelling
+/// for that form.
+///
+/// The expression form is a ChaosControl extension:
+/// `cc_assert_always_some!(option, "message")` asserts `Option::is_some`
+/// and captures `{"value": "None"}` on failure.
 #[macro_export]
 macro_rules! cc_assert_always_some {
+    ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr $(,)?) => {{
+        const _ID: u32 =
+            $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $(let $name = $cond;)*
+        let __cc_cond = false $(|| $name)*;
+        let __cc_det = $crate::__cc_bundle_details!(
+            &$crate::__cc_empty_json!() $(, $name)*
+        );
+        $crate::assert::emit_registered_assertion(
+            $crate::assert::AssertionKind::Always,
+            __cc_cond,
+            _ID,
+            $msg,
+            &__cc_det,
+        );
+    }};
+    ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 =
+            $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $(let $name = $cond;)*
+        let __cc_cond = false $(|| $name)*;
+        let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
+        $crate::assert::emit_registered_assertion(
+            $crate::assert::AssertionKind::Always,
+            __cc_cond,
+            _ID,
+            $msg,
+            &__cc_det,
+        );
+    }};
     ($expr:expr, $msg:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
@@ -1912,6 +1955,13 @@ mod tests {
     fn option_macros_compile() {
         cc_assert_always_some!(Some(42), "has value");
         cc_assert_sometimes_some!(Some("x"), "sometimes has value");
+    }
+
+    #[test]
+    fn always_some_accepts_bundle_and_option_shapes() {
+        cc_assert_always_some!({first: true, second: false}, "bundle any");
+        cc_assert_always_some!({ Some(1) }, "block option expression");
+        cc_assert_always_some!(Some(2), "plain option expression");
     }
 
     #[test]

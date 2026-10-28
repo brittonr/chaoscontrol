@@ -47,8 +47,8 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Implication | (none) | `cc_assert_implies!` | absent |
 | Result ok | (none) | `cc_assert_{always,sometimes}_ok!` | absent |
 | Result err | (none) | `cc_assert_{always,sometimes}_err!` | absent |
-| Option some | `assert_always_some!` (boolean bundle, OR) | `cc_assert_{always,sometimes}_some!` (Option) | divergent |
-| Multi-condition any | `assert_always_some!({name: cond, ...})` (OR) | `cc_assert_always_any!({name: cond, ...})` (OR) | divergent |
+| Bundle any | `assert_always_some!({name: cond, ...})` (OR) | `cc_assert_always_some!({name: cond, ...})` or `cc_assert_always_any!` (OR) | equivalent |
+| Option some (extension) | (none) | `cc_assert_{always,sometimes}_some!(expr)` (Option) | absent |
 | Multi-condition all | `assert_sometimes_all!({name: cond, ...})` (AND) | `cc_assert_sometimes_all!({name: cond, ...})` (AND) | equivalent |
 | Stable identity | (none) | `cc_assert_{always,sometimes,reachable,unreachable}_stable!` | absent |
 | Category/guest | (none) | `cc_assert_{always,sometimes,reachable}_category!` | absent |
@@ -171,15 +171,14 @@ reopened with a new change.
 
 ## Notes and sharp edges
 
-- Antithesis uses the name `assert_always_some!` for the boolean bundle
-  meaning "at least one named condition". ChaosControl uses
-  `cc_assert_always_some!` for `Option::is_some`, so the bundle form is
-  `cc_assert_always_any!`; the conjunction bundle is
-  `cc_assert_sometimes_all!`. Both ChaosControl bundle macros evaluate
-  every condition (no short-circuiting) and merge each named boolean into
-  the assertion details, matching the Antithesis bundle behavior. An empty
-  bundle is admitted: the any-bundle is `false` and the all-bundle is
-  `true`.
+- `cc_assert_always_some!` accepts both the Antithesis brace-bundle shape
+  (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
+  single-expression `Option::is_some` shape. `cc_assert_always_any!` is the
+  unambiguous spelling for the bundle, and `cc_assert_sometimes_all!` is the
+  conjunction bundle. Both bundle macros evaluate every condition (no
+  short-circuiting) and merge each named boolean into the assertion details,
+  matching the Antithesis bundle behavior. An empty bundle is admitted: the
+  any-bundle is `false` and the all-bundle is `true`.
 - `random_choice` has the same name in both SDKs but a different signature:
   Antithesis takes a slice and returns `Option<&T>`, ChaosControl takes a
   bound `n` and returns a `usize` index. Use `random_choice_from` for slice

@@ -15,6 +15,10 @@ fn bundle_assertions_emit_aggregate_condition_and_named_details() {
 
     cc_assert_always_any!({first: true, second: false}, "any passes");
     cc_assert_always_any!({first: false, second: false}, "any fails");
+    cc_assert_always_some!({first: true, second: false}, "always some bundle passes");
+    cc_assert_always_some!({first: false, second: false}, "always some bundle fails");
+    cc_assert_always_some!(Some(7), "always some option passes");
+    cc_assert_always_some!(None::<u8>, "always some option fails");
     cc_assert_sometimes_all!({first: true, second: true}, "all passes");
     cc_assert_sometimes_all!({first: true, second: false}, "all fails");
     cc_assert_sometimes_all!(
@@ -39,7 +43,7 @@ fn bundle_assertions_emit_aggregate_condition_and_named_details() {
         })
         .collect::<BTreeMap<_, _>>();
 
-    assert_eq!(assertions.len(), 5);
+    assert_eq!(assertions.len(), 9);
 
     let any_passes = &assertions["any passes"];
     assert_eq!(any_passes["assert_type"], "always");
@@ -50,6 +54,24 @@ fn bundle_assertions_emit_aggregate_condition_and_named_details() {
     let any_fails = &assertions["any fails"];
     assert_eq!(any_fails["assert_type"], "always");
     assert_eq!(any_fails["condition"], false);
+
+    let some_bundle_passes = &assertions["always some bundle passes"];
+    assert_eq!(some_bundle_passes["assert_type"], "always");
+    assert_eq!(some_bundle_passes["condition"], true);
+    assert_eq!(some_bundle_passes["details"]["first"], true);
+    assert_eq!(some_bundle_passes["details"]["second"], false);
+
+    let some_bundle_fails = &assertions["always some bundle fails"];
+    assert_eq!(some_bundle_fails["assert_type"], "always");
+    assert_eq!(some_bundle_fails["condition"], false);
+
+    let some_option_passes = &assertions["always some option passes"];
+    assert_eq!(some_option_passes["condition"], true);
+    assert_eq!(some_option_passes["details"], json!({}));
+
+    let some_option_fails = &assertions["always some option fails"];
+    assert_eq!(some_option_fails["condition"], false);
+    assert_eq!(some_option_fails["details"]["value"], "None");
 
     let all_passes = &assertions["all passes"];
     assert_eq!(all_passes["assert_type"], "sometimes");

@@ -1557,6 +1557,9 @@ impl NetworkFabric {
 
     /// Set packet loss rate for a specific VM.
     pub fn set_loss_rate(&mut self, target: usize, rate_ppm: u32) -> bool {
+        if rate_ppm > chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX {
+            return false;
+        }
         let Some(slot) = self.loss_rate_ppm.get_mut(target) else {
             return false;
         };
@@ -1567,6 +1570,9 @@ impl NetworkFabric {
 
     /// Set packet corruption rate for a specific VM.
     pub fn set_corruption_rate(&mut self, target: usize, rate_ppm: u32) -> bool {
+        if rate_ppm > chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX {
+            return false;
+        }
         let Some(slot) = self.corruption_rate_ppm.get_mut(target) else {
             return false;
         };
@@ -1618,6 +1624,9 @@ impl NetworkFabric {
 
     /// Set packet duplication rate for a specific VM (parts per million).
     pub fn set_duplicate_rate(&mut self, target: usize, rate_ppm: u32) -> bool {
+        if rate_ppm > chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX {
+            return false;
+        }
         let Some(slot) = self.duplicate_rate_ppm.get_mut(target) else {
             return false;
         };
@@ -1854,6 +1863,21 @@ mod directional_tests {
 
         fabric.in_flight.pop();
         assert!(fabric.try_send(0, 1, vec![1], 0).unwrap());
+    }
+
+    #[test]
+    fn rate_setters_enforce_the_ppm_boundary() {
+        let max = chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX;
+        let mut fabric = NetworkFabric::new(2, 42);
+        assert!(fabric.set_loss_rate(0, max));
+        assert!(fabric.set_corruption_rate(0, max));
+        assert!(fabric.set_duplicate_rate(0, max));
+        assert!(!fabric.set_loss_rate(0, max + 1));
+        assert!(!fabric.set_corruption_rate(0, max + 1));
+        assert!(!fabric.set_duplicate_rate(0, max + 1));
+        assert_eq!(fabric.loss_rate_ppm[0], max);
+        assert_eq!(fabric.corruption_rate_ppm[0], max);
+        assert_eq!(fabric.duplicate_rate_ppm[0], max);
     }
 
     #[test]

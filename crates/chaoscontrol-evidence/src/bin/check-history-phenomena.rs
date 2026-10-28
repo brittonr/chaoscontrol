@@ -34,7 +34,13 @@ fn main() {
 }
 
 fn run() -> EvidenceResult<Option<PhenomenaReport>> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    run_with(std::env::args().skip(1).collect())
+}
+
+fn run_with(args: Vec<String>) -> EvidenceResult<Option<PhenomenaReport>> {
+    if args.iter().any(String::is_empty) {
+        return Err(EvidenceError::new("path arguments must not be empty"));
+    }
     match args.as_slice() {
         [command, path] if command == "validate" => {
             println!("{}", validate_phenomena_history_path(path)?);
@@ -53,5 +59,15 @@ fn run() -> EvidenceResult<Option<PhenomenaReport>> {
         _ => Err(EvidenceError::new(
             "usage: check-history-phenomena validate <history.json> | check <history.json> [report.json] | check-round <operation-history.json>",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(run_with(vec!["validate".to_string(), String::new()]).is_err());
     }
 }

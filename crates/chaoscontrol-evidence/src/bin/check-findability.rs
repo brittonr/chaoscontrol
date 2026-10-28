@@ -37,7 +37,13 @@ fn main() {
 }
 
 fn run() -> EvidenceResult<Option<FindabilityReport>> {
-    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    run_with(std::env::args().skip(1).collect())
+}
+
+fn run_with(args: Vec<String>) -> EvidenceResult<Option<FindabilityReport>> {
+    if args.iter().any(String::is_empty) {
+        return Err(EvidenceError::new("path arguments must not be empty"));
+    }
     match args.as_slice() {
         [command, path] if command == "validate" => {
             let artifact = read_findability_artifact_path(path)?;
@@ -57,5 +63,15 @@ fn run() -> EvidenceResult<Option<FindabilityReport>> {
         _ => Err(EvidenceError::new(
             "usage: check-findability validate <rounds.json> | check <rounds.json> [report.json]",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(run_with(vec!["validate".to_string(), String::new()]).is_err());
     }
 }

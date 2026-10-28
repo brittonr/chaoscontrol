@@ -1342,19 +1342,32 @@ fn ordered_timeline(facts: &[TimelineFact]) -> Result<Vec<TimelineFact>, EventQu
             return Err(EventQueryError::DuplicateTimelineId);
         }
     }
+    let mut complete = BTreeSet::new();
+    let mut visiting = BTreeSet::new();
     for fact in facts {
         if let Some(parent) = fact.parent {
             if !by_id.contains_key(&parent) {
                 return Err(EventQueryError::MissingTimelineParent);
             }
         }
-        let mut seen = BTreeSet::new();
+        if complete.contains(&fact.id) {
+            continue;
+        }
+        let mut path = Vec::new();
         let mut current = Some(fact.id);
         while let Some(id) = current {
-            if !seen.insert(id) {
+            if complete.contains(&id) {
+                break;
+            }
+            if !visiting.insert(id) {
                 return Err(EventQueryError::TimelineCycle);
             }
+            path.push(id);
             current = by_id.get(&id).and_then(|node| node.parent);
+        }
+        for id in path {
+            visiting.remove(&id);
+            complete.insert(id);
         }
     }
     let mut ordered: Vec<_> = by_id.into_values().collect();
@@ -1876,6 +1889,32 @@ mod tests {
         assert_eq!(
             render_timeline_dot(&missing_parent).unwrap_err(),
             EventQueryError::MissingTimelineParent
+        );
+    }
+
+    #[test]
+    fn timeline_node_bound_admits_the_exact_maximum() {
+        let mut facts: Vec<_> = (0..MAX_TIMELINE_NODES)
+            .map(|index| TimelineFact {
+                id: index as u64 + 1,
+                parent: (index > 0).then_some(index as u64),
+                tick: index as u64,
+                kind: "k".to_string(),
+                label: "v".to_string(),
+            })
+            .collect();
+        assert!(render_timeline_markdown(&facts).is_ok());
+
+        facts.push(TimelineFact {
+            id: MAX_TIMELINE_NODES as u64 + 1,
+            parent: Some(MAX_TIMELINE_NODES as u64),
+            tick: MAX_TIMELINE_NODES as u64,
+            kind: "k".to_string(),
+            label: "v".to_string(),
+        });
+        assert_eq!(
+            render_timeline_markdown(&facts).unwrap_err(),
+            EventQueryError::TimelineBound
         );
     }
 

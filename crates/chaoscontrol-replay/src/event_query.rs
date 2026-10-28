@@ -736,6 +736,10 @@ pub fn receipt_for(
     result: &EventQueryResult,
     limits: &EventQueryLimits,
 ) -> Result<EventQueryReceipt, EventQueryError> {
+    for event in events {
+        admit_event(event)?;
+    }
+    validate_source_positions(events)?;
     let rows = serde_json::to_vec(&result.rows).map_err(|_| EventQueryError::Digest)?;
     let rows_digest = *blake3::hash(&rows).as_bytes();
     let mut source_ids: Vec<[u8; 32]> = events.iter().map(|event| event.source_id).collect();
@@ -1700,6 +1704,27 @@ mod tests {
         assert_eq!(
             render_timeline_dot(&facts).unwrap_err(),
             EventQueryError::TimelineBound
+        );
+    }
+
+    #[test]
+    fn receipt_construction_rejects_invalid_events() {
+        let events = events();
+        let limits = EventQueryLimits::default();
+        let result = evaluate(&EventQuery::All, &events, &limits).unwrap();
+
+        let mut conflicting = events.clone();
+        conflicting.push(event(1, 0, 10, "other", "duplicate", None));
+        assert_eq!(
+            receipt_for(&EventQuery::All, &conflicting, &result, &limits).unwrap_err(),
+            EventQueryError::DuplicateSourcePosition
+        );
+
+        let mut invalid = events.clone();
+        invalid[0].schema = String::from("not-the-schema");
+        assert_eq!(
+            receipt_for(&EventQuery::All, &invalid, &result, &limits).unwrap_err(),
+            EventQueryError::InvalidEvent
         );
     }
 

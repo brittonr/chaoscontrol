@@ -178,7 +178,7 @@ fn hash_file_bounded(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> 
     use std::os::unix::fs::OpenOptionsExt;
     let mut file = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
         .open(path)
         .map_err(|error| {
             EvidenceError::new(format!(

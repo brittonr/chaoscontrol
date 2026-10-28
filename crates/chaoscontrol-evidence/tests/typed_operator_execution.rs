@@ -150,6 +150,24 @@ fn signal_termination_is_not_success() {
 
 #[cfg(unix)]
 #[test]
+fn fifo_executable_is_rejected_without_blocking() {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let fifo = temp.path().join("fifo");
+    let path = CString::new(fifo.as_os_str().as_bytes()).expect("fifo path");
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+
+    let mut plan = fixture_plan("exit", "0", "");
+    plan.executable.path = fifo.display().to_string();
+    let error = execute_typed_operator_command(&plan, temp.path())
+        .expect_err("FIFO executable must be rejected");
+    assert!(error.message().contains("not a file"));
+}
+
+#[cfg(unix)]
+#[test]
 fn symlinked_working_directory_cannot_escape_the_root() {
     let root = tempfile::tempdir().expect("root");
     let outside = tempfile::tempdir().expect("outside");

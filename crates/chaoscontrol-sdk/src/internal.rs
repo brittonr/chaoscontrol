@@ -217,9 +217,7 @@ pub fn init() {
     INITIALIZED.get_or_init(|| {
         // Force mode detection
         let _ = get_mode();
-        if matches!(get_mode(), TransportMode::LocalOutput { .. }) {
-            emit_sdk_info();
-        }
+        emit_sdk_info();
         // Emit the assertion catalog so the VMM/oracle knows about
         // every assertion site, including ones never reached at runtime.
         crate::assert::emit_catalog();
@@ -228,17 +226,27 @@ pub fn init() {
 
 /// Emit the Antithesis-compatible SDK metadata record once.
 fn emit_sdk_info() {
-    let value = serde_json::json!({
-        "antithesis_sdk": {
-            "language": {
-                "name": "Rust",
-                "version": option_env!("RUSTC_VERSION").unwrap_or("unknown"),
-            },
-            "sdk_version": env!("CARGO_PKG_VERSION"),
-            "protocol_version": "1",
+    let details = sdk_info_details();
+    match get_mode() {
+        TransportMode::LocalOutput { .. } => {
+            local_emit_value(&serde_json::json!({ "antithesis_sdk": details }));
         }
-    });
-    local_emit_value(&value);
+        TransportMode::VmVmcall { .. } | TransportMode::VmPortIo { .. } => {
+            crate::lifecycle::send_event("antithesis_sdk", &details);
+        }
+        TransportMode::Noop => {}
+    }
+}
+
+fn sdk_info_details() -> serde_json::Value {
+    serde_json::json!({
+        "language": {
+            "name": "Rust",
+            "version": option_env!("RUSTC_VERSION").unwrap_or("unknown"),
+        },
+        "sdk_version": env!("CARGO_PKG_VERSION"),
+        "protocol_version": "1",
+    })
 }
 
 /// Returns `true` if running inside a ChaosControl VM.
@@ -469,6 +477,15 @@ static RANDOM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sdk_info_details_are_complete() {
+        let details = super::sdk_info_details();
+        assert_eq!(details["language"]["name"], "Rust");
+        assert!(details["language"]["version"].as_str().is_some());
+        assert_eq!(details["sdk_version"], env!("CARGO_PKG_VERSION"));
+        assert!(details["protocol_version"].as_str().is_some());
+    }
+
     use super::*;
 
     #[test]

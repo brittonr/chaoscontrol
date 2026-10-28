@@ -815,7 +815,7 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
             output.push_str(&format!(
                 "\n{}. Assertion: {} (id={})\n",
                 i + 1,
-                cbug.bug.assertion_location,
+                flatten_lines(&cbug.bug.assertion_location),
                 cbug.bug.assertion_id
             ));
             output.push_str(&format!("   Tick:       {}\n", cbug.bug.tick));
@@ -1625,7 +1625,7 @@ mod tests {
                     fallback_scope: None,
                     process_instances: Default::default(),
                     marker_context: None,
-                    assertion_location: "safety.rs:10".into(),
+                    assertion_location: "safety.rs:\n10".into(),
                     schedule: SerializableSchedule { faults: Vec::new() },
                     tick: 500,
                     replay_parent_depth: 0,
@@ -1738,7 +1738,7 @@ mod tests {
         assert!(formatted.contains("44"));
 
         // Bug section
-        assert!(formatted.contains("safety.rs:10"));
+        assert!(formatted.contains("safety.rs: 10"));
         assert!(formatted.contains("42, 44")); // found_by_seeds
 
         // Assertion verdicts

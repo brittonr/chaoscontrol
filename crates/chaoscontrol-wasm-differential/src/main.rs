@@ -274,6 +274,7 @@ fn create_artifact_directory(path: &Path) -> Result<(), Error> {
 
 fn write_generated_module(directory: &Path, case_id: &str, module: &[u8]) -> Result<(), Error> {
     let path = directory.join(format!("{case_id}.wasm"));
+    fs::create_dir_all(directory).map_err(|source| io_error(&path, source))?;
     let mut temporary =
         tempfile::NamedTempFile::new_in(directory).map_err(|source| io_error(&path, source))?;
     temporary
@@ -567,6 +568,7 @@ fn retain_raw(directory: &Path, value: &impl serde::Serialize) -> Result<String,
     })?;
     let digest = blake3::hash(&bytes).to_hex().to_string();
     let path = directory.join(format!("raw-{digest}.json"));
+    fs::create_dir_all(directory).map_err(|source| io_error(&path, source))?;
     let mut temporary =
         tempfile::NamedTempFile::new_in(directory).map_err(|source| io_error(&path, source))?;
     temporary
@@ -1123,6 +1125,20 @@ mod tests {
         let second = retain_raw(root.path(), &value).unwrap();
         assert_eq!(first, second);
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn module_and_raw_publication_create_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let module_dir = root.path().join("nested/modules");
+        write_generated_module(&module_dir, "case", b"wasm").unwrap();
+        assert_eq!(
+            std::fs::read(module_dir.join("case.wasm")).unwrap(),
+            b"wasm"
+        );
+        let raw_dir = root.path().join("nested/raw");
+        retain_raw(&raw_dir, &serde_json::json!({"status": "passed"})).unwrap();
+        assert_eq!(std::fs::read_dir(raw_dir).unwrap().count(), 1);
     }
 
     #[test]

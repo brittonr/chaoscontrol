@@ -61,11 +61,14 @@ fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
         return Err(String::from("flake.nix: not a regular file"));
     }
     let mut text = String::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_string(&mut text)
         .map_err(|error| format!("flake.nix: {error}"))?;
     if text.len() as u64 > limit {
         return Err(String::from("flake.nix: exceeds the input byte bound"));
+    }
+    if text.len() as u64 != metadata.len() {
+        return Err(String::from("flake.nix: changed while reading"));
     }
     Ok(text)
 }
@@ -146,5 +149,6 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded_text(&fifo, MAX_FLAKE_BYTES).is_err());
+        assert!(read_bounded_text(std::path::Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 }

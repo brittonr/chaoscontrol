@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 
 use chaoscontrol_property_suite::framework::Lane;
@@ -34,7 +35,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    std::fs::write(&options.output, encoded)
+    write_report(&options.output, &encoded)
         .map_err(|error| format!("failed to write {}: {error}", options.output.display()))?;
     println!(
         "property lane {} passed; receipt={}",
@@ -42,6 +43,19 @@ fn run(args: Vec<String>) -> Result<(), String> {
         options.output.display()
     );
     Ok(())
+}
+
+fn write_report(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    file.write_all(bytes)
 }
 
 fn parse_options(args: &[String]) -> Result<Options, String> {
@@ -88,6 +102,18 @@ mod tests {
         .expect("complete options must parse");
         assert_eq!(options.lane, Lane::Fast);
         assert_eq!(options.output, PathBuf::from("receipt.json"));
+    }
+
+    #[test]
+    fn report_writer_rejects_symlink_targets() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(write_report(&link, b"receipt").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
     }
 
     #[test]

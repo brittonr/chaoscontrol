@@ -517,7 +517,7 @@ pub fn history_digest(history: &OperationHistory) -> EvidenceResult<String> {
 
 pub fn read_history_path(path: impl AsRef<Path>) -> EvidenceResult<OperationHistory> {
     let path = path.as_ref();
-    let text = std::fs::read_to_string(path)
+    let text = crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&text).map_err(|err| {
         EvidenceError::new(format!("{}: invalid history JSON: {err}", path.display()))
@@ -526,7 +526,7 @@ pub fn read_history_path(path: impl AsRef<Path>) -> EvidenceResult<OperationHist
 
 pub fn read_report_path(path: impl AsRef<Path>) -> EvidenceResult<ConsistencyCheckReport> {
     let path = path.as_ref();
-    let text = std::fs::read_to_string(path)
+    let text = crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&text).map_err(|err| {
         EvidenceError::new(format!(
@@ -586,6 +586,21 @@ fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_reads_reject_symlinks_and_oversized_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("history.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_history_path(&link).is_err());
+
+        let oversized = root.path().join("oversized.json");
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(crate::MAX_EVIDENCE_JSON_BYTES + 1).unwrap();
+        assert!(read_history_path(&oversized).is_err());
+    }
 
     #[test]
     fn good_history_passes_and_bad_history_fails() {

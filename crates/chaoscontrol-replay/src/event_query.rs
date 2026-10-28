@@ -1941,6 +1941,23 @@ mod tests {
     }
 
     #[test]
+    fn event_details_enforce_the_serialized_byte_boundary() {
+        let mut event = events()[0].clone();
+        event.details = Some(serde_json::Value::String(
+            "x".repeat(MAX_EVENT_DETAILS_BYTES - 2),
+        ));
+        admit_event(&event).unwrap();
+
+        event.details = Some(serde_json::Value::String(
+            "x".repeat(MAX_EVENT_DETAILS_BYTES - 1),
+        ));
+        assert_eq!(
+            admit_event(&event).unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+    }
+
+    #[test]
     fn event_text_enforces_the_byte_boundary() {
         let mut event = events()[0].clone();
         event.text = "a".repeat(MAX_EVENT_TEXT_BYTES);

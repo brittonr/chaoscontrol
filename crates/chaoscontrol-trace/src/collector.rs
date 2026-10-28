@@ -1220,7 +1220,8 @@ pub fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> 
         .unwrap_or(usize::MAX)
         .min(usize::try_from(limit).unwrap_or(usize::MAX));
     let mut json = String::with_capacity(capacity);
-    file.take(limit + 1).read_to_string(&mut json)?;
+    file.take(limit.saturating_add(1))
+        .read_to_string(&mut json)?;
     if json.len() as u64 > limit {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -1320,6 +1321,10 @@ mod tests {
             "abc"
         );
         assert!(read_trace_with_limit(path.to_str().unwrap(), 2).is_err());
+        assert_eq!(
+            read_trace_with_limit(path.to_str().unwrap(), u64::MAX).unwrap(),
+            "abc"
+        );
 
         let link = dir.path().join("link.json");
         std::os::unix::fs::symlink(&path, &link).unwrap();

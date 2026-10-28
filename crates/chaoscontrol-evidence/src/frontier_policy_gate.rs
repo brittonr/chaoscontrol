@@ -290,6 +290,11 @@ pub fn admit_command_args(
 ///
 /// Files that do not exist are skipped; shape validation belongs to the caller.
 pub fn admit_output_directory(gate: ReleaseGate, directory: &Path) -> EvidenceResult<()> {
+    if directory.as_os_str().is_empty() {
+        return Err(EvidenceError::new(
+            "output directory must not be empty".to_string(),
+        ));
+    }
     let receipt = directory.join(FRONTIER_POLICY_RECEIPT_FILE);
     if std::fs::symlink_metadata(&receipt).is_ok() {
         return Err(refusal(
@@ -468,6 +473,11 @@ mod tests {
         ] {
             admit_command_args(gate, LOCATION, &command).unwrap();
         }
+    }
+
+    #[test]
+    fn output_directory_rejects_an_empty_path() {
+        assert!(admit_output_directory(ReleaseGate::DogfoodReceipt, Path::new("")).is_err());
     }
 
     #[test]

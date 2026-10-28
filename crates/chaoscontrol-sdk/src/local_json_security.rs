@@ -23,6 +23,9 @@ pub(crate) fn read_bounded_regular_file(path: &Path, maximum: usize) -> io::Resu
     if bytes.len() > maximum {
         return Err(invalid_data("SDK JSONL exceeds the input byte limit"));
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(invalid_data("SDK JSONL changed while reading"));
+    }
     String::from_utf8(bytes).map_err(|_| invalid_data("SDK JSONL is not UTF-8"))
 }
 
@@ -106,4 +109,14 @@ fn count_token(count: &mut usize) -> io::Result<()> {
 
 fn invalid_data(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_reads_reject_length_changes() {
+        assert!(read_bounded_regular_file(Path::new("/proc/self/cmdline"), 1024).is_err());
+    }
 }

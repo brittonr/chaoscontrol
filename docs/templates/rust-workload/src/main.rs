@@ -22,7 +22,7 @@ fn main() {
     }));
 
     workload.scenario("write/read survives restart", || {
-        let action = random_choice(3);
+        let action = random_choice_index(3);
         let mut service = KeyValueService::start();
         let write_ok = service.write("account-1", "balance=10");
         let read_ok = service.read_after_restart();

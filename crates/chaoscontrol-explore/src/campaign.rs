@@ -16,7 +16,7 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 const BYTES_PER_MIB: usize = 1024 * 1024;
@@ -426,8 +426,8 @@ enum SeedResult {
     },
 }
 
-fn seed_output_directory(output_dir: &str, seed: u64) -> String {
-    format!("{output_dir}/seed_{seed}")
+fn seed_output_directory(output_dir: &str, seed: u64) -> PathBuf {
+    Path::new(output_dir).join(format!("seed_{seed}"))
 }
 
 fn validate_unique_seeds(seeds: &[u64]) -> Result<(), &'static str> {
@@ -467,7 +467,11 @@ impl CampaignRunner {
         let mut explorer_config = self.config.base_explorer_config.clone();
         explorer_config.seed = seed;
         // num_workers comes from ExplorerConfig (set by CLI --workers-per-seed).
-        explorer_config.output_dir = Some(seed_output_directory(&self.config.output_dir, seed));
+        explorer_config.output_dir = Some(
+            seed_output_directory(&self.config.output_dir, seed)
+                .to_string_lossy()
+                .into_owned(),
+        );
         explorer_config
     }
 
@@ -486,7 +490,10 @@ impl CampaignRunner {
             }
         })?;
         if self.config.seeds.iter().any(|seed| {
-            seed_output_directory(&self.config.output_dir, *seed).len() > MAX_CAMPAIGN_PATH_BYTES
+            seed_output_directory(&self.config.output_dir, *seed)
+                .to_string_lossy()
+                .len()
+                > MAX_CAMPAIGN_PATH_BYTES
         }) {
             return Err(crate::explorer::ExploreError::Config {
                 message: "campaign seed output path exceeds the path bound".to_string(),
@@ -1882,8 +1889,11 @@ mod tests {
 
     #[test]
     fn seed_output_directories_have_one_canonical_shape() {
-        assert_eq!(seed_output_directory("out", 7), "out/seed_7");
-        assert_eq!(seed_output_directory("./out/", 0), "./out//seed_0");
+        assert_eq!(seed_output_directory("out", 7), PathBuf::from("out/seed_7"));
+        assert_eq!(
+            seed_output_directory("./out/", 0),
+            PathBuf::from("./out/seed_0")
+        );
     }
 
     #[test]

@@ -363,17 +363,18 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
             output.status.success(),
             format!("Nickel export failed for {source}: {}", output.status),
         )?;
-        let exported: Value = serde_json::from_slice(&output.stdout).map_err(|err| {
-            EvidenceError::new(format!("Nickel export for {source} is not JSON: {err}"))
-        })?;
+        let exported =
+            parse_projection_value(&output.stdout, &format!("Nickel export for {source}"))?;
         let committed_path = root.join("contracts/evidence").join(projection);
         let committed_text = crate::bounded_file::read_bounded_regular_file(
             &committed_path,
             crate::MAX_EVIDENCE_JSON_BYTES,
         )
         .map_err(|err| EvidenceError::new(format!("failed to read {projection}: {err}")))?;
-        let committed: Value = serde_json::from_str(&committed_text)
-            .map_err(|err| EvidenceError::new(format!("invalid committed {projection}: {err}")))?;
+        let committed = parse_projection_value(
+            committed_text.as_bytes(),
+            &format!("committed {projection}"),
+        )?;
         ensure(
             exported == committed,
             format!("stale Nickel projection: {projection}"),
@@ -1488,6 +1489,15 @@ pub fn validate_receipt_evidence_boundary(value: &Value) -> EvidenceResult<()> {
     Ok(())
 }
 
+fn parse_projection_value(bytes: &[u8], label: &str) -> EvidenceResult<Value> {
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
+    serde_json::from_slice(bytes)
+        .map_err(|error| EvidenceError::new(format!("invalid {label}: {error}")))
+}
+
 pub fn validate_markdown_receipt(data: &Value, dogfood: &Path) -> EvidenceResult<()> {
     let md_path = dogfood.join("receipt.md");
     let md =
@@ -1648,6 +1658,13 @@ fn sorted<const N: usize>(values: [&'static str; N]) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projection_json_rejects_excessive_nesting() {
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        let error = parse_projection_value(nested.as_bytes(), "projection").unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn markdown_receipt_reads_reject_symlinks() {

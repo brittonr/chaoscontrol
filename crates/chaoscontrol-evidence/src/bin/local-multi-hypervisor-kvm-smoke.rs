@@ -115,8 +115,7 @@ fn run(args: Vec<String>) -> Result<i32, String> {
     let scheduler_exit_code = captured.observation.exit_code.unwrap_or(1);
     let exit_code = if scheduler_exit_code == 0 && captured.observation.disposition == "succeeded" {
         let bytes = read_bounded(&receipt_path, MAX_RECEIPT_BYTES)?;
-        let receipt = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("{}: {error}", receipt_path.display()))?;
+        let receipt = parse_campaign_receipt(&receipt_path, &bytes)?;
         campaign_exit_code(&receipt)?
     } else {
         scheduler_exit_code.max(1)
@@ -319,6 +318,12 @@ fn prepare_output(out: &Path) -> Result<(), String> {
     fs::create_dir(out.join("dogfood")).map_err(|error| format!("{}: {error}", out.display()))
 }
 
+fn parse_campaign_receipt(path: &Path, bytes: &[u8]) -> Result<serde_json::Value, String> {
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(bytes))
+        .map_err(|error| format!("{}: {}", path.display(), error))?;
+    serde_json::from_slice(bytes).map_err(|error| format!("{}: {error}", path.display()))
+}
+
 fn write_summary(
     out: &Path,
     summary: &str,
@@ -447,6 +452,15 @@ mod publication_tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(prepare_output(&link).is_err());
         assert!(prepare_output(std::path::Path::new("")).is_err());
+    }
+
+    #[test]
+    fn receipt_parse_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        let error = parse_campaign_receipt(&path, nested.as_bytes()).unwrap_err();
+        assert!(error.contains("JSON nesting depth exceeded"));
     }
 
     #[test]

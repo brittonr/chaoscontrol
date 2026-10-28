@@ -25,9 +25,14 @@ fn local_output_starts_with_antithesis_sdk_metadata() {
         .map(|index| &records[index])
         .expect("sdk metadata record");
     assert_eq!(sdk["antithesis_sdk"]["language"]["name"], "Rust");
-    assert!(sdk["antithesis_sdk"]["language"]["version"]
+    let rust_version = sdk["antithesis_sdk"]["language"]["version"]
         .as_str()
-        .is_some());
+        .expect("rust version");
+    assert_ne!(rust_version, "unknown");
+    assert!(rust_version
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_digit()));
     assert_eq!(
         sdk["antithesis_sdk"]["sdk_version"],
         env!("CARGO_PKG_VERSION")

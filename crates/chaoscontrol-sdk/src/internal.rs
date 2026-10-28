@@ -242,7 +242,7 @@ fn sdk_info_details() -> serde_json::Value {
     serde_json::json!({
         "language": {
             "name": "Rust",
-            "version": option_env!("RUSTC_VERSION").unwrap_or("unknown"),
+            "version": option_env!("CHAOSCONTROL_RUSTC_VERSION").unwrap_or("unknown"),
         },
         "sdk_version": env!("CARGO_PKG_VERSION"),
         "protocol_version": "1",

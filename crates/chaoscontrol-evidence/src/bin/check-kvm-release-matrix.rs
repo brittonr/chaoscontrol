@@ -703,6 +703,17 @@ mod tests {
     }
 
     #[test]
+    fn failed_fixture_publication_leaves_no_temporary_files() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let before = fs::read_dir(root.path()).unwrap().count();
+
+        assert!(write_json(target, &serde_json::json!({"status": "passed"})).is_err());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), before);
+    }
+
+    #[test]
     fn atomic_fixture_replacement_does_not_follow_symlinks() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("target.json");

@@ -57,6 +57,22 @@ fn foreign_unknown_or_duplicate_results_reject() {
         result_observation(&session.identity, &session.state, &selection, &duplicate),
         Err(AdapterError::DuplicateChild)
     );
+    let duplicate_finding = ResultFacts {
+        findings: vec![
+            finding_ref(DEDUP_KEY, digest(40), selection.parent_moment_id),
+            finding_ref(DEDUP_KEY, digest(40), selection.parent_moment_id),
+        ],
+        ..super::no_children()
+    };
+    assert_eq!(
+        result_observation(
+            &session.identity,
+            &session.state,
+            &selection,
+            &duplicate_finding
+        ),
+        Err(AdapterError::DuplicateFinding)
+    );
     let mut other = Session::open(&crate::explorer::ExplorerConfig {
         seed: super::SEED + 1,
         ..config()

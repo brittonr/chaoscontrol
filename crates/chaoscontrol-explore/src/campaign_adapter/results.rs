@@ -130,6 +130,12 @@ pub fn result_observation(
             *child,
         )?);
     }
+    let mut finding_ids = BTreeSet::new();
+    for finding in &facts.findings {
+        if !finding_ids.insert(finding.finding_id) {
+            return Err(AdapterError::DuplicateFinding);
+        }
+    }
     let payload_id = FrameWriter::new(IdKind::EventPayload, RESULT_PAYLOAD_LABEL)
         .id(selection.selection_id)
         .bytes(&facts.round_manifest_digest)

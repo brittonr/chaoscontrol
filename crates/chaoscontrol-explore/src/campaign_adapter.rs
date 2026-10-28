@@ -106,6 +106,8 @@ pub enum AdapterError {
     UnknownSelection,
     /// A result reports the same child moment twice.
     DuplicateChild,
+    /// A result reports the same finding twice.
+    DuplicateFinding,
     /// The legacy configuration has no Campaign representation.
     DegenerateConfig(DegenerateConfig),
     /// A derived bound overflowed `u64`.

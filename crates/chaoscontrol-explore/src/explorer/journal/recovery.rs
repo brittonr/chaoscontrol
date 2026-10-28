@@ -4,6 +4,8 @@
 //! unrelated names are reported and left untouched.
 
 use super::format::bounds::MAX_SEGMENT_BYTES;
+
+const MAX_JOURNAL_DIRECTORY_ENTRIES: usize = 4_096;
 use super::format::layout::{classify_epoch_entry, classify_root_entry, EpochEntry, RootEntry};
 use super::format::verify::{
     verify_epoch, verify_epoch_numbers, JournalCorruption, RecoveredEpoch,
@@ -189,6 +191,13 @@ fn list_directory(
 ) -> Result<Vec<(OsString, PathBuf)>, JournalError> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(path).map_err(io_error(operation, path))? {
+        if entries.len() >= MAX_JOURNAL_DIRECTORY_ENTRIES {
+            return Err(JournalError::Io {
+                operation,
+                path: path.to_path_buf(),
+                source: std::io::Error::other("journal directory entry bound exceeded"),
+            });
+        }
         let entry = entry.map_err(io_error(operation, path))?;
         entries.push((entry.file_name(), entry.path()));
     }
@@ -212,5 +221,20 @@ fn io_error(
         operation,
         path: path.to_path_buf(),
         source,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn journal_directory_entry_bound_is_enforced() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..=MAX_JOURNAL_DIRECTORY_ENTRIES {
+            std::fs::write(root.path().join(format!("entry{index}")), b"").unwrap();
+        }
+
+        assert!(list_directory(root.path(), JournalOperation::ListJournal).is_err());
     }
 }

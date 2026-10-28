@@ -991,6 +991,12 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(write_new_json(&fifo, &serde_json::json!({"status": "passed"})).is_err());
+
+        let module_target = root.path().join("target.wasm");
+        std::fs::write(&module_target, b"original").unwrap();
+        std::os::unix::fs::symlink(&module_target, root.path().join("case.wasm")).unwrap();
+        assert!(write_generated_module(root.path(), "case", b"wasm").is_err());
+        assert_eq!(std::fs::read(&module_target).unwrap(), b"original");
     }
 
     #[test]

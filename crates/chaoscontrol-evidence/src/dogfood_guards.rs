@@ -22,6 +22,10 @@ pub fn check_dogfood_artifact_sizes(
 ) -> EvidenceResult<String> {
     ensure(max_bytes > 0, "--max-bytes must be positive")?;
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "dogfood artifact root must not be empty",
+    )?;
     if !root.exists() {
         return Ok(format!(
             "dogfood artifact size guard: {} absent; nothing to scan",
@@ -502,5 +506,15 @@ fn display_value(value: Option<&Value>) -> String {
         Some(Value::String(text)) => text.clone(),
         Some(Value::Null) | None => "None".to_string(),
         Some(other) => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_dogfood_root_is_rejected() {
+        assert!(check_dogfood_artifact_sizes("", 1_024).is_err());
     }
 }

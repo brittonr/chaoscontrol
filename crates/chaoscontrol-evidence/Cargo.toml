@@ -116,3 +116,7 @@ path = "src/bin/kernel-bundle-vm-compat-smoke.rs"
 [[bin]]
 name = "kernel-bundle-delete-module"
 path = "src/bin/kernel-bundle-delete-module.rs"
+
+[[bin]]
+name = "storage-recovery-campaign"
+path = "src/bin/storage-recovery-campaign.rs"

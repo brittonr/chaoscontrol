@@ -12,5 +12,6 @@ pub mod local_kvm;
 pub mod readiness_receipt;
 pub mod scaffold;
 pub mod source_guard;
+pub mod storage_campaign;
 pub mod time;
 pub mod vm_determinism;

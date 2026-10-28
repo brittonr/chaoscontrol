@@ -406,12 +406,20 @@ fn cmd_summary(trace: String) {
     if log.len() >= 2 {
         let first_ns = log.events.first().unwrap().host_ns;
         let last_ns = log.events.last().unwrap().host_ns;
-        let duration_ms = (last_ns - first_ns) as f64 / 1_000_000.0;
-        let rate = log.len() as f64 / (duration_ms / 1_000.0);
+        let duration_ns = last_ns.saturating_sub(first_ns);
+        let duration_ms = duration_ns as f64 / 1_000_000.0;
+        let rate = event_rate(log.len(), duration_ns);
         println!();
         println!("Duration: {:.1} ms", duration_ms);
         println!("Event rate: {:.0} events/sec", rate);
     }
+}
+
+fn event_rate(event_count: usize, duration_ns: u64) -> f64 {
+    if duration_ns == 0 {
+        return 0.0;
+    }
+    event_count as f64 / (duration_ns as f64 / 1_000_000_000.0)
 }
 
 fn parse_event_filter(filter: &str) -> Vec<EventType> {
@@ -480,6 +488,14 @@ mod tests {
             evidence_status(&ComparisonStatus::CleanupFailed),
             "cleanup-failed"
         );
+    }
+
+    #[test]
+    fn event_rate_is_finite_for_zero_and_normal_durations() {
+        assert_eq!(event_rate(0, 0), 0.0);
+        assert_eq!(event_rate(10, 0), 0.0);
+        assert_eq!(event_rate(10, 1_000_000_000), 10.0);
+        assert!(event_rate(10, 1).is_finite());
     }
 
     #[test]

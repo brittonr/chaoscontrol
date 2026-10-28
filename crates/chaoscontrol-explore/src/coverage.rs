@@ -253,6 +253,13 @@ mod tests {
     }
 
     #[test]
+    fn test_bitmap_ignores_out_of_range_hit() {
+        let mut bitmap = CoverageBitmap::new();
+        bitmap.record_hit(MAP_SIZE);
+        assert_eq!(bitmap.count_bits(), 0);
+    }
+
+    #[test]
     fn test_bitmap_saturate() {
         let mut bitmap = CoverageBitmap::new();
         for _ in 0..300 {

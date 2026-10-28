@@ -25,6 +25,7 @@ const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_EXPECTED_REVISION_BYTES: usize = 256;
 const MAX_ARTIFACT_DIRECTORY_ENTRIES: usize = 4_096;
+const MAX_ARTIFACT_DIRECTORIES: usize = 1_024;
 const MAX_ARTIFACT_SCAN_DEPTH: usize = 64;
 const KVM_CAPABILITY: &str = "kvm";
 const X86_64_LINUX_CAPABILITY: &str = "x86_64-linux";
@@ -616,9 +617,13 @@ fn collect_node(
                 actual_path.display()
             ));
         }
-        if !collector.visited_directories.insert(canonical) {
+        if collector.visited_directories.contains(&canonical) {
             return Ok(());
         }
+        if collector.visited_directories.len() >= MAX_ARTIFACT_DIRECTORIES {
+            return Err(String::from("artifact directory count bound exceeded"));
+        }
+        collector.visited_directories.insert(canonical);
         let entries = list_artifact_entries(actual_path)?;
         for entry in entries {
             collect_node(
@@ -824,6 +829,21 @@ mod publication_tests {
             fs::write(root.path().join(format!("entry-{index}")), b"").unwrap();
         }
         assert!(list_artifact_entries(root.path()).is_err());
+    }
+
+    #[test]
+    fn artifact_directory_count_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let row_output = root.path().join("row");
+        fs::create_dir(&row_output).unwrap();
+        for index in 0..=MAX_ARTIFACT_DIRECTORIES {
+            fs::create_dir(row_output.join(format!("dir-{index}"))).unwrap();
+        }
+        let (artifacts, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(artifacts.is_empty());
+        assert!(error
+            .unwrap()
+            .contains("artifact directory count bound exceeded"));
     }
 
     #[test]

@@ -1196,6 +1196,7 @@ fn write_trace_json_with_limit(path: &str, bytes: &[u8], limit: u64) -> std::io:
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
     let directory = File::open(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;
@@ -1344,6 +1345,10 @@ mod tests {
         assert!(write_trace_json_with_limit(bounded.to_str().unwrap(), b"abcd", 3).is_err());
         assert!(!bounded.exists());
         write_trace_json_with_limit(bounded.to_str().unwrap(), b"abc", 3).unwrap();
+
+        let nested = dir.path().join("nested/trace.json");
+        write_trace_json(nested.to_str().unwrap(), b"abc").unwrap();
+        assert_eq!(std::fs::read(&nested).unwrap(), b"abc");
 
         let log_path = dir.path().join("log.json");
         log.save(log_path.to_str().unwrap()).unwrap();

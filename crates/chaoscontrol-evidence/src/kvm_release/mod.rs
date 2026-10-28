@@ -20,6 +20,7 @@ const BLAKE3_PREFIX: &str = "blake3:";
 const BLAKE3_HEX_CHARS: usize = 64;
 const MAX_MATRIX_ROWS: usize = 32;
 const MAX_MATRIX_ROW_ID_BYTES: usize = 128;
+const MAX_MATRIX_PROFILE_ID_BYTES: usize = 128;
 const MAX_RETAINED_ARTIFACT_PATH_BYTES: usize = 256;
 const MAX_MATRIX_CAPABILITIES: usize = 16;
 const MAX_COMMAND_ARGS: usize = 64;
@@ -216,9 +217,11 @@ pub fn validate_matrix(matrix: &KvmReleaseMatrix) -> Result<(), Vec<String>> {
         "matrix schema version is not supported",
     );
     push_unless(
-        !matrix.profile_id.is_empty(),
+        !matrix.profile_id.is_empty()
+            && matrix.profile_id.len() <= MAX_MATRIX_PROFILE_ID_BYTES
+            && !matrix.profile_id.contains(['\0', '\n', '\r']),
         &mut issues,
-        "matrix profile id is empty",
+        "matrix profile id is empty, oversized, or contains control characters",
     );
     push_unless(
         matrix.required_worker_arch == REQUIRED_WORKER_ARCH,

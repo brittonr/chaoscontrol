@@ -170,6 +170,17 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_rejects_invalid_profile_ids() {
+    let mut matrix = sample_matrix();
+    matrix.profile_id = "bad\nid".to_string();
+    assert!(validate_matrix(&matrix).is_err());
+
+    let mut matrix = sample_matrix();
+    matrix.profile_id = "x".repeat(MAX_MATRIX_PROFILE_ID_BYTES + 1);
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_rejects_empty_or_duplicate_capabilities() {
     let mut matrix = sample_matrix();
     matrix.required_worker_capabilities.push("kvm".to_string());

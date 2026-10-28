@@ -2329,6 +2329,23 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn export_checkpoint_bugs_preserves_existing_without_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(out.join("bug_0.json"), b"original").unwrap();
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(41)]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        assert!(matches!(
+            export_checkpoint_bugs(&checkpoint_path, &out, false),
+            Err(CheckpointBugExportError::AlreadyExists { .. })
+        ));
+        assert_eq!(fs::read(out.join("bug_0.json")).unwrap(), b"original");
+    }
+
+    #[test]
     fn export_checkpoint_bugs_replaces_symlink_without_following() {
         let dir = tempfile::tempdir().unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");

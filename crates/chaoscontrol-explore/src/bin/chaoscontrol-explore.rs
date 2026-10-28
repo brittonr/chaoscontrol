@@ -2453,7 +2453,7 @@ fn cmd_minimize(
                 std::process::exit(EXIT_ERROR);
             }
         };
-        if let Err(error) = fs::write(output_path, &json) {
+        if let Err(error) = write_atomic_replacing(Path::new(output_path), json.as_bytes()) {
             eprintln!("Error: failed to save minimized bug: {error}");
             std::process::exit(EXIT_ERROR);
         }
@@ -3116,6 +3116,19 @@ mod tests {
     const LEGACY_DIAGNOSTIC: &str = "legacy-diagnostic";
     const UNKNOWN_POLICIES: [&str; 3] = ["bogus", "campaign_candidate", "Legacy"];
     const RETIRED_POLICIES: [&str; 2] = ["legacy", "campaign-candidate"];
+
+    #[test]
+    fn atomic_replacement_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("bug.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_atomic_replacing(&link, b"replacement").expect("replace link path");
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
 
     /// Every subcommand that takes `--frontier-policy`, with `value` as the policy.
     fn policy_commands(value: &str) -> [Vec<&str>; 4] {

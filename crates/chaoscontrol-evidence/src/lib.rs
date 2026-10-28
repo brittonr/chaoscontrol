@@ -2149,6 +2149,18 @@ fn validate_workload_assertion_identity(
     )
 }
 
+fn validate_proof_file_name(field: &str, value: &str) -> EvidenceResult<()> {
+    let path = Path::new(value);
+    ensure(
+        path.file_name().is_some()
+            && path.components().count() == 1
+            && path
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_))),
+        format!("proof {field} must be a bounded file name"),
+    )
+}
+
 fn validate_proof_path(field: &str, value: &str) -> EvidenceResult<()> {
     let path = Path::new(value);
     ensure(
@@ -2782,20 +2794,20 @@ impl AcceptedWorkloadProof {
             !self.snapshot.is_empty(),
             "proof snapshot must be non-empty",
         )?;
+        self.validate_evidence_boundary()?;
+        validate_proof_path("evidence_dir", &self.evidence_dir)?;
         for (field, value) in [
-            ("evidence_dir", self.evidence_dir.as_str()),
             ("summary", self.summary.as_str()),
             ("bug", self.bug.as_str()),
             ("verdict", self.verdict.as_str()),
-            ("snapshot", self.snapshot.as_str()),
         ] {
-            validate_proof_path(field, value)?;
+            validate_proof_file_name(field, value)?;
         }
+        validate_proof_path("snapshot", &self.snapshot)?;
         if let Some(receipt) = &self.receipt {
             ensure(!receipt.is_empty(), "proof receipt must be non-empty")?;
-            validate_proof_path("receipt", receipt)?;
+            validate_proof_file_name("receipt", receipt)?;
         }
-        self.validate_evidence_boundary()?;
         Ok(())
     }
 
@@ -3268,5 +3280,21 @@ mod proof_path_tests {
         };
         let error = proof.validate_shape().unwrap_err();
         assert!(error.message().contains("bounded relative artifact path"));
+
+        let mut nested = AcceptedWorkloadProof {
+            workload: "raft".to_string(),
+            assertion_id: 1,
+            evidence_dir: "evidence".to_string(),
+            summary: "nested/summary.json".to_string(),
+            bug: "bug_0.json".to_string(),
+            verdict: "verdict.json".to_string(),
+            snapshot: "snapshots/snapshot.bin".to_string(),
+            receipt: None,
+            notes: None,
+        };
+        let error = nested.validate_shape().unwrap_err();
+        assert!(error.message().contains("bounded file name"));
+        nested.summary = "summary.json".to_string();
+        nested.validate_shape().unwrap();
     }
 }

@@ -804,6 +804,37 @@ mod tests {
     }
 
     #[test]
+    fn diff_rejects_truncated_logs() {
+        let root = tempfile::tempdir().unwrap();
+        let complete = root.path().join("complete.dlog");
+        let truncated = root.path().join("truncated.dlog");
+        let mut writer = DlogWriter::create(&complete).unwrap();
+        writer
+            .emit(DlogRecord::new(0, 10, 1, 0, DlogTag::IoOut, 1))
+            .unwrap();
+        writer
+            .emit(DlogRecord::new(0, 20, 1, 0, DlogTag::IoOut, 1))
+            .unwrap();
+        writer.sync_all().unwrap();
+        drop(writer);
+
+        let mut writer = DlogWriter::create(&truncated).unwrap();
+        writer
+            .emit(DlogRecord::new(0, 10, 1, 0, DlogTag::IoOut, 1))
+            .unwrap();
+        writer.sync_all().unwrap();
+        drop(writer);
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&truncated)
+            .unwrap()
+            .write_all(&[0xff])
+            .unwrap();
+
+        assert!(dlog_diff(&complete, &truncated, true).is_err());
+    }
+
+    #[test]
     fn truncated_record_is_rejected() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("run.dlog");

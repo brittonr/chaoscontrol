@@ -32,7 +32,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
     if output.as_os_str().is_empty() {
         return Err(String::from("OUTPUT must not be empty"));
     }
-    let expectations = load_json(Path::new(&required("DOGFOOD_EXPECTATIONS")?))?;
+    let expectations_path = PathBuf::from(required("DOGFOOD_EXPECTATIONS")?);
+    admit_output_not_input(&output, &expectations_path)?;
+    let expectations = load_json(&expectations_path)?;
     let dogfood_summary = optional("DOGFOOD_SUMMARY_JSON")
         .filter(|value| !value.is_empty())
         .map(|value| {
@@ -85,6 +87,25 @@ impl FlattenNull for Option<Value> {
     fn flatten_null(self) -> Option<Value> {
         self.filter(|value| !value.is_null())
     }
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (std::path::absolute(left), std::path::absolute(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn admit_output_not_input(output: &Path, expectations: &Path) -> Result<(), String> {
+    if same_path(output, expectations) {
+        return Err(String::from(
+            "OUTPUT must not overwrite DOGFOOD_EXPECTATIONS",
+        ));
+    }
+    Ok(())
 }
 
 fn required(name: &str) -> Result<String, String> {
@@ -158,6 +179,18 @@ fn write_atomic(path: &Path, value: &Value) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn output_cannot_alias_expectations() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("expectations.json");
+        assert!(admit_output_not_input(&path, &path).is_err());
+        assert!(
+            admit_output_not_input(&root.path().join(".").join("expectations.json"), &path)
+                .is_err()
+        );
+        assert!(admit_output_not_input(&root.path().join("receipt.json"), &path).is_ok());
+    }
 
     #[test]
     fn empty_output_path_is_rejected() {

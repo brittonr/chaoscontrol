@@ -364,6 +364,17 @@ mod tests {
     }
 
     #[test]
+    fn save_recording_rejects_directory_target_without_temp_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let before = std::fs::read_dir(temp_dir.path()).unwrap().count();
+
+        assert!(save_recording(&test_recording(), &target).is_err());
+        assert_eq!(std::fs::read_dir(temp_dir.path()).unwrap().count(), before);
+    }
+
+    #[test]
     fn save_recording_replaces_an_existing_regular_file() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("recording.json");

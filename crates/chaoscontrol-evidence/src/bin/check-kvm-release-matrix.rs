@@ -623,6 +623,22 @@ mod tests {
     fn empty_paths_are_rejected() {
         assert!(parse_args(vec![OsString::from("--root"), OsString::from("")]).is_err());
         assert!(parse_args(vec![OsString::from("--matrix"), OsString::from("")]).is_err());
+        assert!(parse_args(vec![
+            OsString::from("--receipt"),
+            OsString::from(""),
+            OsString::from("--expected-revision"),
+            OsString::from("rev"),
+        ])
+        .is_err());
+        assert!(parse_args(vec![
+            OsString::from("--receipt"),
+            OsString::from("receipt.json"),
+            OsString::from("--expected-revision"),
+            OsString::from("rev"),
+            OsString::from("--curated-out"),
+            OsString::from(""),
+        ])
+        .is_err());
     }
 
     #[test]

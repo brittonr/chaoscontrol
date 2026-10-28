@@ -1180,29 +1180,28 @@ fn write_trace_json_with_limit(path: &str, bytes: &[u8], limit: u64) -> std::io:
             "trace JSON exceeds the byte limit",
         ));
     }
-    let mut file = open_trace_output(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    sync_trace_parent(path)
-}
-
-fn sync_trace_parent(path: &str) -> std::io::Result<()> {
     let path = std::path::Path::new(path);
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "trace JSON output is not a regular file",
+            ))
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
-    File::open(parent)?.sync_all()
-}
-
-fn open_trace_output(path: &str) -> std::io::Result<File> {
-    OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
+    let directory = File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()
 }
 
 pub fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> {
@@ -1289,6 +1288,15 @@ mod tests {
         bytes[28..30].copy_from_slice(&RAW_EVENT_SCHEMA_VERSION.to_ne_bytes());
         bytes[30..32].copy_from_slice(&RAW_EVENT_SIZE.to_ne_bytes());
         bytes
+    }
+
+    #[test]
+    fn trace_output_replaces_an_existing_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("trace.json");
+        std::fs::write(&path, b"old").unwrap();
+        write_trace_json(path.to_str().unwrap(), b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
     }
 
     #[test]

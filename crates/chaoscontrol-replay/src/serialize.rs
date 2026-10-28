@@ -385,6 +385,20 @@ mod tests {
     }
 
     #[test]
+    fn save_triage_outputs_reject_symlink_targets() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("target");
+        std::fs::write(&target, b"original").unwrap();
+        let link = temp_dir.path().join("triage");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let report = test_triage_report();
+
+        assert!(save_triage_report(&report, &link).is_err());
+        assert!(save_triage_json(&report, &link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
     fn save_triage_outputs_replace_existing_regular_files() {
         let temp_dir = TempDir::new().unwrap();
         let report = test_triage_report();

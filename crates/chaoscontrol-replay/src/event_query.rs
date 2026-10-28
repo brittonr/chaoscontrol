@@ -827,10 +827,11 @@ pub fn receipt_for(
         return Err(EventQueryError::InvalidResult);
     }
     validate_source_positions(&result.rows)?;
-    let mut canonical_rows = result.rows.clone();
-    canonical_rows.sort_by_key(event_order);
-    canonical_rows.dedup_by_key(|event| (event.source_id, event.source_sequence));
-    if canonical_rows != result.rows {
+    if !result
+        .rows
+        .windows(2)
+        .all(|pair| event_order(&pair[0]) < event_order(&pair[1]))
+    {
         return Err(EventQueryError::InvalidResult);
     }
     for row in &result.rows {
@@ -2186,6 +2187,14 @@ mod tests {
         unsorted.rows.swap(0, 1);
         assert_eq!(
             receipt_for(&EventQuery::All, &events, &unsorted, &limits).unwrap_err(),
+            EventQueryError::InvalidResult
+        );
+
+        let mut duplicated = result.clone();
+        duplicated.rows = vec![result.rows[0].clone(), result.rows[0].clone()];
+        duplicated.matched = 2;
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &duplicated, &limits).unwrap_err(),
             EventQueryError::InvalidResult
         );
     }

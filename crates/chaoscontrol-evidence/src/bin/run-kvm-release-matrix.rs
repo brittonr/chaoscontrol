@@ -234,6 +234,8 @@ fn run(config: Config) -> Result<bool, String> {
 
 fn read_matrix(path: &Path) -> Result<KvmReleaseMatrix, String> {
     let bytes = read_bytes(path, MAX_INPUT_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse matrix {}: {error}", path.display()))
 }
@@ -823,6 +825,15 @@ mod publication_tests {
             },
             retained_artifacts: vec!["stdout.log".to_string()],
         }
+    }
+
+    #[test]
+    fn matrix_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("matrix.json");
+        fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_matrix(&path).unwrap_err();
+        assert!(error.contains("JSON nesting depth exceeded"));
     }
 
     #[test]

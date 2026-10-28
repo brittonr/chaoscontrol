@@ -99,7 +99,17 @@ The dogfood `run-config.json` projection carries the setting whenever the checkp
 | Directional fault plus baseline profile | Directional mode and delay apply before baseline loss and baseline latency. |
 | Per-VM loss plus baseline loss | Baseline loss is evaluated first, then the per-VM loss rate. |
 | CPU stall plus CPU throttle | The stall keeps the vCPU unrunnable; the throttle clamps the aggregate budget for runnable work. |
+| Two CPU stalls on one vCPU | The later request is rejected until the first release tick. |
+| Two clock freezes on one VM | The later request is rejected until the first release tick. |
+| Two memory-pressure effects on one VM | The later request is rejected until the first release tick. |
+| Two process kill, pause, or restart effects on one target | The later request is rejected while the first attempt is active or the target is already restarting or resuming. |
+| Two thread pauses through one gate | The later request is rejected while the gate reports an unreleased pause. Non-gate memory at the gate address is not treated as an active pause. |
 | Pause window plus active effect | New selection is suppressed inside the window; an already-applied effect continues until its own release. |
+
+Directional faults use only mode-relevant parameters: `Stopped` needs neither a delay nor a queue bound,
+`Slowed` requires a nonzero delay, and `Jammed` requires a nonzero queue bound but may use no extra delay.
+The controller application shell rechecks custom-effect, directional, and thread-pause admission so a
+malformed plan cannot reach the adapter, fabric, or cooperative gate.
 
 The stage ledger records the attempt identity, mechanism, effective target, and observed stage for
 each accepted effect. It does not infer that a suppressed fault was absent from the host.

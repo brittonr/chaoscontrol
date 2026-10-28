@@ -269,6 +269,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn chunk_fixture_root_symlinks_are_rejected() {
+        let outside = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let link = root.path().join("bundle");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        assert!(crate::write_snapshot_chunk_fixture(&link).is_err());
+        assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+    }
+
+    #[test]
     fn fixture_root_symlinks_are_rejected() {
         let outside = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();

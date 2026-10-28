@@ -618,6 +618,19 @@ pub fn write_snapshot_chunk_fixture(root: impl AsRef<Path>) -> EvidenceResult<Pa
     if root.as_os_str().is_empty() {
         return Err(EvidenceError::new("fixture root must not be empty"));
     }
+    let metadata = std::fs::symlink_metadata(root)?;
+    if metadata.file_type().is_symlink() {
+        return Err(EvidenceError::new(format!(
+            "fixture root must not be a symlink: {}",
+            root.display()
+        )));
+    }
+    if !metadata.is_dir() {
+        return Err(EvidenceError::new(format!(
+            "fixture root is not a directory: {}",
+            root.display()
+        )));
+    }
     let snapshots = root.join("snapshots");
     std::fs::create_dir(&snapshots).map_err(|err| {
         EvidenceError::new(format!(

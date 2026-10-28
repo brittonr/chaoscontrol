@@ -2469,6 +2469,7 @@ fn snapshot_artifact_sha256(
         .parent()
         .and_then(Path::parent)
         .ok_or_else(|| EvidenceError::new("snapshot path lacks evidence directory"))?;
+    let evidence_root = std::fs::canonicalize(evidence_dir)?;
     for (idx, chunk) in manifest.chunks.iter().enumerate() {
         let chunk_path = safe_join_relative(evidence_dir, &chunk.path)
             .map_err(|err| EvidenceError::new(format!("chunk {idx} path invalid: {err}")))?;
@@ -2476,7 +2477,23 @@ fn snapshot_artifact_sha256(
             chunk_path.exists(),
             format!("snapshot chunk missing: {}", rel_display(root, &chunk_path)),
         )?;
-        let metadata = chunk_path.metadata().map_err(|err| {
+        let chunk_metadata = std::fs::symlink_metadata(&chunk_path)?;
+        ensure(
+            !chunk_metadata.file_type().is_symlink(),
+            format!(
+                "snapshot chunk must not be a symlink: {}",
+                rel_display(root, &chunk_path)
+            ),
+        )?;
+        ensure(
+            std::fs::canonicalize(&chunk_path)?.starts_with(&evidence_root),
+            format!(
+                "snapshot chunk escapes the evidence directory: {}",
+                rel_display(root, &chunk_path)
+            ),
+        )?;
+        let mut chunk_file = crate::bounded_file::open_regular_file(&chunk_path)?;
+        let metadata = chunk_file.metadata().map_err(|err| {
             EvidenceError::new(format!(
                 "snapshot chunk unreadable: {}: {err}",
                 rel_display(root, &chunk_path)
@@ -2489,16 +2506,31 @@ fn snapshot_artifact_sha256(
                 rel_display(root, &chunk_path)
             ),
         )?;
-        let actual_chunk_sha = sha256_file(&chunk_path)?;
+        let mut chunk_hasher = Sha256::new();
+        let copied = hash_open_chunk(
+            &mut chunk_file,
+            &mut aggregate,
+            &mut chunk_hasher,
+            chunk.size,
+        )?;
         ensure(
-            actual_chunk_sha == chunk.sha256,
+            copied == chunk.size,
+            format!(
+                "snapshot chunk changed while reading: {}",
+                rel_display(root, &chunk_path)
+            ),
+        )?;
+        let actual_chunk_sha = format!("{:x}", chunk_hasher.finalize());
+        ensure(
+            actual_chunk_sha.eq_ignore_ascii_case(&chunk.sha256),
             format!(
                 "snapshot chunk hash mismatch: {}",
                 rel_display(root, &chunk_path)
             ),
         )?;
-        hash_file_into(&chunk_path, &mut aggregate)?;
-        total_size += metadata.len();
+        total_size = total_size
+            .checked_add(metadata.len())
+            .ok_or_else(|| EvidenceError::new("snapshot chunk aggregate size overflowed"))?;
     }
 
     let actual = format!("{:x}", aggregate.finalize());
@@ -2578,6 +2610,39 @@ fn copy_open_chunk(
     }
     Ok(copied)
 }
+fn hash_open_chunk(
+    file: &mut File,
+    aggregate: &mut Sha256,
+    chunk: &mut Sha256,
+    maximum_bytes: u64,
+) -> EvidenceResult<u64> {
+    let mut buffer = [0_u8; SNAPSHOT_COPY_BUFFER_BYTES];
+    let mut total = 0_u64;
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| EvidenceError::new(format!("snapshot chunk read failed: {error}")))?;
+        if count == 0 {
+            break;
+        }
+        let next = total
+            .checked_add(
+                u64::try_from(count)
+                    .map_err(|_| EvidenceError::new("snapshot chunk read length exceeds u64"))?,
+            )
+            .ok_or_else(|| EvidenceError::new("snapshot chunk read length overflowed"))?;
+        if next > maximum_bytes {
+            return Err(EvidenceError::new(
+                "snapshot chunk grew beyond its declared size",
+            ));
+        }
+        aggregate.update(&buffer[..count]);
+        chunk.update(&buffer[..count]);
+        total = next;
+    }
+    Ok(total)
+}
+
 fn hash_file_into(path: &Path, hasher: &mut Sha256) -> EvidenceResult<()> {
     let mut file =
         File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
@@ -3064,6 +3129,17 @@ impl SnapshotChunk {
 #[cfg(test)]
 mod chunk_copy_tests {
     use super::*;
+
+    #[test]
+    fn chunk_hash_stops_at_declared_size() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("chunk");
+        std::fs::write(&path, b"abcd").unwrap();
+        let mut file = std::fs::File::open(&path).unwrap();
+        let mut aggregate = Sha256::new();
+        let mut chunk = Sha256::new();
+        assert!(hash_open_chunk(&mut file, &mut aggregate, &mut chunk, 3).is_err());
+    }
 
     #[test]
     fn chunk_copy_stops_at_declared_size() {

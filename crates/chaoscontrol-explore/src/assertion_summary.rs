@@ -179,6 +179,7 @@ impl<'de> Deserialize<'de> for AssertionSummaryV2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES;
 
     fn detail(id: u32) -> AssertionDetail {
         AssertionDetail {
@@ -211,6 +212,18 @@ mod tests {
             CatalogValidationStatus::LegacyAmbiguous
         );
         summary.validate().expect("summary validates");
+    }
+
+    #[test]
+    fn assertion_detail_count_enforces_the_boundary() {
+        let exact: Vec<_> = (0..MAX_ASSERTION_REPORT_ENTRIES as u32)
+            .map(detail)
+            .collect();
+        assert!(validate_assertion_details(&exact).is_ok());
+
+        let mut over = exact;
+        over.push(detail(MAX_ASSERTION_REPORT_ENTRIES as u32));
+        assert!(validate_assertion_details(&over).is_err());
     }
 
     #[test]

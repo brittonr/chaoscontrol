@@ -10,6 +10,7 @@ description = "Guest-side SDK for ChaosControl deterministic simulation testing"
 default = ["full", "rand_v0_8"]
 full = ["dep:libc", "dep:serde", "dep:serde_json", "dep:linkme", "chaoscontrol-protocol/std"]
 rand_v0_8 = ["dep:rand"]
+sparse_emission = ["full"]
 rand_v0_9 = ["dep:rand_core_v0_9"]
 rand_v0_10 = ["dep:rand_core_v0_10"]
 

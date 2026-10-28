@@ -348,6 +348,24 @@ mod tests {
         .unwrap();
         execute(Cli {
             command: Command::Validate {
+                events: Some(events.clone()),
+                recording: None,
+                dlog: None,
+                markers: None,
+                query: query.clone(),
+                result: result.clone(),
+                receipt: receipt.clone(),
+                limits: None,
+            },
+        })
+        .unwrap();
+
+        let mut tampered: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
+        tampered["rows"] = serde_json::json!(tampered["rows"].as_u64().unwrap() + 1);
+        std::fs::write(&receipt, serde_json::to_vec(&tampered).unwrap()).unwrap();
+        assert!(execute(Cli {
+            command: Command::Validate {
                 events: Some(events),
                 recording: None,
                 dlog: None,
@@ -358,7 +376,7 @@ mod tests {
                 limits: None,
             },
         })
-        .unwrap();
+        .is_err());
     }
 
     #[test]
@@ -383,13 +401,24 @@ mod tests {
         .unwrap();
         execute(Cli {
             command: Command::ValidateTimeline {
+                facts: facts.clone(),
+                format: TimelineFormat::Markdown,
+                rendered: rendered.clone(),
+                receipt: receipt.clone(),
+            },
+        })
+        .unwrap();
+
+        std::fs::write(&rendered, b"tampered").unwrap();
+        assert!(execute(Cli {
+            command: Command::ValidateTimeline {
                 facts,
                 format: TimelineFormat::Markdown,
                 rendered,
                 receipt,
             },
         })
-        .unwrap();
+        .is_err());
     }
 
     #[test]

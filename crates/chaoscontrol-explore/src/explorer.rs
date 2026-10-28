@@ -610,11 +610,7 @@ impl Explorer {
 
         if self.metrics_sink.is_none() {
             if let Some(path) = &self.config.metrics_file {
-                match std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                {
+                match Self::open_metrics_file(path) {
                     Ok(file) => self.metrics_sink = Some(std::io::BufWriter::new(file)),
                     Err(e) => {
                         warn!("failed to open metrics file {}: {}", path.display(), e);
@@ -2970,6 +2966,18 @@ impl Explorer {
         Ok(())
     }
 
+    /// Open the metrics sink without following symlinks or blocking on FIFOs.
+    fn open_metrics_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path)
+    }
+
     /// Write one bounded artifact without following symlinks.
     fn write_artifact_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
         use std::io::Write;
@@ -3557,6 +3565,18 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
         assert!(Explorer::write_artifact_file(&link, b"artifact").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn metrics_writer_rejects_symlink_targets() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let target = temporary.path().join("target.jsonl");
+        std::fs::write(&target, b"original").unwrap();
+        let link = temporary.path().join("metrics.jsonl");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(Explorer::open_metrics_file(&link).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
     }
 

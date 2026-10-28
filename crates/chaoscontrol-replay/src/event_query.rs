@@ -419,14 +419,7 @@ fn envelope_from_dlog(
 }
 
 fn bounded_text(value: &str) -> String {
-    if value.len() <= MAX_EVENT_TEXT_BYTES {
-        return value.to_string();
-    }
-    let mut end = MAX_EVENT_TEXT_BYTES;
-    while end > 0 && !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    value[..end].to_string()
+    crate::text::prefix_at_char_boundary(value, MAX_EVENT_TEXT_BYTES).to_string()
 }
 
 /// A bounded predicate over one event.
@@ -2031,6 +2024,14 @@ mod tests {
         };
         let envelope = envelope_from_recorded_event([5; 32], 4, &long);
         assert_eq!(envelope.text.len(), MAX_EVENT_TEXT_BYTES);
+    }
+
+    #[test]
+    fn bounded_text_stays_on_utf8_boundaries() {
+        let value = format!("{}\u{e9}", "a".repeat(MAX_EVENT_TEXT_BYTES - 1));
+        let bounded = bounded_text(&value);
+        assert!(bounded.len() <= MAX_EVENT_TEXT_BYTES);
+        assert!(value.is_char_boundary(bounded.len()));
     }
 
     #[test]

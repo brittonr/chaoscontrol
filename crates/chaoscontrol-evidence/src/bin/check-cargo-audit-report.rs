@@ -69,6 +69,8 @@ fn value_after<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a s
 
 fn load_json(path: &Path) -> Result<Value, String> {
     let bytes = read_bounded(path, MAX_AUDIT_JSON_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))
 }
@@ -136,6 +138,15 @@ mod tests {
             String::new(),
         ])
         .is_err());
+    }
+
+    #[test]
+    fn report_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("audit.json");
+        fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = load_json(&path).unwrap_err();
+        assert!(error.contains("JSON nesting depth exceeded"));
     }
 
     #[test]

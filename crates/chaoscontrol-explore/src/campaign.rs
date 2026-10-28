@@ -380,6 +380,19 @@ pub fn save_campaign_progress(
     Ok(())
 }
 
+fn write_campaign_report(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    file.write_all(bytes)
+}
+
 /// Load campaign progress from `{dir}/campaign_progress.json`.
 pub fn load_campaign_progress(dir: &str) -> Result<CampaignProgress, std::io::Error> {
     let path = Path::new(dir).join("campaign_progress.json");
@@ -614,7 +627,7 @@ impl CampaignRunner {
 
         match serde_json::to_string_pretty(&campaign_report) {
             Ok(json) => {
-                if let Err(e) = std::fs::write(&json_path, &json) {
+                if let Err(e) = write_campaign_report(&json_path, json.as_bytes()) {
                     log::warn!("Failed to write {}: {}", json_path, e);
                 } else {
                     info!("Saved {}", json_path);
@@ -624,7 +637,7 @@ impl CampaignRunner {
         }
 
         let txt = format_campaign_report(&campaign_report);
-        if let Err(e) = std::fs::write(&txt_path, &txt) {
+        if let Err(e) = write_campaign_report(&txt_path, txt.as_bytes()) {
             log::warn!("Failed to write {}: {}", txt_path, e);
         } else {
             info!("Saved {}", txt_path);
@@ -973,6 +986,18 @@ mod tests {
     const TEST_COMPATIBILITY_ID: u32 = 100;
     const SINGLE_REPORT_SECONDS: f64 = 1.0;
     const TWO_REPORT_SECONDS: f64 = 2.0;
+
+    #[test]
+    fn campaign_report_writer_rejects_symlink_targets() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let target = temporary.path().join("target.txt");
+        std::fs::write(&target, b"original").unwrap();
+        let link = temporary.path().join("report.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(write_campaign_report(link.to_str().unwrap(), b"report").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
 
     // ── 6.1: seed generation ────────────────────────────────────────
 

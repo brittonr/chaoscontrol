@@ -1488,18 +1488,27 @@ impl SimulationController {
                 disruption,
                 delay_ticks,
                 queue_limit,
-            } => self.network.arm_directional_with_attempt(
-                chaoscontrol_sim_core::network::DirectionalLinkFault {
-                    node: checked_usize(*node)?,
-                    peer: checked_usize(*peer)?,
-                    direction: *direction,
-                    disruption: *disruption,
-                    delay_ticks: *delay_ticks,
-                    queue_limit: *queue_limit,
-                    attempt_id: None,
-                },
-                Some(plan.attempt_id),
-            ),
+            } => {
+                if (*disruption == chaoscontrol_fault::mechanisms::NetworkDisruption::Slowed
+                    && *delay_ticks == 0)
+                    || (*disruption == chaoscontrol_fault::mechanisms::NetworkDisruption::Jammed
+                        && *queue_limit == 0)
+                {
+                    return Err(target_state_application_error());
+                }
+                self.network.arm_directional_with_attempt(
+                    chaoscontrol_sim_core::network::DirectionalLinkFault {
+                        node: checked_usize(*node)?,
+                        peer: checked_usize(*peer)?,
+                        direction: *direction,
+                        disruption: *disruption,
+                        delay_ticks: *delay_ticks,
+                        queue_limit: *queue_limit,
+                        attempt_id: None,
+                    },
+                    Some(plan.attempt_id),
+                )
+            }
             FaultPlanEffect::NetworkDirectionalHeal { node, peer } => self
                 .network
                 .clear_directional_link(checked_usize(*node)?, checked_usize(*peer)?),
@@ -4264,6 +4273,33 @@ mod tests {
             },
         };
         assert!(controller.apply_fault_plan(&plan).is_err());
+    }
+
+    #[test]
+    fn directional_application_requires_mode_parameters() {
+        use chaoscontrol_fault::mechanisms::{NetworkDirection, NetworkDisruption};
+
+        let mut controller = adapter_test_controller();
+        let plan = |attempt, disruption, delay_ticks, queue_limit| FaultPlan {
+            attempt_id: FaultAttemptId([attempt; 32]),
+            effect: FaultPlanEffect::NetworkDirectional {
+                node: 0,
+                peer: 1,
+                direction: NetworkDirection::Outbound,
+                disruption,
+                delay_ticks,
+                queue_limit,
+            },
+        };
+        assert!(controller
+            .apply_fault_plan(&plan(58, NetworkDisruption::Slowed, 0, 0))
+            .is_err());
+        assert!(controller
+            .apply_fault_plan(&plan(59, NetworkDisruption::Jammed, 0, 0))
+            .is_err());
+        controller
+            .apply_fault_plan(&plan(60, NetworkDisruption::Stopped, 0, 0))
+            .expect("stopped fault");
     }
 
     #[test]

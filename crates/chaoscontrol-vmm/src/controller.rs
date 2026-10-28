@@ -1688,8 +1688,11 @@ impl SimulationController {
                 if *release_at_tick <= self.tick {
                     return Err(target_state_application_error());
                 }
+                let tick = self.tick;
                 let slot = self.vm_slot_mut_checked(*target)?;
-                if slot.vm.virtual_tsc() != *frozen_tsc {
+                if slot.vm.virtual_tsc() != *frozen_tsc
+                    || slot.clock_freeze.is_some_and(|(_, active)| tick < active)
+                {
                     return Err(target_state_application_error());
                 }
                 slot.vm.virtual_tsc_mut().set_frozen(true);
@@ -1929,10 +1932,15 @@ impl SimulationController {
         if *release_at_tick <= self.tick || *limit_bytes == 0 || *limit_bytes >= *baseline_bytes {
             return Err(target_state_application_error());
         }
+        let tick = self.tick;
         let slot = self.vm_slot_mut_checked(*target)?;
         let observed_baseline =
             u64::try_from(slot.vm.memory().size()).map_err(|_| internal_application_error())?;
-        if observed_baseline != *baseline_bytes {
+        if observed_baseline != *baseline_bytes
+            || slot
+                .memory_limit_release_at_tick
+                .is_some_and(|active| tick < active)
+        {
             return Err(target_state_application_error());
         }
         slot.vm
@@ -4390,6 +4398,72 @@ mod tests {
             controller.vms[0].process_fault_attempt,
             Some(FaultAttemptId([45; 32]))
         );
+    }
+
+    #[test]
+    fn overlapping_clock_freeze_is_rejected_until_release() {
+        let mut controller = adapter_test_controller();
+        let frozen_tsc = controller.vms[0].vm.virtual_tsc();
+        let first = FaultPlan {
+            attempt_id: FaultAttemptId([47; 32]),
+            effect: FaultPlanEffect::VirtualClockFreeze {
+                target: 0,
+                frozen_tsc,
+                release_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&first).expect("first freeze");
+        let second = FaultPlan {
+            attempt_id: FaultAttemptId([48; 32]),
+            effect: FaultPlanEffect::VirtualClockFreeze {
+                target: 0,
+                frozen_tsc,
+                release_at_tick: 9,
+            },
+        };
+        assert!(controller.apply_fault_plan(&second).is_err());
+        assert_eq!(controller.vms[0].clock_freeze, Some((frozen_tsc, 5)));
+
+        controller.tick = 5;
+        controller
+            .apply_fault_plan(&second)
+            .expect("expired freeze");
+        assert_eq!(controller.vms[0].clock_freeze, Some((frozen_tsc, 9)));
+    }
+
+    #[test]
+    fn overlapping_memory_pressure_is_rejected_until_release() {
+        let mut controller = adapter_test_controller();
+        let baseline = u64::try_from(controller.vms[0].vm.memory().size()).unwrap();
+        let first = FaultPlan {
+            attempt_id: FaultAttemptId([49; 32]),
+            effect: FaultPlanEffect::MemoryPressure {
+                target: 0,
+                limit_bytes: baseline / 2,
+                baseline_bytes: baseline,
+                release_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&first).expect("first pressure");
+        let second = FaultPlan {
+            attempt_id: FaultAttemptId([50; 32]),
+            effect: FaultPlanEffect::MemoryPressure {
+                target: 0,
+                limit_bytes: baseline / 3,
+                baseline_bytes: baseline,
+                release_at_tick: 9,
+            },
+        };
+        assert!(controller.apply_fault_plan(&second).is_err());
+        assert_eq!(controller.vms[0].memory_limit_bytes, Some(baseline / 2));
+        assert_eq!(controller.vms[0].memory_limit_release_at_tick, Some(5));
+
+        controller.tick = 5;
+        controller
+            .apply_fault_plan(&second)
+            .expect("expired pressure");
+        assert_eq!(controller.vms[0].memory_limit_bytes, Some(baseline / 3));
+        assert_eq!(controller.vms[0].memory_limit_release_at_tick, Some(9));
     }
 
     #[test]

@@ -53,12 +53,24 @@ const MAX_PENDING_PROCESS_OBSERVATIONS: usize = 4_096;
 const GUEST_ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.guest-artifact.v1";
 
 fn guest_artifact_identity(path: &str) -> Result<[u8; 32], VmError> {
-    let bytes = std::fs::read(path).map_err(|error| VmError::DiskImage {
+    use std::io::Read;
+
+    const BUFFER_BYTES: usize = 64 * 1024;
+    let mut file = std::fs::File::open(path).map_err(|error| VmError::DiskImage {
         message: format!("read guest artifact {path}: {error}"),
     })?;
     let mut hasher = blake3::Hasher::new();
     hasher.update(GUEST_ARTIFACT_IDENTITY_DOMAIN);
-    hasher.update(&bytes);
+    let mut buffer = [0_u8; BUFFER_BYTES];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| VmError::DiskImage {
+            message: format!("read guest artifact {path}: {error}"),
+        })?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
     Ok(*hasher.finalize().as_bytes())
 }
 
@@ -3537,6 +3549,18 @@ mod tests {
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn guest_artifact_identity_hashes_streamed_file_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("kernel");
+        std::fs::write(&path, b"kernel bytes").unwrap();
+        let identity = guest_artifact_identity(path.to_str().unwrap()).unwrap();
+        let mut expected = blake3::Hasher::new();
+        expected.update(GUEST_ARTIFACT_IDENTITY_DOMAIN);
+        expected.update(b"kernel bytes");
+        assert_eq!(identity, *expected.finalize().as_bytes());
+    }
 
     struct RecordingCustomAdapter {
         calls: Arc<AtomicUsize>,

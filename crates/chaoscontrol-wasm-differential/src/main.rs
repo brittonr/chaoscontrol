@@ -550,20 +550,20 @@ fn retain_raw(directory: &Path, value: &impl serde::Serialize) -> Result<String,
     })?;
     let digest = blake3::hash(&bytes).to_hex().to_string();
     let path = directory.join(format!("raw-{digest}.json"));
-    match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => {
-            file.write_all(&bytes)
-                .and_then(|()| file.sync_all())
-                .map_err(|source| io_error(&path, source))?;
-            drop(file);
-            sync_parent(&path)?;
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(directory).map_err(|source| io_error(&path, source))?;
+    temporary
+        .write_all(&bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|source| io_error(&path, source))?;
+    match temporary.persist_noclobber(&path) {
+        Ok(_) => sync_parent(&path)?,
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
             if read_bounded(&path, bytes.len() as u64)? != bytes {
                 return Err(Error::Invalid("raw content-address collision".into()));
             }
         }
-        Err(source) => return Err(io_error(&path, source)),
+        Err(error) => return Err(io_error(&path, error.error)),
     }
     Ok(digest)
 }
@@ -974,6 +974,16 @@ fn io_error(path: &Path, source: std::io::Error) -> Error {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn raw_retention_is_atomic_and_idempotent() {
+        let root = tempfile::tempdir().unwrap();
+        let value = serde_json::json!({"status": "passed"});
+        let first = retain_raw(root.path(), &value).unwrap();
+        let second = retain_raw(root.path(), &value).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn new_json_publication_is_atomic_and_never_overwrites() {

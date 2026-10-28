@@ -4355,6 +4355,52 @@ mod tests {
     }
 
     #[test]
+    fn controller_rejects_over_bound_network_rates() {
+        let mut controller = adapter_test_controller();
+        let max = chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX;
+        let plan = |attempt, effect| FaultPlan {
+            attempt_id: FaultAttemptId([attempt; 32]),
+            effect,
+        };
+        controller
+            .apply_fault_plan(&plan(
+                63,
+                FaultPlanEffect::PacketLoss {
+                    target: 0,
+                    rate_ppm: max,
+                },
+            ))
+            .expect("maximum loss");
+        assert!(controller
+            .apply_fault_plan(&plan(
+                64,
+                FaultPlanEffect::PacketLoss {
+                    target: 0,
+                    rate_ppm: max + 1,
+                },
+            ))
+            .is_err());
+        assert!(controller
+            .apply_fault_plan(&plan(
+                65,
+                FaultPlanEffect::PacketCorruption {
+                    target: 0,
+                    rate_ppm: max + 1,
+                },
+            ))
+            .is_err());
+        assert!(controller
+            .apply_fault_plan(&plan(
+                66,
+                FaultPlanEffect::PacketDuplicate {
+                    target: 0,
+                    rate_ppm: max + 1,
+                },
+            ))
+            .is_err());
+    }
+
+    #[test]
     fn interaction_fixture_applies_directional_throttle_custom_and_pause() {
         use chaoscontrol_fault::mechanisms::{NetworkDirection, NetworkDisruption};
 

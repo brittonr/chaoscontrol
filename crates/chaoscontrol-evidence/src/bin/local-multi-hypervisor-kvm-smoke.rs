@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -316,15 +317,25 @@ fn write_summary(
         "local multi-hypervisor KVM smoke\nstatus={status}\nsummary={summary}\nplan={}\nreceipt={}\nqueue_state={}\nscope=bounded-local-kvm-multi-hypervisor-not-hosted-not-shared-remote-queue-not-cross-machine\nraw_log_scraping=false\n\nrunner output:\n{}\n",
         plan.display(), receipt.display(), out.join("campaign-state.json").display(), command_output.trim()
     );
-    fs::write(out.join("summary.txt"), text)
+    write_atomic(&out.join("summary.txt"), text.as_bytes())
         .map_err(|error| format!("{}: {error}", out.join("summary.txt").display()))
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    fs::File::open(parent)?.sync_all()
 }
 
 fn write_json(path: &Path, value: &Value) -> Result<(), String> {
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("{}: encode failed: {error}", path.display()))?;
     bytes.push(b'\n');
-    fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+    write_atomic(path, &bytes).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 fn now() -> Result<String, String> {
@@ -369,5 +380,23 @@ mod tests {
     #[test]
     fn incomplete_receipt_cannot_pass_as_recorded() {
         assert!(campaign_exit_code(&json!({"status": "recorded"})).is_err());
+    }
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_output_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_atomic(&link, b"replacement").unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read(&link).unwrap(), b"replacement");
     }
 }

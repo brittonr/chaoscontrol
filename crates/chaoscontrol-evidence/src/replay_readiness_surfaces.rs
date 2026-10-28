@@ -127,7 +127,7 @@ pub fn write_decision_receipt_path(output_path: impl AsRef<Path>) -> EvidenceRes
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     Ok(())
 }
 
@@ -142,7 +142,7 @@ pub fn write_scheduler_receipt_path(output_path: impl AsRef<Path>) -> EvidenceRe
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     Ok(())
 }
 
@@ -404,7 +404,7 @@ pub fn execute_scheduler_receipt_path(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&execution)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&execution)?)?;
     Ok(summary)
 }
 
@@ -631,7 +631,7 @@ pub fn write_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceRes
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(
+    write_bytes(
         path,
         serde_json::to_vec_pretty(&sample_fleet_scheduler_receipt())?,
     )?;
@@ -652,7 +652,7 @@ pub fn execute_fleet_scheduler_receipt_path(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     validate_fleet_scheduler_receipt(&receipt)
 }
 
@@ -799,7 +799,7 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
         if let Some(parent) = state_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
+        write_bytes(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
         runs.push(json!({
             "run_id": run_id,
             "queue_entry_id": queue_entry_id,
@@ -1217,7 +1217,7 @@ pub fn write_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> Evidenc
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(
+    write_bytes(
         path,
         serde_json::to_vec_pretty(&sample_hosted_shared_state_receipt())?,
     )?;
@@ -1238,7 +1238,7 @@ pub fn execute_hosted_shared_state_receipt_path(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     validate_hosted_shared_state_receipt(&receipt)
 }
 
@@ -1433,7 +1433,7 @@ pub fn execute_hosted_shared_state_receipt(
         if let Some(parent) = state_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
+        write_bytes(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
     }
 
     let decision_snapshot = json!({
@@ -1445,7 +1445,7 @@ pub fn execute_hosted_shared_state_receipt(
     if let Some(parent) = decision_store_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(
+    write_bytes(
         &decision_store_path,
         serde_json::to_vec_pretty(&decision_snapshot)?,
     )?;
@@ -1863,7 +1863,7 @@ pub fn write_networked_hosted_scheduler_receipt_path(path: impl AsRef<Path>) -> 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(
+    write_bytes(
         path,
         serde_json::to_vec_pretty(&sample_networked_hosted_scheduler_receipt())?,
     )?;
@@ -1886,7 +1886,7 @@ pub fn execute_networked_hosted_scheduler_receipt_path(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     validate_networked_hosted_scheduler_receipt(&receipt)
 }
 
@@ -2125,7 +2125,7 @@ pub fn execute_networked_hosted_scheduler_receipt(
         if let Some(parent) = queue_state_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(
+        write_bytes(
             &queue_state_path,
             serde_json::to_vec_pretty(&queue_snapshot)?,
         )?;
@@ -2157,7 +2157,7 @@ pub fn execute_networked_hosted_scheduler_receipt(
     if let Some(parent) = decision_state_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(
+    write_bytes(
         &decision_state_path,
         serde_json::to_vec_pretty(&decision_snapshot)?,
     )?;
@@ -2741,7 +2741,7 @@ pub fn write_multi_hypervisor_campaign_receipt_path(path: impl AsRef<Path>) -> E
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(
+    write_bytes(
         path,
         serde_json::to_vec_pretty(&sample_multi_hypervisor_campaign_receipt())?,
     )?;
@@ -2764,7 +2764,7 @@ pub fn execute_multi_hypervisor_campaign_receipt_path(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     validate_multi_hypervisor_campaign_receipt(&receipt)
 }
 
@@ -2927,7 +2927,7 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         if let Some(parent) = state_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
+        write_bytes(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
         let mut run_followups = Vec::new();
         if follow_up_policy.get("enabled").and_then(Value::as_bool) == Some(true) {
             for (bug_idx, bug) in bug_artifacts.iter().enumerate() {
@@ -3693,7 +3693,7 @@ pub fn write_multi_hypervisor_campaign_dashboard_path(
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, dashboard)?;
+    write_bytes(output_path, dashboard)?;
     validate_multi_hypervisor_campaign_receipt(&receipt)
 }
 
@@ -3875,7 +3875,7 @@ pub fn update_readme_status_path(
     let existing = std::fs::read_to_string(readme_path)?;
     let updated = replace_readme_marker_block(&existing, &replacement)?;
     if updated != existing {
-        std::fs::write(readme_path, updated)?;
+        write_bytes(readme_path, updated)?;
     }
     Ok(summary)
 }

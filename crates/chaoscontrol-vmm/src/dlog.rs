@@ -469,14 +469,22 @@ impl DlogReader {
     /// Read the next record. Returns `None` at EOF.
     pub fn next_record(&mut self) -> io::Result<Option<DlogRecord>> {
         let mut buf = [0u8; RECORD_SIZE];
-        match self.reader.read_exact(&mut buf) {
-            Ok(()) => {
-                self.offset += 1;
-                Ok(Some(DlogRecord::from_bytes(buf)))
+        let mut filled = 0_usize;
+        while filled < RECORD_SIZE {
+            let read = self.reader.read(&mut buf[filled..])?;
+            if read == 0 {
+                if filled == 0 {
+                    return Ok(None);
+                }
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "dlog ends with a truncated record",
+                ));
             }
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => Ok(None),
-            Err(e) => Err(e),
+            filled += read;
         }
+        self.offset += 1;
+        Ok(Some(DlogRecord::from_bytes(buf)))
     }
 
     /// Number of records read so far.
@@ -784,6 +792,21 @@ mod tests {
 
         assert!(DlogWriter::create(&link).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn truncated_record_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("run.dlog");
+        let mut bytes = DlogRecord::new(0, 10, 1, 0, DlogTag::IoOut, 1)
+            .to_bytes()
+            .to_vec();
+        bytes.push(0xff);
+        std::fs::write(&path, bytes).unwrap();
+
+        let mut reader = DlogReader::open(&path).unwrap();
+        assert!(reader.next_record().unwrap().is_some());
+        assert!(reader.next_record().is_err());
     }
 
     #[test]

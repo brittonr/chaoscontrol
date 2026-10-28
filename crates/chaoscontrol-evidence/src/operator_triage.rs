@@ -47,7 +47,11 @@ pub fn check_operator_triage_runbook_path(
 ) -> EvidenceResult<()> {
     let expected = render_operator_triage_runbook_path(root, receipt_source)?;
     let expected_path = expected_path.as_ref();
-    let actual = std::fs::read_to_string(expected_path).map_err(|err| {
+    let actual = crate::bounded_file::read_bounded_regular_file(
+        expected_path,
+        crate::MAX_EVIDENCE_JSON_BYTES,
+    )
+    .map_err(|err| {
         EvidenceError::new(format!(
             "missing or unreadable operator triage runbook {}: {err}",
             expected_path.display()
@@ -253,17 +257,39 @@ fn contains_raw_log_reference(text: &str) -> bool {
 }
 
 fn read_json_value(path: &Path) -> EvidenceResult<Value> {
-    let input = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    let input =
+        crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
+            .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&input).map_err(Into::into)
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> EvidenceResult<T> {
-    let input = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    let input =
+        crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
+            .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&input).map_err(Into::into)
 }
 
 pub fn committed_operator_triage_runbook_path(root: impl AsRef<Path>) -> PathBuf {
     root.as_ref().join("docs/operator-triage-runbook.md")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn triage_json_reads_reject_symlinks_and_oversized_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, br#"{"status":"passed"}"#).unwrap();
+        let link = root.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_json_value(&link).is_err());
+
+        let oversized = root.path().join("oversized.json");
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(crate::MAX_EVIDENCE_JSON_BYTES + 1).unwrap();
+        assert!(read_json_value(&oversized).is_err());
+    }
 }

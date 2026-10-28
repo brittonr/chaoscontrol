@@ -24,6 +24,8 @@ pub use crate::runtime::guest_init;
 pub use crate::assert::{AssertType, AssertionKind};
 #[cfg(feature = "full")]
 pub use crate::cc_branch_marker;
+#[cfg(feature = "full")]
+pub use crate::cc_guidance_json;
 
 // ── Assertion macros ─────────────────────────────────────────────────
 pub use crate::{

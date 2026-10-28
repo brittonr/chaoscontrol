@@ -220,6 +220,66 @@ pub fn emit_boolean(
     );
 }
 
+/// Emit one JSON guidance record bound to a catalog assertion site.
+#[allow(clippy::too_many_arguments)]
+pub fn emit_json(
+    id: u32,
+    kind: crate::assert::AssertionKind,
+    message: &str,
+    class: &str,
+    function: &str,
+    file: &str,
+    begin_line: u32,
+    begin_column: u32,
+    maximize: bool,
+    guidance_data: Value,
+) {
+    emit(
+        id,
+        kind,
+        "json",
+        message,
+        class,
+        function,
+        file,
+        begin_line,
+        begin_column,
+        maximize,
+        guidance_data,
+        true,
+    );
+}
+
+/// Emit JSON guidance for an existing stable assertion site.
+///
+/// The `namespace`/`key` pair must match a compiled stable assertion with
+/// the same kind and message.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! cc_guidance_json {
+    ($namespace:expr, $key:expr, $kind:expr, $message:expr, $maximize:expr, $data:expr) => {{
+        fn __cc_json_guidance_function_name() -> &'static str {
+            fn __cc_json_guidance_probe() {}
+            let name = ::core::any::type_name_of_val(&__cc_json_guidance_probe);
+            &name[..name.len()
+                - "::__cc_json_guidance_function_name::__cc_json_guidance_probe".len()]
+        }
+        let __cc_id = $crate::assert::location_id(&::std::format!("{}:{}", $namespace, $key));
+        $crate::guidance::emit_json(
+            __cc_id,
+            $kind,
+            $message,
+            module_path!(),
+            __cc_json_guidance_function_name(),
+            file!(),
+            line!(),
+            column!(),
+            $maximize,
+            $data,
+        );
+    }};
+}
+
 /// Emit the initialization-time record for one guidance site.
 pub fn emit_catalog_record(entry: &GuidanceCatalogEntry) {
     emit(

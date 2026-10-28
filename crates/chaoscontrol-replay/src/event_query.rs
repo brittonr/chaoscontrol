@@ -793,6 +793,9 @@ pub fn receipt_for(
     }
     let rows_len =
         u64::try_from(result.rows.len()).map_err(|_| EventQueryError::CounterOverflow)?;
+    if result.matched > result.scanned || result.matched < rows_len {
+        return Err(EventQueryError::InvalidResult);
+    }
     if result.truncated {
         if result.rows.len() != limits.max_result_rows || result.matched <= rows_len {
             return Err(EventQueryError::InvalidResult);
@@ -1912,6 +1915,19 @@ mod tests {
         assert_eq!(
             receipt_for(&EventQuery::All, &events, &result, &narrow_scan).unwrap_err(),
             EventQueryError::ScanBound
+        );
+
+        let narrow_rows = EventQueryLimits {
+            max_result_rows: 1,
+            ..EventQueryLimits::default()
+        };
+        let truncated = evaluate(&EventQuery::All, &events, &narrow_rows).unwrap();
+        assert!(truncated.truncated);
+        let mut impossible = truncated.clone();
+        impossible.matched = impossible.scanned + 1;
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &impossible, &narrow_rows).unwrap_err(),
+            EventQueryError::InvalidResult
         );
     }
 

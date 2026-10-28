@@ -289,8 +289,12 @@ fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    write_json_with_limit(path, value, MAX_INPUT_BYTES)
+}
+
+fn write_json_with_limit<T: Serialize>(path: &Path, value: &T, limit: u64) -> Result<(), String> {
     let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > MAX_INPUT_BYTES {
+    if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
     write_bytes(path, &bytes)
@@ -469,6 +473,16 @@ mod tests {
         })
         .is_err());
         assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn json_output_is_rejected_before_creation_over_its_limit() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("out.json");
+        assert!(write_json_with_limit(&path, &"abcd", 5).is_err());
+        assert!(!path.exists());
+        write_json_with_limit(&path, &"abcd", 6).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), r#""abcd""#);
     }
 
     #[test]

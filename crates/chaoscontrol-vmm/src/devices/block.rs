@@ -1269,6 +1269,7 @@ mod tests {
         let link = root.path().join("image.img");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(read_image_file(link.to_str().unwrap()).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"image");
 
         let fifo = root.path().join("image.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

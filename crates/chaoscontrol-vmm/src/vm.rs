@@ -5215,6 +5215,7 @@ mod tests {
         let link = root.path().join("initrd");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(read_boot_file(&link, 16).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"boot");
 
         let fifo = root.path().join("initrd.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

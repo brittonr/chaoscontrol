@@ -74,7 +74,25 @@ pub fn write_fixture_bundle(root: impl AsRef<Path>) -> EvidenceResult<Descriptor
     if root.as_os_str().is_empty() {
         return Err(EvidenceError::new("fixture root must not be empty"));
     }
-    std::fs::create_dir_all(root)?;
+    match std::fs::symlink_metadata(root) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(EvidenceError::new(format!(
+                "fixture root must not be a symlink: {}",
+                root.display()
+            )));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(EvidenceError::new(format!(
+                "fixture root is not a directory: {}",
+                root.display()
+            )));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir_all(root)?;
+        }
+        Err(error) => return Err(error.into()),
+    }
     let payload_path = root.join(MONOLITHIC_PAYLOAD_FILE);
     write_bytes(&payload_path, FIXTURE_PAYLOAD)?;
     let monolithic_payload =
@@ -249,6 +267,16 @@ fn write_json(path: impl AsRef<Path>, value: &impl serde::Serialize) -> Evidence
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fixture_root_symlinks_are_rejected() {
+        let outside = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let link = root.path().join("bundle");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        assert!(write_fixture_bundle(&link).is_err());
+        assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+    }
 
     #[test]
     fn empty_fixture_root_is_rejected() {

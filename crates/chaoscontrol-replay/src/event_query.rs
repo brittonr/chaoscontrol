@@ -546,6 +546,7 @@ pub struct TimelineFact {
 pub enum EventQueryError {
     QueryBound,
     QueryDepth,
+    AmbiguousMoment,
     ScanBound,
     RowBound,
     InvalidEvent,
@@ -571,6 +572,7 @@ impl core::fmt::Display for EventQueryError {
         let message = match self {
             Self::QueryBound => "event query node count exceeds the bound",
             Self::QueryDepth => "event query depth exceeds the bound",
+            Self::AmbiguousMoment => "event query union spans more than one moment",
             Self::ScanBound => "event query scan count exceeds the bound",
             Self::RowBound => "event query result rows exceed the bound",
             Self::InvalidEvent => "event envelope schema or identity is invalid",
@@ -721,7 +723,7 @@ pub fn receipt_for(
         schema: EVENT_QUERY_RECEIPT_SCHEMA.to_string(),
         source_ids,
         query: query.clone(),
-        moment_tick: moment_of(query),
+        moment_tick: moment_of(query)?,
         limits: *limits,
         scanned: result.scanned,
         matched: result.matched,
@@ -970,7 +972,9 @@ impl EventPredicate {
 
 fn validate_query(query: &EventQuery, limits: &EventQueryLimits) -> Result<(), EventQueryError> {
     let mut nodes = 0_usize;
-    validate_query_inner(query, limits, 0, &mut nodes)
+    validate_query_inner(query, limits, 0, &mut nodes)?;
+    moment_of(query)?;
+    Ok(())
 }
 
 fn validate_query_inner(
@@ -1078,16 +1082,28 @@ fn event_order(event: &EventEnvelope) -> (u64, [u8; 32], u64) {
     (event.tick, event.source_id, event.source_sequence)
 }
 
-fn moment_of(query: &EventQuery) -> Option<u64> {
+fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
     match query {
-        EventQuery::UpTo { moment_tick, .. } => Some(*moment_tick),
+        EventQuery::UpTo { moment_tick, .. } => Ok(Some(*moment_tick)),
         EventQuery::Filter { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }
         | EventQuery::Window { input, .. } => moment_of(input),
-        EventQuery::Union { inputs } => inputs.iter().find_map(moment_of),
-        EventQuery::All => None,
+        EventQuery::Union { inputs } => {
+            let mut moment = None;
+            for input in inputs {
+                let Some(candidate) = moment_of(input)? else {
+                    continue;
+                };
+                if moment.is_some_and(|existing| existing != candidate) {
+                    return Err(EventQueryError::AmbiguousMoment);
+                }
+                moment = Some(candidate);
+            }
+            Ok(moment)
+        }
+        EventQuery::All => Ok(None),
     }
 }
 
@@ -1278,6 +1294,47 @@ mod tests {
                 .unwrap()
                 .matched,
             2
+        );
+    }
+
+    #[test]
+    fn union_moments_must_agree() {
+        let limits = EventQueryLimits::default();
+        let same = EventQuery::Union {
+            inputs: vec![
+                EventQuery::UpTo {
+                    input: Box::new(EventQuery::All),
+                    moment_tick: 5,
+                },
+                EventQuery::UpTo {
+                    input: Box::new(EventQuery::Filter {
+                        input: Box::new(EventQuery::All),
+                        predicate: EventPredicate::Kind("assert".to_string()),
+                    }),
+                    moment_tick: 5,
+                },
+            ],
+        };
+        let result = evaluate(&same, &events(), &limits).unwrap();
+        assert_eq!(result.matched, 0);
+        let receipt = receipt_for(&same, &[], &result, &limits).unwrap();
+        assert_eq!(receipt.moment_tick, Some(5));
+
+        let mixed = EventQuery::Union {
+            inputs: vec![
+                EventQuery::UpTo {
+                    input: Box::new(EventQuery::All),
+                    moment_tick: 5,
+                },
+                EventQuery::UpTo {
+                    input: Box::new(EventQuery::All),
+                    moment_tick: 9,
+                },
+            ],
+        };
+        assert_eq!(
+            evaluate(&mixed, &events(), &limits).unwrap_err(),
+            EventQueryError::AmbiguousMoment
         );
     }
 

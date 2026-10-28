@@ -269,7 +269,7 @@ fn format_event(event: &RecordedEvent) -> String {
         }
         RecordedEvent::SerialOutput { data, .. } => {
             let preview = if data.len() > 50 {
-                format!("{}...", &data[..50])
+                format!("{}...", prefix_at_char_boundary(data, 50))
             } else {
                 data.clone()
             };
@@ -290,12 +290,28 @@ fn get_serial_tail(recording: &Recording, vm_index: usize, _tick: u64) -> String
         .and_then(|cp| cp.serial_output.get(vm_index))
         .map(|s| {
             if s.len() > 500 {
-                s[s.len() - 500..].to_string()
+                suffix_at_char_boundary(s, 500).to_string()
             } else {
                 s.clone()
             }
         })
         .unwrap_or_default()
+}
+
+fn prefix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
+    let mut end = max_bytes.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
+}
+
+fn suffix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
+    let mut start = value.len().saturating_sub(max_bytes);
+    while start < value.len() && !value.is_char_boundary(start) {
+        start += 1;
+    }
+    &value[start..]
 }
 
 #[cfg(test)]
@@ -427,6 +443,27 @@ mod tests {
         assert!(Severity::Critical != Severity::High);
         assert!(Severity::High != Severity::Medium);
         assert!(Severity::Medium != Severity::Low);
+    }
+
+    #[test]
+    fn previews_respect_utf8_boundaries() {
+        let serial = format!("a{}", "é".repeat(40));
+        let formatted = format_event(&RecordedEvent::SerialOutput {
+            tick: 1,
+            vm_index: 0,
+            data: serial.clone(),
+        });
+        assert!(formatted.ends_with("..."));
+        assert!(formatted.len() < serial.len() + 20);
+
+        let prefix = prefix_at_char_boundary(&serial, 50);
+        assert!(prefix.len() <= 50);
+        assert!(serial.is_char_boundary(prefix.len()));
+
+        let suffix_source = format!("{}a", "é".repeat(300));
+        let suffix = suffix_at_char_boundary(&suffix_source, 500);
+        assert!(suffix.len() <= 500);
+        assert!(suffix_source.is_char_boundary(suffix_source.len() - suffix.len()));
     }
 
     #[test]

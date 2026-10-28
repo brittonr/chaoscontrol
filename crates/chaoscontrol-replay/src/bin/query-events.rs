@@ -4,7 +4,8 @@ use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use chaoscontrol_replay::event_query::{
     envelopes_from_dlog_bytes, envelopes_from_markers, envelopes_from_recording, evaluate,
     receipt_for, render_timeline_dot, render_timeline_markdown, timeline_receipt, validate_receipt,
-    EventEnvelope, EventQuery, EventQueryLimits, EventQueryReceipt, EventQueryResult, TimelineFact,
+    validate_timeline_receipt, EventEnvelope, EventQuery, EventQueryLimits, EventQueryReceipt,
+    EventQueryResult, TimelineFact, TimelineReceipt,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -71,6 +72,18 @@ enum Command {
         /// Optional limits JSON file.
         #[arg(long)]
         limits: Option<PathBuf>,
+    },
+    /// Validate a timeline receipt against its facts and rendered output.
+    ValidateTimeline {
+        /// JSON array of timeline facts.
+        facts: PathBuf,
+        /// Rendered output format.
+        #[arg(long, value_enum, default_value_t = TimelineFormat::Markdown)]
+        format: TimelineFormat,
+        /// Rendered Markdown or DOT file.
+        rendered: PathBuf,
+        /// Receipt JSON file to validate.
+        receipt: PathBuf,
     },
     /// Render a static timeline.
     Timeline {
@@ -157,6 +170,20 @@ fn run() -> Result<(), String> {
             validate_receipt(&receipt, &query, &events, &result, &limits)
                 .map_err(|error| error.to_string())?;
             println!("receipt validated");
+        }
+        Command::ValidateTimeline {
+            facts,
+            format,
+            rendered,
+            receipt,
+        } => {
+            let facts: Vec<TimelineFact> = read_json(&facts)?;
+            let rendered = String::from_utf8(read_bytes(&rendered)?)
+                .map_err(|_| "rendered timeline is not UTF-8".to_string())?;
+            let receipt: TimelineReceipt = read_json(&receipt)?;
+            validate_timeline_receipt(&receipt, &facts, format.as_str(), &rendered)
+                .map_err(|error| error.to_string())?;
+            println!("timeline receipt validated");
         }
         Command::Timeline {
             facts,
@@ -283,9 +310,9 @@ mod tests {
                 assert_eq!(dlog, None);
                 assert_eq!(markers, None);
             }
-            Command::Timeline { .. } | Command::Validate { .. } => {
-                panic!("expected query command")
-            }
+            Command::Timeline { .. }
+            | Command::Validate { .. }
+            | Command::ValidateTimeline { .. } => panic!("expected query command"),
         }
     }
 
@@ -293,6 +320,36 @@ mod tests {
     fn query_requires_query_and_output() {
         assert!(Cli::try_parse_from(["query-events", "query"]).is_err());
         assert!(Cli::try_parse_from(["query-events", "query", "query.json"]).is_err());
+    }
+
+    #[test]
+    fn validate_timeline_accepts_rendered_receipt() {
+        let cli = Cli::try_parse_from([
+            "query-events",
+            "validate-timeline",
+            "--format",
+            "markdown",
+            "facts.json",
+            "out.md",
+            "receipt.json",
+        ])
+        .expect("validate-timeline arguments parse");
+        match cli.command {
+            Command::ValidateTimeline {
+                facts,
+                format,
+                rendered,
+                receipt,
+            } => {
+                assert_eq!(facts, PathBuf::from("facts.json"));
+                assert!(matches!(format, TimelineFormat::Markdown));
+                assert_eq!(rendered, PathBuf::from("out.md"));
+                assert_eq!(receipt, PathBuf::from("receipt.json"));
+            }
+            Command::Query { .. } | Command::Validate { .. } | Command::Timeline { .. } => {
+                panic!("expected validate-timeline command")
+            }
+        }
     }
 
     #[test]
@@ -320,7 +377,7 @@ mod tests {
                 assert_eq!(output, PathBuf::from("out.dot"));
                 assert_eq!(receipt, Some(PathBuf::from("receipt.json")));
             }
-            Command::Query { .. } | Command::Validate { .. } => {
+            Command::Query { .. } | Command::Validate { .. } | Command::ValidateTimeline { .. } => {
                 panic!("expected timeline command")
             }
         }
@@ -351,7 +408,7 @@ mod tests {
                 assert_eq!(result, PathBuf::from("result.json"));
                 assert_eq!(receipt, PathBuf::from("receipt.json"));
             }
-            Command::Query { .. } | Command::Timeline { .. } => {
+            Command::Query { .. } | Command::Timeline { .. } | Command::ValidateTimeline { .. } => {
                 panic!("expected validate command")
             }
         }

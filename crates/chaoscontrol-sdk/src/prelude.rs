@@ -14,6 +14,7 @@
 //! ```
 
 // ── Init ─────────────────────────────────────────────────────────────
+pub use crate::chaoscontrol_init as antithesis_init;
 pub use crate::{chaoscontrol_init, is_in_vm, is_local_output};
 
 // ── Guest runtime ────────────────────────────────────────────────────
@@ -78,6 +79,22 @@ pub use crate::{
     cc_assert_sometimes_stable,
     cc_assert_unreachable,
     cc_assert_unreachable_stable,
+};
+
+// ── Antithesis-named aliases ─────────────────────────────────────────
+pub use crate::{
+    cc_assert_always as assert_always, cc_assert_always_greater_than as assert_always_greater_than,
+    cc_assert_always_greater_than_or_equal_to as assert_always_greater_than_or_equal_to,
+    cc_assert_always_less_than as assert_always_less_than,
+    cc_assert_always_less_than_or_equal_to as assert_always_less_than_or_equal_to,
+    cc_assert_always_or_unreachable as assert_always_or_unreachable,
+    cc_assert_always_some as assert_always_some, cc_assert_reachable as assert_reachable,
+    cc_assert_sometimes as assert_sometimes, cc_assert_sometimes_all as assert_sometimes_all,
+    cc_assert_sometimes_greater_than as assert_sometimes_greater_than,
+    cc_assert_sometimes_greater_than_or_equal_to as assert_sometimes_greater_than_or_equal_to,
+    cc_assert_sometimes_less_than as assert_sometimes_less_than,
+    cc_assert_sometimes_less_than_or_equal_to as assert_sometimes_less_than_or_equal_to,
+    cc_assert_unreachable as assert_unreachable,
 };
 
 // ── Lifecycle ────────────────────────────────────────────────────────

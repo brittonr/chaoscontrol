@@ -228,6 +228,9 @@ pub fn private_kfunc_init_script(
 pub fn write_private_kfunc_initrd(
     request: &PrivateKfuncInitrdRequest<'_>,
 ) -> EvidenceResult<PrivateKfuncInitrdSummary> {
+    if request.output_path.as_os_str().is_empty() {
+        return Err(EvidenceError::new("initrd output path must not be empty"));
+    }
     validate_request(request)?;
     let parent = request
         .output_path
@@ -829,6 +832,20 @@ fn unsupported_file_error<T>(path: &Path, mode: u32) -> EvidenceResult<T> {
 mod tests {
     use super::*;
     use std::os::unix::fs as unix_fs;
+
+    #[test]
+    fn empty_initrd_output_path_is_rejected() {
+        let request = PrivateKfuncInitrdRequest {
+            output_path: Path::new(""),
+            artifacts_dir: Path::new(""),
+            busybox_path: Path::new(""),
+            bpftool_path: Path::new(""),
+            delete_module_helper_path: Path::new(""),
+            closure_list_path: Path::new(""),
+            expected_kernel_release: "6.18.20",
+        };
+        assert!(write_private_kfunc_initrd(&request).is_err());
+    }
 
     #[test]
     fn initrd_publication_does_not_follow_symlinks() {

@@ -1,0 +1,177 @@
+{
+  "corruption": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:532df488a51f2a6be5391c4aa75724c537c518bb375ecc85a726bffe54ab6a22",
+    "input": "blake3:2531c1946670e8980304740bbccf9a304121f1af93bdb79f878cd879af82bfc7",
+    "writes": [],
+    "schedules": [
+      [
+        {
+          "corrupted": {
+            "node": 0,
+            "offset": 0
+          }
+        },
+        {
+          "denied": {
+            "class": "storage-record-schema"
+          }
+        }
+      ]
+    ]
+  },
+  "flush-error": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:564ec1c0ed2e282c38d181ef7b154f1a0e86baaa65a895ff950ebfa953ac0f64",
+    "input": "blake3:88f699e82110e592e7f7ebbc24b2286ca7ea3cd698f8ebd315428acb2d201c18",
+    "writes": [
+      {
+        "refused": {
+          "node": 0,
+          "class": "storage-flush-failed"
+        }
+      }
+    ],
+    "schedules": [
+      [
+        {
+          "restarted": {
+            "node": 0,
+            "published_index": 1
+          }
+        },
+        {
+          "lagged": {
+            "node": 1,
+            "behind_by": 3
+          }
+        },
+        {
+          "peer-unavailable": {
+            "peer": "node-2"
+          }
+        }
+      ]
+    ]
+  },
+  "global-absence": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:490194b4376b743aa9a3e3276e5263bfb021815c026416f9b6755ecea3b5e60b",
+    "input": "blake3:d9e17220202d135d9e1544247d682d46d347fb58fc1d74ebcff877850defbe7a",
+    "writes": [],
+    "schedules": [
+      [
+        {
+          "peer-unavailable": {
+            "peer": "node-2"
+          }
+        }
+      ]
+    ]
+  },
+  "incomplete-observation": {
+    "exit": 1,
+    "verdict": "incomplete",
+    "ref": "blake3:c256cc980f82119e0211cf903086000b0fa4d770a94e10bd1a3d2985aedf4152",
+    "input": "blake3:9be2be5fdba27a6ddf6ad8b07198464efbc20cd890a16af262d1433108c3b629",
+    "writes": [],
+    "schedules": [
+      [
+        {
+          "lagged": {
+            "node": 1,
+            "behind_by": 2
+          }
+        }
+      ]
+    ]
+  },
+  "local-only": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:b65c729ee47e1e622620c8fa96b450452f08ca2e47cdf80c8d5da4b52aed1fca",
+    "input": "blake3:90a2da541e457fbc10995be897f8a316682384e067647f0d6938b5148ccbb42f",
+    "writes": [],
+    "schedules": [
+      [
+        {
+          "restarted": {
+            "node": 0,
+            "published_index": 1
+          }
+        },
+        {
+          "lagged": {
+            "node": 1,
+            "behind_by": 1
+          }
+        }
+      ]
+    ]
+  },
+  "peer-repair": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:fa365b0c78a1c916d6ad8a5d20d90e2b9625ea8b5452c2f8ad49d13c43975315",
+    "input": "blake3:ebe43b5e23dff80887be4fe9271d55a95ef2fc25207a01b43b30b5f0c47e3965",
+    "writes": [],
+    "schedules": [
+      [
+        {
+          "local-repaired": {
+            "node": 0
+          }
+        }
+      ]
+    ]
+  },
+  "restart": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:842cfa8bfb95ab7676789b64cf32454d05b3a6bec0fe831b80ee4c391cc642e4",
+    "input": "blake3:ad4346673196c53edbf0adad580affa8e1391fc4a754e188ef015b3096cbefbf",
+    "writes": [],
+    "schedules": [
+      [
+        {
+          "restarted": {
+            "node": 0,
+            "published_index": 1
+          }
+        }
+      ]
+    ]
+  },
+  "write-error": {
+    "exit": 0,
+    "verdict": "pass",
+    "ref": "blake3:2ebed8142c3ac36cc307f9a3312b5a272380de6634ab0f21ea847fa282524686",
+    "input": "blake3:bba02da0adf1fed586f40c63d9d15e1f6b5a6cd53f6a8c09632f3e2614c9ab1e",
+    "writes": [
+      {
+        "refused": {
+          "node": 0,
+          "class": "storage-write-failed"
+        }
+      }
+    ],
+    "schedules": [
+      [
+        {
+          "restarted": {
+            "node": 0,
+            "published_index": 1
+          }
+        },
+        {
+          "peer-unavailable": {
+            "peer": "node-2"
+          }
+        }
+      ]
+    ]
+  }
+}

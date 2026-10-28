@@ -34,6 +34,8 @@ pub struct StorageCampaignRequest {
     pub schedules: Vec<StorageRecoverySchedule>,
     pub safety: Vec<StorageRecoveryObservation>,
     pub progress: Vec<RecoveryProgressInput>,
+    #[serde(default)]
+    pub writes: Vec<chaoscontrol_smr::storage_schedule::StorageRecoveryWrite>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +45,7 @@ pub struct StorageCampaignReceipt {
     pub input_blake3: String,
     pub receipt_ref: String,
     pub verdict: RecoveryProgressVerdict,
+    pub write_observations: Vec<chaoscontrol_smr::storage_schedule::StorageWriteObservation>,
     pub schedule_observations: Vec<Vec<ScheduleObservation>>,
     pub safety: StorageSafetyReport,
     pub progress: Vec<RecoveryProgressReport>,
@@ -86,6 +89,7 @@ pub fn run_storage_campaign(input: &[u8]) -> Result<StorageCampaignReceipt, Stri
             schedules: request.schedules,
             safety: request.safety,
             progress: request.progress,
+            writes: request.writes,
         },
     )
     .map_err(|error| error.to_string())?;
@@ -94,6 +98,7 @@ pub fn run_storage_campaign(input: &[u8]) -> Result<StorageCampaignReceipt, Stri
         input_blake3: format!("blake3:{}", blake3::hash(input).to_hex()),
         receipt_ref: report.receipt_ref,
         verdict: report.verdict,
+        write_observations: report.write_observations,
         schedule_observations: report.schedule_observations,
         safety: report.safety,
         progress: report.progress,
@@ -188,6 +193,7 @@ mod tests {
                 is_repair_completed: false,
                 is_commitment_known: true,
             }],
+            writes: Vec::new(),
             progress: vec![RecoveryProgressInput {
                 participant: "node-0".to_string(),
                 required_index: 1,

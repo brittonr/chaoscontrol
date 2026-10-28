@@ -123,13 +123,21 @@ pub fn apply_schedule(
     let mut observations = Vec::with_capacity(schedule.steps.len());
     for step in &schedule.steps {
         match step {
-            RecoveryScheduleStep::Restart { node } => {
-                let published_index = cohort.node(*node)?.load()?.map(|state| last_index(&state));
-                observations.push(ScheduleObservation::Restarted {
-                    node: *node,
-                    published_index,
-                });
-            }
+            RecoveryScheduleStep::Restart { node } => match cohort.node(*node)?.load() {
+                Ok(state) => {
+                    observations.push(ScheduleObservation::Restarted {
+                        node: *node,
+                        published_index: state.as_ref().map(last_index),
+                    });
+                }
+                Err(error) => {
+                    // A corrupt record is an observed restart denial, not a
+                    // campaign abort; the workload reports it to the oracle.
+                    observations.push(ScheduleObservation::Denied {
+                        class: error.class.to_string(),
+                    });
+                }
+            },
             RecoveryScheduleStep::LagReplica { node, behind_by } => {
                 observations.push(ScheduleObservation::Lagged {
                     node: *node,
@@ -295,6 +303,34 @@ pub struct StorageRecoveryCampaignInput {
     pub schedules: Vec<StorageRecoverySchedule>,
     pub safety: Vec<crate::storage_recovery::StorageRecoveryObservation>,
     pub progress: Vec<crate::storage_recovery::RecoveryProgressInput>,
+    /// Optional staged writes executed before the schedules.
+    #[serde(default)]
+    pub writes: Vec<StorageRecoveryWrite>,
+}
+
+/// One armed disk fault for a campaign write attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StorageWriteFault {
+    WriteError,
+    FlushError,
+}
+
+/// One campaign write attempt bound to one node and optional fault.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageRecoveryWrite {
+    pub node: usize,
+    pub state: crate::persistence::PersistentNodeState,
+    pub fault: Option<StorageWriteFault>,
+}
+
+/// Observed effect of one campaign write attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub enum StorageWriteObservation {
+    Published { node: usize, identity: String },
+    Refused { node: usize, class: String },
 }
 
 /// Campaign result binding schedules, safety, progress, and one receipt.
@@ -302,6 +338,7 @@ pub struct StorageRecoveryCampaignInput {
 #[serde(deny_unknown_fields)]
 pub struct StorageRecoveryCampaignReport {
     pub receipt_ref: String,
+    pub write_observations: Vec<StorageWriteObservation>,
     pub schedule_observations: Vec<Vec<ScheduleObservation>>,
     pub safety: StorageSafetyReport,
     pub progress: Vec<crate::storage_recovery::RecoveryProgressReport>,
@@ -335,6 +372,28 @@ fn campaign_verdict(
     RecoveryProgressVerdict::Pass
 }
 
+fn apply_write(
+    cohort: &mut PersistentNodeCohort,
+    write: &StorageRecoveryWrite,
+) -> SmrResult<StorageWriteObservation> {
+    let disk = cohort.node_mut(write.node)?;
+    match write.fault {
+        Some(StorageWriteFault::WriteError) => disk.fail_next_write(),
+        Some(StorageWriteFault::FlushError) => disk.fail_next_flush(),
+        None => {}
+    }
+    match disk.write(&write.state) {
+        Ok(publication) => Ok(StorageWriteObservation::Published {
+            node: write.node,
+            identity: publication.identity,
+        }),
+        Err(error) => Ok(StorageWriteObservation::Refused {
+            node: write.node,
+            class: error.class.to_string(),
+        }),
+    }
+}
+
 /// Apply every schedule, evaluate safety and progress, and bind one receipt.
 pub fn run_storage_recovery_campaign(
     mut cohort: PersistentNodeCohort,
@@ -345,6 +404,10 @@ pub fn run_storage_recovery_campaign(
             "storage-campaign-input",
             "campaign requires schedules, safety observations, and progress inputs",
         ));
+    }
+    let mut write_observations = Vec::with_capacity(input.writes.len());
+    for write in &input.writes {
+        write_observations.push(apply_write(&mut cohort, write)?);
     }
     let mut schedule_observations = Vec::with_capacity(input.schedules.len());
     for schedule in &input.schedules {
@@ -360,6 +423,7 @@ pub fn run_storage_recovery_campaign(
         identify_storage_recovery_receipt(input.cohort, &cohort, safety.clone())?;
     Ok(StorageRecoveryCampaignReport {
         receipt_ref,
+        write_observations,
         schedule_observations,
         safety,
         progress,
@@ -600,6 +664,7 @@ mod tests {
             schedules,
             safety: participants.iter().map(|name| observation(name)).collect(),
             progress,
+            writes: Vec::new(),
         }
     }
 
@@ -727,5 +792,92 @@ mod tests {
         assert!(report.safety.findings.iter().any(|finding| finding.class
             == crate::storage_recovery::StorageSafetyFindingClass::CommittedEntryTruncation));
         assert_eq!(report.schedule_observations[0].len(), 2);
+    }
+
+    #[test]
+    fn write_and_flush_fault_campaigns_refuse_without_advancing_state() {
+        let mut state = crate::persistence::PersistentNodeState {
+            term: 5,
+            voted_for: None,
+            snapshot: None,
+            log: vec![crate::persistence::PersistentLogEntry {
+                index: 1,
+                term: 5,
+                command: b"set".to_vec(),
+            }],
+            application: b"applied".to_vec(),
+        };
+        let mut input = campaign(
+            &["node-0", "node-1", "node-2"],
+            vec![progress_for("node-0", true)],
+            vec![StorageRecoverySchedule {
+                steps: vec![RecoveryScheduleStep::Restart { node: 0 }],
+            }],
+        );
+        input.writes = vec![
+            StorageRecoveryWrite {
+                node: 0,
+                state: state.clone(),
+                fault: Some(StorageWriteFault::FlushError),
+            },
+            StorageRecoveryWrite {
+                node: 0,
+                state: state.clone(),
+                fault: Some(StorageWriteFault::WriteError),
+            },
+            StorageRecoveryWrite {
+                node: 0,
+                state: state.clone(),
+                fault: None,
+            },
+        ];
+        let report = run_storage_recovery_campaign(cohort(), input).expect("campaign");
+        assert_eq!(
+            report.write_observations[0],
+            StorageWriteObservation::Refused {
+                node: 0,
+                class: String::from("storage-flush-failed"),
+            }
+        );
+        assert_eq!(
+            report.write_observations[1],
+            StorageWriteObservation::Refused {
+                node: 0,
+                class: String::from("storage-write-failed"),
+            }
+        );
+        assert!(matches!(
+            report.write_observations[2],
+            StorageWriteObservation::Published { node: 0, .. }
+        ));
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Pass);
+        state.term = 5;
+    }
+
+    #[test]
+    fn corruption_and_cache_retention_campaigns_keep_prior_published_state() {
+        let mut input = campaign(
+            &["node-0", "node-1", "node-2"],
+            vec![progress_for("node-0", false)],
+            vec![
+                StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::Corrupt { node: 0, offset: 0 }],
+                },
+                StorageRecoverySchedule {
+                    steps: vec![RecoveryScheduleStep::Restart { node: 0 }],
+                },
+            ],
+        );
+        input.progress[0].repair_source = Some("node-1".to_string());
+        input.progress[0].is_repair_completed = true;
+        let report = run_storage_recovery_campaign(cohort(), input).expect("campaign");
+        assert_eq!(
+            report.schedule_observations[1][0].clone(),
+            ScheduleObservation::Denied {
+                class: String::from("storage-record-schema"),
+            }
+        );
+        assert_eq!(report.progress[0].issue, RecoveryProgressIssue::PeerRepair);
+        assert_eq!(report.verdict, RecoveryProgressVerdict::Pass);
     }
 }

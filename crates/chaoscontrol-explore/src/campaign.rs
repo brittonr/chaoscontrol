@@ -463,6 +463,13 @@ impl CampaignRunner {
 
     /// Run all seeds in parallel, return the aggregated report.
     pub fn run(&self) -> Result<CampaignReport, crate::explorer::ExploreError> {
+        if self.config.output_dir.is_empty()
+            || self.config.output_dir.len() > MAX_CAMPAIGN_PATH_BYTES
+        {
+            return Err(crate::explorer::ExploreError::Config {
+                message: "campaign output directory is empty or exceeds the path bound".to_string(),
+            });
+        }
         validate_unique_seeds(&self.config.seeds).map_err(|message| {
             crate::explorer::ExploreError::Config {
                 message: message.to_string(),
@@ -1854,6 +1861,15 @@ mod tests {
             },
             output_dir: "campaign-out".to_string(),
         })
+    }
+
+    #[test]
+    fn campaign_rejects_an_empty_output_directory() {
+        let mut runner = runner_with_policy(FrontierPolicy::Campaign);
+        runner.config.output_dir.clear();
+
+        let error = runner.run().expect_err("empty output directory must fail");
+        assert!(format!("{error}").contains("output directory"));
     }
 
     #[test]

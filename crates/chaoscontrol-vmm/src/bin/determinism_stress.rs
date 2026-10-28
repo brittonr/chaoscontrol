@@ -886,6 +886,8 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(crc32_file(link.to_str().unwrap()).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"kernel");
+        let crc = crc32_file(target.to_str().unwrap()).unwrap();
+        assert!(crc.starts_with("crc32:") && crc.len() == 14);
 
         let fifo = root.path().join("kernel.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

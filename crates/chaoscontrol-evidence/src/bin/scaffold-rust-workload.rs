@@ -87,8 +87,13 @@ fn required_env(name: &str) -> Result<String, (u8, String)> {
 }
 
 fn copy_template(source: &Path, destination: &Path) -> Result<(), String> {
-    if !source.is_dir() {
-        return Err(format!("template is not a directory: {}", source.display()));
+    let metadata =
+        fs::symlink_metadata(source).map_err(|error| format!("{}: {error}", source.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!(
+            "template is not a real directory: {}",
+            source.display()
+        ));
     }
     fs::create_dir_all(chaoscontrol_evidence::bounded_file::output_parent(
         destination,
@@ -283,6 +288,18 @@ mod publication_tests {
     fn empty_destination_is_rejected() {
         assert!(admit_destination(Path::new("")).is_err());
         assert!(admit_destination(Path::new("workload")).is_ok());
+    }
+
+    #[test]
+    fn template_copy_rejects_symlinked_source() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("main.rs"), b"fn main() {}\n").unwrap();
+        let template = root.path().join("template");
+        std::os::unix::fs::symlink(outside.path(), &template).unwrap();
+        let destination = root.path().join("output");
+        assert!(copy_template(&template, &destination).is_err());
+        assert!(!destination.exists());
     }
 
     #[test]

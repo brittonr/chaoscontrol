@@ -107,7 +107,8 @@ fn copy_directory(source: &Path, destination: &Path, count: &mut usize) -> Resul
         } else if file_type.is_file() {
             let (bytes, source_mode) =
                 read_bounded_with_mode(&entry.path(), MAX_TEMPLATE_FILE_BYTES)?;
-            fs::write(&target, bytes).map_err(|error| format!("{}: {error}", target.display()))?;
+            write_atomic(&target, &bytes)
+                .map_err(|error| format!("{}: {error}", target.display()))?;
             fs::set_permissions(
                 &target,
                 fs::Permissions::from_mode(source_mode | OWNER_WRITE_MODE),

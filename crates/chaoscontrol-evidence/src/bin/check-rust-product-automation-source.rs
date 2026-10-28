@@ -30,6 +30,9 @@ fn run(args: Vec<String>) -> Result<String, String> {
         ));
     }
     let root = PathBuf::from(&args[0]);
+    if root.as_os_str().is_empty() {
+        return Err(String::from("root must not be empty"));
+    }
     let scripts = list_files(&root.join("scripts"))?;
     let bins = list_files(&root.join("crates/chaoscontrol-evidence/src/bin"))?;
     let flake_path = root.join("flake.nix");
@@ -98,6 +101,11 @@ fn list_files(root: &Path) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(run(vec![String::new()]).is_err());
+    }
 
     #[test]
     fn source_walk_rejects_excessive_entries() {

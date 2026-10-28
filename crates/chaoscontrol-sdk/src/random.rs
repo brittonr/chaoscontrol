@@ -129,8 +129,19 @@ impl ChaosControlRng {
     }
 }
 
-/// Antithesis-compatible name for [`ChaosControlRng`].
-pub type AntithesisRng = ChaosControlRng;
+/// Antithesis-compatible RNG type.
+///
+/// This is a distinct unit struct rather than a type alias so ported code
+/// such as `let mut rng = AntithesisRng;` compiles unchanged.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AntithesisRng;
+
+impl AntithesisRng {
+    /// Create a new `AntithesisRng`.
+    pub const fn new() -> Self {
+        Self
+    }
+}
 
 #[cfg(feature = "rand_core_v0_6")]
 impl rand::RngCore for ChaosControlRng {
@@ -170,6 +181,62 @@ impl rand_core_v0_9::RngCore for ChaosControlRng {
 
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         crate::random::fill_bytes(dest);
+    }
+}
+
+#[cfg(feature = "rand_core_v0_6")]
+impl rand::RngCore for AntithesisRng {
+    fn next_u32(&mut self) -> u32 {
+        (get_random() & 0xFFFF_FFFF) as u32
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        get_random()
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        crate::random::fill_bytes(dest);
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+        crate::random::fill_bytes(dest);
+        Ok(())
+    }
+}
+
+#[cfg(feature = "rand_core_v0_6")]
+impl rand::CryptoRng for AntithesisRng {}
+
+#[cfg(feature = "rand_core_v0_9")]
+impl rand_core_v0_9::RngCore for AntithesisRng {
+    fn next_u32(&mut self) -> u32 {
+        (get_random() & 0xFFFF_FFFF) as u32
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        get_random()
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        crate::random::fill_bytes(dest);
+    }
+}
+
+#[cfg(feature = "rand_core_v0_10")]
+impl rand_core_v0_10::TryRng for AntithesisRng {
+    type Error = core::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok((get_random() & 0xFFFF_FFFF) as u32)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(get_random())
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+        crate::random::fill_bytes(dest);
+        Ok(())
     }
 }
 

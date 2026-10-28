@@ -1,6 +1,6 @@
 #![cfg(feature = "rand_core_v0_6")]
 
-use chaoscontrol_sdk::random::ChaosControlRng;
+use chaoscontrol_sdk::random::{AntithesisRng, ChaosControlRng};
 use rand::RngCore;
 
 #[test]
@@ -14,4 +14,8 @@ fn rng_implements_rand_0_8() {
 
     let _: u32 = rng.next_u32();
     let _: u64 = rng.next_u64();
+
+    let mut antithesis = AntithesisRng;
+    let mut bytes = [0u8; 8];
+    rand::RngCore::fill_bytes(&mut antithesis, &mut bytes);
 }

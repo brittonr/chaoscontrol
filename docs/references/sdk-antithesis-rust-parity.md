@@ -91,7 +91,7 @@ See the guidance decision below.
 | Choice from slice | `random_choice(&[T]) -> Option<&T>` with rejection sampling | `random_choice(&[T]) -> Option<&T>` with the same unbiased rejection sampling | equivalent |
 | Choice index (extension) | (none) | `random_choice_index(n) -> usize` | absent |
 | Fill bytes | `fill_bytes` (internal, native-endian chunks) | `random::fill_bytes(&mut [u8])` (public, same chunking and native endianness) | superset |
-| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` with an `AntithesisRng` alias (rand_core 0.6 via `rand_core_v0_6`/`rand_v0_8`; rand_core 0.9/0.10 via `rand_core_v0_9`/`rand_v0_9` and `rand_core_v0_10`/`rand_v0_10`) | equivalent |
+| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` plus a distinct, constructible `AntithesisRng` (rand_core 0.6 via `rand_core_v0_6`/`rand_v0_8`; rand_core 0.9/0.10 via `rand_core_v0_9`/`rand_v0_9` and `rand_core_v0_10`/`rand_v0_10`) | equivalent |
 
 ## Transport and runtime modes
 

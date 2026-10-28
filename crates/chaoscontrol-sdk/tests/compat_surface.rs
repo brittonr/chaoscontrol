@@ -20,7 +20,7 @@ fn compat_module_exposes_the_antithesis_assertion_names() {
         chaoscontrol_sdk::ANTITHESIS_LOCAL_OUTPUT,
         "ANTITHESIS_SDK_LOCAL_OUTPUT"
     );
-    let _: AntithesisRng = AntithesisRng::new();
+    let _: AntithesisRng = AntithesisRng;
     let _: AssertType = AssertionKind::Always.into();
     let _: assert::AssertType = assert::AssertType::Always;
     let tracking = assert::TrackingInfo::new();

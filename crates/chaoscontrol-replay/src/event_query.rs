@@ -9,7 +9,7 @@ use chaoscontrol_fault::outcomes::{
 };
 use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub const EVENT_ENVELOPE_SCHEMA: &str = "chaoscontrol.event-envelope.v1";
 pub const EVENT_QUERY_RECEIPT_SCHEMA: &str = "chaoscontrol.event-query-receipt.v1";
@@ -1122,7 +1122,7 @@ fn evaluate_rows(
         }
         EventQuery::Union { inputs } => {
             let mut rows = Vec::new();
-            let mut seen = BTreeSet::new();
+            let mut seen = HashSet::new();
             for input in inputs {
                 let branch = evaluate_rows(input, events, operations, max_operations)?;
                 charge_operations(operations, branch.len(), max_operations)?;

@@ -1114,25 +1114,22 @@ fn write_bug_artifact(
     bytes: &[u8],
     overwrite: bool,
 ) -> Result<(), CheckpointBugExportError> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut options = fs::OpenOptions::new();
-    options
-        .write(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
-    if overwrite {
-        options.create(true).truncate(true);
-    } else {
-        options.create_new(true);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    fs::File::open(parent)?.sync_all()?;
+    let directory = fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    if overwrite {
+        temporary.persist(path).map_err(|error| error.error)?;
+    } else {
+        temporary
+            .persist_noclobber(path)
+            .map_err(|error| error.error)?;
+    }
+    directory.sync_all()?;
     Ok(())
 }
 
@@ -2332,7 +2329,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn export_checkpoint_bugs_rejects_symlink_targets() {
+    fn export_checkpoint_bugs_replaces_symlink_without_following() {
         let dir = tempfile::tempdir().unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
         let out = dir.path().join("exported");
@@ -2343,8 +2340,9 @@ mod tests {
         let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(41)]);
         save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
 
-        assert!(export_checkpoint_bugs(&checkpoint_path, &out, true).is_err());
+        export_checkpoint_bugs(&checkpoint_path, &out, true).unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert!(fs::read(out.join("bug_0.json")).unwrap().starts_with(b"{"));
     }
 
     #[test]

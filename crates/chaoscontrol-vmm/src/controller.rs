@@ -1603,6 +1603,9 @@ impl SimulationController {
         match &plan.effect {
             FaultPlanEffect::ProcessKill { target } => {
                 let slot = self.vm_slot_mut_checked(*target)?;
+                if slot.process_fault_attempt.is_some() {
+                    return Err(target_state_application_error());
+                }
                 slot.status = VmStatus::Crashed;
                 slot.process_fault_attempt = Some(plan.attempt_id);
                 slot.vm.discard_disk_volatile();
@@ -1612,6 +1615,9 @@ impl SimulationController {
                 resume_at_tick,
             } => {
                 let slot = self.vm_slot_mut_checked(*target)?;
+                if slot.process_fault_attempt.is_some() {
+                    return Err(target_state_application_error());
+                }
                 slot.status = VmStatus::Resuming {
                     resume_at_tick: *resume_at_tick,
                 };
@@ -1785,8 +1791,16 @@ impl SimulationController {
                 if *release_at_tick <= self.tick {
                     return Err(target_state_application_error());
                 }
+                let tick = self.tick;
                 let slot = self.vm_slot_mut_checked(*target)?;
                 let vcpu = checked_usize(*vcpu)?;
+                if slot
+                    .vcpu_stall_until
+                    .get(&vcpu)
+                    .is_some_and(|active| tick < *active)
+                {
+                    return Err(target_state_application_error());
+                }
                 slot.vm
                     .set_vcpu_stalled(vcpu, true)
                     .map_err(|_| non_runnable_application_error())?;
@@ -4322,6 +4336,63 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_cpu_stall_is_rejected_until_release() {
+        let mut controller = adapter_test_controller();
+        let first = FaultPlan {
+            attempt_id: FaultAttemptId([43; 32]),
+            effect: FaultPlanEffect::CpuStall {
+                target: 0,
+                vcpu: 0,
+                release_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&first).expect("first stall");
+        let second = FaultPlan {
+            attempt_id: FaultAttemptId([44; 32]),
+            effect: FaultPlanEffect::CpuStall {
+                target: 0,
+                vcpu: 0,
+                release_at_tick: 9,
+            },
+        };
+        assert!(controller.apply_fault_plan(&second).is_err());
+        assert_eq!(controller.vms[0].vcpu_stall_until.get(&0), Some(&5));
+
+        controller.tick = 5;
+        controller.apply_fault_plan(&second).expect("expired stall");
+        assert_eq!(controller.vms[0].vcpu_stall_until.get(&0), Some(&9));
+    }
+
+    #[test]
+    fn overlapping_process_fault_is_rejected() {
+        let mut controller = adapter_test_controller();
+        let kill = FaultPlan {
+            attempt_id: FaultAttemptId([45; 32]),
+            effect: FaultPlanEffect::ProcessKill { target: 0 },
+        };
+        controller.apply_fault_plan(&kill).expect("first kill");
+        assert_eq!(controller.vms[0].status, VmStatus::Crashed);
+        assert_eq!(
+            controller.vms[0].process_fault_attempt,
+            Some(FaultAttemptId([45; 32]))
+        );
+
+        let pause = FaultPlan {
+            attempt_id: FaultAttemptId([46; 32]),
+            effect: FaultPlanEffect::ProcessPause {
+                target: 0,
+                resume_at_tick: 5,
+            },
+        };
+        assert!(controller.apply_fault_plan(&pause).is_err());
+        assert_eq!(controller.vms[0].status, VmStatus::Crashed);
+        assert_eq!(
+            controller.vms[0].process_fault_attempt,
+            Some(FaultAttemptId([45; 32]))
+        );
+    }
+
+    #[test]
     fn cpu_throttle_survives_snapshot_restore() {
         let mut controller = adapter_test_controller();
         let throttle = CpuThrottleState {
@@ -5984,6 +6055,10 @@ mod tests {
                 attempt_id: FaultAttemptId([attempt_byte; 32]),
                 effect,
             };
+            // Each variant is an independent adapter case; process faults
+            // intentionally reject a second effect on an occupied target.
+            controller.vms[0].process_fault_attempt = None;
+            controller.vms[0].status = VmStatus::Running;
             let result = controller.apply_fault_plan(&plan);
             assert!(result.is_ok(), "{variant:?}: {result:?}");
         }

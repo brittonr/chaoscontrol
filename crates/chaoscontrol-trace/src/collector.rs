@@ -1210,13 +1210,14 @@ pub fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> 
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
-    if !file.metadata()?.file_type().is_file() {
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "trace JSON is not a regular file",
         ));
     }
-    let capacity = usize::try_from(file.metadata()?.len())
+    let capacity = usize::try_from(metadata.len())
         .unwrap_or(usize::MAX)
         .min(usize::try_from(limit).unwrap_or(usize::MAX));
     let mut json = String::with_capacity(capacity);

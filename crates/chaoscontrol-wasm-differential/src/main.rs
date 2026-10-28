@@ -976,6 +976,24 @@ mod tests {
     use std::os::unix::ffi::OsStrExt;
 
     #[test]
+    fn wasm_publication_rejects_non_regular_targets() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("report.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(write_new_json(&link, &serde_json::json!({"status": "passed"})).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+
+        let fifo = root.path().join("report.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(write_new_json(&fifo, &serde_json::json!({"status": "passed"})).is_err());
+    }
+
+    #[test]
     fn failed_wasm_publications_leave_no_temporary_files() {
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir(root.path().join("case.wasm")).unwrap();

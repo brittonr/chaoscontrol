@@ -223,10 +223,10 @@ pub fn format_report(report: &ExplorationReport) -> String {
                 "  turn {} | vm{} | {} | {}ns–{}ns | {}\n",
                 phase.turn,
                 phase.target_vm,
-                phase.kind,
+                flatten_lines(&phase.kind),
                 phase.start_ns,
                 phase.end_ns,
-                phase.description
+                flatten_lines(&phase.description)
             ));
         }
         output.push('\n');
@@ -353,7 +353,12 @@ pub fn format_report(report: &ExplorationReport) -> String {
             for a in &failed {
                 output.push_str(&format!(
                     "  ✗ [{}] {} ({}): {} hits, {}/{} true\n",
-                    a.kind, a.message, a.id, a.hit_count, a.true_count, a.hit_count
+                    flatten_lines(&a.kind),
+                    flatten_lines(&a.message),
+                    a.id,
+                    a.hit_count,
+                    a.true_count,
+                    a.hit_count
                 ));
                 if let Some(details) = &a.last_failure_details {
                     // Pretty-print JSON if valid, otherwise raw
@@ -377,7 +382,12 @@ pub fn format_report(report: &ExplorationReport) -> String {
                 "─── Unexercised Assertions ───────────────────────────────────────────\n",
             );
             for a in &unexercised {
-                output.push_str(&format!("  ○ [{}] {} ({})\n", a.kind, a.message, a.id));
+                output.push_str(&format!(
+                    "  ○ [{}] {} ({})\n",
+                    flatten_lines(&a.kind),
+                    flatten_lines(&a.message),
+                    a.id
+                ));
             }
             output.push('\n');
         }
@@ -389,7 +399,10 @@ pub fn format_report(report: &ExplorationReport) -> String {
             for a in &passed {
                 output.push_str(&format!(
                     "  ✓ [{}] {} ({}) — {} hits\n",
-                    a.kind, a.message, a.id, a.hit_count
+                    flatten_lines(&a.kind),
+                    flatten_lines(&a.message),
+                    a.id,
+                    a.hit_count
                 ));
             }
             output.push('\n');
@@ -746,7 +759,12 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
             for a in &failed {
                 output.push_str(&format!(
                     "  ✗ [{}] {} ({}): {} hits, {}/{} true\n",
-                    a.kind, a.message, a.id, a.hit_count, a.true_count, a.hit_count
+                    flatten_lines(&a.kind),
+                    flatten_lines(&a.message),
+                    a.id,
+                    a.hit_count,
+                    a.true_count,
+                    a.hit_count
                 ));
             }
             output.push('\n');
@@ -757,7 +775,12 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
                 "─── Unexercised Assertions ───────────────────────────────────────────\n",
             );
             for a in &unexercised {
-                output.push_str(&format!("  ○ [{}] {} ({})\n", a.kind, a.message, a.id));
+                output.push_str(&format!(
+                    "  ○ [{}] {} ({})\n",
+                    flatten_lines(&a.kind),
+                    flatten_lines(&a.message),
+                    a.id
+                ));
             }
             output.push('\n');
         }
@@ -769,7 +792,10 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
             for a in &passed {
                 output.push_str(&format!(
                     "  ✓ [{}] {} ({}) — {} hits\n",
-                    a.kind, a.message, a.id, a.hit_count
+                    flatten_lines(&a.kind),
+                    flatten_lines(&a.message),
+                    a.id,
+                    a.hit_count
                 ));
             }
             output.push('\n');
@@ -816,6 +842,16 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
 }
 
 /// Format seconds into human-readable duration.
+fn flatten_lines(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| match character {
+            '\r' | '\n' => ' ',
+            other => other,
+        })
+        .collect()
+}
+
 fn format_ms_or_dash(ms: f64) -> String {
     if ms <= 0.0 {
         "—".to_string()
@@ -843,6 +879,11 @@ fn format_duration(seconds: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn report_fields_flatten_line_breaks() {
+        assert_eq!(flatten_lines("a\r\nb\nc"), "a  b c");
+    }
     use crate::coverage::CoverageStats;
     use chaoscontrol_fault::schedule::FaultSchedule;
 

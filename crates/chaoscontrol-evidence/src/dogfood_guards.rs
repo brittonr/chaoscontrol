@@ -548,6 +548,16 @@ mod tests {
     }
 
     #[test]
+    fn dogfood_scan_accepts_small_files_and_rejects_oversized_ones() {
+        let root = tempfile::tempdir().unwrap();
+        let small = root.path().join("small.bin");
+        std::fs::write(&small, b"small").unwrap();
+        check_dogfood_artifact_sizes(root.path(), 5).expect("file at the size bound is admitted");
+        std::fs::write(&small, b"too large").unwrap();
+        assert!(check_dogfood_artifact_sizes(root.path(), 5).is_err());
+    }
+
+    #[test]
     fn dogfood_scan_skips_symlinks() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();

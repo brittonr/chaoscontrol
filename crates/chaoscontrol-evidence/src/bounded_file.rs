@@ -242,6 +242,11 @@ mod tests {
     }
 
     #[test]
+    fn bounded_reads_reject_length_changes() {
+        assert!(read_bounded_regular_bytes(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
+    }
+
+    #[test]
     fn bounded_reads_reject_symlinks_and_fifos() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("target.json");

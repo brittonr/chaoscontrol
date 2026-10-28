@@ -295,6 +295,23 @@ pub fn admit_output_directory(gate: ReleaseGate, directory: &Path) -> EvidenceRe
             "output directory must not be empty".to_string(),
         ));
     }
+    match std::fs::symlink_metadata(directory) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(EvidenceError::new(format!(
+                "output directory must not be a symlink: {}",
+                directory.display()
+            )));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(EvidenceError::new(format!(
+                "output path is not a directory: {}",
+                directory.display()
+            )));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
     let receipt = directory.join(FRONTIER_POLICY_RECEIPT_FILE);
     if std::fs::symlink_metadata(&receipt).is_ok() {
         return Err(refusal(
@@ -478,6 +495,19 @@ mod tests {
     #[test]
     fn output_directory_rejects_an_empty_path() {
         assert!(admit_output_directory(ReleaseGate::DogfoodReceipt, Path::new("")).is_err());
+    }
+
+    #[test]
+    fn output_directory_rejects_symlinks_and_files() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(admit_output_directory(ReleaseGate::DogfoodReceipt, &link).is_err());
+        let file = root.path().join("file");
+        std::fs::write(&file, b"file").unwrap();
+        assert!(admit_output_directory(ReleaseGate::DogfoodReceipt, &file).is_err());
     }
 
     #[test]

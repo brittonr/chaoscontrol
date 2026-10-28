@@ -170,6 +170,17 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_rejects_empty_or_duplicate_capabilities() {
+    let mut matrix = sample_matrix();
+    matrix.required_worker_capabilities.push("kvm".to_string());
+    assert!(validate_matrix(&matrix).is_err());
+
+    let mut matrix = sample_matrix();
+    matrix.rows[0].required_capabilities = vec![String::new()];
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_rejects_artifact_byte_bounds_above_hash_cap() {
     let mut matrix = sample_matrix();
     matrix.rows[0].limits.max_artifact_bytes = MAX_MATRIX_ARTIFACT_BYTES + 1;

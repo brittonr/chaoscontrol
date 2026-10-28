@@ -225,11 +225,18 @@ pub fn validate_matrix(matrix: &KvmReleaseMatrix) -> Result<(), Vec<String>> {
         &mut issues,
         "matrix worker architecture is not the admitted architecture",
     );
+    let mut worker_capabilities = BTreeSet::new();
     push_unless(
         !matrix.required_worker_capabilities.is_empty()
-            && matrix.required_worker_capabilities.len() <= MAX_MATRIX_CAPABILITIES,
+            && matrix.required_worker_capabilities.len() <= MAX_MATRIX_CAPABILITIES
+            && matrix
+                .required_worker_capabilities
+                .iter()
+                .all(|capability| {
+                    !capability.is_empty() && worker_capabilities.insert(capability.as_str())
+                }),
         &mut issues,
-        "matrix worker capability set is empty or exceeds its bound",
+        "matrix worker capability set is empty, duplicated, or exceeds its bound",
     );
     push_unless(
         matrix.max_receipt_age_seconds > 0
@@ -316,9 +323,13 @@ fn validate_matrix_row(
         issues,
         format!("matrix row is optional: {}", row.id),
     );
+    let mut row_capabilities = BTreeSet::new();
     push_unless(
         !row.required_capabilities.is_empty()
-            && row.required_capabilities.len() <= MAX_MATRIX_CAPABILITIES,
+            && row.required_capabilities.len() <= MAX_MATRIX_CAPABILITIES
+            && row.required_capabilities.iter().all(|capability| {
+                !capability.is_empty() && row_capabilities.insert(capability.as_str())
+            }),
         issues,
         format!("matrix row capabilities are invalid: {}", row.id),
     );

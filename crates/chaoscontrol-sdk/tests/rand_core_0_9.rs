@@ -1,4 +1,4 @@
-#![cfg(feature = "rand_v0_9")]
+#![cfg(feature = "rand_core_v0_9")]
 
 use chaoscontrol_sdk::random::ChaosControlRng;
 use rand_core_v0_9::RngCore;

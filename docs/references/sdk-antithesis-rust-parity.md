@@ -90,7 +90,7 @@ See the guidance decision below.
 | Choice from slice | `random_choice(&[T]) -> Option<&T>` with rejection sampling | `random_choice(&[T]) -> Option<&T>` with the same unbiased rejection sampling | equivalent |
 | Choice index (extension) | (none) | `random_choice_index(n) -> usize` | absent |
 | Fill bytes | `fill_bytes` (internal, native-endian chunks) | `random::fill_bytes(&mut [u8])` (public, same chunking and native endianness) | superset |
-| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` with an `AntithesisRng` alias (rand 0.8 `RngCore` + `CryptoRng` via `rand_v0_8`; rand_core 0.9/0.10 via `rand_v0_9`/`rand_v0_10`) | equivalent |
+| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` with an `AntithesisRng` alias (rand_core 0.6 via `rand_core_v0_6`/`rand_v0_8`; rand_core 0.9/0.10 via `rand_core_v0_9`/`rand_v0_9` and `rand_core_v0_10`/`rand_v0_10`) | equivalent |
 
 ## Transport and runtime modes
 
@@ -220,6 +220,6 @@ change the assertion oracle or prove exploration quality.
   reference, so `setup_complete(&details)` and `send_event(name, &details)`
   keep the same call shape with `default-features = false`.
 - ChaosControl supports `no_std` when `full` is disabled; Antithesis is std.
-- ChaosControl enables rand 0.8 through `rand_v0_8` and rand_core 0.9/0.10
-  through `rand_v0_9`/`rand_v0_10`. The feature names match Antithesis, the
-  default enables `rand_v0_8`, and all three traits can be enabled at once.
+- ChaosControl exposes both `rand_core_v0_6/9/10` and `rand_v0_8/9/10`
+  feature names like Antithesis. The default enables `rand_v0_8`, and all
+  three traits can be enabled at once.

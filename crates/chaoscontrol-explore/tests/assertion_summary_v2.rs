@@ -159,6 +159,7 @@ fn legacy_u32_identity_is_rejected_by_exploration_and_campaign_summaries() {
             unexercised: 0,
         },
         assertion_details: vec![legacy],
+        guidance: Vec::new(),
         assertion_catalog_status: CatalogValidationStatus::Accepted,
         collision_safe_assertion_evidence: true,
         assertion_identity_conflicts: Vec::new(),

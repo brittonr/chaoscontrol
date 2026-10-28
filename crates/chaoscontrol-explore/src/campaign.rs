@@ -1139,6 +1139,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: details,
+            guidance: Vec::new(),
             assertion_catalog_status: status,
             collision_safe_assertion_evidence: collision_safe,
             assertion_identity_conflicts: Vec::new(),

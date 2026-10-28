@@ -1906,6 +1906,7 @@ fn cmd_campaign_resume(
                 network_stats: Default::default(),
                 assertion_stats,
                 assertion_details,
+                guidance: Vec::new(),
                 assertion_catalog_status,
                 collision_safe_assertion_evidence: collision_safe,
                 assertion_identity_conflicts: Vec::new(),

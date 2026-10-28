@@ -172,13 +172,11 @@ rather than reintroducing the removed unbound command.
 JSON guidance is available through `guidance::emit_json` and the
 `cc_guidance_json!` macro; both bind to an existing stable assertion site.
 
-Still absent:
-
-- a first-class VMM guidance consumer; the explorer does not yet use these
-  records for frontier selection.
-
-That remains MAY-level explorer work. Emitting guidance does not change the
-assertion oracle or prove exploration quality.
+The exploration report now aggregates `antithesis_guidance` observations
+by message, type, and maximize direction, showing observation counts and
+the latest value. Guidance still does not alter frontier selection; using
+it for exploration ranking remains MAY-level explorer work. Emitting
+guidance does not change the assertion oracle or prove exploration quality.
 
 ## Notes and sharp edges
 

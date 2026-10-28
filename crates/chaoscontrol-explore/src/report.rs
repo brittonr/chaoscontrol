@@ -325,6 +325,24 @@ pub fn format_report(report: &ExplorationReport) -> String {
         output.push('\n');
     }
 
+    if !report.guidance.is_empty() {
+        output.push_str("─── Guidance ─────────────────────────────────────────────────────────\n");
+        for guidance in &report.guidance {
+            let direction = if guidance.maximize { "↑" } else { "↓" };
+            let data = serde_json::to_string(&guidance.guidance_data)
+                .unwrap_or_else(|_| "null".to_string());
+            output.push_str(&format!(
+                "  [{} {}] {} ({}): {}\n",
+                flatten_lines(&guidance.guidance_type),
+                direction,
+                flatten_lines(&guidance.message),
+                guidance.observations,
+                flatten_lines(&data),
+            ));
+        }
+        output.push('\n');
+    }
+
     append_assertion_exercise_summary(&mut output, &report.assertion_details);
 
     // Per-assertion detail
@@ -913,6 +931,52 @@ mod tests {
     }
 
     #[test]
+    fn guidance_summaries_skip_catalog_records_and_keep_the_last_value() {
+        use chaoscontrol_fault::oracle::OracleEvent;
+        use serde_json::json;
+
+        let events = vec![
+            OracleEvent {
+                run_id: 0,
+                name: "antithesis_guidance".to_string(),
+                details: json!({
+                    "message": "throughput",
+                    "guidance_type": "numeric",
+                    "maximize": true,
+                    "guidance_data": {"left": 1},
+                    "hit": true
+                }),
+            },
+            OracleEvent {
+                run_id: 1,
+                name: "antithesis_guidance".to_string(),
+                details: json!({
+                    "message": "throughput",
+                    "guidance_type": "numeric",
+                    "maximize": true,
+                    "guidance_data": {"left": 3},
+                    "hit": true
+                }),
+            },
+            OracleEvent {
+                run_id: 1,
+                name: "antithesis_guidance".to_string(),
+                details: json!({
+                    "message": "throughput",
+                    "guidance_type": "numeric",
+                    "maximize": true,
+                    "guidance_data": null,
+                    "hit": false
+                }),
+            },
+        ];
+        let summaries = crate::explorer::guidance_summaries(&events);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].observations, 2);
+        assert_eq!(summaries[0].guidance_data["left"], 3);
+    }
+
+    #[test]
     fn test_format_report_with_assertion_stats() {
         use crate::explorer::AssertionStats;
 
@@ -935,6 +999,13 @@ mod tests {
                 unexercised: 15,
             },
             assertion_details: Vec::new(),
+            guidance: vec![crate::explorer::GuidanceSummary {
+                message: "throughput".to_string(),
+                guidance_type: "numeric".to_string(),
+                maximize: true,
+                observations: 2,
+                guidance_data: serde_json::json!({"left": 3}),
+            }],
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -956,6 +1027,8 @@ mod tests {
         assert!(formatted.contains("Passed:                 20"));
         assert!(formatted.contains("Unexercised:            15"));
         assert!(formatted.contains("Exercised:              20/35 (57.1%)"));
+        assert!(formatted.contains("─── Guidance ─"));
+        assert!(formatted.contains("[numeric ↑] throughput (2): {\"left\":3}"));
     }
 
     #[test]
@@ -974,6 +1047,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1019,6 +1093,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1168,6 +1243,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1247,6 +1323,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1289,6 +1366,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1362,6 +1440,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1465,6 +1544,7 @@ mod tests {
                 unexercised: 1,
             },
             assertion_details: details,
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
@@ -1547,6 +1627,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
@@ -1809,6 +1890,7 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            guidance: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,

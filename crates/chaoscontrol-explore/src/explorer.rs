@@ -2686,6 +2686,7 @@ impl Explorer {
             network_stats,
             assertion_stats,
             assertion_details,
+            guidance: self.collect_guidance(),
             assertion_catalog_status,
             collision_safe_assertion_evidence,
             assertion_identity_conflicts,
@@ -2704,6 +2705,13 @@ impl Explorer {
     /// Collect assertion stats and per-assertion detail from all VM oracles.
     ///
     /// Reads the merged oracle report and preserves its kind-derived verdicts.
+    fn collect_guidance(&self) -> Vec<GuidanceSummary> {
+        let Some(controller) = &self.controller else {
+            return Vec::new();
+        };
+        guidance_summaries(&controller.report().events)
+    }
+
     fn collect_assertion_detail(
         &self,
     ) -> (
@@ -3361,6 +3369,8 @@ pub struct ExplorationReport {
     pub assertion_stats: AssertionStats,
     /// Per-assertion detail — individual verdicts, hit counts, messages.
     pub assertion_details: Vec<AssertionDetail>,
+    /// Aggregated Antithesis guidance observations.
+    pub guidance: Vec<GuidanceSummary>,
     /// Catalog authority retained from the validated merged oracle report.
     pub assertion_catalog_status: chaoscontrol_protocol::admission::CatalogValidationStatus,
     /// True only for a non-empty validated accepted assertion catalog.
@@ -3399,6 +3409,71 @@ pub struct AssertionStats {
     pub failed: usize,
     /// Assertions registered but never evaluated.
     pub unexercised: usize,
+}
+
+/// One aggregated `antithesis_guidance` observation.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GuidanceSummary {
+    pub message: String,
+    pub guidance_type: String,
+    pub maximize: bool,
+    pub observations: u64,
+    pub guidance_data: serde_json::Value,
+}
+
+/// Aggregate emitted guidance events, skipping `hit = false` catalog records.
+pub(crate) fn guidance_summaries(
+    events: &[chaoscontrol_fault::oracle::OracleEvent],
+) -> Vec<GuidanceSummary> {
+    use std::collections::BTreeMap;
+
+    let mut summaries: BTreeMap<(String, String, bool), GuidanceSummary> = BTreeMap::new();
+    for event in events {
+        if event.name != "antithesis_guidance" {
+            continue;
+        }
+        let Some(message) = event
+            .details
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        if event
+            .details
+            .get("hit")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+        {
+            continue;
+        }
+        let guidance_type = event
+            .details
+            .get("guidance_type")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let maximize = event
+            .details
+            .get("maximize")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let key = (guidance_type.clone(), message.to_string(), maximize);
+        let entry = summaries.entry(key).or_insert_with(|| GuidanceSummary {
+            message: message.to_string(),
+            guidance_type,
+            maximize,
+            observations: 0,
+            guidance_data: serde_json::Value::Null,
+        });
+        entry.observations += 1;
+        entry.guidance_data = event
+            .details
+            .get("guidance_data")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+    }
+    summaries.into_values().collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

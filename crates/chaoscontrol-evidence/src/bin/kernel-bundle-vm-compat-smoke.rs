@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use chaoscontrol_evidence::{
@@ -560,11 +560,17 @@ fn print_json<T: serde::Serialize>(value: &T) -> EvidenceResult<()> {
 }
 
 fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> EvidenceResult<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let rendered = serde_json::to_string_pretty(value)?;
-    fs::write(path, format!("{rendered}\n"))?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let directory = fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(format!("{}\n", serde_json::to_string_pretty(value)?).as_bytes())?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()?;
     Ok(())
 }
 
@@ -576,4 +582,26 @@ fn print_usage() {
     println!("kernel-bundle-vm-compat-smoke --check-kvm-serial <profile.json> <serial.txt>");
     println!("kernel-bundle-vm-compat-smoke --build-private-kfunc-initrd <out.cpio> --artifacts-dir <dir> --busybox <busybox> --bpftool <bpftool> --delete-module-helper <helper> --closure-list <store-paths.txt> [--expected-kernel-release 6.18.20]");
     println!("kernel-bundle-vm-compat-smoke --kvm-run-profile <profile.json> --kernel <vmlinux> --initrd <initrd.cpio> --out <receipt.json> --expected-kernel-blake3 <hex> --expected-initrd-blake3 <hex> [--scenario positive|stale-digest|missing-kfunc|verifier-rejection|wrong-attach-target|cleanup-failure] [--max-exits N] [--memory-mib 1024]");
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_output_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_json(&link, &serde_json::json!({"status": "passed"})).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&fs::read(&link).unwrap()).unwrap()
+                ["status"],
+            "passed"
+        );
+    }
 }

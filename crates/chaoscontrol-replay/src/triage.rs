@@ -123,20 +123,15 @@ impl TriageEngine {
         })
         .to_string();
 
-        let ticks_to_bug = if let Some(cp_id) = checkpoint_id {
-            recording
-                .checkpoints
-                .get(cp_id)
-                .map(|cp| bug_tick.saturating_sub(cp.tick))
-                .unwrap_or(bug_tick)
-        } else {
-            bug_tick
-        };
+        let start_checkpoint = checkpoint_id
+            .and_then(|id| recording.checkpoints.get(id))
+            .filter(|cp| cp.tick <= bug_tick);
+        let ticks_to_bug = start_checkpoint.map_or(bug_tick, |cp| bug_tick - cp.tick);
 
         let reproduction = ReproductionInfo {
             seed: recording.seed,
             schedule_json,
-            start_checkpoint_id: checkpoint_id,
+            start_checkpoint_id: start_checkpoint.map(|cp| cp.id),
             ticks_to_bug,
         };
 
@@ -629,14 +624,42 @@ mod tests {
 
     #[test]
     fn test_triage_report_reproduction() {
-        let recording = test_recording();
+        use crate::checkpoint::Checkpoint;
+
+        let mut recording = test_recording();
+        recording.checkpoints.push(Checkpoint {
+            id: 0,
+            tick: 1_000,
+            snapshot: None,
+            serial_output: vec![String::new(), String::new()],
+            events_since_last: Vec::new(),
+        });
         let report = TriageEngine::triage(&recording, 1).unwrap();
 
         assert_eq!(report.reproduction.seed, 42);
         assert_eq!(report.reproduction.start_checkpoint_id, Some(0));
+        assert_eq!(report.reproduction.ticks_to_bug, 1_000);
         assert!(report.reproduction.schedule_json.contains("{")); // Valid JSON
         assert!(report.reproduction.schedule_json.contains("schedule_id"));
         assert!(report.reproduction.schedule_json.contains("snapshot"));
+    }
+
+    #[test]
+    fn triage_ignores_a_checkpoint_after_the_bug() {
+        use crate::checkpoint::Checkpoint;
+
+        let mut recording = test_recording();
+        recording.checkpoints.push(Checkpoint {
+            id: 1,
+            tick: 3_000,
+            snapshot: None,
+            serial_output: vec![String::new(), String::new()],
+            events_since_last: Vec::new(),
+        });
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+
+        assert_eq!(report.reproduction.start_checkpoint_id, None);
+        assert_eq!(report.reproduction.ticks_to_bug, 2_000);
     }
 
     #[test]

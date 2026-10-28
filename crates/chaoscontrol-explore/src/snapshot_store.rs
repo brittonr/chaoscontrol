@@ -364,6 +364,9 @@ impl SnapshotStore for FileSnapshotStore {
         &self,
         keep: &[ReplayParentSnapshotRef],
     ) -> Result<usize, SnapshotStoreError> {
+        for reference in keep {
+            validate_ref_shape(reference)?;
+        }
         let keep: std::collections::BTreeSet<String> =
             keep.iter().map(|r| r.path.clone()).collect();
         let mut removed = 0;
@@ -865,6 +868,21 @@ mod tests {
             Err(SnapshotStoreError::NotDirectory { .. })
         ));
         assert_eq!(fs::read(&outside_file).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn gc_rejects_invalid_keep_refs_without_deleting() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileSnapshotStore::new(dir.path());
+        let valid = store.put_snapshot(&dummy_snapshot(1), 0).unwrap();
+        let mut invalid = valid.clone();
+        invalid.digest = "sha256:00".to_string();
+
+        assert!(matches!(
+            store.gc_unreferenced(std::slice::from_ref(&invalid)),
+            Err(SnapshotStoreError::InvalidDigest { .. })
+        ));
+        assert!(store.has_snapshot(&valid));
     }
 
     #[test]

@@ -81,6 +81,10 @@ pub fn read_causality_request_path(path: impl AsRef<Path>) -> EvidenceResult<Cau
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_CAUSALITY_ARTIFACT_BYTES)?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let request = serde_json::from_slice::<CausalityRequest>(&bytes).map_err(|error| {
         EvidenceError::new(format!(
             "{}: causality request is not a closed typed artifact: {error}",
@@ -98,6 +102,10 @@ pub fn read_causality_receipt_path(
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_CAUSALITY_ARTIFACT_BYTES)?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let receipt = serde_json::from_slice::<CausalityReceipt>(&bytes).map_err(|error| {
         EvidenceError::new(format!(
             "{}: causality receipt is not a closed typed artifact: {error}",
@@ -454,5 +462,19 @@ fn require(condition: bool, message: &'static str) -> EvidenceResult<()> {
         Ok(())
     } else {
         Err(EvidenceError::new(message))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn causality_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("request.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_causality_request_path(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
     }
 }

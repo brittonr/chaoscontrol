@@ -13,6 +13,10 @@ const ROUND_ARTIFACT_DOMAIN: &[u8] = b"chaoscontrol.phenomena.round-artifact.v1\
 pub fn read_phenomena_history_path(path: impl AsRef<Path>) -> EvidenceResult<PhenomenaHistory> {
     let path = path.as_ref();
     let bytes = crate::bounded_file::read_bounded_regular_bytes(path, MAX_PHENOMENA_HISTORY_BYTES)?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let history = serde_json::from_slice::<PhenomenaHistory>(&bytes).map_err(|error| {
         EvidenceError::new(format!(
             "{}: history JSON is not a closed typed artifact: {error}",
@@ -173,4 +177,18 @@ pub fn write_phenomena_report_path(
     let mut bytes = serde_json::to_vec_pretty(&report)?;
     bytes.push(b'\n');
     crate::bounded_file::write_new_bytes(report_path.as_ref(), &bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn phenomena_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("history.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_phenomena_history_path(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 }

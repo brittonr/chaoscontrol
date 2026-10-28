@@ -86,6 +86,10 @@ pub fn read_findability_artifact_path(
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_FINDABILITY_ARTIFACT_BYTES)?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let artifact = serde_json::from_slice::<FindabilityRoundArtifact>(&bytes).map_err(|error| {
         EvidenceError::new(format!(
             "{}: findability JSON is not a closed typed artifact: {error}",
@@ -165,5 +169,19 @@ fn require(condition: bool, message: &'static str) -> EvidenceResult<()> {
         Ok(())
     } else {
         Err(EvidenceError::new(message))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn findability_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("artifact.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_findability_artifact_path(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
     }
 }

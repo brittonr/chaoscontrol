@@ -1697,6 +1697,26 @@ fn materialize_accepts_case_insensitive_sha256() {
 }
 
 #[test]
+fn snapshot_chunk_manifest_rejects_duplicate_paths() {
+    let chunk = chaoscontrol_evidence::SnapshotChunk {
+        path: "snapshots/chunk.bin".to_string(),
+        size: 1,
+        sha256: "0".repeat(64),
+    };
+    let manifest = SnapshotChunkManifest {
+        schema_version: 1,
+        original_path: "payload.snapshot.bin".to_string(),
+        original_size: 2,
+        original_sha256: "0".repeat(64),
+        chunks: vec![chunk.clone(), chunk],
+    };
+    let error = manifest
+        .validate_shape()
+        .expect_err("duplicate path rejected");
+    assert!(error.message().contains("duplicated"));
+}
+
+#[test]
 fn snapshot_chunk_manifest_rejects_overlong_paths() {
     let chunk = chaoscontrol_evidence::SnapshotChunk {
         path: format!(

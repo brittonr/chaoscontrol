@@ -2981,8 +2981,13 @@ impl SnapshotChunkManifest {
             self.chunks.len() <= MAX_SNAPSHOT_CHUNKS,
             "chunk manifest exceeds the chunk bound",
         )?;
+        let mut chunk_paths = BTreeSet::new();
         for (idx, chunk) in self.chunks.iter().enumerate() {
             chunk.validate_shape(idx)?;
+            ensure(
+                chunk_paths.insert(chunk.path.as_str()),
+                format!("chunk {idx} path is duplicated"),
+            )?;
         }
         Ok(())
     }

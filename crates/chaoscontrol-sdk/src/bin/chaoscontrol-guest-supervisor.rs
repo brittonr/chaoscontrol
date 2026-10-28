@@ -176,6 +176,9 @@ fn read_bounded_regular(path: &Path, limit: u64, label: &str) -> Result<Vec<u8>,
     if bytes.len() as u64 > limit {
         return Err(format!("{label} must be a bounded regular file"));
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{label} changed while reading"));
+    }
     Ok(bytes)
 }
 
@@ -245,6 +248,16 @@ mod tests {
             std::io::ErrorKind::InvalidInput
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn reads_reject_length_changes() {
+        assert!(read_bounded_regular(
+            Path::new("/proc/self/cmdline"),
+            MAX_FIXTURE_STATE_BYTES,
+            "state"
+        )
+        .is_err());
     }
 
     #[test]

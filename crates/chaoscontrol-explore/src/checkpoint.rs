@@ -1029,6 +1029,10 @@ impl TryFrom<&SerializableBug> for BugReport {
         {
             return Err(crate::bug::identity::BugIdentityError::MalformedCarrier);
         }
+        if let Some(reference) = &bug.replay_parent_snapshot_ref {
+            crate::snapshot_store::validate_ref_shape(reference)
+                .map_err(|_| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
+        }
         Ok(Self {
             bug_id: bug.bug_id,
             assertion_id: bug.assertion_id,
@@ -1418,6 +1422,28 @@ mod tests {
         let loaded = load_serializable_bug(&path).expect("complete bug loads");
         assert_eq!(loaded.bug_id, bug.bug_id);
         assert_eq!(loaded.assertion_identity, bug.assertion_identity);
+    }
+
+    #[test]
+    fn standalone_bug_loader_rejects_malformed_snapshot_refs() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("bug.json");
+        let mut bug = minimal_bug(1);
+        bug.replay_parent_depth = 1;
+        bug.replay_parent_snapshot_ref = Some(crate::snapshot_store::ReplayParentSnapshotRef {
+            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            digest: "sha256:not-hex".to_string(),
+            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            schema_version: crate::snapshot_store::SNAPSHOT_SCHEMA_VERSION,
+            path: "snapshots/x.snapshot.bin".to_string(),
+        });
+        fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
+            .expect("write bug fixture");
+
+        assert!(matches!(
+            load_serializable_bug(&path),
+            Err(CheckpointError::InvalidBugIdentity { .. })
+        ));
     }
 
     #[test]

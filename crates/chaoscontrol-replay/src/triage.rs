@@ -47,7 +47,9 @@ impl TriageEngine {
                             AssertionInfo {
                                 id: *assertion_id,
                                 location: location.clone(),
-                                kind: "always".to_string(), // Would need to track assertion types
+                                kind: assertion_kind_name(recording, *assertion_id)
+                                    .unwrap_or("unknown")
+                                    .to_string(),
                                 description: description.clone(),
                                 details: None,
                             },
@@ -94,14 +96,11 @@ impl TriageEngine {
             .collect();
 
         // Determine severity
-        let severity = if assertion.kind == "always" {
-            Severity::Critical
-        } else if assertion.kind == "reachable" {
-            Severity::High
-        } else if assertion.kind == "sometimes" {
-            Severity::Medium
-        } else {
-            Severity::Low
+        let severity = match assertion.kind.as_str() {
+            "always" => Severity::Critical,
+            "reachable" | "unreachable" => Severity::High,
+            "sometimes" => Severity::Medium,
+            _ => Severity::Low,
         };
 
         // Build reproduction info
@@ -288,6 +287,17 @@ fn format_event(event: &RecordedEvent) -> String {
     }
 }
 
+fn assertion_kind_name(recording: &Recording, assertion_id: u64) -> Option<&'static str> {
+    let id = u32::try_from(assertion_id).ok()?;
+    let kind = recording.oracle_report.as_ref()?.assertions.get(&id)?.kind;
+    Some(match kind {
+        chaoscontrol_fault::oracle::AssertionKind::Always => "always",
+        chaoscontrol_fault::oracle::AssertionKind::Sometimes => "sometimes",
+        chaoscontrol_fault::oracle::AssertionKind::Reachable => "reachable",
+        chaoscontrol_fault::oracle::AssertionKind::Unreachable => "unreachable",
+    })
+}
+
 fn vm_status_at(recording: &Recording, vm_index: usize, tick: u64) -> String {
     recording
         .events
@@ -392,7 +402,7 @@ mod tests {
 
         assert_eq!(report.bug_id, 1);
         assert!(report.summary.contains("Leader election failed"));
-        assert_eq!(report.severity, Severity::Critical);
+        assert_eq!(report.severity, Severity::Low);
     }
 
     #[test]
@@ -443,6 +453,42 @@ mod tests {
         assert_eq!(report.vm_states.len(), 2);
         assert_eq!(report.vm_states[0].vm_index, 0);
         assert_eq!(report.vm_states[1].vm_index, 1);
+    }
+
+    #[test]
+    fn triage_uses_the_recorded_assertion_kind_for_severity() {
+        use chaoscontrol_fault::oracle::AssertionRecord;
+        use std::collections::BTreeSet;
+
+        let mut recording = test_recording();
+        let mut oracle = chaoscontrol_fault::oracle::OracleReport::empty();
+        oracle.assertions.insert(
+            1,
+            AssertionRecord {
+                message: String::from("liveness"),
+                kind: chaoscontrol_fault::oracle::AssertionKind::Sometimes,
+                hit_count: 1,
+                true_count: 0,
+                false_count: 1,
+                runs_hit: 1,
+                runs_satisfied: 0,
+                first_failure_run: Some(0),
+                last_failure_details: None,
+                guest: String::from("guest"),
+                category: String::from("fixture"),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: BTreeSet::new(),
+                vm_instances: BTreeSet::new(),
+                process_instances: BTreeSet::new(),
+                fallback_scope: None,
+            },
+        );
+        recording.oracle_report = Some(oracle);
+
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+        assert_eq!(report.assertion.kind, "sometimes");
+        assert_eq!(report.severity, Severity::Medium);
     }
 
     #[test]

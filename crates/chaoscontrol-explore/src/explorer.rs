@@ -2966,8 +2966,23 @@ impl Explorer {
                 reason: "assertion checkpoint receipt exceeds the byte limit".to_string(),
             });
         }
-        std::fs::write(dir.join("assertion-checkpoints.json"), bytes)?;
+        Self::write_artifact_file(&dir.join("assertion-checkpoints.json"), &bytes)?;
         Ok(())
+    }
+
+    /// Write one bounded artifact without following symlinks.
+    fn write_artifact_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path)?;
+        file.write_all(bytes)
     }
 
     /// Create a checkpoint from the current state.
@@ -3532,6 +3547,18 @@ fn assertion_observation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artifact_writer_rejects_symlink_targets() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let target = temporary.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = temporary.path().join("artifact.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(Explorer::write_artifact_file(&link, b"artifact").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
 
     #[test]
     fn missing_journal_authority_stops_before_bootstrap_and_metrics() {

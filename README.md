@@ -870,6 +870,11 @@ All assertion sites are registered at compile time via `linkme` and
 reported to the VMM at startup. The exploration report shows which
 assertions were exercised, passed, failed, or never reached.
 
+Code ported from `antithesis_sdk` can import
+`chaoscontrol_sdk::compat` for the unprefixed Antithesis assertion names.
+Runtime raw assertions remain unsupported because every emitted assertion
+must bind to a compiled catalog descriptor.
+
 For Rust projects that need a repeatable setup/scenario shape, see
 [`docs/rust-workload-harness.md`](docs/rust-workload-harness.md). The harness
 keeps the existing SDK APIs intact while adding local dry-run reports for

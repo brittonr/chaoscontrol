@@ -93,6 +93,8 @@ pub mod kcov;
 #[cfg(feature = "full")]
 pub mod guidance;
 
+pub mod compat;
+
 #[cfg(feature = "full")]
 pub mod runtime;
 #[cfg(feature = "full")]

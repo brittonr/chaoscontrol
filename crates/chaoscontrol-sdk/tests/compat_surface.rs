@@ -1,0 +1,62 @@
+use chaoscontrol_sdk::compat::*;
+use serde_json::{json, Value};
+use std::collections::BTreeSet;
+
+#[test]
+fn compat_module_exposes_the_antithesis_assertion_names() {
+    let output = std::env::temp_dir().join(format!(
+        "chaoscontrol-compat-surface-{}.jsonl",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&output);
+    std::env::set_var("CHAOSCONTROL_SDK_LOCAL_OUTPUT", &output);
+
+    antithesis_init();
+    let _: AntithesisRng = AntithesisRng;
+
+    assert_always!(true, "compat always");
+    assert_always_or_unreachable!(true, "compat aou");
+    assert_sometimes!(true, "compat sometimes");
+    assert_reachable!("compat reachable");
+    assert_unreachable!("compat unreachable");
+    assert_always_greater_than!(2, 1, "compat always greater than");
+    assert_sometimes_less_than_or_equal_to!(1, 1, "compat sometimes less or equal");
+    assert_always_some!({first: true, second: false}, "compat any bundle");
+    assert_sometimes_all!({first: true, second: true}, "compat all bundle");
+
+    let _ = random::random_choice(&[1, 2, 3]).expect("nonempty slice");
+    let _ = random::random_choice_index(3);
+    lifecycle::send_event("compat event", &json!({"ok": true}));
+
+    let content = std::fs::read_to_string(&output).expect("local output");
+    let messages = content
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
+        .filter_map(|record| record.get("antithesis_assert").cloned())
+        .map(|assertion| {
+            assert_eq!(assertion["catalog_status"], "accepted");
+            assertion["message"]
+                .as_str()
+                .expect("assertion message")
+                .to_string()
+        })
+        .collect::<BTreeSet<_>>();
+
+    let expected = [
+        "compat always",
+        "compat aou",
+        "compat sometimes",
+        "compat reachable",
+        "compat unreachable",
+        "compat always greater than",
+        "compat sometimes less or equal",
+        "compat any bundle",
+        "compat all bundle",
+    ];
+    assert_eq!(messages.len(), expected.len());
+    for message in expected {
+        assert!(messages.contains(message), "missing {message}");
+    }
+
+    std::fs::remove_file(output).expect("remove local output");
+}

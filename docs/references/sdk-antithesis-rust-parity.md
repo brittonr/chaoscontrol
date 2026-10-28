@@ -32,7 +32,7 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |
 | Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full`; trims and maps empty names to `anonymous` | equivalent |
 | Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` (primary) or `ANTITHESIS_SDK_LOCAL_OUTPUT` (fallback) | equivalent |
-| Convenience imports | `prelude` | `prelude` with ChaosControl-specific extensions | divergent |
+| Convenience imports | `prelude` | `prelude` plus `compat` module with unprefixed Antithesis names | superset |
 
 ## Assertion macros
 
@@ -177,6 +177,11 @@ assertion oracle or prove exploration quality.
 
 ## Notes and sharp edges
 
+- `chaoscontrol_sdk::compat` exposes the Antithesis assertion names
+  (`assert_always!`, `assert_sometimes_all!`, numeric names,
+  `antithesis_init`, `lifecycle`, `random`, `AntithesisRng`). `assert_raw`
+  remains absent because arbitrary runtime assertions cannot be bound to a
+  compiled catalog descriptor.
 - `cc_assert_always_some!` accepts both the Antithesis brace-bundle shape
   (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
   single-expression `Option::is_some` shape. `cc_assert_always_any!` is the

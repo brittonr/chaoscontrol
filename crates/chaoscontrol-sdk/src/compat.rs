@@ -1,0 +1,24 @@
+//! Exact-name compatibility surface for code ported from `antithesis_sdk`.
+//!
+//! The renamed items keep the Antithesis spelling where the signature and
+//! semantics match. `assert_raw` is intentionally absent: runtime catalog
+//! admission requires a compiled descriptor, so an arbitrary raw assertion
+//! cannot be bound safely.
+
+pub use crate::chaoscontrol_init as antithesis_init;
+pub use crate::random::ChaosControlRng as AntithesisRng;
+pub use crate::{
+    cc_assert_always as assert_always, cc_assert_always_greater_than as assert_always_greater_than,
+    cc_assert_always_greater_than_or_equal_to as assert_always_greater_than_or_equal_to,
+    cc_assert_always_less_than as assert_always_less_than,
+    cc_assert_always_less_than_or_equal_to as assert_always_less_than_or_equal_to,
+    cc_assert_always_or_unreachable as assert_always_or_unreachable,
+    cc_assert_always_some as assert_always_some, cc_assert_reachable as assert_reachable,
+    cc_assert_sometimes as assert_sometimes, cc_assert_sometimes_all as assert_sometimes_all,
+    cc_assert_sometimes_greater_than as assert_sometimes_greater_than,
+    cc_assert_sometimes_greater_than_or_equal_to as assert_sometimes_greater_than_or_equal_to,
+    cc_assert_sometimes_less_than as assert_sometimes_less_than,
+    cc_assert_sometimes_less_than_or_equal_to as assert_sometimes_less_than_or_equal_to,
+    cc_assert_unreachable as assert_unreachable,
+};
+pub use crate::{lifecycle, random};

@@ -98,6 +98,9 @@ fn read_topology(path: &std::path::Path) -> Result<Vec<u8>, String> {
     if bytes.len() as u64 > MAX_TOPOLOGY_BYTES {
         return Err("topology must be a bounded regular file".to_string());
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err("topology changed while reading".to_string());
+    }
     chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
         .map_err(|error| error.message().to_string())?;
     Ok(bytes)
@@ -107,6 +110,11 @@ fn read_topology(path: &std::path::Path) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn topology_reads_reject_length_changes() {
+        assert!(read_topology(std::path::Path::new("/proc/self/cmdline")).is_err());
+    }
 
     #[test]
     fn topology_reads_reject_excessive_nesting() {

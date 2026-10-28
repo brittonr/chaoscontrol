@@ -97,12 +97,11 @@ pub fn fill_bytes(buf: &mut [u8]) {
 
 /// A random number generator backed by ChaosControl's guided randomness.
 ///
-/// Implements `rand::RngCore` so it can be used anywhere the `rand`
-/// ecosystem expects an RNG — `rng.gen()`, `slice.choose(&mut rng)`,
-/// `slice.shuffle(&mut rng)`, etc.
-///
-/// Inside a ChaosControl VM, every call goes through the VMM's
-/// deterministic PRNG.  Outside a VM, falls back to host entropy.
+/// The RNG implements the `rand` 0.8 `RngCore` (with the `full` feature)
+/// and the `rand_core` 0.9 / 0.10 traits behind the `rand_v0_9` /
+/// `rand_v0_10` features. Inside a ChaosControl VM, every call goes
+/// through the VMM's deterministic PRNG. Outside a VM, falls back to host
+/// entropy.
 ///
 /// # Example
 ///
@@ -115,11 +114,9 @@ pub fn fill_bytes(buf: &mut [u8]) {
 /// let items = vec![1, 2, 3, 4, 5];
 /// let picked = items.choose(&mut rng).unwrap();
 /// ```
-#[cfg(feature = "full")]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChaosControlRng;
 
-#[cfg(feature = "full")]
 impl ChaosControlRng {
     /// Create a new `ChaosControlRng`.
     pub const fn new() -> Self {
@@ -152,6 +149,39 @@ impl rand::RngCore for ChaosControlRng {
 /// (though the VMM of course knows all values).
 #[cfg(feature = "full")]
 impl rand::CryptoRng for ChaosControlRng {}
+
+#[cfg(feature = "rand_v0_9")]
+impl rand_core_v0_9::RngCore for ChaosControlRng {
+    fn next_u32(&mut self) -> u32 {
+        (get_random() & 0xFFFF_FFFF) as u32
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        get_random()
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        crate::random::fill_bytes(dest);
+    }
+}
+
+#[cfg(feature = "rand_v0_10")]
+impl rand_core_v0_10::TryRng for ChaosControlRng {
+    type Error = core::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok((get_random() & 0xFFFF_FFFF) as u32)
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(get_random())
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Self::Error> {
+        crate::random::fill_bytes(dest);
+        Ok(())
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Slice-based random choice (requires `full` feature)

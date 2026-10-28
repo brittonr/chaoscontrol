@@ -75,10 +75,10 @@ pub use crate::marker::branch_marker;
 pub use crate::resources::memory_ceiling_bytes;
 
 // ── Random ───────────────────────────────────────────────────────────
-pub use crate::random::{fill_bytes, get_random, random_choice};
+pub use crate::random::{fill_bytes, get_random, random_choice, ChaosControlRng};
 
 #[cfg(feature = "full")]
-pub use crate::random::{random_choice_from, ChaosControlRng};
+pub use crate::random::random_choice_from;
 
 // ── Workload harness ─────────────────────────────────────────────────
 #[cfg(feature = "full")]

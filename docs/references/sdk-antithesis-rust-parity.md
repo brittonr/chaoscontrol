@@ -77,7 +77,7 @@ See the guidance decision below.
 | Choice | `random_choice(&[T]) -> Option<&T>` | `random_choice(n) -> usize` | divergent |
 | Choice from slice | (same as above) | `random_choice_from(&[T]) -> Option<&T>` | equivalent |
 | Fill bytes | `fill_bytes` (internal) | `random::fill_bytes(&mut [u8])` (public) | divergent |
-| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` (rand 0.8 `RngCore` + `CryptoRng`) | subset |
+| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` (rand 0.8 `RngCore` + `CryptoRng` with `full`; rand_core 0.9/0.10 via `rand_v0_9`/`rand_v0_10`) | equivalent |
 
 ## Transport and runtime modes
 
@@ -182,10 +182,11 @@ reopened with a new change.
   Antithesis takes a slice and returns `Option<&T>`, ChaosControl takes a
   bound `n` and returns a `usize` index. Use `random_choice_from` for slice
   parity.
-- ChaosControl no-op mode changes the `setup_complete` parameter type
-  (`&Value` → `&()`), so a direct call compiled with
-  `default-features = false` does not typecheck. Antithesis keeps the
-  signature stable in no-op mode.
+- ChaosControl's no-op lifecycle functions accept a generic detail
+  reference, so `setup_complete(&details)` and `send_event(name, &details)`
+  keep the same call shape with `default-features = false`.
 - ChaosControl supports `no_std` when `full` is disabled; Antithesis is std.
-- ChaosControl serves rand 0.8 only; Antithesis supports rand 0.8/0.9/0.10
-  and multiple versions at once.
+- ChaosControl enables rand 0.8 through `full` and rand_core 0.9/0.10
+  through the `rand_v0_9`/`rand_v0_10` features. The feature names differ
+  from Antithesis (`rand_v0_8` is implicit in `full`), but all three traits
+  can be enabled at once.

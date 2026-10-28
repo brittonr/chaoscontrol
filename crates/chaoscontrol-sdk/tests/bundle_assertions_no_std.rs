@@ -29,3 +29,12 @@ fn bundle_macros_accept_unit_details_in_noop_mode() {
     cc_assert_always_any!({first: true, second: false}, "any", &());
     cc_assert_sometimes_all!({first: true, second: true}, "all", &());
 }
+
+#[cfg(not(feature = "full"))]
+#[test]
+fn lifecycle_noop_keeps_the_detail_call_shape() {
+    setup_complete(&());
+    setup_complete(&String::from("details"));
+    send_event("event", &());
+    send_event("event", &String::from("details"));
+}

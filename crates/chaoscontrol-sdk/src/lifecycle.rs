@@ -38,8 +38,12 @@ pub fn setup_complete(details: &serde_json::Value) {
 }
 
 /// No-op stub for `setup_complete` when SDK features are disabled.
+///
+/// The generic parameter keeps the call shape stable across feature
+/// selection: the same `setup_complete(&details)` call compiles whether or
+/// not the `full` feature is enabled.
 #[cfg(not(feature = "full"))]
-pub fn setup_complete(_details: &()) {
+pub fn setup_complete<T: ?Sized>(_details: &T) {
     transport::hypercall(CMD_LIFECYCLE_SETUP_COMPLETE, 0, 0, "setup_complete", b"{}");
 }
 
@@ -66,7 +70,10 @@ pub fn send_event(name: &str, details: &serde_json::Value) {
 }
 
 /// No-op stub for `send_event` when SDK features are disabled.
+///
+/// The generic parameter keeps the call shape stable across feature
+/// selection.
 #[cfg(not(feature = "full"))]
-pub fn send_event(_name: &str, _details: &()) {
+pub fn send_event<T: ?Sized>(_name: &str, _details: &T) {
     // No-op: transport discards everything
 }

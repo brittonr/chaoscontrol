@@ -14,6 +14,8 @@ use std::collections::VecDeque;
 pub const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
 /// Maximum raw packets retained for later delivery.
 pub const MAX_NETWORK_IN_FLIGHT_PACKETS: usize = 4_096;
+/// Maximum legacy network messages retained for later delivery.
+pub const MAX_NETWORK_IN_FLIGHT_MESSAGES: usize = 4_096;
 /// Maximum admitted size of one raw network packet.
 pub const MAX_NETWORK_PACKET_BYTES: usize = 64 * 1024;
 const NETWORK_TICKS_PER_SECOND: u64 = 1_000;
@@ -29,6 +31,7 @@ pub enum NetworkSendError {
     CounterCapacity,
     PacketCapacity,
     PacketTooLarge,
+    MessageCapacity,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -573,6 +576,9 @@ impl NetworkFabric {
         data: Vec<u8>,
         current_tick: u64,
     ) -> Result<bool, NetworkSendError> {
+        if self.in_flight.len() >= MAX_NETWORK_IN_FLIGHT_MESSAGES {
+            return Err(NetworkSendError::MessageCapacity);
+        }
         let plan = self.checked_packet_effect_plan(from, to, data.len(), current_tick)?;
         let prior_message_count = self.in_flight.len();
         let mut candidate = self.clone();
@@ -1800,6 +1806,27 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+
+    #[test]
+    fn network_messages_in_flight_are_bounded() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        for _ in 0..MAX_NETWORK_IN_FLIGHT_MESSAGES {
+            fabric.in_flight.push(NetworkMessage {
+                from: 0,
+                to: 1,
+                data: Vec::new(),
+                deliver_at_tick: 0,
+            });
+        }
+        assert_eq!(
+            fabric.try_send(0, 1, vec![1], 0).unwrap_err(),
+            NetworkSendError::MessageCapacity
+        );
+        assert!(!fabric.send(0, 1, vec![1], 0));
+
+        fabric.in_flight.pop();
+        assert!(fabric.try_send(0, 1, vec![1], 0).unwrap());
     }
 
     #[test]

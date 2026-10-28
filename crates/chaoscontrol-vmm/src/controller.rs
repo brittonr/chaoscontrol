@@ -1899,6 +1899,9 @@ impl SimulationController {
                 logical_tick: 0,
                 paused_steps: 0,
             });
+        if gate.paused_ordinal != u64::MAX && gate.release_tick > gate.logical_tick {
+            return Err(target_state_application_error());
+        }
         gate.magic = THREAD_GATE_MAGIC;
         gate.paused_ordinal = u64::from(thread.ordinal);
         gate.release_tick = gate.logical_tick.saturating_add(duration);
@@ -4309,6 +4312,48 @@ mod tests {
             .expect("read gate");
         let gate = ThreadGate::from_bytes(&bytes);
         assert_eq!(gate.magic, THREAD_GATE_MAGIC);
+        assert_eq!(gate.paused_ordinal, 1);
+        assert_eq!(gate.release_tick, 5);
+    }
+
+    #[test]
+    fn overlapping_thread_pause_is_rejected() {
+        let mut controller = adapter_test_controller();
+        let first = FaultPlan {
+            attempt_id: FaultAttemptId([51; 32]),
+            effect: FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                release_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&first).expect("first pause");
+        let second = FaultPlan {
+            attempt_id: FaultAttemptId([52; 32]),
+            effect: FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:reader"),
+                    generation: 1,
+                    ordinal: 2,
+                },
+                release_at_tick: 9,
+            },
+        };
+        assert!(controller.apply_fault_plan(&second).is_err());
+
+        let mut bytes = [0u8; 40];
+        controller.vms[0]
+            .vm
+            .memory()
+            .inner()
+            .read_slice(&mut bytes, GuestAddress(THREAD_GATE_ADDRESS))
+            .expect("read gate");
+        let gate = ThreadGate::from_bytes(&bytes);
         assert_eq!(gate.paused_ordinal, 1);
         assert_eq!(gate.release_tick, 5);
     }

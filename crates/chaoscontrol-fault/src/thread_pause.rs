@@ -229,6 +229,19 @@ mod tests {
     }
 
     #[test]
+    fn abi_enforces_the_safe_point_boundary() {
+        let mut abi = abi();
+        abi.max_safe_points = MAX_SAFE_POINTS;
+        admit_abi(&abi).unwrap();
+
+        abi.max_safe_points = MAX_SAFE_POINTS + 1;
+        assert_eq!(
+            admit_abi(&abi).unwrap_err(),
+            ThreadPauseError::UnsupportedAbi
+        );
+    }
+
+    #[test]
     fn admits_exact_window_and_release_tick() {
         let plan = admit_thread_pause(
             thread(1),

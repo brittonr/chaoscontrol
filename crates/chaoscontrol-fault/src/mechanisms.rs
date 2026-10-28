@@ -63,6 +63,14 @@ impl LinkId {
             high: left.max(right),
         })
     }
+
+    /// Recheck canonical ordering and bounds for a deserialized identity.
+    pub fn validate(&self) -> Result<(), MechanismError> {
+        if self.low >= self.high || self.high >= MAX_LINK_ID {
+            return Err(MechanismError::InvalidLink);
+        }
+        Ok(())
+    }
 }
 
 /// One directional network fault window.
@@ -229,6 +237,7 @@ pub fn admit_baseline_profile(profile: &NetworkBaselineProfile) -> Result<(), Me
 
 /// Admit a directional network fault.
 pub fn admit_directional_network(fault: &DirectionalNetworkFault) -> Result<(), MechanismError> {
+    fault.link.validate()?;
     if fault.direction == NetworkDirection::Both {
         // Both is explicit and valid; keep the match for exhaustive review.
     } else if fault.direction == NetworkDirection::Inbound
@@ -327,7 +336,10 @@ pub fn effective_network_mode(
 ) -> Option<NetworkDisruption> {
     faults
         .iter()
-        .filter(|fault| fault.link == link && fault.direction == direction)
+        .filter(|fault| {
+            fault.link == link
+                && (fault.direction == direction || fault.direction == NetworkDirection::Both)
+        })
         .map(|fault| fault.disruption)
         .max_by_key(|mode| mode.severity())
 }
@@ -385,6 +397,44 @@ mod tests {
         let link = LinkId::new(9, 3).unwrap();
         assert_eq!((link.low, link.high), (3, 9));
         assert_eq!(LinkId::new(3, 3).unwrap_err(), MechanismError::InvalidLink);
+    }
+
+    #[test]
+    fn deserialized_link_identity_is_rechecked_at_admission() {
+        let mut fault = network(NetworkDisruption::Stopped);
+        fault.link = LinkId { low: 5, high: 5 };
+        assert_eq!(
+            admit_directional_network(&fault).unwrap_err(),
+            MechanismError::InvalidLink
+        );
+        fault.link = LinkId { low: 9, high: 3 };
+        assert_eq!(
+            admit_directional_network(&fault).unwrap_err(),
+            MechanismError::InvalidLink
+        );
+        fault.link = LinkId {
+            low: 3,
+            high: MAX_LINK_ID,
+        };
+        assert_eq!(
+            admit_directional_network(&fault).unwrap_err(),
+            MechanismError::InvalidLink
+        );
+    }
+
+    #[test]
+    fn both_direction_faults_apply_to_each_direction() {
+        let mut fault = network(NetworkDisruption::Jammed);
+        fault.direction = NetworkDirection::Both;
+        let faults = vec![fault];
+        assert_eq!(
+            effective_network_mode(&faults, link(), NetworkDirection::Outbound),
+            Some(NetworkDisruption::Jammed)
+        );
+        assert_eq!(
+            effective_network_mode(&faults, link(), NetworkDirection::Inbound),
+            Some(NetworkDisruption::Jammed)
+        );
     }
 
     #[test]

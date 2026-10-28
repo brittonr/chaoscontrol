@@ -388,6 +388,7 @@ pub enum EventQueryError {
     ScanBound,
     RowBound,
     InvalidEvent,
+    DuplicateSourcePosition,
     InvalidText,
     InvalidField,
     InvalidPointer,
@@ -407,6 +408,9 @@ impl core::fmt::Display for EventQueryError {
             Self::ScanBound => "event query scan count exceeds the bound",
             Self::RowBound => "event query result rows exceed the bound",
             Self::InvalidEvent => "event envelope schema or identity is invalid",
+            Self::DuplicateSourcePosition => {
+                "two events claim one source position with different content"
+            }
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidField => "event query field is not supported",
             Self::InvalidPointer => "event query JSON pointer is not confined",
@@ -457,6 +461,43 @@ pub fn admit_event(event: &EventEnvelope) -> Result<(), EventQueryError> {
     Ok(())
 }
 
+/// Reject two distinct records that claim one source position.
+///
+/// Byte-identical repeats are allowed so a union can collapse them; any
+/// content difference at the same `(source_id, source_sequence)` is ambiguous.
+fn validate_source_positions(events: &[EventEnvelope]) -> Result<(), EventQueryError> {
+    let mut positions: BTreeMap<([u8; 32], u64), &EventEnvelope> = BTreeMap::new();
+    for event in events {
+        let position = (event.source_id, event.source_sequence);
+        match positions.get(&position) {
+            Some(existing) if !same_source_content(existing, event) => {
+                return Err(EventQueryError::DuplicateSourcePosition);
+            }
+            Some(_) => {}
+            None => {
+                positions.insert(position, event);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Compare source-visible content; `derived` is query-local and excluded.
+fn same_source_content(left: &EventEnvelope, right: &EventEnvelope) -> bool {
+    left.schema == right.schema
+        && left.source_id == right.source_id
+        && left.source_kind == right.source_kind
+        && left.source_sequence == right.source_sequence
+        && left.tick == right.tick
+        && left.vm_index == right.vm_index
+        && left.process == right.process
+        && left.thread == right.thread
+        && left.kind == right.kind
+        && left.text == right.text
+        && left.payload_digest == right.payload_digest
+        && left.details == right.details
+}
+
 /// Evaluate one query over admitted events.
 pub fn evaluate(
     query: &EventQuery,
@@ -471,6 +512,7 @@ pub fn evaluate(
     for event in events {
         admit_event(event)?;
     }
+    validate_source_positions(events)?;
     let mut rows = evaluate_rows(query, events)?;
     rows.sort_by_key(event_order);
     rows.dedup_by_key(|event| (event.source_id, event.source_sequence));
@@ -872,6 +914,38 @@ mod tests {
         assert_eq!(result.matched, 4);
         assert_eq!(result.rows[0].tick, 10);
         assert_eq!(result.rows[3].tick, 30);
+    }
+
+    #[test]
+    fn conflicting_source_positions_are_rejected() {
+        let admitted = events();
+        let mut conflicting = admitted.clone();
+        conflicting.push(event(1, 0, 10, "assert", "different text", None));
+        assert_eq!(
+            evaluate(&EventQuery::All, &conflicting, &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::DuplicateSourcePosition
+        );
+
+        let mut shifted_tick = admitted.clone();
+        shifted_tick.push(event(1, 0, 99, "assert", "leader elected", None));
+        assert_eq!(
+            evaluate(
+                &EventQuery::All,
+                &shifted_tick,
+                &EventQueryLimits::default()
+            )
+            .unwrap_err(),
+            EventQueryError::DuplicateSourcePosition
+        );
+
+        let mut identical = admitted.clone();
+        let mut repeat = identical[0].clone();
+        repeat
+            .derived
+            .insert("projection".to_string(), "x".to_string());
+        identical.push(repeat);
+        let result = evaluate(&EventQuery::All, &identical, &EventQueryLimits::default()).unwrap();
+        assert_eq!(result.matched, 4);
     }
 
     #[test]

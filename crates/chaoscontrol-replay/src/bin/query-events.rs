@@ -25,6 +25,7 @@ enum Command {
     /// Evaluate one typed query over event envelopes.
     Query {
         /// Optional JSON array of event envelopes.
+        #[arg(long)]
         events: Option<PathBuf>,
         /// Optional retained recording JSON file.
         #[arg(long)]
@@ -162,4 +163,45 @@ fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
     std::fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_accepts_optional_events_input() {
+        let cli = Cli::try_parse_from([
+            "query-events",
+            "query",
+            "--events",
+            "events.json",
+            "query.json",
+            "out.json",
+        ])
+        .expect("query arguments parse");
+        match cli.command {
+            Command::Query {
+                events,
+                query,
+                output,
+                recording,
+                dlog,
+                ..
+            } => {
+                assert_eq!(events, Some(PathBuf::from("events.json")));
+                assert_eq!(query, PathBuf::from("query.json"));
+                assert_eq!(output, PathBuf::from("out.json"));
+                assert_eq!(recording, None);
+                assert_eq!(dlog, None);
+            }
+            Command::Timeline { .. } => panic!("expected query command"),
+        }
+    }
+
+    #[test]
+    fn query_requires_query_and_output() {
+        assert!(Cli::try_parse_from(["query-events", "query"]).is_err());
+        assert!(Cli::try_parse_from(["query-events", "query", "query.json"]).is_err());
+    }
 }

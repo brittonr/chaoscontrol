@@ -571,9 +571,13 @@ mod tests {
     fn artifact_depth_is_bounded() {
         let root = tempfile::tempdir().unwrap();
         let mut depth = root.path().to_path_buf();
-        for index in 0..=MAX_DOGFOOD_SCAN_DEPTH {
+        for index in 0..MAX_DOGFOOD_SCAN_DEPTH {
             depth.push(format!("d{index}"));
         }
+        std::fs::create_dir_all(&depth).unwrap();
+        check_dogfood_artifact_sizes(root.path(), 1024).unwrap();
+
+        depth.push("one-too-many");
         std::fs::create_dir_all(&depth).unwrap();
         let error = check_dogfood_artifact_sizes(root.path(), 1024).unwrap_err();
         assert!(error.message().contains("depth bound"));

@@ -180,7 +180,7 @@ impl<'de> Deserialize<'de> for AssertionSummaryV2 {
 mod tests {
     use super::*;
     use chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES;
-    use chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES;
+    use chaoscontrol_protocol::identity::{MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_MESSAGE_BYTES};
 
     fn detail(id: u32) -> AssertionDetail {
         AssertionDetail {
@@ -222,6 +222,16 @@ mod tests {
         assert!(validate_assertion_details(std::slice::from_ref(&exact)).is_ok());
 
         exact.message.push('a');
+        assert!(validate_assertion_details(std::slice::from_ref(&exact)).is_err());
+    }
+
+    #[test]
+    fn assertion_guest_enforces_the_byte_boundary() {
+        let mut exact = detail(1);
+        exact.guest = "g".repeat(MAX_ASSERTION_GUEST_BYTES);
+        assert!(validate_assertion_details(std::slice::from_ref(&exact)).is_ok());
+
+        exact.guest.push('g');
         assert!(validate_assertion_details(std::slice::from_ref(&exact)).is_err());
     }
 

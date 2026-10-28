@@ -1673,6 +1673,26 @@ fn materializes_snapshot_chunks_and_rejects_existing_raw_without_force() {
 }
 
 #[test]
+fn snapshot_chunk_manifest_rejects_excess_chunks() {
+    let chunk = chaoscontrol_evidence::SnapshotChunk {
+        path: "snapshots/chunk.bin".to_string(),
+        size: 1,
+        sha256: "0".repeat(64),
+    };
+    let manifest = SnapshotChunkManifest {
+        schema_version: 1,
+        original_path: "payload.snapshot.bin".to_string(),
+        original_size: 1,
+        original_sha256: "0".repeat(64),
+        chunks: vec![chunk; chaoscontrol_evidence::MAX_SNAPSHOT_CHUNKS + 1],
+    };
+    let error = manifest
+        .validate_shape()
+        .expect_err("excess chunks rejected");
+    assert!(error.message().contains("chunk bound"));
+}
+
+#[test]
 fn materialize_snapshot_chunks_rejects_chunk_symlink_escapes() {
     let temp = tempfile::tempdir().expect("tempdir");
     let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");

@@ -2881,6 +2881,8 @@ impl AssertionSummaryEntry {
     }
 }
 
+pub const MAX_SNAPSHOT_CHUNKS: usize = 4_096;
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SnapshotChunkManifest {
     pub schema_version: u64,
@@ -2910,6 +2912,10 @@ impl SnapshotChunkManifest {
             "chunk manifest original_sha256 invalid",
         )?;
         ensure(!self.chunks.is_empty(), "chunk manifest has no chunks")?;
+        ensure(
+            self.chunks.len() <= MAX_SNAPSHOT_CHUNKS,
+            "chunk manifest exceeds the chunk bound",
+        )?;
         for (idx, chunk) in self.chunks.iter().enumerate() {
             chunk.validate_shape(idx)?;
         }

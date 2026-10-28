@@ -71,6 +71,11 @@ fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
 }
 
 fn list_files(root: &Path) -> Result<Vec<String>, String> {
+    let metadata =
+        fs::symlink_metadata(root).map_err(|error| format!("{}: {error}", root.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!("{} is not a real source directory", root.display()));
+    }
     let mut files = Vec::new();
     let mut pending = vec![root.to_path_buf()];
     let mut discovered = 0_usize;
@@ -105,6 +110,16 @@ mod tests {
     #[test]
     fn empty_root_is_rejected() {
         assert!(run(vec![String::new()]).is_err());
+    }
+
+    #[test]
+    fn source_walk_rejects_symlinked_root() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("lib.rs"), b"").unwrap();
+        let link = root.path().join("source");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        assert!(list_files(&link).is_err());
     }
 
     #[test]

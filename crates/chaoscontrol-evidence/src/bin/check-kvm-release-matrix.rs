@@ -177,6 +177,18 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
             other => return Err(format!("unexpected argument: {other}")),
         }
     }
+    if root.as_os_str().is_empty() || matrix.as_os_str().is_empty() {
+        return Err("--root and --matrix must not be empty".to_string());
+    }
+    if receipt
+        .as_ref()
+        .is_some_and(|path| path.as_os_str().is_empty())
+        || curated_output
+            .as_ref()
+            .is_some_and(|path| path.as_os_str().is_empty())
+    {
+        return Err("--receipt and --curated-out must not be empty".to_string());
+    }
     if receipt.is_some() != expected_revision.is_some() {
         return Err("--receipt and --expected-revision must be supplied together".to_string());
     }
@@ -606,6 +618,12 @@ fn unix_seconds() -> Result<u64, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(parse_args(vec![OsString::from("--root"), OsString::from("")]).is_err());
+        assert!(parse_args(vec![OsString::from("--matrix"), OsString::from("")]).is_err());
+    }
 
     #[test]
     fn input_reads_enforce_the_exact_byte_bound() {

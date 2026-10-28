@@ -492,6 +492,33 @@ mod tests {
     }
 
     #[test]
+    fn baseline_profile_enforces_named_boundaries() {
+        let profile = NetworkBaselineProfile {
+            latency_ticks: MAX_BASELINE_LATENCY_TICKS,
+            loss_rate_ppm: MAX_BASELINE_LOSS_PPM,
+        };
+        admit_baseline_profile(&profile).unwrap();
+
+        let over_latency = NetworkBaselineProfile {
+            latency_ticks: MAX_BASELINE_LATENCY_TICKS + 1,
+            ..profile
+        };
+        assert_eq!(
+            admit_baseline_profile(&over_latency).unwrap_err(),
+            MechanismError::InvalidDelay
+        );
+
+        let over_loss = NetworkBaselineProfile {
+            loss_rate_ppm: MAX_BASELINE_LOSS_PPM + 1,
+            ..profile
+        };
+        assert_eq!(
+            admit_baseline_profile(&over_loss).unwrap_err(),
+            MechanismError::InvalidRate
+        );
+    }
+
+    #[test]
     fn cpu_throttle_enforces_named_boundaries() {
         let throttle = CpuThrottle {
             target: ThrottleTarget::Vm(1),

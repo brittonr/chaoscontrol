@@ -29,6 +29,13 @@ fn malformed_projection_is_rejected() {
     assert!(canonical_pretty_json(b"not-json").is_err());
 }
 
+#[test]
+fn excessively_nested_projection_is_rejected() {
+    let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+    let error = canonical_pretty_json(nested.as_bytes()).unwrap_err();
+    assert!(error.message().contains("JSON nesting depth exceeded"));
+}
+
 // r[verify chaoscontrol.nickel_toolchain.cohort]
 // r[verify chaoscontrol.nickel_toolchain.compatibility]
 #[test]

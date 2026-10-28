@@ -99,6 +99,10 @@ pub(crate) fn bound_file(root: &Path, relative: &str) -> EvidenceResult<BoundArt
 }
 
 pub(crate) fn canonical_pretty_json(bytes: &[u8]) -> EvidenceResult<Vec<u8>> {
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let value: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|error| EvidenceError::new(format!("invalid Nickel JSON projection: {error}")))?;
     pretty_json(&value)

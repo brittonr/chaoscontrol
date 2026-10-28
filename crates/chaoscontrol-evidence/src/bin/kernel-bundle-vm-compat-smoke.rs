@@ -487,7 +487,7 @@ fn input_digest_blocked_run(
 }
 
 fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
-    let mut file = open_regular_input(path)?;
+    let (mut file, _metadata) = open_regular_input(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; FILE_HASH_BUFFER_BYTES];
     loop {
@@ -500,23 +500,24 @@ fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-fn open_regular_input(path: &Path) -> std::io::Result<File> {
+fn open_regular_input(path: &Path) -> std::io::Result<(File, fs::Metadata)> {
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
-    if !file.metadata()?.file_type().is_file() {
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "input is not a regular file",
         ));
     }
-    Ok(file)
+    Ok((file, metadata))
 }
 
 fn read_text_bounded(path: &Path, limit: u64) -> EvidenceResult<String> {
-    let file = open_regular_input(path)?;
-    let length = file.metadata()?.len();
+    let (file, metadata) = open_regular_input(path)?;
+    let length = metadata.len();
     if length > limit {
         return Err(EvidenceError::new(format!(
             "{} exceeds the input byte bound",

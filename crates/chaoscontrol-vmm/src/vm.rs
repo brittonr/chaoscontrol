@@ -4973,7 +4973,7 @@ impl DeterministicVm {
     /// Flush the dlog to disk (for snapshot boundaries, etc.).
     fn dlog_flush(&mut self) {
         if let Some(dlog) = &mut self.dlog {
-            let _ = dlog.flush();
+            let _ = dlog.sync_all();
         }
     }
 

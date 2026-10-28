@@ -20,7 +20,7 @@
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Record format
@@ -375,6 +375,7 @@ impl fmt::Debug for DlogRecord {
 /// Buffered binary writer for determinism log records.
 pub struct DlogWriter {
     writer: BufWriter<File>,
+    path: PathBuf,
     seq: u64,
 }
 
@@ -393,6 +394,7 @@ impl DlogWriter {
             .open(path)?;
         Ok(Self {
             writer: BufWriter::with_capacity(64 * 1024, file),
+            path: path.to_path_buf(),
             seq: 0,
         })
     }
@@ -409,6 +411,18 @@ impl DlogWriter {
         self.writer.flush()
     }
 
+    /// Flush and sync the log and its parent directory.
+    pub fn sync_all(&mut self) -> io::Result<()> {
+        self.writer.flush()?;
+        self.writer.get_ref().sync_all()?;
+        let parent = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        File::open(parent)?.sync_all()
+    }
+
     /// Current sequence number (records written so far).
     pub fn seq(&self) -> u64 {
         self.seq
@@ -417,7 +431,7 @@ impl DlogWriter {
 
 impl Drop for DlogWriter {
     fn drop(&mut self) {
-        let _ = self.flush();
+        let _ = self.sync_all();
     }
 }
 
@@ -770,6 +784,21 @@ mod tests {
 
         assert!(DlogWriter::create(&link).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn sync_all_persists_records() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("run.dlog");
+        let mut writer = DlogWriter::create(&path).unwrap();
+        writer
+            .emit(DlogRecord::new(0, 10, 1, 0, DlogTag::IoOut, 1))
+            .unwrap();
+        writer.sync_all().unwrap();
+        drop(writer);
+
+        let mut reader = DlogReader::open(&path).unwrap();
+        assert_eq!(reader.next_record().unwrap().unwrap().virtual_tsc, 10);
     }
 
     #[test]

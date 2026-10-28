@@ -317,10 +317,7 @@ pub fn admit_pause_requests(requests: &[PauseControlRequest]) -> Result<(), Mech
     for (index, request) in requests.iter().enumerate() {
         admit_pause_control(request)?;
         for previous in &requests[..index] {
-            if previous.requester == request.requester
-                && previous.start_tick < request.end_tick
-                && request.start_tick < previous.end_tick
-            {
+            if previous.start_tick < request.end_tick && request.start_tick < previous.end_tick {
                 return Err(MechanismError::DuplicatePauseRequest);
             }
         }
@@ -513,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn pause_requests_reject_overlapping_windows_per_requester() {
+    fn pause_requests_reject_overlapping_windows() {
         let first = PauseControlRequest {
             requester: "liveness-check".to_string(),
             start_tick: 10,
@@ -539,7 +536,10 @@ mod tests {
             start_tick: 10,
             end_tick: 20,
         };
-        admit_pause_requests(&[first, other_requester]).unwrap();
+        assert_eq!(
+            admit_pause_requests(&[first, other_requester]).unwrap_err(),
+            MechanismError::DuplicatePauseRequest
+        );
     }
 
     #[test]

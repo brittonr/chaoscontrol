@@ -440,6 +440,29 @@ pub fn assert_raw(
     }
 }
 
+/// No-op raw assertion entry point when the SDK is compiled without `full`.
+///
+/// The argument shape matches the full implementation so the same call
+/// compiles with `default-features = false`.
+#[cfg(not(feature = "full"))]
+#[allow(clippy::too_many_arguments)]
+pub fn assert_raw<S: AsRef<str>, D: ?Sized>(
+    _condition: bool,
+    _message: S,
+    _details: &D,
+    _class: S,
+    _function: S,
+    _file: S,
+    _begin_line: u32,
+    _begin_column: u32,
+    _hit: bool,
+    _must_hit: bool,
+    _assert_type: AssertType,
+    _display_type: S,
+    _id: S,
+) {
+}
+
 #[cfg(feature = "full")]
 fn emit_registered_assertion_core<S: serde::Serialize + ?Sized>(
     kind: AssertionKind,

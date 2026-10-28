@@ -203,7 +203,8 @@ change the assertion oracle or prove exploration quality.
   raw site after initialization is rejected; hits for declared sites still
   emit. Caller-supplied `display_type` and `must_hit` are preserved in local
   records; the VMM AOU flag is set when an `Always` raw site has
-  `must_hit = false`.
+  `must_hit = false`. With `full` disabled, a no-op `assert_raw` with the
+  same call shape keeps feature-independent code compiling.
 - `cc_assert_always_some!` accepts both the Antithesis brace-bundle shape
   (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
   single-expression `Option::is_some` shape. `cc_assert_always_any!` is the

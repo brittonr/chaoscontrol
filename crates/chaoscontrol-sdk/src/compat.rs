@@ -4,13 +4,11 @@
 //! semantics match. Raw assertions must be declared before the catalog is
 //! emitted; new raw sites after initialization are rejected.
 
-#[cfg(feature = "full")]
 pub use crate::assert::assert_raw;
 pub use crate::assert::AssertType;
 
 /// Antithesis-compatible `assert` submodule paths.
 pub mod assert {
-    #[cfg(feature = "full")]
     pub use crate::assert::assert_raw;
     pub use crate::assert::{AssertType, AssertionKind};
     #[cfg(feature = "full")]

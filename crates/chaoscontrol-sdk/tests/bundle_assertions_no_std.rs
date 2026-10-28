@@ -49,6 +49,26 @@ fn random_choice_slice_is_available_without_full() {
 
 #[cfg(not(feature = "full"))]
 #[test]
+fn raw_assertion_noop_keeps_the_call_shape() {
+    assert_raw(
+        false,
+        String::from("raw no-op"),
+        &(),
+        String::from("noop"),
+        String::from("noop::caller"),
+        String::from("src/noop.rs"),
+        1,
+        1,
+        false,
+        true,
+        AssertType::Always,
+        String::from("Always"),
+        String::from("raw-noop"),
+    );
+}
+
+#[cfg(not(feature = "full"))]
+#[test]
 fn lifecycle_noop_keeps_the_detail_call_shape() {
     setup_complete(&());
     setup_complete(&String::from("details"));

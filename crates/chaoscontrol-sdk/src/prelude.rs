@@ -22,7 +22,6 @@ pub use crate::{chaoscontrol_init, is_in_vm, is_local_output};
 pub use crate::runtime::guest_init;
 
 // ── Assertion functions ──────────────────────────────────────────────
-#[cfg(feature = "full")]
 pub use crate::assert::assert_raw;
 pub use crate::assert::{AssertType, AssertionKind};
 #[cfg(feature = "full")]

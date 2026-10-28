@@ -657,6 +657,16 @@ fn collect_repository_facts(
 
 fn discover_active_changes(root: &Path) -> EvidenceResult<Vec<String>> {
     let directory = root.join(ACTIVE_CHANGES_DIRECTORY);
+    let metadata = std::fs::symlink_metadata(&directory).map_err(|error| {
+        EvidenceError::new(format!("failed to inspect active changes: {error}"))
+    })?;
+    ensure(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        format!(
+            "active changes path is not a real directory: {}",
+            directory.display()
+        ),
+    )?;
     let mut changes = Vec::new();
     for entry in std::fs::read_dir(&directory)
         .map_err(|error| EvidenceError::new(format!("failed to read active changes: {error}")))?
@@ -947,6 +957,16 @@ mod fixture_admission_tests {
 #[cfg(test)]
 mod active_change_bound_tests {
     use super::*;
+
+    #[test]
+    fn active_change_symlink_directory_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(outside.path().join("change")).unwrap();
+        std::fs::create_dir(root.path().join(".cairn")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join(".cairn/changes")).unwrap();
+        assert!(discover_active_changes(root.path()).is_err());
+    }
 
     #[test]
     fn active_change_scan_is_bounded() {

@@ -1897,8 +1897,10 @@ impl SimulationController {
         else {
             return Err(internal_application_error());
         };
+        chaoscontrol_fault::thread_pause::admit_thread(thread)
+            .map_err(|_| target_state_application_error())?;
         let duration = release_at_tick.saturating_sub(self.tick);
-        if duration == 0 {
+        if duration == 0 || duration > chaoscontrol_fault::thread_pause::MAX_PAUSE_TICKS {
             return Err(target_state_application_error());
         }
         let slot = self.vm_slot_mut_checked(*target)?;
@@ -4401,6 +4403,47 @@ mod tests {
         assert_eq!(gate.magic, THREAD_GATE_MAGIC);
         assert_eq!(gate.paused_ordinal, 1);
         assert_eq!(gate.release_tick, 5);
+    }
+
+    #[test]
+    fn thread_pause_rejects_invalid_thread_and_over_bound_duration() {
+        let mut controller = adapter_test_controller();
+        let invalid = FaultPlan {
+            attempt_id: FaultAttemptId([61; 32]),
+            effect: FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::new(),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                release_at_tick: 5,
+            },
+        };
+        assert!(controller.apply_fault_plan(&invalid).is_err());
+
+        let over_bound = FaultPlan {
+            attempt_id: FaultAttemptId([62; 32]),
+            effect: FaultPlanEffect::ThreadPause {
+                target: 0,
+                thread: chaoscontrol_fault::thread_pause::LogicalThreadId {
+                    process: String::from("process:v1:writer"),
+                    generation: 1,
+                    ordinal: 1,
+                },
+                release_at_tick: chaoscontrol_fault::thread_pause::MAX_PAUSE_TICKS + 1,
+            },
+        };
+        assert!(controller.apply_fault_plan(&over_bound).is_err());
+
+        let mut bytes = [0u8; 40];
+        controller.vms[0]
+            .vm
+            .memory()
+            .inner()
+            .read_slice(&mut bytes, GuestAddress(THREAD_GATE_ADDRESS))
+            .expect("read gate");
+        assert_eq!(ThreadGate::from_bytes(&bytes).magic, 0);
     }
 
     #[test]

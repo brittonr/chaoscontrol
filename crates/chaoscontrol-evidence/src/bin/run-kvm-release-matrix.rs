@@ -622,10 +622,17 @@ fn open_artifact_input(path: &Path) -> std::io::Result<File> {
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
-    if !file.metadata()?.file_type().is_file() {
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "artifact is not a regular file",
+        ));
+    }
+    if metadata.len() > MAX_ARTIFACT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "artifact exceeds the hash bound",
         ));
     }
     Ok(file)
@@ -725,6 +732,16 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn artifact_hashes_reject_oversized_inputs_before_reading() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("artifact.log");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_ARTIFACT_BYTES + 1).unwrap();
+
+        assert!(hash_file(&path).is_err());
     }
 
     #[test]

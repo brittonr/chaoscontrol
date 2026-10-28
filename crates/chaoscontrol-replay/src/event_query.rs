@@ -1179,11 +1179,32 @@ fn validate_query_inner(
             validate_predicate(predicate)?;
             validate_query_inner(input, limits, depth + 1, nodes)
         }
-        EventQuery::Map { input, .. }
-        | EventQuery::Contains { input, .. }
-        | EventQuery::Matches { input, .. }
-        | EventQuery::Window { input, .. }
-        | EventQuery::UpTo { input, .. } => validate_query_inner(input, limits, depth + 1, nodes),
+        EventQuery::Map {
+            input,
+            field,
+            pointer,
+        } => {
+            validate_field(field)?;
+            validate_pointer(pointer)?;
+            validate_query_inner(input, limits, depth + 1, nodes)
+        }
+        EventQuery::Contains { input, field, text }
+        | EventQuery::Matches { input, field, text } => {
+            validate_field(field)?;
+            validate_text(text)?;
+            validate_query_inner(input, limits, depth + 1, nodes)
+        }
+        EventQuery::Window {
+            input,
+            start_tick,
+            end_tick,
+        } => {
+            if start_tick > end_tick {
+                return Err(EventQueryError::InvalidText);
+            }
+            validate_query_inner(input, limits, depth + 1, nodes)
+        }
+        EventQuery::UpTo { input, .. } => validate_query_inner(input, limits, depth + 1, nodes),
         EventQuery::Union { inputs } => {
             if inputs.is_empty() {
                 return Err(EventQueryError::QueryBound);
@@ -1912,6 +1933,25 @@ mod tests {
         assert_eq!(
             receipt_for(&EventQuery::All, &events, &result, &narrow_scan).unwrap_err(),
             EventQueryError::ScanBound
+        );
+
+        let reversed = EventQuery::Window {
+            input: Box::new(EventQuery::All),
+            start_tick: 10,
+            end_tick: 5,
+        };
+        assert_eq!(
+            receipt_for(&reversed, &events, &result, &limits).unwrap_err(),
+            EventQueryError::InvalidText
+        );
+        let invalid_field = EventQuery::Contains {
+            input: Box::new(EventQuery::All),
+            field: String::new(),
+            text: String::from("x"),
+        };
+        assert_eq!(
+            receipt_for(&invalid_field, &events, &result, &limits).unwrap_err(),
+            EventQueryError::InvalidField
         );
 
         let narrow_rows = EventQueryLimits {

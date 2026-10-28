@@ -477,14 +477,21 @@ pub enum EventQuery {
 #[serde(deny_unknown_fields)]
 pub struct EventQueryLimits {
     pub max_nodes: usize,
+    #[serde(default = "default_max_depth")]
+    pub max_depth: usize,
     pub max_scanned_events: usize,
     pub max_result_rows: usize,
+}
+
+fn default_max_depth() -> usize {
+    MAX_QUERY_DEPTH
 }
 
 impl Default for EventQueryLimits {
     fn default() -> Self {
         Self {
             max_nodes: MAX_QUERY_NODES,
+            max_depth: MAX_QUERY_DEPTH,
             max_scanned_events: MAX_SCANNED_EVENTS,
             max_result_rows: MAX_RESULT_ROWS,
         }
@@ -591,6 +598,8 @@ impl EventQueryLimits {
     pub fn validate(&self) -> Result<(), EventQueryError> {
         if self.max_nodes == 0
             || self.max_nodes > MAX_QUERY_NODES
+            || self.max_depth == 0
+            || self.max_depth > MAX_QUERY_DEPTH
             || self.max_scanned_events == 0
             || self.max_scanned_events > MAX_SCANNED_EVENTS
             || self.max_result_rows == 0
@@ -901,7 +910,7 @@ fn validate_query_inner(
     depth: usize,
     nodes: &mut usize,
 ) -> Result<(), EventQueryError> {
-    if depth > MAX_QUERY_DEPTH {
+    if depth > limits.max_depth {
         return Err(EventQueryError::QueryDepth);
     }
     *nodes = nodes

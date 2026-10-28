@@ -21,6 +21,8 @@ pub enum BugIdentityError {
     MalformedCarrier,
     #[snafu(display("bug artifact hash does not bind the loaded bug carrier"))]
     ArtifactMismatch,
+    #[snafu(display("bug identity is duplicated"))]
+    Duplicate,
 }
 
 pub fn validate_carrier(

@@ -935,7 +935,14 @@ pub fn validate_bug_set(
         bug_id: first_bug.bug_id,
         source: crate::bug::identity::BugIdentityError::ReportMismatch,
     })?;
+    let mut ids = std::collections::BTreeSet::new();
     for bug in bugs {
+        if !ids.insert(bug.bug_id) {
+            return Err(BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source: crate::bug::identity::BugIdentityError::Duplicate,
+            });
+        }
         BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
             bug_id: bug.bug_id,
             source,
@@ -2261,6 +2268,17 @@ mod tests {
     fn set_assertion_alias(bug: &mut SerializableBug, assertion_id: u64) {
         bug.assertion_id = assertion_id;
         bug.assertion_identity = Some(crate::test_support::assertion_identity(assertion_id));
+    }
+
+    #[test]
+    fn duplicate_bug_ids_are_rejected() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(1)]);
+        assert!(matches!(
+            save_checkpoint(&path, &checkpoint),
+            Err(CheckpointError::InvalidBugIdentity { .. })
+        ));
     }
 
     #[test]

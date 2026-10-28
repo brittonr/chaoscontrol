@@ -101,6 +101,10 @@ crate = "chaoscontrol-replay-evidence-core"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-thread-runtime"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-rust-workload-guest"
 allow = ["AGPL-3.0-or-later"]
 

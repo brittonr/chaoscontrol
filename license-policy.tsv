@@ -24,6 +24,7 @@ package	crates/chaoscontrol-guest-net/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-net-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-redb-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-rust-workload-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-thread-runtime/Cargo.toml	AGPL-3.0-or-later
 artifact	LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	LICENSES/AGPL-3.0-or-later.txt	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	LICENSES/Apache-2.0.txt	Apache License
@@ -49,6 +50,7 @@ artifact	crates/chaoscontrol-guest-net/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-net-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-redb-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-rust-workload-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-thread-runtime/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	docs/templates/rust-workload/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 contains	docs/templates/rust-workload/Cargo.toml	license = "AGPL-3.0-or-later"
 contains	docs/templates/rust-workload/README.md	This repository-owned template is `AGPL-3.0-or-later`

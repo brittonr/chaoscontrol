@@ -942,20 +942,24 @@ fn ensure_regular_file(path: &Path) -> Result<(), Error> {
 }
 
 fn write_new_json(path: &Path, value: &impl serde::Serialize) -> Result<(), Error> {
-    let bytes = serde_json::to_vec_pretty(value).map_err(|source| Error::Json {
+    let mut bytes = serde_json::to_vec_pretty(value).map_err(|source| Error::Json {
         path: path.to_path_buf(),
         source,
     })?;
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(|source| io_error(path, source))?;
-    output
+    bytes.push(b'\n');
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|source| io_error(path, source))?;
+    temporary
         .write_all(&bytes)
-        .and_then(|()| output.write_all(b"\n"))
-        .and_then(|()| output.sync_all())
+        .and_then(|()| temporary.as_file().sync_all())
         .map_err(|source| io_error(path, source))?;
+    temporary
+        .persist_noclobber(path)
+        .map_err(|error| io_error(path, error.error))?;
     sync_parent(path)
 }
 
@@ -970,6 +974,19 @@ fn io_error(path: &Path, source: std::io::Error) -> Error {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn new_json_publication_is_atomic_and_never_overwrites() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("report.json");
+        write_new_json(&path, &serde_json::json!({"status": "passed"})).unwrap();
+        assert!(write_new_json(&path, &serde_json::json!({"status": "failed"})).is_err());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap()
+                ["status"],
+            "passed"
+        );
+    }
 
     #[test]
     fn input_reads_reject_symlinks_and_fifos() {

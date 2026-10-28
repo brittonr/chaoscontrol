@@ -70,6 +70,9 @@ pub fn example_descriptor() -> EvidenceResult<snapshot_core::SnapshotDescriptor>
 
 pub fn write_fixture_bundle(root: impl AsRef<Path>) -> EvidenceResult<DescriptorFixtureBundle> {
     let root = root.as_ref();
+    if root.as_os_str().is_empty() {
+        return Err(EvidenceError::new("fixture root must not be empty"));
+    }
     std::fs::create_dir_all(root)?;
     let payload_path = root.join(MONOLITHIC_PAYLOAD_FILE);
     std::fs::write(&payload_path, FIXTURE_PAYLOAD)?;
@@ -240,4 +243,14 @@ fn content(
 fn write_json(path: impl AsRef<Path>, value: &impl serde::Serialize) -> EvidenceResult<()> {
     std::fs::write(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_fixture_root_is_rejected() {
+        assert!(write_fixture_bundle("").is_err());
+    }
 }

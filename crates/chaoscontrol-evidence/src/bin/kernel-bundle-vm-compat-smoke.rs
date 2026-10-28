@@ -537,6 +537,7 @@ fn read_text_bounded(path: &Path, limit: u64) -> EvidenceResult<String> {
 
 fn read_profile(path: &Path) -> EvidenceResult<KernelBundleSmokeProfile> {
     let text = read_text_bounded(path, MAX_TEXT_INPUT_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&text)?;
     let profile = serde_json::from_str(&text)?;
     Ok(profile)
 }
@@ -626,6 +627,15 @@ fn print_usage() {
 mod publication_tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn profile_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("profile.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_profile(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn input_reads_reject_symlinks_and_fifos() {

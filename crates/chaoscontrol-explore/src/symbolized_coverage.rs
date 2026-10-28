@@ -503,6 +503,7 @@ pub fn receipt_for(
     limits: &SymbolCoverageLimits,
 ) -> Result<SymbolizedCoverageReceipt, SymbolCoverageError> {
     limits.validate()?;
+    map_coverage(catalogs, loads, &[], limits)?;
     let report_bytes =
         serde_json::to_vec(coverage).map_err(|_| SymbolCoverageError::ReportDigest)?;
     let report_digest = *blake3::hash(&report_bytes).as_bytes();
@@ -864,6 +865,26 @@ mod tests {
         assert_eq!(
             receipt_for(&coverage_with(&[]), &[], &[], [4; 32], &limits).unwrap_err(),
             SymbolCoverageError::InvalidLimits
+        );
+    }
+
+    #[test]
+    fn receipt_rejects_invalid_catalogs() {
+        let invalid = vec![catalog(
+            1,
+            "src/lib.rs",
+            vec![location("../escape.rs", 10, &[1])],
+        )];
+        assert_eq!(
+            receipt_for(
+                &coverage_with(&[]),
+                &invalid,
+                &[],
+                [4; 32],
+                &SymbolCoverageLimits::default()
+            )
+            .unwrap_err(),
+            SymbolCoverageError::InvalidPath
         );
     }
 

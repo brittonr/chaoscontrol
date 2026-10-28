@@ -694,11 +694,14 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
         return Err(format!("{} exceeds JSON byte bound", path.display()));
     }
     let mut bytes = Vec::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds JSON byte bound", path.display()));
+    }
+    if bytes.len() as u64 != length {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok(bytes)
 }
@@ -1069,6 +1072,7 @@ mod publication_tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded(&fifo, MAX_JSON_BYTES).is_err());
+        assert!(read_bounded(std::path::Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

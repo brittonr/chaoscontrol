@@ -867,8 +867,7 @@ pub struct DeterministicVm {
     incremental_base_needs_reconcile: bool,
 }
 
-fn read_boot_file(path: &std::path::Path, limit: u64) -> io::Result<Vec<u8>> {
-    use std::io::Read;
+fn open_boot_file(path: &std::path::Path, limit: u64) -> io::Result<File> {
     use std::os::unix::fs::OpenOptionsExt;
 
     let file = std::fs::OpenOptions::new()
@@ -882,7 +881,18 @@ fn read_boot_file(path: &std::path::Path, limit: u64) -> io::Result<Vec<u8>> {
             "boot file is not a bounded regular file",
         ));
     }
-    let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    Ok(file)
+}
+
+fn read_boot_file(path: &std::path::Path, limit: u64) -> io::Result<Vec<u8>> {
+    use std::io::Read;
+
+    let file = open_boot_file(path, limit)?;
+    let capacity = file
+        .metadata()
+        .ok()
+        .and_then(|metadata| usize::try_from(metadata.len()).ok())
+        .unwrap_or(0);
     let mut bytes = Vec::with_capacity(capacity);
     file.take(limit + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > limit {
@@ -1609,7 +1619,8 @@ impl DeterministicVm {
     ) -> Result<(), VmError> {
         info!("Loading kernel from {}", kernel_path);
 
-        let mut kernel_file = File::open(kernel_path)?;
+        let mut kernel_file =
+            open_boot_file(std::path::Path::new(kernel_path), self.memory_ceiling_bytes)?;
 
         // Load kernel using linux-loader
         let kernel_load_result = Elf::load(
@@ -5209,8 +5220,11 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_boot_file(&fifo, 16).is_err());
+        assert!(open_boot_file(&fifo, 16).is_err());
 
         assert!(read_boot_file(&target, 3).is_err());
+        assert!(open_boot_file(&target, 3).is_err());
+        assert!(open_boot_file(&target, 4).is_ok());
         assert_eq!(read_boot_file(&target, 4).unwrap(), b"boot");
     }
     use crate::devices::virtio_types::VirtioFailure;

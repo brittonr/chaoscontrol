@@ -60,6 +60,8 @@ pub fn extract_guest_determinism_probe(
     if matches.next().is_some() {
         return Err(GuestDeterminismShellError::DuplicateProbe);
     }
+    crate::json_preflight::preflight_json(&encoded, crate::json_preflight::QUALITY_REPORT_LIMITS)
+        .map_err(|error| GuestDeterminismShellError::MalformedProbe(error.message().to_string()))?;
     serde_json::from_str(&encoded)
         .map_err(|error| GuestDeterminismShellError::MalformedProbe(error.to_string()))
 }
@@ -133,6 +135,20 @@ mod tests {
             encoded_probe()
         );
         assert!(extract_guest_determinism_probe(&serial).is_ok());
+    }
+
+    #[test]
+    fn rejects_excessively_nested_probe_lines() {
+        let serial = format!(
+            "{GUEST_PROBE_PREFIX}{}{}\n",
+            "[".repeat(512),
+            "]".repeat(512)
+        );
+        let error = extract_guest_determinism_probe(&serial).unwrap_err();
+        let GuestDeterminismShellError::MalformedProbe(message) = error else {
+            panic!("unexpected error: {error:?}");
+        };
+        assert!(message.contains("JSON nesting depth exceeded"));
     }
 
     #[test]

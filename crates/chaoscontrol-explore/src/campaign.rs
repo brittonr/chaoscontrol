@@ -499,6 +499,12 @@ impl CampaignRunner {
                 message: "campaign seed output path exceeds the path bound".to_string(),
             });
         }
+        if self.config.output_dir.len() + "/campaign_progress.json".len() > MAX_CAMPAIGN_PATH_BYTES
+        {
+            return Err(crate::explorer::ExploreError::Config {
+                message: "campaign metadata path exceeds the path bound".to_string(),
+            });
+        }
         let num_seeds = self.config.seeds.len();
         let num_vms = self.config.base_explorer_config.num_vms;
         let vm_memory_mb = self.config.base_explorer_config.vm_config.memory_size / BYTES_PER_MIB;
@@ -1894,6 +1900,15 @@ mod tests {
             seed_output_directory("./out/", 0),
             PathBuf::from("./out/seed_0")
         );
+    }
+
+    #[test]
+    fn campaign_rejects_metadata_paths_that_exceed_the_path_bound() {
+        let mut runner = runner_with_policy(FrontierPolicy::Campaign);
+        runner.config.output_dir = "x".repeat(MAX_CAMPAIGN_PATH_BYTES - 10);
+
+        let error = runner.run().expect_err("metadata path overflow must fail");
+        assert!(format!("{error}").contains("metadata path"));
     }
 
     #[test]

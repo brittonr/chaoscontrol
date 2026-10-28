@@ -3865,6 +3865,10 @@ pre {{ overflow-x: auto; padding: 1rem; }}
     ))
 }
 
+fn read_surface_text(path: &std::path::Path) -> EvidenceResult<String> {
+    crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
+}
+
 pub fn update_readme_status_path(
     receipt_path: impl AsRef<Path>,
     readme_path: impl AsRef<Path>,
@@ -3872,7 +3876,7 @@ pub fn update_readme_status_path(
     let summary = summarize_receipt_path(receipt_path)?;
     let replacement = render_readme_status_block(&summary);
     let readme_path = readme_path.as_ref();
-    let existing = std::fs::read_to_string(readme_path)?;
+    let existing = read_surface_text(readme_path)?;
     let updated = replace_readme_marker_block(&existing, &replacement)?;
     if updated != existing {
         write_bytes(readme_path, updated)?;
@@ -3905,7 +3909,7 @@ pub fn check_readiness_surface_drift(
     flake_path: impl AsRef<Path>,
 ) -> EvidenceResult<Vec<String>> {
     let root = root.as_ref();
-    let flake_text = std::fs::read_to_string(flake_path.as_ref())?;
+    let flake_text = read_surface_text(flake_path.as_ref())?;
     let gate_names = validate_gate_metadata(&flake_text)?;
     let summary_line = validate_renderer_equivalence(root)?;
     Ok(vec![
@@ -3916,7 +3920,7 @@ pub fn check_readiness_surface_drift(
 
 pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
-    let flake_text = std::fs::read_to_string(root.join("flake.nix"))?;
+    let flake_text = read_surface_text(&root.join("flake.nix"))?;
     validate_gate_metadata(&flake_text)?;
     validate_renderer_equivalence(root)?;
     let missing_execution = flake_text.replace(
@@ -4404,4 +4408,24 @@ fn bounded(text: &str) -> bool {
     let lowered = text.to_lowercase();
     lowered.contains("bounded")
         && (lowered.contains("not universal") || lowered.contains("not a claim of universal"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn surface_reads_reject_symlinks_and_oversized_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.md");
+        std::fs::write(&target, b"# status").unwrap();
+        let link = root.path().join("readme.md");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_surface_text(&link).is_err());
+
+        let oversized = root.path().join("oversized.md");
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(crate::MAX_EVIDENCE_JSON_BYTES + 1).unwrap();
+        assert!(read_surface_text(&oversized).is_err());
+    }
 }

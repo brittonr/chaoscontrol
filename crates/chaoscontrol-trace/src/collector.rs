@@ -1170,6 +1170,16 @@ impl TraceMetadata {
 
 /// Write trace evidence through an `O_NOFOLLOW`, owner-only file.
 pub fn write_trace_json(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    write_trace_json_with_limit(path, bytes, MAX_TRACE_JSON_BYTES)
+}
+
+fn write_trace_json_with_limit(path: &str, bytes: &[u8], limit: u64) -> std::io::Result<()> {
+    if bytes.len() as u64 > limit {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "trace JSON exceeds the byte limit",
+        ));
+    }
     let mut file = open_trace_output(path)?;
     file.write_all(bytes)
 }
@@ -1283,6 +1293,11 @@ mod tests {
         let log = TraceLog::new(TEST_PID, Vec::new());
         assert!(log.save(link.to_str().unwrap()).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"abc");
+
+        let bounded = dir.path().join("bounded.json");
+        assert!(write_trace_json_with_limit(bounded.to_str().unwrap(), b"abcd", 3).is_err());
+        assert!(!bounded.exists());
+        write_trace_json_with_limit(bounded.to_str().unwrap(), b"abc", 3).unwrap();
     }
 
     #[test]

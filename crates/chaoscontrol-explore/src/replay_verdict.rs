@@ -443,6 +443,19 @@ mod tests {
             classify_reproduce(
                 &bug,
                 &snapshot_validation_from_error(
+                    reference.clone(),
+                    &SnapshotStoreError::InvalidDigest {
+                        digest: "sha256:not-hex".to_string(),
+                    },
+                ),
+                true,
+            ),
+            ReplayClass::InvalidSnapshotDigest
+        );
+        assert_eq!(
+            classify_reproduce(
+                &bug,
+                &snapshot_validation_from_error(
                     reference,
                     &SnapshotStoreError::UnsupportedCodec {
                         codec: "other-codec".to_string(),

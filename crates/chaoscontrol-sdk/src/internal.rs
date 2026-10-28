@@ -8,6 +8,7 @@
 use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::sync::{Mutex, OnceLock};
 
@@ -121,7 +122,7 @@ fn detect_mode() -> TransportMode {
 
     // Not in a VM — check for local output env var.
     if let Ok(path) = std::env::var(LOCAL_OUTPUT) {
-        if let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) {
+        if let Ok(file) = open_local_output(std::path::Path::new(&path)) {
             return TransportMode::LocalOutput {
                 writer: Mutex::new(BufWriter::new(file)),
             };
@@ -132,6 +133,16 @@ fn detect_mode() -> TransportMode {
     }
 
     TransportMode::Noop
+}
+
+/// Open the local JSON output without following symlinks or blocking on FIFOs.
+fn open_local_output(path: &std::path::Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
 }
 
 /// Try to mmap the hypercall page at the expected guest physical address.
@@ -384,3 +395,26 @@ pub(crate) fn local_random_u64() -> u64 {
 }
 
 static RANDOM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_output_rejects_symlink_targets() {
+        let root = std::env::temp_dir().join(format!(
+            "chaoscontrol-sdk-local-output-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let target = root.join("target.jsonl");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.join("output.jsonl");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(open_local_output(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

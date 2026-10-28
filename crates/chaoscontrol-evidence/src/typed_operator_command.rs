@@ -179,6 +179,12 @@ pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
     limits
         .validate()
         .map_err(|error| format!("invalid command limits: {error:?}"))?;
+    if let StdinSpec::Bytes { hex, .. } = &plan.stdin {
+        require(
+            hex.len() / HEX_CHARACTERS_PER_BYTE <= limits.stdin_max_bytes,
+            "stdin exceeds its admitted byte bound",
+        )?;
+    }
     let input = stdin_bytes(&plan.stdin)?;
     require(
         input.len() <= limits.stdin_max_bytes,

@@ -78,6 +78,18 @@ fn legacy_traversal_environment_identity_and_limit_fail_closed() {
 }
 
 #[test]
+fn oversized_stdin_hex_is_rejected_before_decoding() {
+    let mut plan = valid_plan();
+    plan.stdin = StdinSpec::Bytes {
+        hex: "00".repeat(usize::try_from(INPUT_BYTES).unwrap() + 1),
+        blake3: String::from(DIGEST),
+    };
+    assert!(validate_plan(&plan)
+        .unwrap_err()
+        .contains("stdin exceeds its admitted byte bound"));
+}
+
+#[test]
 fn explicit_stdin_requires_matching_identity() {
     let bytes = b"input";
     let digest = blake3::hash(bytes).to_hex().to_string();

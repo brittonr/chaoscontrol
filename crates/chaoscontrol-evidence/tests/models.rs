@@ -1717,22 +1717,28 @@ fn snapshot_chunk_manifest_rejects_duplicate_paths() {
 }
 
 #[test]
-fn snapshot_chunk_manifest_rejects_overlong_paths() {
-    let chunk = chaoscontrol_evidence::SnapshotChunk {
-        path: format!(
-            "snapshots/{}",
-            "a".repeat(chaoscontrol_evidence::MAX_SNAPSHOT_PATH_BYTES)
-        ),
-        size: 1,
-        sha256: "0".repeat(64),
-    };
-    let manifest = SnapshotChunkManifest {
+fn snapshot_chunk_manifest_enforces_the_path_boundary() {
+    let prefix = "snapshots/";
+    let exact = format!(
+        "{prefix}{}",
+        "a".repeat(chaoscontrol_evidence::MAX_SNAPSHOT_PATH_BYTES - prefix.len())
+    );
+    let mut manifest = SnapshotChunkManifest {
         schema_version: 1,
         original_path: "payload.snapshot.bin".to_string(),
         original_size: 1,
         original_sha256: "0".repeat(64),
-        chunks: vec![chunk],
+        chunks: vec![chaoscontrol_evidence::SnapshotChunk {
+            path: exact,
+            size: 1,
+            sha256: "0".repeat(64),
+        }],
     };
+    manifest
+        .validate_shape()
+        .expect("exact path bound is admitted");
+
+    manifest.chunks[0].path.push('a');
     let error = manifest
         .validate_shape()
         .expect_err("overlong path rejected");

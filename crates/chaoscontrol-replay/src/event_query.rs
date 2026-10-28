@@ -1893,6 +1893,44 @@ mod tests {
     }
 
     #[test]
+    fn timeline_cycles_are_detected_after_completed_paths() {
+        let facts = vec![
+            TimelineFact {
+                id: 1,
+                parent: None,
+                tick: 0,
+                kind: "k".to_string(),
+                label: "v".to_string(),
+            },
+            TimelineFact {
+                id: 2,
+                parent: Some(1),
+                tick: 1,
+                kind: "k".to_string(),
+                label: "v".to_string(),
+            },
+            TimelineFact {
+                id: 3,
+                parent: Some(4),
+                tick: 2,
+                kind: "k".to_string(),
+                label: "v".to_string(),
+            },
+            TimelineFact {
+                id: 4,
+                parent: Some(3),
+                tick: 3,
+                kind: "k".to_string(),
+                label: "v".to_string(),
+            },
+        ];
+        assert_eq!(
+            render_timeline_markdown(&facts).unwrap_err(),
+            EventQueryError::TimelineCycle
+        );
+    }
+
+    #[test]
     fn timeline_node_bound_admits_the_exact_maximum() {
         let mut facts: Vec<_> = (0..MAX_TIMELINE_NODES)
             .map(|index| TimelineFact {

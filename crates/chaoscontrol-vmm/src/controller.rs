@@ -4355,6 +4355,24 @@ mod tests {
     }
 
     #[test]
+    fn controller_rejects_invalid_partition_sides() {
+        let mut controller = adapter_test_controller();
+        let plan = |attempt, side_a, side_b| FaultPlan {
+            attempt_id: FaultAttemptId([attempt; 32]),
+            effect: FaultPlanEffect::NetworkPartition { side_a, side_b },
+        };
+        assert!(controller
+            .apply_fault_plan(&plan(67, vec![], vec![1]))
+            .is_err());
+        assert!(controller
+            .apply_fault_plan(&plan(68, vec![0, 1], vec![1]))
+            .is_err());
+        controller
+            .apply_fault_plan(&plan(69, vec![0], vec![1]))
+            .expect("valid partition");
+    }
+
+    #[test]
     fn controller_rejects_over_bound_network_rates() {
         let mut controller = adapter_test_controller();
         let max = chaoscontrol_fault::outcomes::PARTS_PER_MILLION_MAX;

@@ -10,6 +10,7 @@ use chaoscontrol_replay::event_query::{
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
@@ -242,15 +243,7 @@ fn load_events(
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let metadata =
-        std::fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    if !metadata.is_file() {
-        return Err(format!("{} is not a regular file", path.display()));
-    }
-    if metadata.len() > MAX_INPUT_BYTES {
-        return Err(format!("{} exceeds the input byte bound", path.display()));
-    }
-    let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let bytes = read_bytes(path)?;
     serde_json::from_slice(&bytes).map_err(|error| format!("{}: {error}", path.display()))
 }
 
@@ -263,7 +256,15 @@ fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
     if metadata.len() > MAX_INPUT_BYTES {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
-    std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))
+    let file = std::fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_INPUT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > MAX_INPUT_BYTES {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(bytes)
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {

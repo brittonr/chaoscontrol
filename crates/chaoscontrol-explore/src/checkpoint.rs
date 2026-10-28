@@ -312,6 +312,10 @@ pub enum SerializableFault {
         target: usize,
         delay_ns: u64,
     },
+    DiskFlushError {
+        target: usize,
+        delay_ns: u64,
+    },
     DiskFsyncLie {
         target: usize,
     },
@@ -483,6 +487,10 @@ impl From<&Fault> for SerializableFault {
                 vcpu: *vcpu,
             },
             Fault::DiskSlow { target, delay_ns } => SerializableFault::DiskSlow {
+                target: *target,
+                delay_ns: *delay_ns,
+            },
+            Fault::DiskFlushError { target, delay_ns } => SerializableFault::DiskFlushError {
                 target: *target,
                 delay_ns: *delay_ns,
             },
@@ -685,6 +693,10 @@ impl From<&SerializableFault> for Fault {
                 vcpu: *vcpu,
             },
             SerializableFault::DiskSlow { target, delay_ns } => Fault::DiskSlow {
+                target: *target,
+                delay_ns: *delay_ns,
+            },
+            SerializableFault::DiskFlushError { target, delay_ns } => Fault::DiskFlushError {
                 target: *target,
                 delay_ns: *delay_ns,
             },
@@ -1435,6 +1447,10 @@ mod tests {
                     String::from("key"),
                     String::from("value"),
                 )]),
+            },
+            Fault::DiskFlushError {
+                target: 1,
+                delay_ns: 5,
             },
         ];
         for fault in faults {

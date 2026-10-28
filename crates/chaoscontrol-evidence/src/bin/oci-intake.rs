@@ -36,11 +36,7 @@ fn run() -> Result<(), String> {
             "exactly one of --output, --verify-bundle or --manifest-output is required".to_string(),
         );
     }
-    let metadata = std::fs::symlink_metadata(&topology).map_err(|error| error.to_string())?;
-    if !metadata.file_type().is_file() || metadata.len() > MAX_TOPOLOGY_BYTES {
-        return Err("topology must be a bounded regular file".to_string());
-    }
-    let bytes = std::fs::read(&topology).map_err(|error| error.to_string())?;
+    let bytes = read_topology(&topology)?;
     let topology: OciTopology =
         serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
     if let Some(path) = manifest_output {
@@ -87,4 +83,48 @@ fn run() -> Result<(), String> {
         receipt.claim_scope
     );
     Ok(())
+}
+
+fn read_topology(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_TOPOLOGY_BYTES {
+        return Err("topology must be a bounded regular file".to_string());
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_TOPOLOGY_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_TOPOLOGY_BYTES {
+        return Err("topology must be a bounded regular file".to_string());
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn topology_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("topology.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_topology(&link).is_err());
+
+        let fifo = root.path().join("topology.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_topology(&fifo).is_err());
+    }
 }

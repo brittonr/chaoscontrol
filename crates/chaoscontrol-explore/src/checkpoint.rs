@@ -1109,6 +1109,27 @@ pub fn save_checkpoint<P: AsRef<Path>>(
     Ok(())
 }
 
+fn write_bug_artifact(
+    path: &Path,
+    bytes: &[u8],
+    overwrite: bool,
+) -> Result<(), CheckpointBugExportError> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut options = fs::OpenOptions::new();
+    options
+        .write(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    if overwrite {
+        options.create(true).truncate(true);
+    } else {
+        options.create_new(true);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(bytes)?;
+    Ok(())
+}
+
 /// Load a checkpoint from a JSON file.
 pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<ExplorationCheckpoint, CheckpointError> {
     let json = crate::bounded_json::read_checkpoint(path.as_ref())?;
@@ -1327,7 +1348,7 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
             return Err(CheckpointBugExportError::AlreadyExists { path });
         }
         let json = serde_json::to_string_pretty(bug)?;
-        fs::write(path, json)?;
+        write_bug_artifact(&path, json.as_bytes(), overwrite)?;
         bugs_written += 1;
     }
 
@@ -2301,6 +2322,23 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(out.join("bug_1.json")).unwrap()).unwrap();
         assert_eq!(bug0.bug_id, 41);
         assert_eq!(bug1.bug_id, 99);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_checkpoint_bugs_rejects_symlink_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        fs::create_dir_all(&out).unwrap();
+        let target = dir.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        std::os::unix::fs::symlink(&target, out.join("bug_0.json")).unwrap();
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(41)]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        assert!(export_checkpoint_bugs(&checkpoint_path, &out, true).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
     }
 
     #[test]

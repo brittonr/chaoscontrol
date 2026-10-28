@@ -28,14 +28,25 @@ pub fn check_dogfood_artifact_sizes(
         !root.as_os_str().is_empty(),
         "dogfood artifact root must not be empty",
     )?;
-    if !root.exists() {
-        return Ok(format!(
-            "dogfood artifact size guard: {} absent; nothing to scan",
-            root.display()
-        ));
-    }
+    let metadata = match std::fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(format!(
+                "dogfood artifact size guard: {} absent; nothing to scan",
+                root.display()
+            ));
+        }
+        Err(error) => return Err(error.into()),
+    };
     ensure(
-        root.is_dir(),
+        !metadata.file_type().is_symlink(),
+        format!(
+            "dogfood artifact size guard: {} is a symlink",
+            root.display()
+        ),
+    )?;
+    ensure(
+        metadata.is_dir(),
         format!(
             "dogfood artifact size guard: {} is not a directory",
             root.display()
@@ -549,6 +560,16 @@ fn display_value(value: Option<&Value>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn artifact_root_symlinks_are_rejected() {
+        let target = tempfile::tempdir().unwrap();
+        std::fs::write(target.path().join("artifact"), b"oversized").unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let link = root.path().join("dogfood");
+        std::os::unix::fs::symlink(target.path(), &link).unwrap();
+        assert!(check_dogfood_artifact_sizes(&link, 1).is_err());
+    }
 
     #[test]
     fn directory_entry_bound_applies_before_collection() {

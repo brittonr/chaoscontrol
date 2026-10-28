@@ -569,6 +569,22 @@ fn refresh_existing_output(
     if output.as_os_str().is_empty() {
         return Err(String::from("refresh output directory must not be empty"));
     }
+    match fs::symlink_metadata(output) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "refresh output directory must not be a symlink: {}",
+                output.display()
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(format!(
+                "refresh output path is not a directory: {}",
+                output.display()
+            ));
+        }
+        Ok(_) => {}
+        Err(error) => return Err(format!("{}: {error}", output.display())),
+    }
     let mut summary = load_json(&output.join("accepted-snapshot-verdict-summary.json"))?;
     let bug_name = basename(summary.get("accepted_bug"))?;
     let verdict_name = basename(summary.get("accepted_verdict"))?;
@@ -995,6 +1011,16 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn symlinked_refresh_output_directory_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let link = root.path().join("output");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(refresh_existing_output(&link, "evidence", "workload").is_err());
     }
 
     #[test]

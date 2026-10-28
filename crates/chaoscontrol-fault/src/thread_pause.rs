@@ -229,6 +229,34 @@ mod tests {
     }
 
     #[test]
+    fn plan_enforces_active_thread_and_event_boundaries() {
+        let limits = ThreadPauseLimits {
+            max_active_threads: 2,
+            max_pause_events: 2,
+            ..ThreadPauseLimits::default()
+        };
+        let mut facts = ThreadPauseFacts {
+            pause_events: 1,
+            ..ThreadPauseFacts::default()
+        };
+        admit_thread_pause(thread(1), window(), &abi(), &limits, &facts).unwrap();
+
+        facts.pause_events = 2;
+        assert_eq!(
+            admit_thread_pause(thread(1), window(), &abi(), &limits, &facts,).unwrap_err(),
+            ThreadPauseError::TooManyEvents
+        );
+
+        facts.pause_events = 0;
+        facts.active.insert(thread(2), 30);
+        facts.active.insert(thread(3), 30);
+        assert_eq!(
+            admit_thread_pause(thread(1), window(), &abi(), &limits, &facts,).unwrap_err(),
+            ThreadPauseError::TooManyActiveThreads
+        );
+    }
+
+    #[test]
     fn plan_enforces_the_total_pause_boundary() {
         let limits = ThreadPauseLimits {
             max_total_paused_ticks: 10,

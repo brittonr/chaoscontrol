@@ -179,6 +179,13 @@ fn matrix_rejects_retained_policy_above_artifact_bound() {
 }
 
 #[test]
+fn matrix_rejects_duplicate_retained_artifact_paths() {
+    let mut matrix = sample_matrix();
+    matrix.rows[0].retained_artifacts = vec!["stdout.log".to_string(), "stdout.log".to_string()];
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_accepts_safe_nested_retained_artifact_paths() {
     let mut matrix = sample_matrix();
     matrix.rows[0].retained_artifacts = vec!["logs/stdout.log".to_string()];

@@ -344,13 +344,14 @@ fn validate_matrix_row(
         issues,
         format!("matrix row artifact byte bound is invalid: {}", row.id),
     );
+    let mut retained = BTreeSet::new();
     push_unless(
         !row.retained_artifacts.is_empty()
             && row.retained_artifacts.len() <= row.limits.max_artifacts
             && row
                 .retained_artifacts
                 .iter()
-                .all(|path| safe_relative_artifact(path)),
+                .all(|path| safe_relative_artifact(path) && retained.insert(path.as_str())),
         issues,
         format!("matrix row retained artifact policy is invalid: {}", row.id),
     );

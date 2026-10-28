@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::replay_readiness_publication::write_bytes;
 use crate::{EvidenceError, EvidenceResult};
 
 pub const HISTORY_SCHEMA_VERSION: u64 = 1;
@@ -309,7 +310,7 @@ pub fn write_adapter_sample_history_path(path: impl AsRef<Path>) -> EvidenceResu
     adapter.record_write_ok("adapter-write-1", "client-a", 1, 2, 7)?;
     adapter.record_read_ok("adapter-read-1", "client-b", 3, 4, Some(7))?;
     let history = adapter.emit_history()?;
-    std::fs::write(path, serde_json::to_vec_pretty(&history)?)?;
+    write_bytes(path, serde_json::to_vec_pretty(&history)?)?;
     Ok(())
 }
 
@@ -324,7 +325,7 @@ pub fn write_sample_history_path(path: impl AsRef<Path>, bad: bool) -> EvidenceR
         sample_good_history()
     };
     validate_history(&history)?;
-    std::fs::write(path, serde_json::to_vec_pretty(&history)?)?;
+    write_bytes(path, serde_json::to_vec_pretty(&history)?)?;
     Ok(())
 }
 
@@ -338,7 +339,7 @@ pub fn write_check_report_path(
     }
     let report = check_history_path(history_path)?;
     validate_report(&report)?;
-    std::fs::write(report_path, serde_json::to_vec_pretty(&report)?)?;
+    write_bytes(report_path, serde_json::to_vec_pretty(&report)?)?;
     Ok(())
 }
 

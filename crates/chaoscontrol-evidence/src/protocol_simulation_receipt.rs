@@ -1,5 +1,6 @@
 //! Filesystem shell for adapter-based protocol-simulation receipts.
 
+use crate::replay_readiness_publication::write_bytes;
 use crate::{EvidenceError, EvidenceResult};
 use chaoscontrol_sim_core::{
     build_protocol_simulation_receipt, validate_protocol_simulation_receipt,
@@ -23,7 +24,7 @@ pub fn emit_protocol_simulation_receipt_path(
     {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    write_bytes(output_path, serde_json::to_vec_pretty(&receipt)?)?;
     Ok(receipt)
 }
 

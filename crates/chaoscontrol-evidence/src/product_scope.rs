@@ -4,6 +4,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
+use crate::replay_readiness_publication::write_bytes;
 use crate::{ensure, EvidenceError, EvidenceResult};
 
 pub const PRODUCT_SCOPE_REGISTRY_SOURCE: &str = "contracts/product-scope/registry.ncl";
@@ -724,7 +725,7 @@ fn check_or_write(path: &Path, actual: &str, expected: &str, write: bool) -> Evi
             path.display()
         )));
     }
-    std::fs::write(path, expected).map_err(|error| {
+    write_bytes(path, expected).map_err(|error| {
         EvidenceError::new(format!(
             "failed to write product-scope document {}: {error}",
             path.display()

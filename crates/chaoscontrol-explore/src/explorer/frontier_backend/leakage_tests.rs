@@ -127,6 +127,7 @@ impl ProductValues {
                 category: "safety".to_owned(),
                 identity: None,
                 compatibility_id: Some(7),
+                must_hit: None,
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
                 process_instances: std::collections::BTreeSet::new(),

@@ -94,6 +94,9 @@ pub struct AssertionRecord {
         skip_serializing_if = "Option::is_none"
     )]
     pub compatibility_id: Option<u32>,
+    /// Whether the property must be evaluated at least once to pass.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub must_hit: Option<bool>,
     /// Catalog tokens that admitted this exact descriptor.
     #[serde(
         default = "empty_catalog_tokens",
@@ -134,6 +137,7 @@ impl AssertionRecord {
             category: descriptor.category.clone(),
             identity: Some(assertion.clone()),
             compatibility_id: descriptor.compatibility_id,
+            must_hit: None,
             catalog_tokens: BTreeSet::from([catalog_token]),
             vm_instances: BTreeSet::new(),
             process_instances: BTreeSet::new(),
@@ -143,10 +147,15 @@ impl AssertionRecord {
 
     /// Evaluate the cross-run verdict for this assertion.
     pub fn verdict(&self) -> Verdict {
+        let unexercised = || match self.must_hit {
+            Some(true) => Verdict::Failed,
+            Some(false) => Verdict::Passed,
+            None => Verdict::Unexercised,
+        };
         match self.kind {
             AssertionKind::Always => {
                 if self.hit_count == 0 {
-                    Verdict::Unexercised
+                    unexercised()
                 } else if self.false_count == 0 {
                     Verdict::Passed
                 } else {
@@ -155,7 +164,7 @@ impl AssertionRecord {
             }
             AssertionKind::Sometimes => {
                 if self.hit_count == 0 {
-                    Verdict::Unexercised
+                    unexercised()
                 } else if self.true_count > 0 {
                     Verdict::Passed
                 } else {
@@ -166,7 +175,7 @@ impl AssertionRecord {
                 if self.hit_count > 0 {
                     Verdict::Passed
                 } else {
-                    Verdict::Unexercised
+                    unexercised()
                 }
             }
             AssertionKind::Unreachable => {
@@ -843,6 +852,18 @@ impl PropertyOracle {
         name: &str,
         details: serde_json::Value,
     ) -> Result<(), CatalogConflict> {
+        if name == "chaoscontrol_must_hit" {
+            if let Some(fingerprint) = details
+                .get("fingerprint")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| AssertionFingerprint::from_hex(value).ok())
+            {
+                if let Some(record) = self.structured_assertions.get_mut(&fingerprint) {
+                    record.must_hit = details.get("must_hit").and_then(serde_json::Value::as_bool);
+                }
+            }
+            return Ok(());
+        }
         let Some(run_id) = self.current_run.as_ref().map(|run| run.run_id) else {
             return self.reject_bound_event(CatalogConflict::NoActiveRun);
         };

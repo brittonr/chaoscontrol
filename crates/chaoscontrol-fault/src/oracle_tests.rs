@@ -315,6 +315,38 @@ fn bound_event_without_active_run_does_not_change_counters() {
 }
 
 #[test]
+fn must_hit_metadata_changes_unexercised_verdicts() {
+    let (mut oracle, _event, fingerprint) = strict_oracle(AssertionKind::Always, "must-hit");
+    oracle.begin_run();
+    oracle
+        .record_event(
+            "chaoscontrol_must_hit",
+            json!({"fingerprint": fingerprint.to_hex(), "must_hit": true}),
+        )
+        .expect("metadata recorded");
+    let report = oracle.report();
+    let assertion = record(&report, &fingerprint);
+    assert_eq!(assertion.verdict(), Verdict::Failed);
+
+    let (mut oracle, _event, fingerprint) = strict_oracle(AssertionKind::Always, "may-skip");
+    oracle.begin_run();
+    oracle
+        .record_event(
+            "chaoscontrol_must_hit",
+            json!({"fingerprint": fingerprint.to_hex(), "must_hit": false}),
+        )
+        .expect("metadata recorded");
+    let report = oracle.report();
+    let assertion = record(&report, &fingerprint);
+    assert_eq!(assertion.verdict(), Verdict::Passed);
+
+    let (oracle, _event, fingerprint) = strict_oracle(AssertionKind::Always, "no-metadata");
+    let report = oracle.report();
+    let assertion = record(&report, &fingerprint);
+    assert_eq!(assertion.verdict(), Verdict::Unexercised);
+}
+
+#[test]
 fn event_without_accepted_catalog_fails_without_legacy_output() {
     let descriptor = descriptor(AssertionKind::Always, "unknown");
     let event = BoundAssertionEvent {

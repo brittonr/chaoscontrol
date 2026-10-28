@@ -39,6 +39,7 @@ pub(crate) struct BoundIdentity {
 #[derive(Debug)]
 struct SdkCatalog {
     descriptors: Vec<AssertionDescriptor>,
+    must_hit: Vec<bool>,
     accepted: Result<Option<AcceptedCatalog>, CatalogConflict>,
 }
 
@@ -130,6 +131,18 @@ pub(crate) fn emit_catalog() {
             descriptor_count,
             &payload[..length],
         );
+    }
+    if crate::internal::is_in_vm() {
+        for (descriptor, must_hit) in catalog.descriptors.iter().zip(&catalog.must_hit) {
+            let Ok(fingerprint) = descriptor.fingerprint() else {
+                continue;
+            };
+            let details = serde_json::json!({
+                "fingerprint": fingerprint.to_hex(),
+                "must_hit": must_hit,
+            });
+            crate::lifecycle::send_event("chaoscontrol_must_hit", &details);
+        }
     }
     if crate::internal::is_local_output() {
         if let Ok(Some(accepted)) = catalog.accepted.as_ref() {
@@ -243,6 +256,7 @@ fn build_catalog() -> SdkCatalog {
     if ASSERTION_CATALOG.len() > MAX_ASSERTION_CATALOG_ENTRIES {
         return SdkCatalog {
             descriptors: Vec::new(),
+            must_hit: Vec::new(),
             accepted: Err(CatalogConflict::CardinalityOverflow),
         };
     }
@@ -251,7 +265,12 @@ fn build_catalog() -> SdkCatalog {
         .map(|registrations| {
             registrations
                 .iter()
-                .map(|raw| raw.descriptor.clone())
+                .map(|raw| {
+                    (
+                        raw.descriptor.clone(),
+                        raw.location.must_hit.unwrap_or(true),
+                    )
+                })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
@@ -262,22 +281,31 @@ fn build_catalog() -> SdkCatalog {
     {
         return SdkCatalog {
             descriptors: Vec::new(),
+            must_hit: Vec::new(),
             accepted: Err(CatalogConflict::CardinalityOverflow),
         };
     }
     let mut descriptors = Vec::with_capacity(ASSERTION_CATALOG.len() + raw_registrations.len());
+    let mut must_hit = Vec::with_capacity(descriptors.capacity());
     for entry in ASSERTION_CATALOG.iter() {
         match descriptor_from_entry(entry) {
-            Ok(descriptor) => descriptors.push(descriptor),
+            Ok(descriptor) => {
+                descriptors.push(descriptor);
+                must_hit.push(entry.must_hit);
+            }
             Err(error) => {
                 return SdkCatalog {
                     descriptors,
+                    must_hit,
                     accepted: Err(error),
                 };
             }
         }
     }
-    descriptors.extend(raw_registrations);
+    for (descriptor, raw_must_hit) in raw_registrations {
+        descriptors.push(descriptor);
+        must_hit.push(raw_must_hit);
+    }
     let accepted = if descriptors.is_empty() {
         Ok(None)
     } else {
@@ -285,6 +313,7 @@ fn build_catalog() -> SdkCatalog {
     };
     SdkCatalog {
         descriptors,
+        must_hit,
         accepted,
     }
 }

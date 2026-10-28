@@ -530,6 +530,7 @@ mod tests {
                 category: String::from("fixture"),
                 identity: None,
                 compatibility_id: Some(1),
+                must_hit: None,
                 catalog_tokens: BTreeSet::new(),
                 vm_instances: BTreeSet::new(),
                 process_instances: BTreeSet::new(),

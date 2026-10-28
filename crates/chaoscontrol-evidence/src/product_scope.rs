@@ -19,6 +19,7 @@ pub const PRODUCT_SCOPE_SUCCESS: &str =
 const PRODUCT_SCOPE_SCHEMA_VERSION: u32 = 1;
 const MAX_PRODUCT_SCOPE_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const INVALID_FIXTURES_DIRECTORY: &str = "contracts/product-scope/fixtures/invalid";
+const MAX_INVALID_FIXTURES: usize = 256;
 const README_PATH: &str = "README.md";
 const DOCS_PATH_PREFIX: &str = "docs/";
 const CARGO_WORKSPACE_HEADER: &str = "[workspace]";
@@ -581,12 +582,37 @@ fn export_nickel(root: &Path, relative_path: &str) -> EvidenceResult<Vec<u8>> {
     Ok(output.stdout)
 }
 
+fn admit_fixture_entry(fixture: &std::fs::DirEntry) -> EvidenceResult<()> {
+    let path = fixture.path();
+    let file_type = fixture
+        .file_type()
+        .map_err(|error| EvidenceError::new(format!("{}: {error}", path.display())))?;
+    ensure(
+        file_type.is_file() && !file_type.is_symlink(),
+        format!("unexpected invalid fixture file: {}", path.display()),
+    )?;
+    ensure(
+        path.extension().is_some_and(|extension| extension == "ncl"),
+        format!("unexpected invalid fixture file: {}", path.display()),
+    )
+}
+
 fn check_invalid_nickel_fixtures(root: &Path) -> EvidenceResult<()> {
     let directory = root.join(INVALID_FIXTURES_DIRECTORY);
-    let mut fixtures = std::fs::read_dir(&directory)
+    let mut fixtures = Vec::new();
+    for entry in std::fs::read_dir(&directory)
         .map_err(|error| EvidenceError::new(format!("failed to read invalid fixtures: {error}")))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| EvidenceError::new(format!("failed to list invalid fixtures: {error}")))?;
+    {
+        ensure(
+            fixtures.len() < MAX_INVALID_FIXTURES,
+            "product-scope invalid fixture count exceeds the bound",
+        )?;
+        let entry = entry.map_err(|error| {
+            EvidenceError::new(format!("failed to list invalid fixtures: {error}"))
+        })?;
+        admit_fixture_entry(&entry)?;
+        fixtures.push(entry);
+    }
     fixtures.sort_by_key(std::fs::DirEntry::file_name);
     ensure(
         !fixtures.is_empty(),
@@ -594,10 +620,6 @@ fn check_invalid_nickel_fixtures(root: &Path) -> EvidenceResult<()> {
     )?;
     for fixture in fixtures {
         let path = fixture.path();
-        ensure(
-            path.extension().is_some_and(|extension| extension == "ncl"),
-            format!("unexpected invalid fixture file: {}", path.display()),
-        )?;
         let output = Command::new("nickel")
             .args(["export", "--format", "json"])
             .arg(&path)
@@ -883,5 +905,36 @@ mod tests {
         );
         assert!(parse_historical_workload_row_count(r#"{"proofs":{}}"#).is_err());
         assert!(parse_historical_workload_row_count("not-json").is_err());
+    }
+}
+
+#[cfg(test)]
+mod fixture_admission_tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn invalid_fixture_admission_rejects_non_regular_and_wrong_extension() {
+        let root = tempfile::tempdir().unwrap();
+        let valid = root.path().join("valid.ncl");
+        std::fs::write(&valid, b"{}").unwrap();
+        let target = root.path().join("target.txt");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("link.ncl");
+        symlink(&target, &link).unwrap();
+        let wrong = root.path().join("wrong.txt");
+        std::fs::write(&wrong, b"{}").unwrap();
+
+        let entry = |path: &std::path::Path| {
+            root.path()
+                .read_dir()
+                .unwrap()
+                .map(Result::unwrap)
+                .find(|entry| entry.path() == path)
+                .unwrap()
+        };
+        admit_fixture_entry(&entry(&valid)).expect("valid fixture");
+        assert!(admit_fixture_entry(&entry(&link)).is_err());
+        assert!(admit_fixture_entry(&entry(&wrong)).is_err());
     }
 }

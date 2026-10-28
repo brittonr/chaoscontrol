@@ -170,6 +170,13 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_accepts_claim_text_at_the_bound() {
+    let mut matrix = sample_matrix();
+    matrix.bounded_claim = "x".repeat(MAX_MATRIX_CLAIM_BYTES);
+    validate_matrix(&matrix).expect("claim at the byte bound is admitted");
+}
+
+#[test]
 fn matrix_rejects_malformed_claim_text() {
     let mut matrix = sample_matrix();
     matrix.bounded_claim = "x".repeat(MAX_MATRIX_CLAIM_BYTES + 1);

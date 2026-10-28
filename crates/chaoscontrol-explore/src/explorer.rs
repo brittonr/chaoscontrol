@@ -2813,8 +2813,9 @@ impl Explorer {
 
         let bugs: Vec<DashboardBug> = self
             .corpus
-            .bugs()
+            .entries()
             .iter()
+            .flat_map(|entry| entry.bugs_found.iter())
             .map(|b| DashboardBug {
                 bug_id: b.bug_id,
                 assertion_id: b.assertion_id,

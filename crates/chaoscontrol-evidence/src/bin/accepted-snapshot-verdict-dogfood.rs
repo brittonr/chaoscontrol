@@ -694,22 +694,23 @@ fn chunk_snapshot(snapshot: &Path) -> Result<(), String> {
     if size <= u64::try_from(SNAPSHOT_CHUNK_BYTES).expect("chunk bound fits") {
         return Ok(());
     }
+    let base_name = file_name(snapshot)?;
     let mut reader = BufReader::new(file);
     let mut chunks = Vec::new();
+    let mut data = vec![0_u8; SNAPSHOT_CHUNK_BYTES];
     let mut index = 0_usize;
     loop {
-        let mut data = vec![0_u8; SNAPSHOT_CHUNK_BYTES];
         let count = reader
             .read(&mut data)
             .map_err(|error| format!("{}: {error}", snapshot.display()))?;
         if count == 0 {
             break;
         }
-        data.truncate(count);
-        let name = format!("{}.part{index:02}", file_name(snapshot)?);
-        write_atomic(&snapshot.with_file_name(&name), &data)
+        let chunk = &data[..count];
+        let name = format!("{base_name}.part{index:02}");
+        write_atomic(&snapshot.with_file_name(&name), chunk)
             .map_err(|error| format!("{}: {error}", name))?;
-        chunks.push(json!({"path": format!("snapshots/{name}"), "size": count, "sha256": format!("{:x}", Sha256::digest(&data))}));
+        chunks.push(json!({"path": format!("snapshots/{name}"), "size": count, "sha256": format!("{:x}", Sha256::digest(chunk))}));
         index += 1;
     }
     let manifest = json!({

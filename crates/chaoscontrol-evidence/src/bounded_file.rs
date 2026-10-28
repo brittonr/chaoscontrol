@@ -59,3 +59,44 @@ fn open_regular_file(path: &Path) -> EvidenceResult<File> {
     }
     Ok(file)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn bounded_reads_accept_regular_files_at_the_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("input.json");
+        std::fs::write(&path, b"abcd").unwrap();
+
+        assert_eq!(
+            read_bounded_regular_bytes(&path, 4).unwrap(),
+            b"abcd".to_vec()
+        );
+        assert!(read_bounded_regular_bytes(&path, 3).is_err());
+        assert_eq!(read_bounded_regular_file(&path, 4).unwrap(), "abcd");
+    }
+
+    #[test]
+    fn bounded_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("input.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded_regular_bytes(&link, 16).is_err());
+
+        let fifo = root.path().join("input.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded_regular_bytes(&fifo, 16).is_err());
+    }
+
+    #[test]
+    fn bounded_reads_reject_directories() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(read_bounded_regular_bytes(root.path(), 16).is_err());
+    }
+}

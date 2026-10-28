@@ -1782,6 +1782,15 @@ fn materialize_without_force_does_not_replace_a_dangling_symlink() {
 fn empty_replay_proof_coverage_root_is_rejected() {
     assert!(render_replay_proof_coverage_doc("").is_err());
     assert!(check_replay_proof_coverage_doc("").is_err());
+    assert!(chaoscontrol_evidence::validate_replay_proof_coverage("").is_err());
+}
+
+#[test]
+fn empty_assertion_readiness_roots_are_rejected() {
+    assert!(chaoscontrol_evidence::render_assertion_readiness_status("").is_err());
+    assert!(check_assertion_readiness_status("").is_err());
+    assert!(check_assertion_readiness_promotion("").is_err());
+    assert!(check_assertion_readiness_boundary("").is_err());
 }
 
 #[test]

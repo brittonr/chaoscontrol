@@ -804,6 +804,10 @@ pub fn validate_replay_proof_coverage(
     root: impl AsRef<Path>,
 ) -> EvidenceResult<Vec<ReplayProofCoverageLine>> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "replay proof coverage root must not be empty",
+    )?;
     let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
     let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
         EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
@@ -1157,6 +1161,10 @@ impl AssertionGapClass {
 
 pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<String> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "assertion readiness root must not be empty",
+    )?;
     let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
     let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
         EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
@@ -1267,6 +1275,10 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
 
 pub fn check_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "assertion readiness root must not be empty",
+    )?;
     let expected = render_assertion_readiness_status(root)?;
     let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
     let actual = bounded_file::read_bounded_regular_file(&report_path, MAX_EVIDENCE_JSON_BYTES)?;
@@ -1290,6 +1302,10 @@ pub fn write_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResul
 
 pub fn check_assertion_readiness_promotion(root: impl AsRef<Path>) -> EvidenceResult<Vec<String>> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "assertion readiness root must not be empty",
+    )?;
     check_assertion_readiness_promotion_paths(
         root,
         root.join("dogfood-results/accepted-workload-proofs.json"),
@@ -1299,6 +1315,10 @@ pub fn check_assertion_readiness_promotion(root: impl AsRef<Path>) -> EvidenceRe
 
 pub fn check_assertion_readiness_boundary(root: impl AsRef<Path>) -> EvidenceResult<Vec<String>> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "assertion readiness root must not be empty",
+    )?;
     let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
     let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
     let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|error| {

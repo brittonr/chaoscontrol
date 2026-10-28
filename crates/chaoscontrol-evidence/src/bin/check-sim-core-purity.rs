@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 const CORE_MANIFEST: &str = "crates/chaoscontrol-sim-core/Cargo.toml";
 const CORE_SOURCE: &str = "crates/chaoscontrol-sim-core/src";
 const MAX_SOURCE_FILES: usize = 256;
+const MAX_SOURCE_ENTRIES: usize = 4_096;
 const MAX_SOURCE_BYTES: u64 = 16 * 1024 * 1024;
 const FORBIDDEN_DEPENDENCIES: [&str; 8] = [
     "kvm-bindings",
@@ -66,10 +67,17 @@ fn read_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
     let source_root = root.join(CORE_SOURCE);
     let mut pending = vec![source_root];
     let mut files = Vec::new();
+    let mut discovered = 0_usize;
     while let Some(path) = pending.pop() {
         let entries = fs::read_dir(&path)
             .map_err(|error| format!("read source directory {}: {error}", path.display()))?;
         for entry in entries {
+            discovered += 1;
+            if discovered > MAX_SOURCE_ENTRIES {
+                return Err(format!(
+                    "sim-core source entry bound exceeded: maximum={MAX_SOURCE_ENTRIES}"
+                ));
+            }
             let entry = entry.map_err(|error| format!("read source entry: {error}"))?;
             let entry_path = entry.path();
             let file_type = entry
@@ -166,6 +174,19 @@ fn main() {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn source_walk_rejects_excessive_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join(CORE_SOURCE);
+        std::fs::create_dir_all(&source).unwrap();
+        for index in 0..=MAX_SOURCE_ENTRIES {
+            std::fs::create_dir(source.join(format!("entry{index}"))).unwrap();
+        }
+
+        let error = read_sources(root.path()).expect_err("entry bound must fail");
+        assert!(error.contains("entry bound exceeded"));
+    }
 
     #[test]
     fn source_reads_reject_symlinks_and_fifos() {

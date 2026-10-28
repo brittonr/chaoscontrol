@@ -752,7 +752,9 @@ pub fn evaluate(
     for event in &rows {
         admit_event(event)?;
     }
-    rows.sort_by_key(event_order);
+    if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+        rows.sort_by_key(event_order);
+    }
     rows.dedup_by_key(|event| (event.source_id, event.source_sequence));
     let matched = u64::try_from(rows.len()).map_err(|_| EventQueryError::CounterOverflow)?;
     let truncated = rows.len() > limits.max_result_rows;

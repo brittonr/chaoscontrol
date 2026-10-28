@@ -148,6 +148,14 @@ fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, Snaps
             limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
         });
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(SnapshotStoreError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "snapshot changed while reading",
+            ),
+        });
+    }
     Ok(bytes)
 }
 
@@ -730,6 +738,11 @@ mod tests {
             store.get_snapshot_artifact(&reference),
             Err(SnapshotStoreError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn reads_reject_length_changes() {
+        assert!(read_snapshot_bytes(Path::new("/proc/self/cmdline"), "proc").is_err());
     }
 
     #[test]

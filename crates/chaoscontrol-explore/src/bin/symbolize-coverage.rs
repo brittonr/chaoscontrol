@@ -155,7 +155,7 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .create(true)
         .truncate(true)
         .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     file.write_all(bytes)
@@ -210,6 +210,19 @@ mod tests {
         assert!(!json.exists());
         write_json_with_limit(&json, &"abcd", 6).unwrap();
         assert_eq!(std::fs::read_to_string(&json).unwrap(), r#""abcd""#);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fifo_output_is_rejected_without_blocking() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let fifo = temp.path().join("fifo");
+        let path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(write_json(&fifo, &"abcd").is_err());
     }
 
     #[test]

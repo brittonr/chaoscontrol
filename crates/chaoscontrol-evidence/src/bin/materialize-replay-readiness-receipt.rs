@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -110,10 +111,40 @@ fn load_json(path: &Path) -> Result<Value, String> {
 fn write_atomic(path: &Path, value: &Value) -> Result<(), String> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    let temporary = PathBuf::from(format!("{}.tmp", path.display()));
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("receipt encode failed: {error}"))?;
     bytes.push(b'\n');
-    fs::write(&temporary, bytes).map_err(|error| format!("{}: {error}", temporary.display()))?;
-    fs::rename(&temporary, path).map_err(|error| format!("{}: {error}", path.display()))
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(&bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| error.to_string())?;
+    temporary
+        .persist(path)
+        .map_err(|error| error.error.to_string())?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_receipt_replacement_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_atomic(&link, &serde_json::json!({"status": "passed"})).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(
+            serde_json::from_slice::<Value>(&fs::read(&link).unwrap()).unwrap()["status"],
+            "passed"
+        );
+    }
 }

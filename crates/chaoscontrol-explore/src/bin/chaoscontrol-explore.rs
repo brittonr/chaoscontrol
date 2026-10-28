@@ -2939,12 +2939,16 @@ fn auto_minimize_bugs(
     Ok(())
 }
 
+fn output_parent(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
 fn write_atomic_replacing(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
 
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    let parent = output_parent(path);
     let mut temporary =
         tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
     temporary
@@ -2984,10 +2988,7 @@ fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
 fn write_new_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
 
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+    let parent = output_parent(path);
     let directory = fs::File::open(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;
@@ -3104,6 +3105,15 @@ mod tests {
     const LEGACY_DIAGNOSTIC: &str = "legacy-diagnostic";
     const UNKNOWN_POLICIES: [&str; 3] = ["bogus", "campaign_candidate", "Legacy"];
     const RETIRED_POLICIES: [&str; 2] = ["legacy", "campaign-candidate"];
+
+    #[test]
+    fn relative_output_paths_use_the_current_directory() {
+        assert_eq!(output_parent(Path::new("report.json")), Path::new("."));
+        assert_eq!(
+            output_parent(Path::new("out/report.json")),
+            Path::new("out")
+        );
+    }
 
     #[test]
     fn new_file_publication_is_atomic_and_never_overwrites() {

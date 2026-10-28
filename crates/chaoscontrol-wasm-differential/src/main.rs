@@ -975,6 +975,12 @@ fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
             path.display()
         )));
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(Error::Invalid(format!(
+            "file changed while reading: {}",
+            path.display()
+        )));
+    }
     Ok(bytes)
 }
 
@@ -1233,6 +1239,7 @@ mod tests {
         let path = root.path().join("input.json");
         fs::write(&path, b"{}").unwrap();
         assert_eq!(read_bounded(&path, u64::MAX).unwrap(), b"{}");
+        assert!(read_bounded(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

@@ -38,6 +38,10 @@ pub fn validate_protocol_simulation_receipt_path(
         receipt_path.as_ref(),
         MAX_PROTOCOL_RECEIPT_BYTES,
     )?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let receipt: ProtocolSimulationReceipt = serde_json::from_slice(&bytes)?;
     validate_protocol_simulation_receipt(&receipt).map_err(protocol_receipt_error)?;
     Ok(receipt)
@@ -50,6 +54,15 @@ fn protocol_receipt_error(error: impl std::fmt::Display) -> EvidenceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_validation_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = validate_protocol_simulation_receipt_path(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn receipt_validation_rejects_symlinks_and_fifos() {

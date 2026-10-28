@@ -715,6 +715,10 @@ pub fn validate_simulator_receipt_path(
         path.as_ref(),
         MAX_SIMULATOR_RECEIPT_BYTES,
     )?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let receipt: SimulatorReceipt = serde_json::from_slice(&bytes)?;
     validate_simulator_receipt(&receipt)?;
     Ok(summarize_simulator_receipt(&receipt))
@@ -1156,6 +1160,15 @@ fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_validation_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = validate_simulator_receipt_path(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn receipt_paths_are_atomic_and_no_follow() {

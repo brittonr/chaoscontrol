@@ -935,6 +935,11 @@ pub fn validate_bug_set(
         bug_id: first_bug.bug_id,
         source: crate::bug::identity::BugIdentityError::ReportMismatch,
     })?;
+    let facts = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(report)
+        .map_err(|_| BugSetIdentityError {
+            bug_id: first_bug.bug_id,
+            source: crate::bug::identity::BugIdentityError::ReportMismatch,
+        })?;
     let mut ids = std::collections::BTreeSet::new();
     for bug in bugs {
         if !ids.insert(bug.bug_id) {
@@ -947,15 +952,22 @@ pub fn validate_bug_set(
             bug_id: bug.bug_id,
             source,
         })?;
-        let record = crate::bug::identity::resolve_restored_report(
+        let identity = crate::bug::identity::validate_carrier(
             bug.assertion_id,
             bug.assertion_identity.as_ref(),
-            report,
         )
         .map_err(|source| BugSetIdentityError {
             bug_id: bug.bug_id,
             source,
         })?;
+        let record =
+            chaoscontrol_fault::oracle_validation::resolve_assertion_evidence_prevalidated(
+                report, &facts, identity,
+            )
+            .map_err(|_| BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source: crate::bug::identity::BugIdentityError::ReportMismatch,
+            })?;
         if record.process_instances != bug.process_instances
             || record.fallback_scope != bug.fallback_scope
         {
@@ -2284,6 +2296,30 @@ mod tests {
             validate_checkpoint(&checkpoint),
             Err(CheckpointError::InvalidBounds { .. })
         ));
+    }
+
+    #[test]
+    fn prevalidated_assertion_resolution_matches_full_validation() {
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(2)]);
+        let report = checkpoint.assertion_report.as_ref().expect("report");
+        let facts = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(report)
+            .expect("report facts");
+        for bug in &checkpoint.bugs {
+            let identity = crate::bug::identity::validate_carrier(
+                bug.assertion_id,
+                bug.assertion_identity.as_ref(),
+            )
+            .expect("identity");
+            let full =
+                chaoscontrol_fault::oracle_validation::resolve_assertion_evidence(report, identity)
+                    .expect("full resolution");
+            let prevalidated =
+                chaoscontrol_fault::oracle_validation::resolve_assertion_evidence_prevalidated(
+                    report, &facts, identity,
+                )
+                .expect("prevalidated resolution");
+            assert_eq!(full, prevalidated);
+        }
     }
 
     #[test]

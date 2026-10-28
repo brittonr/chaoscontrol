@@ -49,6 +49,15 @@ pub fn resolve_assertion_evidence<'a>(
     identity: &AssertionEvidenceIdentity,
 ) -> Result<&'a AssertionRecord, OracleValidationError> {
     let facts = validate_oracle_report_claim(report)?;
+    resolve_assertion_evidence_prevalidated(report, &facts, identity)
+}
+
+/// Resolve one assertion against an already validated report.
+pub fn resolve_assertion_evidence_prevalidated<'a>(
+    report: &'a OracleReport,
+    facts: &StrictReportFacts,
+    identity: &AssertionEvidenceIdentity,
+) -> Result<&'a AssertionRecord, OracleValidationError> {
     identity
         .validate_for_catalog(&facts.catalog)
         .map_err(|_| OracleValidationError::Record)?;

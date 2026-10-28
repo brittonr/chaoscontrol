@@ -46,11 +46,14 @@ impl AssertionSummaryV2 {
     }
 
     pub(crate) fn validate(&self) -> Result<(), String> {
-        Self::from_claims(
-            self.schema.clone(),
+        if self.schema != ASSERTION_SUMMARY_SCHEMA {
+            return Err("unsupported assertion summary schema".to_string());
+        }
+        Self::recomputed_claims(
             self.catalog_status,
             self.collision_safe_evidence,
-            self.assertions.clone(),
+            &[],
+            &self.assertions,
         )?;
         Ok(())
     }
@@ -92,13 +95,17 @@ impl AssertionSummaryV2 {
         if schema != ASSERTION_SUMMARY_SCHEMA {
             return Err("unsupported assertion summary schema".to_string());
         }
-        let validated = Self::new(source_status, source_collision_safe, &[], &assertions)?;
-        if validated.catalog_status != source_status
-            || validated.collision_safe_evidence != source_collision_safe
-        {
+        let (catalog_status, collision_safe_evidence) =
+            Self::recomputed_claims(source_status, source_collision_safe, &[], &assertions)?;
+        if catalog_status != source_status || collision_safe_evidence != source_collision_safe {
             return Err("assertion summary authority claim is not exact".to_string());
         }
-        Ok(validated)
+        Ok(Self {
+            schema,
+            catalog_status,
+            collision_safe_evidence,
+            assertions,
+        })
     }
 
     fn new(
@@ -107,36 +114,49 @@ impl AssertionSummaryV2 {
         conflicts: &[String],
         assertions: &[AssertionDetail],
     ) -> Result<Self, String> {
-        if assertions.is_empty() {
-            return Err("empty assertion summaries are not emitted".to_string());
-        }
-        if source_status == CatalogValidationStatus::FatalConflict || !conflicts.is_empty() {
-            return Self::fatal(assertions);
-        }
-        let recomputed_status = validate_assertion_details(assertions)?;
-        let (catalog_status, collision_safe_evidence) = match recomputed_status {
-            CatalogValidationStatus::Accepted
-                if source_status == CatalogValidationStatus::Accepted && source_collision_safe =>
-            {
-                (CatalogValidationStatus::Accepted, true)
-            }
-            CatalogValidationStatus::Accepted => (CatalogValidationStatus::FatalConflict, false),
-            CatalogValidationStatus::LegacyAmbiguous
-                if source_status != CatalogValidationStatus::Accepted && !source_collision_safe =>
-            {
-                (CatalogValidationStatus::LegacyAmbiguous, false)
-            }
-            CatalogValidationStatus::LegacyAmbiguous => {
-                (CatalogValidationStatus::FatalConflict, false)
-            }
-            _ => return Err("unsupported assertion summary classification".to_string()),
-        };
+        let (catalog_status, collision_safe_evidence) =
+            Self::recomputed_claims(source_status, source_collision_safe, conflicts, assertions)?;
         Ok(Self {
             schema: ASSERTION_SUMMARY_SCHEMA.to_string(),
             catalog_status,
             collision_safe_evidence,
             assertions: assertions.to_vec(),
         })
+    }
+
+    fn recomputed_claims(
+        source_status: CatalogValidationStatus,
+        source_collision_safe: bool,
+        conflicts: &[String],
+        assertions: &[AssertionDetail],
+    ) -> Result<(CatalogValidationStatus, bool), String> {
+        if assertions.is_empty() {
+            return Err("empty assertion summaries are not emitted".to_string());
+        }
+        if source_status == CatalogValidationStatus::FatalConflict || !conflicts.is_empty() {
+            validate_fatal_details(assertions)?;
+            return Ok((CatalogValidationStatus::FatalConflict, false));
+        }
+        let recomputed_status = validate_assertion_details(assertions)?;
+        match recomputed_status {
+            CatalogValidationStatus::Accepted
+                if source_status == CatalogValidationStatus::Accepted && source_collision_safe =>
+            {
+                Ok((CatalogValidationStatus::Accepted, true))
+            }
+            CatalogValidationStatus::Accepted => {
+                Ok((CatalogValidationStatus::FatalConflict, false))
+            }
+            CatalogValidationStatus::LegacyAmbiguous
+                if source_status != CatalogValidationStatus::Accepted && !source_collision_safe =>
+            {
+                Ok((CatalogValidationStatus::LegacyAmbiguous, false))
+            }
+            CatalogValidationStatus::LegacyAmbiguous => {
+                Ok((CatalogValidationStatus::FatalConflict, false))
+            }
+            _ => Err("unsupported assertion summary classification".to_string()),
+        }
     }
 }
 

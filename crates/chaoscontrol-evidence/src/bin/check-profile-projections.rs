@@ -20,6 +20,10 @@ fn main() {
             }
         }
     }
+    if admit_root(&root).is_err() {
+        eprintln!("--root must not be empty");
+        std::process::exit(2);
+    }
     if let Err(error) =
         chaoscontrol_evidence::profile_projection::check_profile_projections(&root, write)
     {
@@ -27,4 +31,21 @@ fn main() {
         std::process::exit(1);
     }
     println!("profile projections ok");
+}
+
+fn admit_root(root: &std::path::Path) -> Result<(), ()> {
+    if root.as_os_str().is_empty() {
+        return Err(());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(admit_root(std::path::Path::new("")).is_err());
+    }
 }

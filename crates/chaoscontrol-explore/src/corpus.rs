@@ -337,6 +337,18 @@ mod tests {
     }
 
     #[test]
+    fn reserved_bug_id_saturation_does_not_panic() {
+        let mut corpus = Corpus::new();
+        corpus.reserve_bug_ids_through(u64::MAX);
+        let mut bugs = make_entry(0, 1, 1).bugs_found;
+        assert_eq!(
+            corpus.assign_bug_ids(&mut bugs),
+            Err("bug ID range overflow")
+        );
+        assert_eq!(corpus.next_bug_id, u64::MAX);
+    }
+
+    #[test]
     fn test_corpus_stats() {
         let mut corpus = Corpus::new();
 

@@ -282,6 +282,8 @@ fn resolve_path(root: &Path, path: &Path) -> PathBuf {
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
     let bytes = read_bytes(path, MAX_INPUT_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))
 }
@@ -626,6 +628,15 @@ fn unix_seconds() -> Result<u64, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn read_json_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_json::<serde_json::Value>(&path).unwrap_err();
+        assert!(error.contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn empty_paths_are_rejected() {

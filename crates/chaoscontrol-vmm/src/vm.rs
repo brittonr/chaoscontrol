@@ -5231,6 +5231,7 @@ mod tests {
         assert!(read_boot_file(&target, 3).is_err());
         assert!(open_boot_file(&target, 3).is_err());
         assert!(open_boot_file(&target, 4).is_ok());
+        assert!(open_boot_file(root.path(), 4).is_err());
         assert_eq!(read_boot_file(&target, 4).unwrap(), b"boot");
     }
     use crate::devices::virtio_types::VirtioFailure;

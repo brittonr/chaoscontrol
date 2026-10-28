@@ -49,9 +49,18 @@ fn open_bounded_evidence_file(path: &Path) -> std::io::Result<File> {
 /// metadata before reading, and the exact byte count after the bounded read.
 fn read_bounded_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, SerializeError> {
     let file = open_bounded_evidence_file(path)?;
+    let expected = file.metadata()?.len();
     let mut bytes = Vec::new();
     file.take(MAX_EVIDENCE_JSON_BYTES + READ_LIMIT_SENTINEL_BYTES)
         .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != expected {
+        return Err(SerializeError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "evidence JSON changed while reading",
+            ),
+        });
+    }
     parse_bounded_json(bytes)
 }
 
@@ -671,6 +680,11 @@ mod tests {
 
         assert!(save_recording(&test_recording(), &link).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn load_recording_rejects_length_changes() {
+        assert!(read_bounded_json::<serde_json::Value>(Path::new("/proc/self/cmdline")).is_err());
     }
 
     #[test]

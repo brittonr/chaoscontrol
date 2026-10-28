@@ -789,6 +789,24 @@ mod tests {
     }
 
     #[test]
+    fn writer_truncates_existing_log() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("run.dlog");
+        std::fs::write(&path, b"stale bytes").unwrap();
+        {
+            let mut writer = DlogWriter::create(&path).unwrap();
+            writer
+                .emit(DlogRecord::new(0, 1, 2, 3, DlogTag::IoIn, 0))
+                .unwrap();
+            writer.sync_all().unwrap();
+        }
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), RECORD_SIZE as u64);
+        let mut reader = DlogReader::open(&path).unwrap();
+        assert_eq!(reader.next_record().unwrap().unwrap().seq, 0);
+        assert!(reader.next_record().unwrap().is_none());
+    }
+
+    #[test]
     fn writer_rejects_non_regular_target() {
         use std::os::unix::ffi::OsStrExt;
 

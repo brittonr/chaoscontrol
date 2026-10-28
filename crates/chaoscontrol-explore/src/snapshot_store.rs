@@ -382,6 +382,17 @@ impl SnapshotStore for FileSnapshotStore {
         }
         let mut entries = list_snapshot_entries(&dir)?;
         entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in &entries {
+            if !entry
+                .file_type()
+                .map_err(|source| SnapshotStoreError::Io { source })?
+                .is_file()
+            {
+                return Err(SnapshotStoreError::NotRegular {
+                    path: entry.path().display().to_string(),
+                });
+            }
+        }
         for entry in entries {
             let rel = format!("{SNAPSHOT_DIR}/{}", entry.file_name().to_string_lossy());
             if !keep.contains(&rel) {
@@ -444,6 +455,22 @@ pub mod host_snapshot_store_redb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gc_rejects_non_files_before_deleting() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshots = root.path().join(SNAPSHOT_DIR);
+        std::fs::create_dir(&snapshots).unwrap();
+        let orphan = snapshots.join("orphan.snapshot.bin");
+        std::fs::write(&orphan, b"orphan").unwrap();
+        std::fs::create_dir(snapshots.join("stray")).unwrap();
+        let store = FileSnapshotStore::new(root.path());
+        assert!(matches!(
+            store.gc_unreferenced(&[]),
+            Err(SnapshotStoreError::NotRegular { .. })
+        ));
+        assert_eq!(std::fs::read(&orphan).unwrap(), b"orphan");
+    }
 
     #[test]
     fn snapshot_directory_scan_is_bounded() {

@@ -279,7 +279,10 @@ fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     if metadata.len() > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
-    let mut bytes = Vec::new();
+    let capacity = usize::try_from(metadata.len())
+        .unwrap_or(usize::MAX)
+        .min(usize::try_from(limit).unwrap_or(usize::MAX));
+    let mut bytes = Vec::with_capacity(capacity);
     file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("{}: {error}", path.display()))?;

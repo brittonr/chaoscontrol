@@ -506,12 +506,12 @@ fn assertion_flags(kind: AssertionKind, condition: bool) -> u8 {
 
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]
-pub fn emit_registered_assertion(
+pub fn emit_registered_assertion<S: ?Sized>(
     _kind: AssertionKind,
     _cond: bool,
     _id: u32,
     _message: &str,
-    _details: &(),
+    _details: &S,
 ) {
 }
 #[cfg(not(feature = "full"))]
@@ -520,13 +520,13 @@ pub fn emit_registered_always_or_unreachable(_cond: bool, _id: u32, _message: &s
 }
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]
-pub fn assert_raw_with_key(
+pub fn assert_raw_with_key<S: ?Sized>(
     _kind: AssertionKind,
     _cond: bool,
     _namespace: &str,
     _key: &str,
     _message: &str,
-    _details: &(),
+    _details: &S,
 ) {
 }
 
@@ -1329,7 +1329,7 @@ macro_rules! __cc_cmp_details {
 #[macro_export]
 macro_rules! __cc_cmp_details {
     ($details:expr, $left:ident, $right:ident) => {{
-        let _: &() = $details;
+        let _ = &$details;
         ()
     }};
 }
@@ -1381,7 +1381,7 @@ macro_rules! __cc_bundle_details {
 #[macro_export]
 macro_rules! __cc_bundle_details {
     ($details:expr $(, $name:ident)*) => {{
-        let _: &() = $details;
+        let _ = &$details;
         ()
     }};
 }

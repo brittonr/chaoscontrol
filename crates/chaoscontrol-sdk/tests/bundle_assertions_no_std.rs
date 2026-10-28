@@ -26,17 +26,17 @@ fn bundle_macros_accept_the_same_shape_without_details() {
 #[cfg(not(feature = "full"))]
 #[test]
 fn bundle_macros_accept_unit_details_in_noop_mode() {
-    cc_assert_always_any!({first: true, second: false}, "any", &());
-    cc_assert_sometimes_all!({first: true, second: true}, "all", &());
+    cc_assert_always_any!({first: true, second: false}, "any", &42_u8);
+    cc_assert_sometimes_all!({first: true, second: true}, "all", &42_u8);
 }
 
 #[cfg(not(feature = "full"))]
 #[test]
 fn comparison_macros_accept_the_same_shape_without_details() {
     cc_assert_always_lt!(1, 2, "lt");
-    cc_assert_always_lt!(1, 2, "lt details", &());
+    cc_assert_always_lt!(1, 2, "lt details", &42_u8);
     cc_assert_sometimes_gt!(2, 1, "gt");
-    cc_assert_sometimes_gt!(2, 1, "gt details", &());
+    cc_assert_sometimes_gt!(2, 1, "gt details", &42_u8);
 }
 
 #[cfg(not(feature = "full"))]
@@ -45,6 +45,12 @@ fn random_choice_slice_is_available_without_full() {
     let empty: &[u8] = &[];
     assert_eq!(random_choice(empty), None);
     assert_eq!(random_choice(&[7]), Some(&7));
+}
+
+#[cfg(not(feature = "full"))]
+#[test]
+fn assertion_details_accept_arbitrary_references_in_noop_mode() {
+    cc_assert_always!(true, "always details", &42_u8);
 }
 
 #[cfg(not(feature = "full"))]

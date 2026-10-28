@@ -217,9 +217,10 @@ change the assertion oracle or prove exploration quality.
   `guidance::GuidanceDiff` (primitive numeric types) to emit watermarks.
 - `random_choice` now has the Antithesis slice signature. Use the
   `random_choice_index(n)` extension when an index bound is more natural.
-- ChaosControl's no-op lifecycle functions accept a generic detail
-  reference, so `setup_complete(&details)` and `send_event(name, &details)`
-  keep the same call shape with `default-features = false`.
+- ChaosControl's no-op lifecycle and assertion functions accept a generic
+  detail reference, so `setup_complete(&details)`, `send_event(name,
+  &details)`, and assertion details keep the same call shape with
+  `default-features = false`.
 - ChaosControl supports `no_std` when `full` is disabled; Antithesis is std.
 - ChaosControl exposes both `rand_core_v0_6/9/10` and `rand_v0_8/9/10`
   feature names like Antithesis. The default enables `rand_v0_8`, and all

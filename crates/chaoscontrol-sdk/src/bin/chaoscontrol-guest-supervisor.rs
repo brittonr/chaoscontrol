@@ -9,6 +9,7 @@ use std::time::Duration;
 
 const DEFAULT_MANIFEST: &str = "/etc/chaoscontrol/process-manifest.json";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const MAX_FIXTURE_STATE_BYTES: u64 = 1024 * 1024;
 const SUPERVISOR_POLL_MILLIS: u64 = 1;
 const FIXTURE_WORKER_MODE: &str = "--fixture-worker";
 const FIXTURE_SHARED_FILE_NAME: &str = "cooperating-state";
@@ -72,7 +73,8 @@ fn run_fixture_worker() -> Result<(), String> {
             while !commit_marker.is_file() {
                 std::thread::yield_now();
             }
-            let state = std::fs::read(&shared_file);
+            let state =
+                read_bounded_regular(&shared_file, MAX_FIXTURE_STATE_BYTES, "fixture state");
             cc_assert_always_stable!(
                 "org.onixresearch.chaoscontrol.multiprocess",
                 "checkpoint-observes-state",
@@ -150,6 +152,10 @@ fn emit_events(events: Vec<ProcessLifecycleEvent>) {
 }
 
 fn read_manifest(path: &Path) -> Result<Vec<u8>, String> {
+    read_bounded_regular(path, MAX_MANIFEST_BYTES, "manifest")
+}
+
+fn read_bounded_regular(path: &Path, limit: u64, label: &str) -> Result<Vec<u8>, String> {
     use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
 
@@ -159,16 +165,16 @@ fn read_manifest(path: &Path) -> Result<Vec<u8>, String> {
         .open(path)
         .map_err(|error| error.to_string())?;
     let metadata = file.metadata().map_err(|error| error.to_string())?;
-    if !metadata.file_type().is_file() || metadata.len() > MAX_MANIFEST_BYTES {
-        return Err("manifest must be a bounded regular file".to_string());
+    if !metadata.file_type().is_file() || metadata.len() > limit {
+        return Err(format!("{label} must be a bounded regular file"));
     }
     let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
     let mut bytes = Vec::with_capacity(capacity);
-    file.take(MAX_MANIFEST_BYTES + 1)
+    file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > MAX_MANIFEST_BYTES {
-        return Err("manifest must be a bounded regular file".to_string());
+    if bytes.len() as u64 > limit {
+        return Err(format!("{label} must be a bounded regular file"));
     }
     Ok(bytes)
 }

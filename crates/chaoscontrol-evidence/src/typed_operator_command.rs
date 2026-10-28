@@ -140,6 +140,10 @@ pub fn validate_plan(plan: &CommandPlan) -> Result<(), String> {
     )?;
     require(!plan.executable.path.is_empty(), "executable path is empty")?;
     require(
+        !plan.executable.path.contains('\0'),
+        "executable path contains NUL",
+    )?;
+    require(
         Path::new(&plan.executable.path).is_absolute(),
         "executable path must be absolute",
     )?;
@@ -293,6 +297,7 @@ pub fn disposition_name(disposition: Disposition) -> &'static str {
 
 fn validate_relative_directory(value: &str) -> Result<(), String> {
     require(!value.is_empty(), "working directory is empty")?;
+    require(!value.contains('\0'), "working directory contains NUL")?;
     let mut saw_component = false;
     for component in Path::new(value).components() {
         match component {

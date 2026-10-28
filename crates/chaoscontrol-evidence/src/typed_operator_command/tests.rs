@@ -75,6 +75,18 @@ fn legacy_traversal_environment_identity_and_limit_fail_closed() {
     let mut zero_timeout = valid_plan();
     zero_timeout.limits.timeout_ms = 0;
     assert!(validate_plan(&zero_timeout).unwrap_err().contains("limits"));
+
+    let mut nul_executable = valid_plan();
+    nul_executable.executable.path.push('\0');
+    assert!(validate_plan(&nul_executable)
+        .unwrap_err()
+        .contains("executable path contains NUL"));
+
+    let mut nul_working_directory = valid_plan();
+    nul_working_directory.working_directory = String::from("a\0b");
+    assert!(validate_plan(&nul_working_directory)
+        .unwrap_err()
+        .contains("working directory contains NUL"));
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -63,20 +64,63 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, bool), String> {
 }
 
 fn read_optional(path: &Path) -> Result<Option<Value>, String> {
-    if !path.is_file() {
-        return Ok(None);
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
     }
-    let metadata = fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
     validate_byte_length(
         &format!("{}: summary", path.display()),
         metadata.len(),
         MAX_SUMMARY_BYTES,
     )?;
-    let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_SUMMARY_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > MAX_SUMMARY_BYTES {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))?;
     if !value.is_object() {
         return Err(format!("{}: expected JSON object", path.display()));
     }
     Ok(Some(value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn optional_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = read_optional(&root.path().join("missing.json")).unwrap();
+        assert!(missing.is_none());
+
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("summary.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_optional(&link).is_err());
+
+        let fifo = root.path().join("summary.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_optional(&fifo).is_err());
+    }
 }

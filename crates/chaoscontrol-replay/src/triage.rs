@@ -282,12 +282,11 @@ fn format_event(event: &RecordedEvent) -> String {
     }
 }
 
-fn get_serial_tail(recording: &Recording, vm_index: usize, _tick: u64) -> String {
-    // Get the most recent checkpoint serial output
+fn get_serial_tail(recording: &Recording, vm_index: usize, tick: u64) -> String {
+    // Use the nearest checkpoint at or before the bug, not later evidence.
     recording
         .checkpoints
-        .all()
-        .last()
+        .at_or_before(tick)
         .and_then(|cp| cp.serial_output.get(vm_index))
         .map(|s| {
             if s.len() > 500 {
@@ -410,6 +409,30 @@ mod tests {
         assert_eq!(report.vm_states.len(), 2);
         assert_eq!(report.vm_states[0].vm_index, 0);
         assert_eq!(report.vm_states[1].vm_index, 1);
+    }
+
+    #[test]
+    fn triage_serial_tail_uses_the_checkpoint_at_the_bug() {
+        use crate::checkpoint::Checkpoint;
+
+        let mut recording = test_recording();
+        recording.checkpoints.push(Checkpoint {
+            id: 0,
+            tick: 1_000,
+            snapshot: None,
+            serial_output: vec![String::from("before-bug"), String::new()],
+            events_since_last: Vec::new(),
+        });
+        recording.checkpoints.push(Checkpoint {
+            id: 1,
+            tick: 5_000,
+            snapshot: None,
+            serial_output: vec![String::from("after-bug"), String::new()],
+            events_since_last: Vec::new(),
+        });
+
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+        assert_eq!(report.vm_states[0].serial_tail, "before-bug");
     }
 
     #[test]

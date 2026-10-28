@@ -1673,6 +1673,26 @@ fn materializes_snapshot_chunks_and_rejects_existing_raw_without_force() {
 }
 
 #[test]
+fn materialize_snapshot_chunks_rejects_chunk_symlink_escapes() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");
+    let manifest: SnapshotChunkManifest =
+        serde_json::from_slice(&std::fs::read(&manifest_path).expect("read manifest"))
+            .expect("manifest");
+    let outside = tempfile::tempdir().expect("outside");
+    let outside_chunk = outside.path().join("chunk");
+    std::fs::write(&outside_chunk, b"alpha").expect("outside chunk");
+    let chunk_path = temp.path().join(&manifest.chunks[0].path);
+    std::fs::remove_file(&chunk_path).expect("remove chunk");
+    std::os::unix::fs::symlink(&outside_chunk, &chunk_path).expect("chunk symlink");
+
+    let error =
+        materialize_snapshot_chunks(&manifest_path, true).expect_err("escaping chunk must fail");
+    assert!(error.message().contains("symlink") || error.message().contains("escapes"));
+    assert_eq!(std::fs::read(&outside_chunk).unwrap(), b"alpha");
+}
+
+#[test]
 fn materialize_snapshot_chunks_selftest_covers_negative_fixtures() {
     run_materialize_snapshot_chunks_selftest().expect("selftest passes");
 }

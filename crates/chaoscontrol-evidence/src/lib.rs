@@ -530,6 +530,7 @@ fn write_materialized_snapshot(
 ) -> EvidenceResult<MaterializedSnapshot> {
     let mut aggregate = Sha256::new();
     let mut total_size = 0_u64;
+    let evidence_root = std::fs::canonicalize(evidence_dir)?;
     let parent = original_path.parent().unwrap_or_else(|| Path::new("."));
     let mut output = tempfile::NamedTempFile::new_in(parent).map_err(|err| {
         EvidenceError::new(format!(
@@ -544,6 +545,22 @@ fn write_materialized_snapshot(
         ensure(
             chunk_path.exists(),
             format!("snapshot chunk missing: {}", chunk_path.display()),
+        )?;
+        let chunk_metadata = std::fs::symlink_metadata(&chunk_path)?;
+        ensure(
+            !chunk_metadata.file_type().is_symlink(),
+            format!(
+                "snapshot chunk must not be a symlink: {}",
+                chunk_path.display()
+            ),
+        )?;
+        let canonical_chunk = std::fs::canonicalize(&chunk_path)?;
+        ensure(
+            canonical_chunk.starts_with(&evidence_root),
+            format!(
+                "snapshot chunk escapes the evidence directory: {}",
+                chunk_path.display()
+            ),
         )?;
         let metadata = chunk_path.metadata().map_err(|err| {
             EvidenceError::new(format!(

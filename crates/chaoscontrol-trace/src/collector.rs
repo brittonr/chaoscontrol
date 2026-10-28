@@ -1190,7 +1190,7 @@ fn open_trace_output(path: &str) -> std::io::Result<File> {
         .create(true)
         .truncate(true)
         .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
 }
 
@@ -1293,6 +1293,13 @@ mod tests {
         let log = TraceLog::new(TEST_PID, Vec::new());
         assert!(log.save(link.to_str().unwrap()).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"abc");
+
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let fifo = dir.path().join("fifo");
+        let fifo_path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) }, 0);
+        assert!(write_trace_json(fifo.to_str().unwrap(), b"abc").is_err());
 
         let bounded = dir.path().join("bounded.json");
         assert!(write_trace_json_with_limit(bounded.to_str().unwrap(), b"abcd", 3).is_err());

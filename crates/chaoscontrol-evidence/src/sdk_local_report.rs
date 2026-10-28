@@ -37,6 +37,8 @@ struct AssertionSite {
     adoption_tracks: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     identity: Option<crate::sdk_local_quality::LocalReportIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    must_hit: Option<bool>,
 }
 
 pub fn summarize_sdk_local_report(
@@ -78,6 +80,7 @@ pub fn summarize_sdk_local_jsonl(
                     success_count: 0,
                     failure_count: 0,
                     adoption_tracks: Vec::new(),
+                    must_hit: None,
                     identity: Some(
                         crate::sdk_local_quality::LocalReportIdentity::from_resolved(resolved)
                             .expect("validated catalog descriptor"),
@@ -154,6 +157,7 @@ pub fn summarize_sdk_local_jsonl(
                     success_count: 0,
                     failure_count: 0,
                     adoption_tracks: Vec::new(),
+                    must_hit: None,
                     identity: resolved
                         .map(crate::sdk_local_quality::LocalReportIdentity::from_resolved)
                         .transpose()
@@ -163,6 +167,9 @@ pub fn summarize_sdk_local_jsonl(
                 if !site.adoption_tracks.contains(&track) {
                     site.adoption_tracks.push(track);
                 }
+            }
+            if let Some(must_hit) = assertion.get("must_hit").and_then(Value::as_bool) {
+                site.must_hit = Some(must_hit);
             }
             if !assertion
                 .get("hit")
@@ -273,6 +280,7 @@ pub fn summarize_sdk_local_jsonl(
                     kind,
                     site.success_count,
                     site.failure_count,
+                    site.must_hit,
                 ) == crate::sdk_local_verdict::LocalAssertionVerdict::Failed
             })
         })
@@ -569,6 +577,17 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
         return Err(EvidenceError::new(format!(
             "credible fixture should pass without replay evidence, got {:?}",
             credible_gate
+        )));
+    }
+    let must_hit = summarize_sdk_local_jsonl(
+        "{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":false,\"hit\":false,\"must_hit\":true,\"id\":\"1\",\"message\":\"must hit\",\"display_type\":\"always\",\"details\":{}}}\n{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":false,\"hit\":false,\"must_hit\":false,\"id\":\"2\",\"message\":\"may skip\",\"display_type\":\"always\",\"details\":{}}}\n",
+        DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
+        None,
+    )?;
+    if must_hit.get("failed_assertions") != Some(&Value::from(1_u64)) {
+        return Err(EvidenceError::new(format!(
+            "must-hit fixture should report one failed assertion, got {:?}",
+            must_hit
         )));
     }
     Ok("sdk-assertion-quality: ok".to_string())

@@ -88,6 +88,8 @@ struct CoverageEntry {
     failure_count: u64,
     adoption_tracks: Vec<String>,
     identity: Option<LocalReportIdentity>,
+    #[serde(default)]
+    must_hit: Option<bool>,
 }
 
 pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFacts> {
@@ -236,6 +238,7 @@ fn validate_derived_totals(report: &LocalReportV2) -> EvidenceResult<()> {
             kind,
             entry.success_count,
             entry.failure_count,
+            entry.must_hit,
         );
         failed += u64::from(verdict == crate::sdk_local_verdict::LocalAssertionVerdict::Failed);
         observed += u64::from(entry.observed);

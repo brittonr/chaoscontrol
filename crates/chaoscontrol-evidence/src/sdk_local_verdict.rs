@@ -11,6 +11,7 @@ pub(crate) fn derive_local_verdict(
     kind: AssertionKind,
     success_count: u64,
     failure_count: u64,
+    must_hit: Option<bool>,
 ) -> LocalAssertionVerdict {
     let exercised = success_count > 0 || failure_count > 0;
     match kind {
@@ -20,7 +21,11 @@ pub(crate) fn derive_local_verdict(
             } else if exercised {
                 LocalAssertionVerdict::Passed
             } else {
-                LocalAssertionVerdict::Unexercised
+                match must_hit {
+                    Some(true) => LocalAssertionVerdict::Failed,
+                    Some(false) => LocalAssertionVerdict::Passed,
+                    None => LocalAssertionVerdict::Unexercised,
+                }
             }
         }
         AssertionKind::Sometimes => {
@@ -29,14 +34,22 @@ pub(crate) fn derive_local_verdict(
             } else if exercised {
                 LocalAssertionVerdict::Failed
             } else {
-                LocalAssertionVerdict::Unexercised
+                match must_hit {
+                    Some(true) => LocalAssertionVerdict::Failed,
+                    Some(false) => LocalAssertionVerdict::Passed,
+                    None => LocalAssertionVerdict::Unexercised,
+                }
             }
         }
         AssertionKind::Reachable => {
             if success_count > 0 {
                 LocalAssertionVerdict::Passed
             } else {
-                LocalAssertionVerdict::Unexercised
+                match must_hit {
+                    Some(true) => LocalAssertionVerdict::Failed,
+                    Some(false) => LocalAssertionVerdict::Passed,
+                    None => LocalAssertionVerdict::Unexercised,
+                }
             }
         }
         AssertionKind::Unreachable => {
@@ -93,24 +106,44 @@ mod tests {
     #[test]
     fn derives_each_kind_without_counting_observations_as_assertions() {
         assert_eq!(
-            derive_local_verdict(AssertionKind::Always, 1, 1),
+            derive_local_verdict(AssertionKind::Always, 1, 1, None),
             LocalAssertionVerdict::Failed
         );
         assert_eq!(
-            derive_local_verdict(AssertionKind::Sometimes, 1, 1),
+            derive_local_verdict(AssertionKind::Sometimes, 1, 1, None),
             LocalAssertionVerdict::Passed
         );
         assert_eq!(
-            derive_local_verdict(AssertionKind::Reachable, 0, 0),
+            derive_local_verdict(AssertionKind::Reachable, 0, 0, None),
             LocalAssertionVerdict::Unexercised
         );
         assert_eq!(
-            derive_local_verdict(AssertionKind::Unreachable, 0, 0),
+            derive_local_verdict(AssertionKind::Unreachable, 0, 0, None),
             LocalAssertionVerdict::Passed
         );
         assert_eq!(
-            derive_local_verdict(AssertionKind::Unreachable, 0, 1),
+            derive_local_verdict(AssertionKind::Unreachable, 0, 1, None),
             LocalAssertionVerdict::Failed
+        );
+        assert_eq!(
+            derive_local_verdict(AssertionKind::Always, 0, 0, Some(true)),
+            LocalAssertionVerdict::Failed
+        );
+        assert_eq!(
+            derive_local_verdict(AssertionKind::Always, 0, 0, Some(false)),
+            LocalAssertionVerdict::Passed
+        );
+        assert_eq!(
+            derive_local_verdict(AssertionKind::Sometimes, 0, 0, Some(true)),
+            LocalAssertionVerdict::Failed
+        );
+        assert_eq!(
+            derive_local_verdict(AssertionKind::Reachable, 0, 0, Some(true)),
+            LocalAssertionVerdict::Failed
+        );
+        assert_eq!(
+            derive_local_verdict(AssertionKind::Reachable, 0, 0, Some(false)),
+            LocalAssertionVerdict::Passed
         );
     }
 

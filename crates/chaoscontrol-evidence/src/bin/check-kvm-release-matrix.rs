@@ -306,11 +306,14 @@ fn read_bytes(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
         .unwrap_or(usize::MAX)
         .min(usize::try_from(limit).unwrap_or(usize::MAX));
     let mut bytes = Vec::with_capacity(capacity);
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok(bytes)
 }
@@ -628,6 +631,11 @@ fn unix_seconds() -> Result<u64, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn read_json_rejects_length_changes() {
+        assert!(read_json::<serde_json::Value>(Path::new("/proc/self/cmdline")).is_err());
+    }
 
     #[test]
     fn read_json_rejects_excessive_nesting() {

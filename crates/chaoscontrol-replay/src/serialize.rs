@@ -374,6 +374,23 @@ mod tests {
     }
 
     #[test]
+    fn save_triage_outputs_replace_existing_regular_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let report = test_triage_report();
+        let markdown_path = temp_dir.path().join("triage.md");
+        let json_path = temp_dir.path().join("triage.json");
+        std::fs::write(&markdown_path, b"old").unwrap();
+        std::fs::write(&json_path, b"old").unwrap();
+
+        save_triage_report(&report, &markdown_path).unwrap();
+        save_triage_json(&report, &json_path).unwrap();
+        assert!(std::fs::read(&markdown_path)
+            .unwrap()
+            .starts_with(b"# Bug Report"));
+        assert!(std::fs::read(&json_path).unwrap().starts_with(b"{"));
+    }
+
+    #[test]
     fn test_save_and_load_recording() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("recording.json");

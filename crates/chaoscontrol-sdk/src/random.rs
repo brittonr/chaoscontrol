@@ -79,16 +79,20 @@ pub fn random_choice_index(n: usize) -> usize {
 
 /// Fill a byte slice with guided random bytes from the VMM.
 ///
-/// Issues multiple `get_random` calls to fill the buffer.
+/// Issues one `get_random` call per eight bytes and writes each value in
+/// native byte order, matching Antithesis.
 pub fn fill_bytes(buf: &mut [u8]) {
-    let mut offset = 0;
-    while offset < buf.len() {
-        let val = get_random();
-        let bytes = val.to_le_bytes();
-        let remaining = buf.len() - offset;
-        let to_copy = if remaining < 8 { remaining } else { 8 };
-        buf[offset..offset + to_copy].copy_from_slice(&bytes[..to_copy]);
-        offset += to_copy;
+    fill_bytes_with(buf, get_random);
+}
+
+fn fill_bytes_with(buf: &mut [u8], mut next: impl FnMut() -> u64) {
+    let (chunks, remainder) = buf.as_chunks_mut::<8>();
+    for chunk in chunks {
+        *chunk = next().to_ne_bytes();
+    }
+    if !remainder.is_empty() {
+        let bytes = next().to_ne_bytes();
+        remainder.copy_from_slice(&bytes[..remainder.len()]);
     }
 }
 
@@ -212,5 +216,28 @@ pub fn random_choice<T>(choices: &[T]) -> Option<&T> {
             let idx = random_choice_index(choices.len());
             Some(&choices[idx])
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fill_bytes_with;
+
+    #[test]
+    fn fill_bytes_uses_native_endian_chunks() {
+        let mut calls = 0;
+        let mut buffer = [0_u8; 11];
+        fill_bytes_with(&mut buffer, || {
+            calls += 1;
+            if calls == 1 {
+                0x0102_0304_0506_0708
+            } else {
+                0x1112_1314_1516_1718
+            }
+        });
+
+        assert_eq!(&buffer[..8], &0x0102_0304_0506_0708_u64.to_ne_bytes());
+        assert_eq!(&buffer[8..], &0x1112_1314_1516_1718_u64.to_ne_bytes()[..3]);
+        assert_eq!(calls, 2);
     }
 }

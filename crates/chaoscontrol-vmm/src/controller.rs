@@ -1847,6 +1847,8 @@ impl SimulationController {
         let FaultPlanEffect::CustomEffect { effect } = &plan.effect else {
             return Err(internal_application_error());
         };
+        chaoscontrol_fault::mechanisms::admit_custom_effect(effect)
+            .map_err(|_| target_state_application_error())?;
         let adapter = self
             .custom_effect_adapter
             .as_mut()
@@ -4213,6 +4215,46 @@ mod tests {
             observations[0].effect,
             chaoscontrol_fault::outcomes::FaultObservationEffect::CustomEffectApplied
         );
+    }
+
+    #[test]
+    fn custom_effect_rejects_invalid_parameters_before_invocation() {
+        let mut controller = adapter_test_controller();
+        let calls = Arc::new(AtomicUsize::new(0));
+        controller.set_custom_effect_adapter(Box::new(RecordingCustomAdapter {
+            calls: Arc::clone(&calls),
+        }));
+        let plan = FaultPlan {
+            attempt_id: FaultAttemptId([53; 32]),
+            effect: FaultPlanEffect::CustomEffect {
+                effect: CustomFaultEffect {
+                    effect_id: String::from("test-effect"),
+                    version: 1,
+                    parameters: std::collections::BTreeMap::from([(
+                        String::from("command"),
+                        String::from("sh -c reboot"),
+                    )]),
+                },
+            },
+        };
+        assert!(controller.apply_fault_plan(&plan).is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn custom_effect_without_adapter_is_rejected() {
+        let mut controller = adapter_test_controller();
+        let plan = FaultPlan {
+            attempt_id: FaultAttemptId([54; 32]),
+            effect: FaultPlanEffect::CustomEffect {
+                effect: CustomFaultEffect {
+                    effect_id: String::from("test-effect"),
+                    version: 1,
+                    parameters: std::collections::BTreeMap::new(),
+                },
+            },
+        };
+        assert!(controller.apply_fault_plan(&plan).is_err());
     }
 
     #[test]

@@ -774,6 +774,29 @@ mod tests {
     }
 
     #[test]
+    fn differential_rows_enforce_the_boundary() {
+        let failing = coverage_with(&[("src/a.rs", 10, 1), ("src/b.rs", 20, 1)]);
+        let control = coverage_with(&[]);
+        let exact = SymbolCoverageLimits {
+            max_report_rows: 2,
+            ..SymbolCoverageLimits::default()
+        };
+        assert_eq!(
+            rank_differential(&failing, &control, &exact).unwrap().len(),
+            2
+        );
+
+        let narrow = SymbolCoverageLimits {
+            max_report_rows: 1,
+            ..SymbolCoverageLimits::default()
+        };
+        assert_eq!(
+            rank_differential(&failing, &control, &narrow).unwrap_err(),
+            SymbolCoverageError::ReportRowBound
+        );
+    }
+
+    #[test]
     fn maps_kcov_program_counters_and_shared_modules() {
         let mut kcov = catalog(
             1,

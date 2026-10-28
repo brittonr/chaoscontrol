@@ -426,6 +426,10 @@ enum SeedResult {
     },
 }
 
+fn seed_output_directory(output_dir: &str, seed: u64) -> String {
+    format!("{output_dir}/seed_{seed}")
+}
+
 fn validate_unique_seeds(seeds: &[u64]) -> Result<(), &'static str> {
     if seeds.is_empty() {
         return Err("campaign must include at least one seed");
@@ -463,7 +467,7 @@ impl CampaignRunner {
         let mut explorer_config = self.config.base_explorer_config.clone();
         explorer_config.seed = seed;
         // num_workers comes from ExplorerConfig (set by CLI --workers-per-seed).
-        explorer_config.output_dir = Some(format!("{}/seed_{}", self.config.output_dir, seed));
+        explorer_config.output_dir = Some(seed_output_directory(&self.config.output_dir, seed));
         explorer_config
     }
 
@@ -482,7 +486,7 @@ impl CampaignRunner {
             }
         })?;
         if self.config.seeds.iter().any(|seed| {
-            self.config.output_dir.len() + format!("/seed_{seed}").len() > MAX_CAMPAIGN_PATH_BYTES
+            seed_output_directory(&self.config.output_dir, *seed).len() > MAX_CAMPAIGN_PATH_BYTES
         }) {
             return Err(crate::explorer::ExploreError::Config {
                 message: "campaign seed output path exceeds the path bound".to_string(),
@@ -1874,6 +1878,12 @@ mod tests {
             },
             output_dir: "campaign-out".to_string(),
         })
+    }
+
+    #[test]
+    fn seed_output_directories_have_one_canonical_shape() {
+        assert_eq!(seed_output_directory("out", 7), "out/seed_7");
+        assert_eq!(seed_output_directory("./out/", 0), "./out//seed_0");
     }
 
     #[test]

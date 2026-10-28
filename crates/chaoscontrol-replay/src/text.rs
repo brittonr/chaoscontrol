@@ -20,7 +20,16 @@ pub fn suffix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
 
 /// Escape table-cell delimiters so content cannot rewrite the table shape.
 pub fn escape_markdown_cell(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('|', "\\|")
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\r' | '\n' => escaped.push(' '),
+            '\\' => escaped.push_str("\\\\"),
+            '|' => escaped.push_str("\\|"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 /// Wrap content in a fenced code block that cannot be closed by its content.
@@ -56,7 +65,7 @@ mod tests {
 
     #[test]
     fn markdown_helpers_escape_delimiters_and_fences() {
-        assert_eq!(escape_markdown_cell("a|b\\c"), "a\\|b\\\\c");
+        assert_eq!(escape_markdown_cell("a|b\\c\nnext"), "a\\|b\\\\c next");
         let fenced = markdown_code_block("before\n```\nafter");
         assert!(fenced.starts_with("````\n"));
         assert!(fenced.ends_with("\n````\n\n"));

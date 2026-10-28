@@ -699,6 +699,20 @@ fn build_matrix_receipt(
     receipt
 }
 
+fn write_receipt(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    file.write_all(bytes)
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args = parse_args();
@@ -813,7 +827,7 @@ fn main() {
             std::fs::create_dir_all(parent).expect("create receipt parent");
         }
         let json = serde_json::to_string_pretty(&receipt).expect("serialize receipt");
-        std::fs::write(path, format!("{json}\n")).expect("write receipt");
+        write_receipt(path, format!("{json}\n").as_bytes()).expect("write receipt");
         println!("receipt: {}", path.display());
     }
 
@@ -829,7 +843,7 @@ fn main() {
             std::fs::create_dir_all(parent).expect("create matrix receipt parent");
         }
         let json = serde_json::to_string_pretty(&matrix).expect("serialize matrix receipt");
-        std::fs::write(path, format!("{json}\n")).expect("write matrix receipt");
+        write_receipt(path, format!("{json}\n").as_bytes()).expect("write matrix receipt");
         println!("matrix receipt: {}", path.display());
     }
 
@@ -851,6 +865,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn receipt_writer_rejects_symlink_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(write_receipt(&link, b"receipt").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
     use super::*;
 
     fn io(tag: DlogTag, port: u16) -> DlogRecord {

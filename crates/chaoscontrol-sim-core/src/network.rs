@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 pub const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
+/// Maximum raw packets retained for later delivery.
+pub const MAX_NETWORK_IN_FLIGHT_PACKETS: usize = 4_096;
 const NETWORK_TICKS_PER_SECOND: u64 = 1_000;
 const DUPLICATE_OFFSET_CHOICES: u64 = 3;
 const MAX_DUPLICATE_OFFSET_TICKS: u64 = DUPLICATE_OFFSET_CHOICES - 1;
@@ -23,6 +25,7 @@ pub enum NetworkSendError {
     ObservationCapacity,
     ObservationSequence,
     CounterCapacity,
+    PacketCapacity,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -784,6 +787,9 @@ impl NetworkFabric {
         data: Vec<u8>,
         current_tick: u64,
     ) -> Result<bool, NetworkSendError> {
+        if self.packet_in_flight.len() >= MAX_NETWORK_IN_FLIGHT_PACKETS {
+            return Err(NetworkSendError::PacketCapacity);
+        }
         let plan = self.checked_packet_effect_plan(from, to, data.len(), current_tick)?;
         let prior_packet_count = self.packet_in_flight.len();
         let mut candidate = self.clone();
@@ -1788,6 +1794,27 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+
+    #[test]
+    fn packets_in_flight_are_bounded() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        for _ in 0..MAX_NETWORK_IN_FLIGHT_PACKETS {
+            fabric.packet_in_flight.push(PacketInFlight {
+                from: 0,
+                to: 1,
+                data: Vec::new(),
+                deliver_at_tick: 0,
+            });
+        }
+        assert_eq!(
+            fabric.try_send_packet(0, 1, vec![1], 0).unwrap_err(),
+            NetworkSendError::PacketCapacity
+        );
+        assert!(!fabric.send_packet(0, 1, vec![1], 0));
+
+        fabric.packet_in_flight.pop();
+        assert!(fabric.try_send_packet(0, 1, vec![1], 0).unwrap());
     }
 
     #[test]

@@ -87,6 +87,9 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>, String> {
         u64::try_from(bytes.len()).map_err(|_| String::from("request length"))?,
         MAX_CAMPAIGN_INPUT_BYTES,
     )?;
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
+    }
     Ok(bytes)
 }
 
@@ -104,6 +107,11 @@ fn write_bounded(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn campaign_inputs_reject_length_changes() {
+        assert!(read_bounded(Path::new("/proc/self/cmdline")).is_err());
+    }
 
     #[test]
     fn campaign_output_is_atomic_and_no_replace() {

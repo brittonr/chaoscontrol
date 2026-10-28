@@ -1,7 +1,9 @@
 use chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES;
 use std::io::{self, Write};
 
-pub(crate) fn assertion_details(value: &serde_json::Value) -> Result<Vec<u8>, io::Error> {
+pub(crate) fn assertion_details<S: serde::Serialize + ?Sized>(
+    value: &S,
+) -> Result<Vec<u8>, io::Error> {
     let mut writer = BoundedWriter::new(MAX_ASSERTION_EVENT_DETAILS_BYTES);
     serde_json::to_writer(&mut writer, value).map_err(io::Error::other)?;
     Ok(writer.into_bytes())

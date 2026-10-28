@@ -226,7 +226,7 @@ pub const fn location_id(location: &str) -> u32 {
 
 /// Serialize details to JSON bytes. Only available with `full` feature.
 #[cfg(feature = "full")]
-fn to_json_bytes(details: &serde_json::Value) -> Option<Vec<u8>> {
+fn to_json_bytes<S: serde::Serialize + ?Sized>(details: &S) -> Option<Vec<u8>> {
     crate::bounded_json::assertion_details(details).ok()
 }
 
@@ -236,12 +236,12 @@ fn to_json_bytes(details: &serde_json::Value) -> Option<Vec<u8>> {
 
 #[cfg(feature = "full")]
 #[doc(hidden)]
-pub fn emit_registered_assertion(
+pub fn emit_registered_assertion<S: serde::Serialize + ?Sized>(
     kind: AssertionKind,
     cond: bool,
     id: u32,
     message: &str,
-    details: &serde_json::Value,
+    details: &S,
 ) {
     emit_registered_assertion_core(kind, cond, 0, id, message, details);
 }
@@ -250,11 +250,11 @@ pub fn emit_registered_assertion(
 /// being reached (`AlwaysOrUnreachable` in the fallback schema).
 #[cfg(feature = "full")]
 #[doc(hidden)]
-pub fn emit_registered_always_or_unreachable(
+pub fn emit_registered_always_or_unreachable<S: serde::Serialize + ?Sized>(
     cond: bool,
     id: u32,
     message: &str,
-    details: &serde_json::Value,
+    details: &S,
 ) {
     emit_registered_assertion_core(
         AssertionKind::Always,
@@ -363,13 +363,13 @@ pub fn assert_raw(
 }
 
 #[cfg(feature = "full")]
-fn emit_registered_assertion_core(
+fn emit_registered_assertion_core<S: serde::Serialize + ?Sized>(
     kind: AssertionKind,
     cond: bool,
     extra_flags: u8,
     id: u32,
     message: &str,
-    details: &serde_json::Value,
+    details: &S,
 ) {
     // Match Antithesis: if the caller never invoked the init function, the
     // first assertion registers the catalog before emitting.

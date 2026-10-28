@@ -10,9 +10,10 @@ ChaosControl requirement. The AGENTS.md design reference
 for the Antithesis material, and this parity map does not create parity
 claims against it.
 
-Versions compared: `antithesis_sdk` 0.2.9 (crates.io), `chaoscontrol-sdk`
-0.1.0 (workspace). Public surface inventory reviewed on 2026-10-28 against
-the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
+Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
+`chaoscontrol-sdk` 0.1.0 (workspace). Public surface inventory reviewed on
+2026-10-28 against the versioned upstream crates and
+`crates/chaoscontrol-sdk/src/lib.rs`.
 
 ## Parity status codes
 
@@ -67,7 +68,9 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | `!=` | (none) | `cc_assert_always_ne` / `sometimes_ne` | absent |
 | Sometimes variants | `assert_sometimes_<rel>` | `cc_assert_sometimes_<rel>` (long and short names) | equivalent |
 
-Antithesis numeric macros attach **guidance** (maximize/minimize watermarks).
+Assertion details accept any `serde::Serialize` value, matching the 0.3.0
+surface; `serde_json::Value` remains supported. Antithesis numeric macros
+attach **guidance** (maximize/minimize watermarks).
 ChaosControl numeric macros merge `left`/`right` into the assertion details
 on every call, keeping caller-supplied keys and replacing only `left`/`right`.
 The Antithesis-named macros forward to the short-name macros, so condition

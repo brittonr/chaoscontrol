@@ -4,7 +4,7 @@
 
 - [x] [serial] Record current assertion-coverage enrichment, frontier proposal, snapshot, and marker-restore behavior before source changes. r[chaoscontrol.assertion_checkpoints.observation] r[chaoscontrol.assertion_checkpoints.frontier]
 - [x] [serial] Confirm the assertion hypercall/port-I/O exit is fully handled before the next guest instruction and record the intended capture boundary. r[chaoscontrol.assertion_checkpoints.observation]
-- [ ] [serial] Publish the hit-observation and capture-boundary facts, including the exact cases that cannot be captured. r[chaoscontrol.assertion_checkpoints.observation] r[chaoscontrol.assertion_checkpoints.nonclaims]
+- [x] [serial] Publish the hit-observation and capture-boundary facts, including the exact cases that cannot be captured. r[chaoscontrol.assertion_checkpoints.observation] r[chaoscontrol.assertion_checkpoints.nonclaims]
 
 ## Phase 2: Pure policy and observation
 
@@ -31,4 +31,4 @@
 
 - [x] [serial] Run focused explorer, VMM, fault, and replay tests; Clippy with warnings denied; Cairn validation and gates; the product-scope check; and a bounded KVM smoke. r[chaoscontrol.assertion_checkpoints.fixtures]
 - [x] [serial] Run the complete Nix gate; Octet currently reports pre-existing `chaoscontrol-smr` findings outside the changed files. r[chaoscontrol.assertion_checkpoints.fixtures]
-- [ ] [serial] Record a formal admitted-cohort KVM receipt with exact source and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.assertion_checkpoints.evidence] r[chaoscontrol.assertion_checkpoints.nonclaims]
+- [x] [serial] Record a formal admitted-cohort KVM receipt with exact source and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.assertion_checkpoints.evidence] r[chaoscontrol.assertion_checkpoints.nonclaims]

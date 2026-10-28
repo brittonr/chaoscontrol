@@ -1,0 +1,42 @@
+{
+ "schema_version": 1,
+ "status": "accepted",
+ "scope": "bounded KVM assertion-checkpoint selection, capture, and frontier admission",
+ "source_revision": "3c134aa",
+ "campaign": {
+  "workload": "redb",
+  "vms": 1,
+  "rounds": 3,
+  "branches": 1,
+  "ticks": 1000,
+  "seed": 42,
+  "bootstrap_budget": 10000,
+  "mode": "fault-schedule"
+ },
+ "selection": {
+  "max_hits_per_branch": 256,
+  "max_captures_per_branch": 8,
+  "max_captures_per_campaign": 64,
+  "selected": 18,
+  "duplicate": 6,
+  "skipped": 8,
+  "omitted": 0,
+  "capture_failures": 0,
+  "frontier_entries": 6
+ },
+ "artifacts": [
+  {
+   "path": "dogfood-results/directional-fault-admitted-cohort-20261027/assertion-checkpoints.json",
+   "sha256": "sha256:74f7e4e20290856db65fe2363a5018369b8e7967d35a42e7cc5f1be4df9b4643"
+  },
+  {
+   "path": "dogfood-results/directional-fault-admitted-cohort-20261027/runtime-artifacts.json",
+   "sha256": "sha256:47beb6c8da5bbe3ac5b306b85d9bfa0b1ffba7d3dd5d221b3cd4fb98be49fbf7"
+  }
+ ],
+ "non_claims": [
+  "This receipt proves bounded selection and capture facts for the recorded redb campaign.",
+  "It does not prove guest correctness, complete assertion coverage, replay promotion, or release eligibility.",
+  "It does not claim every assertion hit was captured; omitted, duplicate, skipped, and failed counts remain visible."
+ ]
+}

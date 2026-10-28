@@ -164,3 +164,24 @@ Assertions without guest/category metadata remain valid and are reported as
 Run exploration with `--min-assertion-exercise N` to fail after artifacts are
 written if any `(guest, category)` group exercised fewer than `N` assertion
 sites. This is an exploration-quality gate, not a guest correctness invariant.
+
+## Assertion-hit checkpoints
+
+The VM captures an assertion-hit checkpoint only at the assertion hypercall or
+port-I/O exit, after the guest has recorded the hit and before the next guest
+instruction executes. The capture binds the accepted catalog identity, exact
+execution facts, the selected parent snapshot, and the branch-local hit record.
+A selected hit is written to the Campaign frontier as a deduplicated proposal
+with assertion provenance.
+
+The following cases are not captured and remain explicitly classified:
+
+- hits outside the accepted catalog, or with a mismatched identity;
+- duplicate hits for the same selected key;
+- hits beyond the per-branch, per-campaign, or frontier capture bounds;
+- hits whose checkpoint storage fails or whose parent snapshot is stale;
+- hit observations that arrive after the branch horizon.
+
+A capture failure is retained as a bounded failed decision, not retried against
+a different parent. These facts do not prove that an assertion was correct or
+that the captured interleaving is reproducible.

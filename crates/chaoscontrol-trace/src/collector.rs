@@ -3,10 +3,11 @@
 //! The worker thread owns every libbpf object. Shutdown quiesces the producer,
 //! drains the ring, snapshots producer counters, and then drops links and maps.
 
-use std::fs::File;
-use std::io::Read;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::mem::MaybeUninit;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::unix::fs::OpenOptionsExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -37,6 +38,8 @@ mod bpf {
 use bpf::*;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// Maximum retained trace JSON admitted by the library reader.
+pub const MAX_TRACE_JSON_BYTES: u64 = 64 * 1024 * 1024;
 const FINAL_DRAIN_INTERVAL: Duration = Duration::ZERO;
 const DEFAULT_MAXIMUM_EVENTS: u64 = 1_000_000;
 const MINIMUM_POLLS: u64 = 2;
@@ -1165,6 +1168,38 @@ impl TraceMetadata {
     }
 }
 
+fn open_trace_output(path: &str) -> std::io::Result<File> {
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+}
+
+fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "trace JSON is not a regular file",
+        ));
+    }
+    let mut json = String::new();
+    file.take(limit + 1).read_to_string(&mut json)?;
+    if json.len() as u64 > limit {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "trace JSON exceeds the byte limit",
+        ));
+    }
+    Ok(json)
+}
+
 impl TraceLog {
     pub fn new(pid: u32, events: Vec<TraceEvent>) -> Self {
         Self {
@@ -1176,11 +1211,12 @@ impl TraceLog {
 
     pub fn save(&self, path: &str) -> std::io::Result<()> {
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(path, json)
+        let mut file = open_trace_output(path)?;
+        file.write_all(json.as_bytes())
     }
 
     pub fn load(path: &str) -> std::io::Result<Self> {
-        let json = std::fs::read_to_string(path)?;
+        let json = read_trace_with_limit(path, MAX_TRACE_JSON_BYTES)?;
         serde_json::from_str(&json).map_err(std::io::Error::other)
     }
 
@@ -1223,6 +1259,25 @@ mod tests {
         bytes[28..30].copy_from_slice(&RAW_EVENT_SCHEMA_VERSION.to_ne_bytes());
         bytes[30..32].copy_from_slice(&RAW_EVENT_SIZE.to_ne_bytes());
         bytes
+    }
+
+    #[test]
+    fn trace_json_io_is_bounded_and_symlink_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("trace.json");
+        std::fs::write(&path, b"abc").unwrap();
+        assert_eq!(
+            read_trace_with_limit(path.to_str().unwrap(), 3).unwrap(),
+            "abc"
+        );
+        assert!(read_trace_with_limit(path.to_str().unwrap(), 2).is_err());
+
+        let link = dir.path().join("link.json");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        assert!(read_trace_with_limit(link.to_str().unwrap(), 10).is_err());
+        let log = TraceLog::new(TEST_PID, Vec::new());
+        assert!(log.save(link.to_str().unwrap()).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"abc");
     }
 
     #[test]

@@ -55,18 +55,20 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 
 ### Numeric comparison macros
 
-| Relation | Antithesis (with guidance) | ChaosControl (with left/right details) | Status |
+| Relation | Antithesis (with guidance) | ChaosControl (with left/right failure details) | Status |
 |---|---|---|---|
-| `>` | `assert_always_greater_than` | `cc_assert_always_gt` | divergent |
-| `>=` | `assert_always_greater_than_or_equal_to` | `cc_assert_always_ge` | divergent |
-| `<` | `assert_always_less_than` | `cc_assert_always_lt` | divergent |
-| `<=` | `assert_always_less_than_or_equal_to` | `cc_assert_always_le` | divergent |
+| `>` | `assert_always_greater_than` | `cc_assert_always_greater_than` (alias `cc_assert_always_gt`) | equivalent |
+| `>=` | `assert_always_greater_than_or_equal_to` | `cc_assert_always_greater_than_or_equal_to` (alias `cc_assert_always_ge`) | equivalent |
+| `<` | `assert_always_less_than` | `cc_assert_always_less_than` (alias `cc_assert_always_lt`) | equivalent |
+| `<=` | `assert_always_less_than_or_equal_to` | `cc_assert_always_less_than_or_equal_to` (alias `cc_assert_always_le`) | equivalent |
 | `==` | (none) | `cc_assert_always_eq` / `sometimes_eq` | absent |
 | `!=` | (none) | `cc_assert_always_ne` / `sometimes_ne` | absent |
-| Sometimes variants | `assert_sometimes_<rel>` | `cc_assert_sometimes_<rel>` | divergent |
+| Sometimes variants | `assert_sometimes_<rel>` | `cc_assert_sometimes_<rel>` (long and short names) | equivalent |
 
 Antithesis numeric macros attach **guidance** (maximize/minimize watermarks).
 ChaosControl numeric macros capture `left`/`right` into failure details.
+The Antithesis-named macros forward to the short-name macros, so condition
+and detail behavior is identical; guidance remains omitted.
 See the guidance decision below.
 
 ## Random

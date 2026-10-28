@@ -1332,6 +1332,74 @@ macro_rules! cc_assert_sometimes_ne {
     }};
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  Antithesis-named numeric aliases
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Antithesis-named alias for [`cc_assert_always_gt!`].
+#[macro_export]
+macro_rules! cc_assert_always_greater_than {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_always_gt!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_always_ge!`].
+#[macro_export]
+macro_rules! cc_assert_always_greater_than_or_equal_to {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_always_ge!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_always_lt!`].
+#[macro_export]
+macro_rules! cc_assert_always_less_than {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_always_lt!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_always_le!`].
+#[macro_export]
+macro_rules! cc_assert_always_less_than_or_equal_to {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_always_le!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_sometimes_gt!`].
+#[macro_export]
+macro_rules! cc_assert_sometimes_greater_than {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_sometimes_gt!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_sometimes_ge!`].
+#[macro_export]
+macro_rules! cc_assert_sometimes_greater_than_or_equal_to {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_sometimes_ge!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_sometimes_lt!`].
+#[macro_export]
+macro_rules! cc_assert_sometimes_less_than {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_sometimes_lt!($($arg)*)
+    };
+}
+
+/// Antithesis-named alias for [`cc_assert_sometimes_le!`].
+#[macro_export]
+macro_rules! cc_assert_sometimes_less_than_or_equal_to {
+    ($($arg:tt)*) => {
+        $crate::cc_assert_sometimes_le!($($arg)*)
+    };
+}
+
 /// Assert that an option is `Some` every time. Captures `{"value": "None"}` on failure.
 #[macro_export]
 macro_rules! cc_assert_always_some {
@@ -1826,6 +1894,18 @@ mod tests {
         cc_assert_sometimes_ge!(b, a, "sometimes b >= a");
         cc_assert_sometimes_eq!(a, a, "sometimes a == a");
         cc_assert_sometimes_ne!(a, b, "sometimes a != b");
+    }
+
+    #[test]
+    fn antithesis_named_numeric_aliases_compile() {
+        cc_assert_always_greater_than!(2, 1, "alias gt");
+        cc_assert_always_greater_than_or_equal_to!(1, 1, "alias ge");
+        cc_assert_always_less_than!(1, 2, "alias lt");
+        cc_assert_always_less_than_or_equal_to!(1, 1, "alias le");
+        cc_assert_sometimes_greater_than!(2, 1, "alias sgt");
+        cc_assert_sometimes_greater_than_or_equal_to!(1, 1, "alias sge");
+        cc_assert_sometimes_less_than!(1, 2, "alias slt");
+        cc_assert_sometimes_less_than_or_equal_to!(1, 1, "alias sle");
     }
 
     #[test]

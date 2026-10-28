@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 use crate::replay_readiness_core::summarize_receipt;
+use crate::replay_readiness_publication::write_bytes;
 use crate::replay_readiness_surfaces::sample_replay_readiness_receipt;
 use crate::{
     ensure, AcceptedVerdictSummary, AcceptedWorkloadProof, AcceptedWorkloadProofs, BugRecord,
@@ -36,12 +37,7 @@ pub fn write_operator_triage_runbook_path(
     output: impl AsRef<Path>,
 ) -> EvidenceResult<()> {
     let rendered = render_operator_triage_runbook_path(root, receipt_source)?;
-    let output = output.as_ref();
-    if let Some(parent) = output.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(output, rendered)?;
-    Ok(())
+    write_bytes(output, rendered.as_bytes())
 }
 
 pub fn check_operator_triage_runbook_path(

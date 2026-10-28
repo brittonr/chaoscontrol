@@ -240,8 +240,15 @@ impl SnapshotStore for FileSnapshotStore {
         snapshot: &SimulationSnapshot,
         replay_parent_depth: u32,
     ) -> Result<ReplayParentSnapshotRef, SnapshotStoreError> {
-        fs::create_dir_all(self.snapshots_dir())
+        let snapshots_dir = self.snapshots_dir();
+        fs::create_dir_all(&snapshots_dir).map_err(|source| SnapshotStoreError::Io { source })?;
+        let snapshots_metadata = fs::symlink_metadata(&snapshots_dir)
             .map_err(|source| SnapshotStoreError::Io { source })?;
+        if !snapshots_metadata.file_type().is_dir() {
+            return Err(SnapshotStoreError::NotDirectory {
+                path: snapshots_dir.display().to_string(),
+            });
+        }
         let envelope = SnapshotArtifactEnvelope {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             codec: SNAPSHOT_CODEC.to_string(),
@@ -660,6 +667,20 @@ mod tests {
             store.get_snapshot_artifact(&reference),
             Err(SnapshotStoreError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn publication_rejects_symlinked_snapshot_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join(SNAPSHOT_DIR)).unwrap();
+        let store = FileSnapshotStore::new(root.path());
+
+        assert!(matches!(
+            store.put_snapshot(&dummy_snapshot(1), 0),
+            Err(SnapshotStoreError::NotDirectory { .. })
+        ));
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
     }
 
     #[test]

@@ -46,6 +46,7 @@ const OUTPUT_MAX_BYTES: u64 = 33_554_432;
 const POLL_INTERVAL_MS: u64 = 10;
 const TEARDOWN_TIMEOUT_MS: u64 = 1_000;
 const MAX_JSON_BYTES: u64 = 64 * 1_024 * 1_024;
+const MAX_OUTPUT_DIRECTORY_ENTRIES: usize = 4_096;
 const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 
 #[derive(Debug)]
@@ -830,16 +831,26 @@ fn load_bugs(root: &Path) -> Result<Vec<(String, Value)>, String> {
 }
 
 fn matching_files(root: &Path, prefix: &str, suffix: &str) -> Result<Vec<PathBuf>, String> {
-    let mut paths = fs::read_dir(root)
-        .map_err(|error| format!("{}: {error}", root.display()))?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with(prefix) && name.ends_with(suffix))
-        })
-        .collect::<Vec<_>>();
+    let mut paths = Vec::new();
+    let mut discovered = 0_usize;
+    for entry in fs::read_dir(root).map_err(|error| format!("{}: {error}", root.display()))? {
+        discovered += 1;
+        if discovered > MAX_OUTPUT_DIRECTORY_ENTRIES {
+            return Err(format!(
+                "{}: output directory entry bound exceeded",
+                root.display()
+            ));
+        }
+        let entry = entry.map_err(|error| format!("{}: {error}", root.display()))?;
+        let path = entry.path();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(prefix) && name.ends_with(suffix))
+        {
+            paths.push(path);
+        }
+    }
     paths.sort();
     Ok(paths)
 }
@@ -983,6 +994,16 @@ mod publication_tests {
     #[test]
     fn empty_output_directory_is_rejected() {
         assert!(prepare_output(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn output_directory_scan_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..=MAX_OUTPUT_DIRECTORY_ENTRIES {
+            fs::write(root.path().join(format!("bug_{index}.json")), b"{}").unwrap();
+        }
+
+        assert!(matching_files(root.path(), "bug_", ".json").is_err());
     }
 
     #[test]

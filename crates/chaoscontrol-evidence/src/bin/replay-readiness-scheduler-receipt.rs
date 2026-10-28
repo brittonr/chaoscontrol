@@ -391,9 +391,40 @@ fn require_output(output: Option<PathBuf>) -> EvidenceResult<PathBuf> {
 }
 
 fn write_json(path: &std::path::Path, value: &serde_json::Value) -> EvidenceResult<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, serde_json::to_vec_pretty(value)?)?;
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let directory = std::fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(&serde_json::to_vec_pretty(value)?)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_output_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_json(&link, &serde_json::json!({"status": "passed"})).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&link).unwrap()).unwrap()
+                ["status"],
+            "passed"
+        );
+    }
 }

@@ -23,6 +23,7 @@ pub const MAX_RESULT_ROWS: usize = 100_000;
 pub const MAX_EVENT_TEXT_BYTES: usize = 8 * 1024;
 pub const MAX_EVENT_DETAILS_BYTES: usize = 64 * 1024;
 pub const MAX_TIMELINE_NODES: usize = 10_000;
+pub const MAX_TIMELINE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FIELD_BYTES: usize = 256;
 
 /// Retained source family of one event.
@@ -776,6 +777,9 @@ pub fn render_timeline_markdown(facts: &[TimelineFact]) -> Result<String, EventQ
             escape_markdown_cell(&fact.kind),
             escape_markdown_cell(&fact.label)
         ));
+        if output.len() > MAX_TIMELINE_BYTES {
+            return Err(EventQueryError::TimelineBound);
+        }
     }
     Ok(output)
 }
@@ -801,10 +805,16 @@ pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryE
             fact.tick,
             escape_dot_label(&fact.label)
         ));
+        if output.len() > MAX_TIMELINE_BYTES {
+            return Err(EventQueryError::TimelineBound);
+        }
     }
     for fact in &ordered {
         if let Some(parent) = fact.parent {
             output.push_str(&format!("  n{parent} -> n{};\n", fact.id));
+        }
+        if output.len() > MAX_TIMELINE_BYTES {
+            return Err(EventQueryError::TimelineBound);
         }
     }
     output.push_str("}\n");
@@ -1358,6 +1368,63 @@ mod tests {
         assert_eq!(
             render_timeline_markdown(&cyclic).unwrap_err(),
             EventQueryError::TimelineCycle
+        );
+
+        let duplicate = vec![
+            TimelineFact {
+                id: 1,
+                parent: None,
+                tick: 0,
+                kind: "a".to_string(),
+                label: "a".to_string(),
+            },
+            TimelineFact {
+                id: 1,
+                parent: None,
+                tick: 1,
+                kind: "b".to_string(),
+                label: "b".to_string(),
+            },
+        ];
+        assert_eq!(
+            render_timeline_markdown(&duplicate).unwrap_err(),
+            EventQueryError::DuplicateTimelineId
+        );
+
+        let missing_parent = vec![TimelineFact {
+            id: 1,
+            parent: Some(2),
+            tick: 0,
+            kind: "a".to_string(),
+            label: "a".to_string(),
+        }];
+        assert_eq!(
+            render_timeline_dot(&missing_parent).unwrap_err(),
+            EventQueryError::MissingTimelineParent
+        );
+    }
+
+    #[test]
+    fn timeline_rejects_output_over_the_byte_bound() {
+        let label = "x".repeat(MAX_EVENT_TEXT_BYTES);
+        let count = MAX_TIMELINE_BYTES / MAX_EVENT_TEXT_BYTES + 1;
+        assert!(count <= MAX_TIMELINE_NODES);
+        let facts = (0..count)
+            .map(|id| TimelineFact {
+                id: u64::try_from(id).unwrap(),
+                parent: None,
+                tick: 0,
+                kind: "kind".to_string(),
+                label: label.clone(),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            render_timeline_markdown(&facts).unwrap_err(),
+            EventQueryError::TimelineBound
+        );
+        assert_eq!(
+            render_timeline_dot(&facts).unwrap_err(),
+            EventQueryError::TimelineBound
         );
     }
 

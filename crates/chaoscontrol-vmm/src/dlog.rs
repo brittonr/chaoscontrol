@@ -382,7 +382,15 @@ impl DlogWriter {
     /// Create a new writer that writes to `path`.
     /// Creates the file (truncating if it exists).
     pub fn create(path: &Path) -> io::Result<Self> {
-        let file = File::create(path)?;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path)?;
         Ok(Self {
             writer: BufWriter::with_capacity(64 * 1024, file),
             seq: 0,
@@ -701,6 +709,19 @@ pub fn dlog_stats(path: &Path) -> io::Result<std::collections::BTreeMap<u8, u64>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writer_rejects_symlink_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.dlog");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("run.dlog");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(DlogWriter::create(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
     #[test]
     fn record_size_is_64_bytes() {
         assert_eq!(std::mem::size_of::<DlogRecord>(), 64);

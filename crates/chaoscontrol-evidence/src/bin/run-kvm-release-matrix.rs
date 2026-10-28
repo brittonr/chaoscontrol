@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{BufReader, Read, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
@@ -355,9 +356,9 @@ fn execute_command(
         .iter()
         .map(|arg| expand_argument(arg, root, row_output))
         .collect::<Vec<_>>();
-    let stdout = File::create(row_output.join("stdout.log"))
+    let stdout = open_row_log(&row_output.join("stdout.log"))
         .map_err(|error| format!("failed to create row stdout: {error}"))?;
-    let stderr = File::create(row_output.join("stderr.log"))
+    let stderr = open_row_log(&row_output.join("stderr.log"))
         .map_err(|error| format!("failed to create row stderr: {error}"))?;
     let mut child = match Command::new(&row.command.program)
         .args(&args)
@@ -580,13 +581,31 @@ fn hash_file(path: &Path) -> Result<String, String> {
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
+fn open_row_log(path: &Path) -> std::io::Result<File> {
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    fs::File::open(parent)?.sync_all()
+}
+
 fn write_receipt(output: &Path, receipt: &KvmReleaseReceipt) -> Result<(), String> {
-    let bytes = serde_json::to_vec_pretty(receipt)
+    let mut bytes = serde_json::to_vec_pretty(receipt)
         .map_err(|error| format!("failed to serialize release receipt: {error}"))?;
-    let mut file = File::create(output.join(RECEIPT_FILE))
-        .map_err(|error| format!("failed to create release receipt: {error}"))?;
-    file.write_all(&bytes)
-        .and_then(|()| file.write_all(b"\n"))
+    bytes.push(b'\n');
+    write_atomic(&output.join(RECEIPT_FILE), &bytes)
         .map_err(|error| format!("failed to write release receipt: {error}"))
 }
 
@@ -629,7 +648,7 @@ fn write_summary(
     for non_claim in &receipt.non_claims {
         summary.push_str(&format!("- {non_claim}\n"));
     }
-    fs::write(output.join(SUMMARY_FILE), summary)
+    write_atomic(&output.join(SUMMARY_FILE), summary.as_bytes())
         .map_err(|error| format!("failed to write release summary: {error}"))
 }
 
@@ -638,4 +657,34 @@ fn unix_seconds() -> Result<u64, String> {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .map_err(|error| format!("system clock is before the Unix epoch: {error}"))
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+
+    #[test]
+    fn atomic_output_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_atomic(&link, b"replacement").unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn row_log_open_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.log");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("stdout.log");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(open_row_log(&link).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+    }
 }

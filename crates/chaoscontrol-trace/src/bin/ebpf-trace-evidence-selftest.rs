@@ -12,6 +12,7 @@ use chaoscontrol_trace::evidence::{
 use clap::Parser;
 
 const SMOKE_DURATION: Duration = Duration::from_millis(250);
+const MAX_CAPTURE_PROFILE_BYTES: u64 = 1_048_576;
 const TRACEFS_ROOT: &str = "/sys/kernel/tracing/events/kvm";
 const BTF_PATH: &str = "/sys/kernel/btf/vmlinux";
 const KVM_PATH: &str = "/dev/kvm";
@@ -61,12 +62,16 @@ fn run(args: Args) -> Result<()> {
     let profile_path = args.capture_profile.as_ref().ok_or_else(|| {
         anyhow!("privileged capture requires --capture-profile with the exact admitted cohort")
     })?;
-    let profile_file = std::fs::File::open(profile_path).context("open exact capture profile")?;
-    if profile_file.metadata()?.len() > 1_048_576 {
-        return Err(anyhow!("capture profile exceeds its byte bound"));
-    }
+    let profile_path = profile_path
+        .to_str()
+        .ok_or_else(|| anyhow!("capture profile path is not valid UTF-8"))?;
+    let profile_json = chaoscontrol_trace::collector::read_trace_with_limit(
+        profile_path,
+        MAX_CAPTURE_PROFILE_BYTES,
+    )
+    .context("read exact capture profile")?;
     let profile: CaptureProfile =
-        serde_json::from_reader(profile_file).context("parse exact capture profile")?;
+        serde_json::from_str(&profile_json).context("parse exact capture profile")?;
     let profile = admit_capture_profile(&profile)?;
     if profile.profile.target.tgid != pid {
         return Err(anyhow!("requested TGID differs from capture profile"));

@@ -391,6 +391,9 @@ pub enum EventQueryError {
     InvalidText,
     InvalidField,
     InvalidPointer,
+    ReceiptDrift,
+    ResultDrift,
+    SourceDrift,
     TimelineBound,
     DuplicateTimelineId,
     MissingTimelineParent,
@@ -413,6 +416,9 @@ impl core::fmt::Display for EventQueryError {
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidField => "event query field is not supported",
             Self::InvalidPointer => "event query JSON pointer is not confined",
+            Self::ReceiptDrift => "event query receipt does not match the admitted query facts",
+            Self::ResultDrift => "event query result does not match a fresh evaluation",
+            Self::SourceDrift => "event query receipt source identities do not match the inputs",
             Self::TimelineBound => "timeline node count exceeds the bound",
             Self::DuplicateTimelineId => "timeline node identity is duplicated",
             Self::MissingTimelineParent => "timeline node parent is missing",
@@ -555,6 +561,42 @@ pub fn receipt_for(
     })
 }
 
+/// Validate a receipt against the admitted query, sources, result, and limits.
+///
+/// Re-evaluates the query so a changed source, query, limit, row set, counter,
+/// truncation fact, or digest is rejected rather than silently accepted.
+pub fn validate_receipt(
+    receipt: &EventQueryReceipt,
+    query: &EventQuery,
+    events: &[EventEnvelope],
+    result: &EventQueryResult,
+    limits: &EventQueryLimits,
+) -> Result<(), EventQueryError> {
+    if receipt.schema != EVENT_QUERY_RECEIPT_SCHEMA
+        || receipt.query != *query
+        || receipt.limits != *limits
+    {
+        return Err(EventQueryError::ReceiptDrift);
+    }
+    let fresh = evaluate(query, events, limits)?;
+    if fresh != *result {
+        return Err(EventQueryError::ResultDrift);
+    }
+    let source_ids: Vec<[u8; 32]> = events
+        .iter()
+        .map(|event| event.source_id)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if receipt.source_ids != source_ids {
+        return Err(EventQueryError::SourceDrift);
+    }
+    if receipt_for(query, &source_ids, &fresh, limits)? != *receipt {
+        return Err(EventQueryError::ReceiptDrift);
+    }
+    Ok(())
+}
+
 /// Render a bounded static Markdown timeline.
 pub fn render_timeline_markdown(facts: &[TimelineFact]) -> Result<String, EventQueryError> {
     let ordered = ordered_timeline(facts)?;
@@ -567,11 +609,21 @@ pub fn render_timeline_markdown(facts: &[TimelineFact]) -> Result<String, EventQ
             fact.id,
             fact.parent
                 .map_or_else(|| "-".to_string(), |p| p.to_string()),
-            fact.kind,
-            fact.label
+            escape_markdown_cell(&fact.kind),
+            escape_markdown_cell(&fact.label)
         ));
     }
     Ok(output)
+}
+
+/// Escape table-cell delimiters so one fact cannot rewrite the table shape.
+fn escape_markdown_cell(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('|', "\\|")
+}
+
+/// Escape DOT label delimiters so one fact cannot rewrite the graph shape.
+fn escape_dot_label(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Render a bounded static DOT graph.
@@ -581,7 +633,9 @@ pub fn render_timeline_dot(facts: &[TimelineFact]) -> Result<String, EventQueryE
     for fact in &ordered {
         output.push_str(&format!(
             "  n{} [label=\"{}: {}\"];\n",
-            fact.id, fact.tick, fact.label
+            fact.id,
+            fact.tick,
+            escape_dot_label(&fact.label)
         ));
     }
     for fact in &ordered {
@@ -1063,6 +1117,60 @@ mod tests {
             render_timeline_markdown(&cyclic).unwrap_err(),
             EventQueryError::TimelineCycle
         );
+    }
+
+    #[test]
+    fn receipt_validation_rejects_drift() {
+        let events = events();
+        let query = EventQuery::Filter {
+            input: Box::new(EventQuery::All),
+            predicate: EventPredicate::Kind("assert".to_string()),
+        };
+        let limits = EventQueryLimits::default();
+        let result = evaluate(&query, &events, &limits).unwrap();
+        let receipt = receipt_for(&query, &[[2; 32], [1; 32]], &result, &limits).unwrap();
+        validate_receipt(&receipt, &query, &events, &result, &limits).unwrap();
+
+        let mut tampered = receipt.clone();
+        tampered.rows += 1;
+        assert_eq!(
+            validate_receipt(&tampered, &query, &events, &result, &limits).unwrap_err(),
+            EventQueryError::ReceiptDrift
+        );
+
+        let mut drifted = receipt.clone();
+        drifted.source_ids.push([9; 32]);
+        assert_eq!(
+            validate_receipt(&drifted, &query, &events, &result, &limits).unwrap_err(),
+            EventQueryError::SourceDrift
+        );
+
+        let all = evaluate(&EventQuery::All, &events, &limits).unwrap();
+        assert_eq!(
+            validate_receipt(&receipt, &query, &events, &all, &limits).unwrap_err(),
+            EventQueryError::ResultDrift
+        );
+
+        assert_eq!(
+            validate_receipt(&receipt, &EventQuery::All, &events, &result, &limits).unwrap_err(),
+            EventQueryError::ReceiptDrift
+        );
+    }
+
+    #[test]
+    fn timeline_escapes_table_and_label_delimiters() {
+        let facts = vec![TimelineFact {
+            id: 1,
+            parent: None,
+            tick: 0,
+            kind: "k|ind".to_string(),
+            label: "a|b\"c\\".to_string(),
+        }];
+        let markdown = render_timeline_markdown(&facts).unwrap();
+        assert!(markdown.contains(r"k\|ind"));
+        assert!(markdown.contains(r"a\|b"));
+        let dot = render_timeline_dot(&facts).unwrap();
+        assert!(dot.contains(r#"  n1 [label="0: a|b\"c\\"];"#));
     }
 
     #[test]

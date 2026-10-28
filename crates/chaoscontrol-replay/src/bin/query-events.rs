@@ -2,8 +2,8 @@
 
 use chaoscontrol_replay::event_query::{
     envelopes_from_dlog_bytes, envelopes_from_recording, evaluate, receipt_for,
-    render_timeline_dot, render_timeline_markdown, EventEnvelope, EventQuery, EventQueryLimits,
-    TimelineFact,
+    render_timeline_dot, render_timeline_markdown, validate_receipt, EventEnvelope, EventQuery,
+    EventQueryLimits, EventQueryReceipt, EventQueryResult, TimelineFact,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -40,6 +40,27 @@ enum Command {
         /// Optional receipt JSON file.
         #[arg(long)]
         receipt: Option<PathBuf>,
+        /// Optional limits JSON file.
+        #[arg(long)]
+        limits: Option<PathBuf>,
+    },
+    /// Validate a query result and receipt against the admitted inputs.
+    Validate {
+        /// Optional JSON array of event envelopes.
+        #[arg(long)]
+        events: Option<PathBuf>,
+        /// Optional retained recording JSON file.
+        #[arg(long)]
+        recording: Option<PathBuf>,
+        /// Optional raw dlog file.
+        #[arg(long)]
+        dlog: Option<PathBuf>,
+        /// Query JSON file.
+        query: PathBuf,
+        /// Result JSON file to validate.
+        result: PathBuf,
+        /// Receipt JSON file to validate.
+        receipt: PathBuf,
         /// Optional limits JSON file.
         #[arg(long)]
         limits: Option<PathBuf>,
@@ -81,27 +102,8 @@ fn run() -> Result<(), String> {
             receipt,
             limits,
         } => {
-            let limits = match limits {
-                Some(path) => read_json(&path)?,
-                None => EventQueryLimits::default(),
-            };
-            let events: Vec<EventEnvelope> = match (events, recording, dlog) {
-                (Some(path), None, None) => read_json(&path)?,
-                (None, Some(path), None) => {
-                    let recording = chaoscontrol_replay::serialize::load_recording(&path)
-                        .map_err(|error| error.to_string())?;
-                    envelopes_from_recording(&recording)
-                }
-                (None, None, Some(path)) => {
-                    let bytes = read_bytes(&path)?;
-                    envelopes_from_dlog_bytes(&bytes, limits.max_scanned_events)
-                        .map_err(|error| error.to_string())?
-                }
-                (None, None, None) => {
-                    return Err("pass --recording, --dlog, or an events file".to_string())
-                }
-                _ => return Err("pass exactly one input source".to_string()),
-            };
+            let limits = read_limits(limits)?;
+            let events = load_events(events, recording, dlog, &limits)?;
             let query: EventQuery = read_json(&query)?;
             let result = evaluate(&query, &events, &limits).map_err(|error| error.to_string())?;
             write_json(&output, &result)?;
@@ -116,6 +118,24 @@ fn run() -> Result<(), String> {
                     .map_err(|error| error.to_string())?;
                 write_json(&receipt_path, &receipt)?;
             }
+        }
+        Command::Validate {
+            events,
+            recording,
+            dlog,
+            query,
+            result,
+            receipt,
+            limits,
+        } => {
+            let limits = read_limits(limits)?;
+            let events = load_events(events, recording, dlog, &limits)?;
+            let query: EventQuery = read_json(&query)?;
+            let result: EventQueryResult = read_json(&result)?;
+            let receipt: EventQueryReceipt = read_json(&receipt)?;
+            validate_receipt(&receipt, &query, &events, &result, &limits)
+                .map_err(|error| error.to_string())?;
+            println!("receipt validated");
         }
         Command::Timeline {
             facts,
@@ -133,6 +153,36 @@ fn run() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn read_limits(path: Option<PathBuf>) -> Result<EventQueryLimits, String> {
+    match path {
+        Some(path) => read_json(&path),
+        None => Ok(EventQueryLimits::default()),
+    }
+}
+
+fn load_events(
+    events: Option<PathBuf>,
+    recording: Option<PathBuf>,
+    dlog: Option<PathBuf>,
+    limits: &EventQueryLimits,
+) -> Result<Vec<EventEnvelope>, String> {
+    match (events, recording, dlog) {
+        (Some(path), None, None) => read_json(&path),
+        (None, Some(path), None) => {
+            let recording = chaoscontrol_replay::serialize::load_recording(&path)
+                .map_err(|error| error.to_string())?;
+            Ok(envelopes_from_recording(&recording))
+        }
+        (None, None, Some(path)) => {
+            let bytes = read_bytes(&path)?;
+            envelopes_from_dlog_bytes(&bytes, limits.max_scanned_events)
+                .map_err(|error| error.to_string())
+        }
+        (None, None, None) => Err("pass --recording, --dlog, or --events".to_string()),
+        _ => Err("pass exactly one input source".to_string()),
+    }
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
@@ -195,7 +245,9 @@ mod tests {
                 assert_eq!(recording, None);
                 assert_eq!(dlog, None);
             }
-            Command::Timeline { .. } => panic!("expected query command"),
+            Command::Timeline { .. } | Command::Validate { .. } => {
+                panic!("expected query command")
+            }
         }
     }
 
@@ -203,5 +255,39 @@ mod tests {
     fn query_requires_query_and_output() {
         assert!(Cli::try_parse_from(["query-events", "query"]).is_err());
         assert!(Cli::try_parse_from(["query-events", "query", "query.json"]).is_err());
+    }
+
+    #[test]
+    fn validate_requires_result_and_receipt() {
+        let cli = Cli::try_parse_from([
+            "query-events",
+            "validate",
+            "--events",
+            "events.json",
+            "query.json",
+            "result.json",
+            "receipt.json",
+        ])
+        .expect("validate arguments parse");
+        match cli.command {
+            Command::Validate {
+                events,
+                query,
+                result,
+                receipt,
+                ..
+            } => {
+                assert_eq!(events, Some(PathBuf::from("events.json")));
+                assert_eq!(query, PathBuf::from("query.json"));
+                assert_eq!(result, PathBuf::from("result.json"));
+                assert_eq!(receipt, PathBuf::from("receipt.json"));
+            }
+            Command::Query { .. } | Command::Timeline { .. } => {
+                panic!("expected validate command")
+            }
+        }
+        assert!(
+            Cli::try_parse_from(["query-events", "validate", "query.json", "result.json"]).is_err()
+        );
     }
 }

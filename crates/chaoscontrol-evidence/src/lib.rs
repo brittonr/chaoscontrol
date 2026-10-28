@@ -2644,15 +2644,28 @@ fn hash_open_chunk(
 }
 
 fn hash_file_into(path: &Path, hasher: &mut Sha256) -> EvidenceResult<()> {
-    let mut file =
-        File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    let mut file = crate::bounded_file::open_regular_file(path)?;
+    let expected = file.metadata()?.len();
+    let mut total = 0_u64;
     let mut buffer = [0_u8; SNAPSHOT_COPY_BUFFER_BYTES];
     loop {
         let read = file.read(&mut buffer)?;
         if read == 0 {
             break;
         }
+        total = total
+            .checked_add(
+                u64::try_from(read)
+                    .map_err(|_| EvidenceError::new("artifact read length exceeds u64"))?,
+            )
+            .ok_or_else(|| EvidenceError::new("artifact read length overflowed"))?;
         hasher.update(&buffer[..read]);
+    }
+    if total != expected {
+        return Err(EvidenceError::new(format!(
+            "{}: artifact changed while reading",
+            path.display()
+        )));
     }
     Ok(())
 }
@@ -3129,6 +3142,20 @@ impl SnapshotChunk {
 #[cfg(test)]
 mod chunk_copy_tests {
     use super::*;
+
+    #[test]
+    fn artifact_hash_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("artifact");
+        std::fs::write(&target, b"abc").unwrap();
+        assert_eq!(
+            sha256_file(&target).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(sha256_file(&link).is_err());
+    }
 
     #[test]
     fn chunk_hash_stops_at_declared_size() {

@@ -2149,10 +2149,23 @@ fn validate_workload_assertion_identity(
     )
 }
 
+fn validate_proof_path(field: &str, value: &str) -> EvidenceResult<()> {
+    let path = Path::new(value);
+    ensure(
+        !value.is_empty()
+            && !path.is_absolute()
+            && path
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_))),
+        format!("proof {field} must be a bounded relative artifact path"),
+    )
+}
+
 fn validate_workload_replay_artifacts(
     root: &Path,
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<ReplayArtifactReview> {
+    proof.validate_shape()?;
     let evidence_dir = root.join(&proof.evidence_dir);
     let summary_path = evidence_dir.join(&proof.summary);
     let bug_path = evidence_dir.join(&proof.bug);
@@ -2761,8 +2774,18 @@ impl AcceptedWorkloadProof {
             !self.snapshot.is_empty(),
             "proof snapshot must be non-empty",
         )?;
+        for (field, value) in [
+            ("evidence_dir", self.evidence_dir.as_str()),
+            ("summary", self.summary.as_str()),
+            ("bug", self.bug.as_str()),
+            ("verdict", self.verdict.as_str()),
+            ("snapshot", self.snapshot.as_str()),
+        ] {
+            validate_proof_path(field, value)?;
+        }
         if let Some(receipt) = &self.receipt {
             ensure(!receipt.is_empty(), "proof receipt must be non-empty")?;
+            validate_proof_path("receipt", receipt)?;
         }
         self.validate_evidence_boundary()?;
         Ok(())
@@ -3192,5 +3215,27 @@ mod json_preflight_tests {
         let error = preflight_json_document(&nested).unwrap_err();
         assert!(error.message().contains("JSON nesting depth exceeded"));
         preflight_json_document(r#"{"ok":true}"#).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod proof_path_tests {
+    use super::*;
+
+    #[test]
+    fn accepted_proof_paths_reject_traversal() {
+        let proof = AcceptedWorkloadProof {
+            workload: "raft".to_string(),
+            assertion_id: 1,
+            evidence_dir: "../escape".to_string(),
+            summary: "summary.json".to_string(),
+            bug: "bug_0.json".to_string(),
+            verdict: "verdict.json".to_string(),
+            snapshot: "snapshots/snapshot.bin".to_string(),
+            receipt: None,
+            notes: None,
+        };
+        let error = proof.validate_shape().unwrap_err();
+        assert!(error.message().contains("bounded relative artifact path"));
     }
 }

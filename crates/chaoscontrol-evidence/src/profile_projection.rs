@@ -197,9 +197,7 @@ fn command_exists(name: &str) -> bool {
 
 fn check_or_write(path: PathBuf, expected: &[u8], write: bool) -> EvidenceResult<()> {
     if write {
-        let parent = path
-            .parent()
-            .ok_or_else(|| EvidenceError::new("profile output has no parent"))?;
+        let parent = crate::bounded_file::output_parent(&path);
         let mut temporary = tempfile::NamedTempFile::new_in(parent)
             .map_err(|error| EvidenceError::new(format!("profile temp file failed: {error}")))?;
         std::io::Write::write_all(&mut temporary, expected)

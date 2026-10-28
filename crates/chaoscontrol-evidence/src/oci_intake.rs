@@ -56,7 +56,7 @@ pub fn materialize_bundle(
     }
     let plan =
         lower_topology(topology).map_err(|error| IntakeShellError::Plan(format!("{error:?}")))?;
-    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let parent = crate::bounded_file::output_parent(output);
     std::fs::create_dir_all(parent)?;
     let staging = tempfile::tempdir_in(parent)?;
     let stage_root = staging.path();

@@ -1300,6 +1300,17 @@ mod tests {
     }
 
     #[test]
+    fn failed_trace_publication_leaves_no_temporary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        let before = std::fs::read_dir(dir.path()).unwrap().count();
+
+        assert!(write_trace_json(target.to_str().unwrap(), b"trace").is_err());
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), before);
+    }
+
+    #[test]
     fn trace_json_io_is_bounded_and_symlink_safe() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("trace.json");

@@ -698,6 +698,7 @@ mod tests {
             store.resolve_ref(&reference),
             Err(SnapshotStoreError::NotDirectory { .. })
         ));
+        assert!(!store.has_snapshot(&reference));
     }
 
     #[test]

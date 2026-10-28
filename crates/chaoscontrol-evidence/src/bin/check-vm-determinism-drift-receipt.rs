@@ -34,6 +34,8 @@ fn run(args: Vec<String>) -> Result<String, String> {
         return Err(String::from("receipt path must not be empty"));
     }
     let bytes = read_bounded(&path, MAX_DRIFT_RECEIPT_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {}", path.display(), error))?;
     let receipt: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))?;
     validate_drift_receipt(&receipt)
@@ -76,6 +78,15 @@ mod tests {
     #[test]
     fn empty_receipt_path_is_rejected() {
         assert!(run(vec![String::new()]).is_err());
+    }
+
+    #[test]
+    fn receipt_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = run(vec![path.display().to_string()]).unwrap_err();
+        assert!(error.contains("JSON nesting depth exceeded"));
     }
 
     #[test]

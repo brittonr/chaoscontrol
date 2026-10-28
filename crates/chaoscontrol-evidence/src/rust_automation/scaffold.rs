@@ -27,8 +27,10 @@ pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
             "workload name is empty or contains unsupported characters",
         ));
     }
-    if source_root.is_empty() {
-        return Err(String::from("source root is empty"));
+    if source_root.is_empty() || source_root.contains(['\0', '\n', '\r', '"', '\\']) {
+        return Err(String::from(
+            "source root is empty or contains unsupported characters",
+        ));
     }
     let package = format!(
         "{}-chaos-workload",
@@ -92,5 +94,7 @@ mod tests {
         assert!(plan(&"x".repeat(MAX_SCAFFOLD_WORKLOAD_NAME_BYTES + 1), "/source").is_err());
         assert!(plan("nested/name", "/source").is_err());
         assert!(plan("valid", "").is_err());
+        assert!(plan("valid", "/bad\"root").is_err());
+        assert!(plan("valid", "/bad\\root").is_err());
     }
 }

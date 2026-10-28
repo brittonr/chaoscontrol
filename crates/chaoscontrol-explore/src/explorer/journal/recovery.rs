@@ -189,6 +189,12 @@ fn list_directory(
     path: &Path,
     operation: JournalOperation,
 ) -> Result<Vec<(OsString, PathBuf)>, JournalError> {
+    let metadata = fs::symlink_metadata(path).map_err(io_error(operation, path))?;
+    if !metadata.file_type().is_dir() {
+        return Err(JournalError::JournalNotDirectory {
+            path: path.to_path_buf(),
+        });
+    }
     let mut entries = Vec::new();
     for entry in fs::read_dir(path).map_err(io_error(operation, path))? {
         if entries.len() >= MAX_JOURNAL_DIRECTORY_ENTRIES {
@@ -227,6 +233,19 @@ fn io_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn journal_directory_symlinks_are_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let link = root.path().join("journal");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+
+        assert!(matches!(
+            list_directory(&link, JournalOperation::ListJournal),
+            Err(JournalError::JournalNotDirectory { .. })
+        ));
+    }
 
     #[test]
     fn journal_directory_entry_bound_is_enforced() {

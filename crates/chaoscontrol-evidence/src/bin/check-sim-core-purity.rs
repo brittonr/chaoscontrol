@@ -65,6 +65,14 @@ fn find_violations(manifest: &str, sources: &[(String, String)]) -> Vec<Violatio
 
 fn read_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
     let source_root = root.join(CORE_SOURCE);
+    let metadata = fs::symlink_metadata(&source_root)
+        .map_err(|error| format!("inspect source root {}: {error}", source_root.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!(
+            "{} is not a real source directory",
+            source_root.display()
+        ));
+    }
     let mut pending = vec![source_root];
     let mut files = Vec::new();
     let mut discovered = 0_usize;
@@ -194,6 +202,17 @@ mod tests {
     #[test]
     fn empty_root_is_rejected() {
         assert!(run(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn source_walk_rejects_symlinked_source_root() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join(CORE_SOURCE);
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("lib.rs"), b"").unwrap();
+        std::os::unix::fs::symlink(outside.path(), &source).unwrap();
+        assert!(read_sources(root.path()).is_err());
     }
 
     #[test]

@@ -354,12 +354,7 @@ fn private_kfunc_artifact_paths(artifacts_dir: &Path) -> EvidenceResult<Vec<Path
 }
 
 fn read_closure_roots(path: &Path) -> EvidenceResult<Vec<PathBuf>> {
-    let metadata = fs::metadata(path)?;
-    ensure!(
-        metadata.len() <= MAX_CLOSURE_LIST_BYTES,
-        "closure list exceeded size bound"
-    )?;
-    let content = fs::read_to_string(path)?;
+    let content = crate::bounded_file::read_bounded_regular_file(path, MAX_CLOSURE_LIST_BYTES)?;
     let mut roots = Vec::new();
     for line in content.lines() {
         let trimmed = line.trim();
@@ -873,6 +868,22 @@ mod tests {
         assert_eq!(summary.output_path, output.display().to_string());
         assert_eq!(fs::read(&victim).expect("victim"), b"victim");
         assert_ne!(fs::read(&output).expect("initrd"), b"victim");
+    }
+
+    #[test]
+    fn closure_list_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().expect("root");
+        let target = root.path().join("target.list");
+        fs::write(&target, b"").expect("target");
+        let link = root.path().join("closure.list");
+        unix_fs::symlink(&target, &link).expect("symlink");
+        assert!(read_closure_roots(&link).is_err());
+
+        let fifo = root.path().join("closure.fifo");
+        let path = std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(fifo.as_os_str()))
+            .expect("fifo path");
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_closure_roots(&fifo).is_err());
     }
 
     #[test]

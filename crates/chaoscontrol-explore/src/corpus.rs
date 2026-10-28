@@ -92,6 +92,11 @@ impl Corpus {
         }
     }
 
+    /// Ensure future bug IDs follow a restored identity.
+    pub fn reserve_bug_ids_through(&mut self, bug_id: u64) {
+        self.next_bug_id = self.next_bug_id.max(bug_id.saturating_add(1));
+    }
+
     /// Assign IDs to bugs that are retained outside corpus entries.
     pub fn assign_bug_ids(&mut self, bugs: &mut [BugReport]) -> Result<(), &'static str> {
         let count = u64::try_from(bugs.len()).map_err(|_| "bug ID count exceeds u64")?;
@@ -320,6 +325,15 @@ mod tests {
         );
         assert_eq!(standalone[0].bug_id, 0);
         assert_eq!(corpus.next_bug_id, u64::MAX);
+    }
+
+    #[test]
+    fn reserved_bug_ids_continue_after_restore() {
+        let mut corpus = Corpus::new();
+        corpus.reserve_bug_ids_through(7);
+        let mut bugs = make_entry(0, 1, 1).bugs_found;
+        corpus.assign_bug_ids(&mut bugs).expect("bug IDs");
+        assert_eq!(bugs[0].bug_id, 8);
     }
 
     #[test]

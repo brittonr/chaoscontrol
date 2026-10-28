@@ -3132,7 +3132,10 @@ impl Explorer {
         };
 
         let frontier = ExplorerFrontier::for_config(&config);
-        let corpus = Corpus::new();
+        let mut corpus = Corpus::new();
+        for bug in &standalone_bugs {
+            corpus.reserve_bug_ids_through(bug.bug_id);
+        }
         let mutator = ScheduleMutator::new(config.seed);
 
         // Restore global coverage

@@ -519,6 +519,15 @@ fn collect_artifacts(
         total_bytes: 0,
         visited_directories: BTreeSet::new(),
     };
+    if fs::symlink_metadata(row_output).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return (
+            Vec::new(),
+            Some(format!(
+                "artifact root is a symlink: {}",
+                row_output.display()
+            )),
+        );
+    }
     let root = match fs::canonicalize(row_output) {
         Ok(root) => root,
         Err(error) => {
@@ -820,6 +829,20 @@ mod publication_tests {
             },
             retained_artifacts: vec!["stdout.log".to_string()],
         }
+    }
+
+    #[test]
+    fn artifact_scan_rejects_symlinked_row_output() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = root.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("artifact.log"), b"outside").unwrap();
+        let row_output = root.path().join("row");
+        std::os::unix::fs::symlink(&outside, &row_output).unwrap();
+
+        let (artifacts, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(artifacts.is_empty());
+        assert!(error.unwrap().contains("artifact root is a symlink"));
     }
 
     #[test]

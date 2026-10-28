@@ -2464,6 +2464,18 @@ fn snapshot_artifact_sha256(
     root: &Path,
     snapshot_path: &Path,
 ) -> EvidenceResult<(String, SnapshotStorage)> {
+    let evidence_dir = snapshot_path
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| EvidenceError::new("snapshot path lacks evidence directory"))?;
+    let canonical_evidence = std::fs::canonicalize(evidence_dir)?;
+    let parent = snapshot_path
+        .parent()
+        .ok_or_else(|| EvidenceError::new("snapshot path lacks parent directory"))?;
+    ensure(
+        std::fs::canonicalize(parent)?.starts_with(&canonical_evidence),
+        "snapshot path escapes the evidence directory",
+    )?;
     if snapshot_path.exists() {
         return Ok((sha256_file(snapshot_path)?, SnapshotStorage::Raw));
     }
@@ -2498,11 +2510,7 @@ fn snapshot_artifact_sha256(
 
     let mut aggregate = Sha256::new();
     let mut total_size = 0_u64;
-    let evidence_dir = snapshot_path
-        .parent()
-        .and_then(Path::parent)
-        .ok_or_else(|| EvidenceError::new("snapshot path lacks evidence directory"))?;
-    let evidence_root = std::fs::canonicalize(evidence_dir)?;
+    let evidence_root = canonical_evidence;
     for (idx, chunk) in manifest.chunks.iter().enumerate() {
         let chunk_path = safe_join_relative(evidence_dir, &chunk.path)
             .map_err(|err| EvidenceError::new(format!("chunk {idx} path invalid: {err}")))?;
@@ -3263,6 +3271,21 @@ mod proof_path_tests {
             Err(error) => error,
         };
         assert!(error.message().contains("escapes the repository root"));
+    }
+
+    #[test]
+    fn snapshot_artifact_rejects_symlinked_parent_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("evidence")).unwrap();
+        std::fs::write(outside.path().join("raw.snapshot.bin"), b"snapshot").unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("evidence/snapshots")).unwrap();
+        let snapshot = root.path().join("evidence/snapshots/raw.snapshot.bin");
+        let error = match snapshot_artifact_sha256(root.path(), &snapshot) {
+            Ok(_) => panic!("escaping snapshot parent was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.message().contains("escapes the evidence directory"));
     }
 
     #[test]

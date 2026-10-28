@@ -2167,6 +2167,14 @@ fn validate_workload_replay_artifacts(
 ) -> EvidenceResult<ReplayArtifactReview> {
     proof.validate_shape()?;
     let evidence_dir = root.join(&proof.evidence_dir);
+    let canonical_root = std::fs::canonicalize(root)?;
+    ensure(
+        std::fs::canonicalize(&evidence_dir)?.starts_with(&canonical_root),
+        format!(
+            "{}: proof evidence_dir escapes the repository root",
+            proof.workload
+        ),
+    )?;
     let summary_path = evidence_dir.join(&proof.summary);
     let bug_path = evidence_dir.join(&proof.bug);
     let verdict_path = evidence_dir.join(&proof.verdict);
@@ -3221,6 +3229,29 @@ mod json_preflight_tests {
 #[cfg(test)]
 mod proof_path_tests {
     use super::*;
+
+    #[test]
+    fn accepted_proof_evidence_dir_rejects_symlink_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("evidence")).unwrap();
+        let proof = AcceptedWorkloadProof {
+            workload: "raft".to_string(),
+            assertion_id: 1,
+            evidence_dir: "evidence".to_string(),
+            summary: "summary.json".to_string(),
+            bug: "bug_0.json".to_string(),
+            verdict: "verdict.json".to_string(),
+            snapshot: "snapshots/snapshot.bin".to_string(),
+            receipt: None,
+            notes: None,
+        };
+        let error = match validate_workload_replay_artifacts(root.path(), &proof) {
+            Ok(_) => panic!("symlinked evidence_dir was accepted"),
+            Err(error) => error,
+        };
+        assert!(error.message().contains("escapes the repository root"));
+    }
 
     #[test]
     fn accepted_proof_paths_reject_traversal() {

@@ -223,6 +223,7 @@ pub enum SymbolCoverageError {
     DuplicateId,
     CounterOverflow,
     ReportDigest,
+    ReceiptDrift,
 }
 
 impl core::fmt::Display for SymbolCoverageError {
@@ -243,6 +244,7 @@ impl core::fmt::Display for SymbolCoverageError {
             Self::DuplicateId => "instrumented identifier appears in more than one location",
             Self::CounterOverflow => "symbol coverage counter overflow",
             Self::ReportDigest => "symbolized report digest failed",
+            Self::ReceiptDrift => "symbolized coverage receipt does not match the inputs",
         };
         formatter.write_str(message)
     }
@@ -473,6 +475,23 @@ pub fn rank_differential(
         return Err(SymbolCoverageError::ReportRowBound);
     }
     Ok(ranked)
+}
+
+/// Recompute the mapping and reject any receipt that differs from it.
+pub fn validate_receipt(
+    receipt: &SymbolizedCoverageReceipt,
+    catalogs: &[SymbolCatalog],
+    loads: &[LoadedModule],
+    observations: &[CoverageObservation],
+    observation_source: [u8; 32],
+    limits: &SymbolCoverageLimits,
+) -> Result<(), SymbolCoverageError> {
+    let coverage = map_coverage(catalogs, loads, observations, limits)?;
+    let expected = receipt_for(&coverage, catalogs, loads, observation_source, limits)?;
+    if &expected != receipt {
+        return Err(SymbolCoverageError::ReceiptDrift);
+    }
+    Ok(())
 }
 
 /// Build a receipt binding catalogs, loads, limits, and report identity.
@@ -810,6 +829,66 @@ mod tests {
         assert_eq!(receipt.catalog_ids[0], module(1, "src/a.rs"));
         assert_eq!(receipt.load_ids[0].load_ordinal, 0);
         assert_eq!(receipt.mapped_observations, 1);
+    }
+
+    #[test]
+    fn receipt_validation_rejects_drift() {
+        let catalogs = vec![catalog(
+            1,
+            "src/lib.rs",
+            vec![location("src/lib.rs", 10, &[1])],
+        )];
+        let loads = vec![load(1, "src/lib.rs", 0)];
+        let observations = vec![observation(1, 1, 3)];
+        let limits = SymbolCoverageLimits::default();
+        let coverage = map_coverage(&catalogs, &loads, &observations, &limits).unwrap();
+        let receipt = receipt_for(&coverage, &catalogs, &loads, [4; 32], &limits).unwrap();
+        validate_receipt(&receipt, &catalogs, &loads, &observations, [4; 32], &limits).unwrap();
+
+        let mut wrong_source = receipt.clone();
+        wrong_source.observation_source = [5; 32];
+        assert_eq!(
+            validate_receipt(
+                &wrong_source,
+                &catalogs,
+                &loads,
+                &observations,
+                [4; 32],
+                &limits
+            )
+            .unwrap_err(),
+            SymbolCoverageError::ReceiptDrift
+        );
+
+        let mut wrong_limit = receipt.clone();
+        wrong_limit.limits.max_report_rows -= 1;
+        assert_eq!(
+            validate_receipt(
+                &wrong_limit,
+                &catalogs,
+                &loads,
+                &observations,
+                [4; 32],
+                &limits
+            )
+            .unwrap_err(),
+            SymbolCoverageError::ReceiptDrift
+        );
+
+        let mut wrong_digest = receipt;
+        wrong_digest.report_digest[0] ^= 1;
+        assert_eq!(
+            validate_receipt(
+                &wrong_digest,
+                &catalogs,
+                &loads,
+                &observations,
+                [4; 32],
+                &limits
+            )
+            .unwrap_err(),
+            SymbolCoverageError::ReceiptDrift
+        );
     }
 
     #[test]

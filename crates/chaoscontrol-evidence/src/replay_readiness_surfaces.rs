@@ -32,6 +32,8 @@ pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
     replay_readiness_core::summarize_receipt(receipt)
 }
 
+pub const MAX_FLEET_TRIAGE_RECEIPTS: usize = 4_096;
+
 pub fn write_dashboard_path(
     receipt_path: impl AsRef<Path>,
     output_path: impl AsRef<Path>,
@@ -69,6 +71,10 @@ pub fn render_fleet_triage_index_path(
     ensure(
         !receipt_paths.is_empty(),
         "fleet triage index requires at least one replay-readiness receipt",
+    )?;
+    ensure(
+        receipt_paths.len() <= MAX_FLEET_TRIAGE_RECEIPTS,
+        "fleet triage index exceeds the receipt bound",
     )?;
     let mut entries = Vec::with_capacity(receipt_paths.len());
     for path in receipt_paths {
@@ -4471,6 +4477,13 @@ mod output_overlap_tests {
         let before = std::fs::read(&path).unwrap();
         assert!(write_dashboard_path(&path, &path).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn fleet_index_receipt_count_is_bounded() {
+        let paths = vec![std::path::PathBuf::new(); MAX_FLEET_TRIAGE_RECEIPTS + 1];
+        let error = render_fleet_triage_index_path(&paths).unwrap_err();
+        assert!(error.message().contains("receipt bound"));
     }
 
     #[test]

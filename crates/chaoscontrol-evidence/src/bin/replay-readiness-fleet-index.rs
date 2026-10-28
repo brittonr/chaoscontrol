@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 
 use chaoscontrol_evidence::{
@@ -19,6 +20,7 @@ fn run() -> EvidenceResult<()> {
     let mut output: Option<PathBuf> = None;
     let mut receipts = Vec::new();
     let mut sample = false;
+    let mut sample_receipt = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -40,12 +42,14 @@ fn run() -> EvidenceResult<()> {
         chaoscontrol_evidence::EvidenceError::new(format!("missing --output\n{}", usage()))
     })?;
     if sample {
-        let temp = std::env::temp_dir().join("chaoscontrol-fleet-index-sample-receipt.json");
-        std::fs::write(
-            &temp,
-            serde_json::to_vec_pretty(&sample_replay_readiness_receipt(true, "passed"))?,
+        let mut temporary = tempfile::NamedTempFile::new()?;
+        serde_json::to_writer_pretty(
+            &mut temporary,
+            &sample_replay_readiness_receipt(true, "passed"),
         )?;
-        receipts.push(temp);
+        temporary.flush()?;
+        receipts.push(temporary.path().to_path_buf());
+        sample_receipt = Some(temporary);
     }
     if receipts.is_empty() {
         return Err(chaoscontrol_evidence::EvidenceError::new(format!(
@@ -54,6 +58,7 @@ fn run() -> EvidenceResult<()> {
         )));
     }
     write_fleet_triage_index_path(&receipts, &output)?;
+    drop(sample_receipt);
     println!(
         "wrote {} from {} receipt(s)",
         output.display(),

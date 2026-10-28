@@ -47,7 +47,7 @@ use chaoscontrol_sim_core::{
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use vm_memory::{ByteValued, Bytes, GuestAddress};
+use vm_memory::{Bytes, GuestAddress};
 
 const MAX_PENDING_PROCESS_OBSERVATIONS: usize = 4_096;
 const GUEST_ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.guest-artifact.v1";
@@ -1862,8 +1862,11 @@ impl SimulationController {
         let slot = self.vm_slot_mut_checked(*target)?;
         let memory = slot.vm.memory().inner();
         let address = GuestAddress(THREAD_GATE_ADDRESS);
+        let mut bytes = [0u8; 40];
         let mut gate = memory
-            .read_obj::<ThreadGate>(address)
+            .read_slice(&mut bytes, address)
+            .ok()
+            .map(|_| ThreadGate::from_bytes(&bytes))
             .unwrap_or(ThreadGate {
                 magic: THREAD_GATE_MAGIC,
                 paused_ordinal: u64::MAX,
@@ -1876,7 +1879,7 @@ impl SimulationController {
         gate.release_tick = gate.logical_tick.saturating_add(duration);
         gate.paused_steps = 0;
         memory
-            .write_obj(gate, address)
+            .write_slice(&gate.to_bytes(), address)
             .map_err(|_| target_state_application_error())?;
         let observation = self
             .make_shell_observation(
@@ -3322,7 +3325,39 @@ struct ThreadGate {
     paused_steps: u64,
 }
 
-unsafe impl ByteValued for ThreadGate {}
+impl ThreadGate {
+    fn to_bytes(self) -> [u8; 40] {
+        let mut bytes = [0u8; 40];
+        for (index, value) in [
+            self.magic,
+            self.paused_ordinal,
+            self.release_tick,
+            self.logical_tick,
+            self.paused_steps,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            bytes[index * 8..index * 8 + 8].copy_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn from_bytes(bytes: &[u8; 40]) -> Self {
+        let read = |index: usize| {
+            let mut word = [0u8; 8];
+            word.copy_from_slice(&bytes[index * 8..index * 8 + 8]);
+            u64::from_le_bytes(word)
+        };
+        Self {
+            magic: read(0),
+            paused_ordinal: read(1),
+            release_tick: read(2),
+            logical_tick: read(3),
+            paused_steps: read(4),
+        }
+    }
+}
 
 /// Active aggregate vCPU exit-budget throttle retained by replay snapshots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -4235,12 +4270,14 @@ mod tests {
         controller
             .apply_fault_plan(&plan)
             .expect("thread pause applies");
-        let gate = controller.vms[0]
+        let mut bytes = [0u8; 40];
+        controller.vms[0]
             .vm
             .memory()
             .inner()
-            .read_obj::<ThreadGate>(GuestAddress(THREAD_GATE_ADDRESS))
+            .read_slice(&mut bytes, GuestAddress(THREAD_GATE_ADDRESS))
             .expect("read gate");
+        let gate = ThreadGate::from_bytes(&bytes);
         assert_eq!(gate.magic, THREAD_GATE_MAGIC);
         assert_eq!(gate.paused_ordinal, 1);
         assert_eq!(gate.release_tick, 5);

@@ -867,6 +867,11 @@ pub struct DeterministicVm {
     incremental_base_needs_reconcile: bool,
 }
 
+/// Kernel images are ELF files, not guest-memory residents; the loader
+/// validates every segment against guest memory. Bound the file itself so a
+/// kernel larger than the guest memory ceiling can still boot.
+const MAX_KERNEL_FILE_BYTES: u64 = 1 << 30;
+
 fn open_boot_file(path: &std::path::Path, limit: u64) -> io::Result<File> {
     use std::os::unix::fs::OpenOptionsExt;
 
@@ -1620,7 +1625,7 @@ impl DeterministicVm {
         info!("Loading kernel from {}", kernel_path);
 
         let mut kernel_file =
-            open_boot_file(std::path::Path::new(kernel_path), self.memory_ceiling_bytes)?;
+            open_boot_file(std::path::Path::new(kernel_path), MAX_KERNEL_FILE_BYTES)?;
 
         // Load kernel using linux-loader
         let kernel_load_result = Elf::load(

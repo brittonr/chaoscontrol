@@ -97,11 +97,12 @@ pub use crate::{
     cc_assert_unreachable as assert_unreachable,
 };
 
-// ── Lifecycle ────────────────────────────────────────────────────────
+// ── Lifecycle and random modules ─────────────────────────────────────
 pub use crate::lifecycle::{send_event, setup_complete};
 #[cfg(feature = "full")]
 pub use crate::marker::branch_marker;
 pub use crate::resources::memory_ceiling_bytes;
+pub use crate::{lifecycle, random};
 
 // ── Random ───────────────────────────────────────────────────────────
 pub use crate::random::{

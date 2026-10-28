@@ -19,6 +19,8 @@ fn prelude_exposes_the_unprefixed_antithesis_names() {
     assert_always_greater_than!(2, 1, "prelude numeric");
     assert_always_some!({first: true, second: false}, "prelude any");
     assert_sometimes_all!({first: true, second: true}, "prelude all");
+    lifecycle::send_event("prelude module event", &serde_json::json!({"ok": true}));
+    let _ = random::random_choice_index(3);
 
     let content = std::fs::read_to_string(&output).expect("local output");
     let messages = content

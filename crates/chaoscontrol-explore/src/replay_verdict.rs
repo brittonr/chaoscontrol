@@ -182,7 +182,9 @@ pub fn snapshot_validation_from_error(
 ) -> ReplaySnapshotValidation {
     let status = match error {
         SnapshotStoreError::Missing { .. } => SnapshotValidationStatus::MissingArtifact,
-        SnapshotStoreError::DigestMismatch { .. } => SnapshotValidationStatus::InvalidDigest,
+        SnapshotStoreError::DigestMismatch { .. } | SnapshotStoreError::InvalidDigest { .. } => {
+            SnapshotValidationStatus::InvalidDigest
+        }
         SnapshotStoreError::UnsupportedStore { .. }
         | SnapshotStoreError::UnsupportedCodec { .. }
         | SnapshotStoreError::UnsupportedSchema { .. }

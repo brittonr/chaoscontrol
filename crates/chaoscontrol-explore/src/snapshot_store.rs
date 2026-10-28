@@ -50,6 +50,8 @@ pub enum SnapshotStoreError {
     UnsupportedSchema { version: u32 },
     #[snafu(display("snapshot path escapes store root: {path}"))]
     PathEscape { path: String },
+    #[snafu(display("snapshot ref digest is malformed: {digest}"))]
+    InvalidDigest { digest: String },
     #[snafu(display("snapshot artifact missing: {path}"))]
     Missing { path: String },
     #[snafu(display("snapshot artifact is not a regular file: {path}"))]
@@ -239,19 +241,7 @@ impl FileSnapshotStore {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(source) => return Err(SnapshotStoreError::Io { source }),
         }
-        let rel = Path::new(&reference.path);
-        if rel.is_absolute()
-            || rel
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
-            || !reference.path.starts_with("snapshots/")
-            || rel.components().count() != 2
-        {
-            return Err(SnapshotStoreError::PathEscape {
-                path: reference.path.clone(),
-            });
-        }
-        Ok(self.root.join(rel))
+        Ok(self.root.join(&reference.path))
     }
 }
 
@@ -444,7 +434,33 @@ pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), Sna
             version: reference.schema_version,
         });
     }
+    let rel = Path::new(&reference.path);
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        || !reference.path.starts_with("snapshots/")
+        || rel.components().count() != 2
+    {
+        return Err(SnapshotStoreError::PathEscape {
+            path: reference.path.clone(),
+        });
+    }
+    if !is_sha256_digest(&reference.digest) {
+        return Err(SnapshotStoreError::InvalidDigest {
+            digest: reference.digest.clone(),
+        });
+    }
     Ok(())
+}
+
+fn is_sha256_digest(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    })
 }
 
 pub fn digest_bytes(bytes: &[u8]) -> String {
@@ -576,6 +592,32 @@ mod tests {
         assert!(matches!(
             store.get_snapshot_artifact(&reference),
             Err(SnapshotStoreError::DigestMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn ref_shape_rejects_bad_digest_and_path() {
+        let valid = ReplayParentSnapshotRef {
+            store: FILE_STORE_KIND.to_string(),
+            digest: format!("sha256:{}", "0".repeat(64)),
+            codec: SNAPSHOT_CODEC.to_string(),
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            path: "snapshots/x.snapshot.bin".to_string(),
+        };
+        validate_ref_shape(&valid).unwrap();
+
+        let mut bad_digest = valid.clone();
+        bad_digest.digest = "sha256:not-hex".to_string();
+        assert!(matches!(
+            validate_ref_shape(&bad_digest),
+            Err(SnapshotStoreError::InvalidDigest { .. })
+        ));
+
+        let mut bad_path = valid;
+        bad_path.path = "../escape.snapshot.bin".to_string();
+        assert!(matches!(
+            validate_ref_shape(&bad_path),
+            Err(SnapshotStoreError::PathEscape { .. })
         ));
     }
 
@@ -758,7 +800,7 @@ mod tests {
         let store = FileSnapshotStore::new(root.path());
         let reference = ReplayParentSnapshotRef {
             store: FILE_STORE_KIND.to_string(),
-            digest: "sha256:00".to_string(),
+            digest: format!("sha256:{}", "0".repeat(64)),
             codec: SNAPSHOT_CODEC.to_string(),
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             path: format!("{SNAPSHOT_DIR}/00.snapshot.bin"),

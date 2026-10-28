@@ -188,6 +188,17 @@ fn read_bundle_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, 
     if bytes.len() as u64 > MAX_BUNDLE_RECORD_BYTES {
         return Err(IntakeShellError::UnsafePath);
     }
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )
+    .map_err(|error| {
+        IntakeShellError::Plan(format!(
+            "invalid bundle record {}: {}",
+            path.display(),
+            error.message()
+        ))
+    })?;
     serde_json::from_slice(&bytes).map_err(|error| {
         IntakeShellError::Plan(format!("invalid bundle record {}: {error}", path.display()))
     })
@@ -458,6 +469,18 @@ fn sync_tree_root(path: &Path) -> Result<(), IntakeShellError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_records_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("record.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_bundle_record::<serde_json::Value>(&path).unwrap_err();
+        let IntakeShellError::Plan(message) = error else {
+            panic!("unexpected error: {error:?}");
+        };
+        assert!(message.contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn bundle_record_publication_is_atomic_and_no_replace() {

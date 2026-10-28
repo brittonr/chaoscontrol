@@ -891,9 +891,12 @@ mod publication_tests {
         let mut too_long = empty.clone();
         too_long[revision + 1] = OsString::from("x".repeat(MAX_EXPECTED_REVISION_BYTES + 1));
         assert!(parse_args(too_long).is_err());
-        let mut control = empty;
+        let mut control = empty.clone();
         control[revision + 1] = OsString::from("bad\nrev");
         assert!(parse_args(control).is_err());
+        let mut at_bound = empty;
+        at_bound[revision + 1] = OsString::from("x".repeat(MAX_EXPECTED_REVISION_BYTES));
+        assert!(parse_args(at_bound).is_ok());
     }
 
     #[test]

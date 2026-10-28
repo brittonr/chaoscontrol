@@ -668,6 +668,13 @@ mod tests {
             OsString::from("bad\nrev"),
         ])
         .is_err());
+        assert!(parse_args(vec![
+            OsString::from("--receipt"),
+            OsString::from("receipt.json"),
+            OsString::from("--expected-revision"),
+            OsString::from("x".repeat(MAX_EXPECTED_REVISION_BYTES)),
+        ])
+        .is_ok());
     }
 
     #[test]

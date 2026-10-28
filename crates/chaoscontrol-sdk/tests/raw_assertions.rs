@@ -136,6 +136,8 @@ fn raw_assertions_declare_before_init_and_emit_afterward() {
     assert_eq!(invariant["display_type"], "AlwaysOrUnreachable");
     assert_eq!(invariant["catalog_status"], "accepted");
     assert_eq!(invariant["location"]["file"], "src/raw.rs");
+    assert_eq!(invariant["location"]["class"], "raw::class");
+    assert_eq!(invariant["location"]["function"], "raw::caller");
 
     let always = &assertions["raw always"];
     assert_eq!(always["condition"], true);

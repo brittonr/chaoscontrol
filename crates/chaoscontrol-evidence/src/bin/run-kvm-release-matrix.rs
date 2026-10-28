@@ -123,6 +123,16 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
         expected_revision,
         dry_run,
     };
+    if config.root.as_os_str().is_empty() || config.matrix.as_os_str().is_empty() {
+        return Err("--root and --matrix must not be empty".to_string());
+    }
+    if config
+        .output
+        .as_ref()
+        .is_some_and(|output| output.as_os_str().is_empty())
+    {
+        return Err("--out must not be empty".to_string());
+    }
     if !config.dry_run && (config.output.is_none() || config.expected_revision.is_none()) {
         return Err("--out and --expected-revision are required without --dry-run".to_string());
     }
@@ -732,6 +742,21 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn empty_output_path_is_rejected() {
+        let args = vec![
+            OsString::from("--root"),
+            OsString::from("."),
+            OsString::from("--matrix"),
+            OsString::from("matrix.json"),
+            OsString::from("--out"),
+            OsString::from(""),
+            OsString::from("--expected-revision"),
+            OsString::from("rev"),
+        ];
+        assert!(parse_args(args).is_err());
     }
 
     #[test]

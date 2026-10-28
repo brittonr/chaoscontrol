@@ -46,11 +46,21 @@ impl From<std::io::Error> for IntakeShellError {
     }
 }
 
+fn admit_output(output: &Path) -> Result<(), IntakeShellError> {
+    if output.as_os_str().is_empty() {
+        return Err(IntakeShellError::Io(std::io::Error::other(
+            "OCI bundle output path must not be empty",
+        )));
+    }
+    Ok(())
+}
+
 // r[impl chaoscontrol.oci_intake.bundle_lowering]
 pub fn materialize_bundle(
     topology: &OciTopology,
     output: &Path,
 ) -> Result<IntakeReceipt, IntakeShellError> {
+    admit_output(output)?;
     if output.exists() {
         return Err(IntakeShellError::OutputExists);
     }
@@ -457,6 +467,11 @@ mod tests {
     use std::collections::BTreeMap;
 
     const RESTART_LIMIT: u32 = 2;
+
+    #[test]
+    fn empty_output_path_is_rejected() {
+        assert!(admit_output(Path::new("")).is_err());
+    }
 
     fn make_tar(path: &Path, member: &str, bytes: &[u8]) {
         let file = File::create(path).unwrap();

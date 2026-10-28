@@ -4890,6 +4890,36 @@ mod tests {
     }
 
     #[test]
+    fn guidance_events_drive_frontier_coverage_edges() {
+        let report_with_guidance = |left: u64| {
+            let mut report = make_oracle_report();
+            report.events.push(chaoscontrol_fault::oracle::OracleEvent {
+                run_id: 0,
+                name: "antithesis_guidance".to_string(),
+                details: serde_json::json!({
+                    "message": "throughput",
+                    "guidance_type": "numeric",
+                    "maximize": true,
+                    "guidance_data": {"left": left},
+                    "hit": true
+                }),
+            });
+            report
+        };
+
+        let mut low = CoverageBitmap::new();
+        let mut high = CoverageBitmap::new();
+        let mut same = CoverageBitmap::new();
+        Explorer::enrich_with_protocol_events(&mut low, &report_with_guidance(1));
+        Explorer::enrich_with_protocol_events(&mut high, &report_with_guidance(9));
+        Explorer::enrich_with_protocol_events(&mut same, &report_with_guidance(9));
+
+        assert!(low.count_bits() > 0);
+        assert_ne!(low.as_slice(), high.as_slice());
+        assert_eq!(high.as_slice(), same.as_slice());
+    }
+
+    #[test]
     fn test_event_enrichment_no_events_no_enrichment() {
         let report = make_oracle_report();
         let mut coverage = CoverageBitmap::new();

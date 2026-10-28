@@ -172,11 +172,12 @@ rather than reintroducing the removed unbound command.
 JSON guidance is available through `guidance::emit_json` and the
 `cc_guidance_json!` macro; both bind to an existing stable assertion site.
 
-The exploration report now aggregates `antithesis_guidance` observations
-by message, type, and maximize direction, showing observation counts and
-the latest value. Guidance still does not alter frontier selection; using
-it for exploration ranking remains MAY-level explorer work. Emitting
-guidance does not change the assertion oracle or prove exploration quality.
+Guidance events feed the existing protocol-event coverage enrichment:
+their name and detail values hash into assertion-region edges, so novel
+guidance values make a branch interesting to the frontier. The exploration
+report aggregates the same observations by message, type, and maximize
+direction, showing counts and the latest value. Emitting guidance does not
+change the assertion oracle or prove exploration quality.
 
 ## Notes and sharp edges
 

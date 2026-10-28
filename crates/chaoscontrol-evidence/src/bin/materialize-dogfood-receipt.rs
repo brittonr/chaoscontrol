@@ -201,7 +201,7 @@ fn write_json(path: &Path, value: &Value) -> Result<(), String> {
 }
 
 fn write_atomic_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(path);
     fs::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;

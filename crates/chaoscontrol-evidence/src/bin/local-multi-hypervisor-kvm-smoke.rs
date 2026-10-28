@@ -346,7 +346,7 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(path);
     fs::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;

@@ -572,9 +572,7 @@ fn write_curated_receipt(
 }
 
 fn write_json(path: PathBuf, value: &impl Serialize) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("fixture path has no parent: {}", path.display()))?;
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(&path);
     fs::create_dir_all(parent)
         .map_err(|error| format!("failed to create fixture directory: {error}"))?;
     let mut bytes = serde_json::to_vec_pretty(value)

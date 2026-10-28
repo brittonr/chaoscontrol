@@ -82,8 +82,10 @@ fn copy_template(source: &Path, destination: &Path) -> Result<(), String> {
     if !source.is_dir() {
         return Err(format!("template is not a directory: {}", source.display()));
     }
-    fs::create_dir_all(destination.parent().unwrap_or_else(|| Path::new(".")))
-        .map_err(|error| format!("{}: {error}", destination.display()))?;
+    fs::create_dir_all(chaoscontrol_evidence::bounded_file::output_parent(
+        destination,
+    ))
+    .map_err(|error| format!("{}: {error}", destination.display()))?;
     copy_directory(source, destination, &mut 0)
 }
 
@@ -219,7 +221,7 @@ fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(path);
     fs::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;

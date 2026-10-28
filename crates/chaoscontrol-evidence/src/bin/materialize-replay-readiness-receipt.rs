@@ -132,7 +132,7 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 }
 
 fn write_atomic(path: &Path, value: &Value) -> Result<(), String> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(path);
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("receipt encode failed: {error}"))?;

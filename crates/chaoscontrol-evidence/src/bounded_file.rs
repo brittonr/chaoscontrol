@@ -4,6 +4,14 @@ use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
+/// Parent directory for an output path, using the current directory when the
+/// path has no non-empty parent component.
+pub fn output_parent(path: &Path) -> &Path {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
 pub(crate) fn read_bounded_regular_file(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
     let bytes = read_bounded_regular_bytes(path, maximum_bytes)?;
     String::from_utf8(bytes)
@@ -64,6 +72,15 @@ fn open_regular_file(path: &Path) -> EvidenceResult<File> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn output_parent_handles_relative_paths() {
+        assert_eq!(output_parent(Path::new("report.json")), Path::new("."));
+        assert_eq!(
+            output_parent(Path::new("out/report.json")),
+            Path::new("out")
+        );
+    }
 
     #[test]
     fn bounded_reads_accept_regular_files_at_the_limit() {

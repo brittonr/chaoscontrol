@@ -451,7 +451,7 @@ fn run_command(
     };
     let captured = execute_typed_operator_command_captured(&plan, execution_root)
         .map_err(|error| error.to_string())?;
-    let parent = log.parent().unwrap_or_else(|| Path::new("."));
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(log);
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     let mut file = open_log(log).map_err(|error| format!("{}: {error}", log.display()))?;
     file.write_all(&captured.stdout)
@@ -868,7 +868,7 @@ fn open_log(path: &Path) -> std::io::Result<fs::File> {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = chaoscontrol_evidence::bounded_file::output_parent(path);
     fs::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;

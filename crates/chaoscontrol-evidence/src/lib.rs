@@ -18,7 +18,7 @@ mod assertion;
 mod assertion_evidence_carrier;
 mod assertion_summary_identity;
 mod assertion_summary_semantics;
-mod bounded_file;
+pub mod bounded_file;
 pub mod bounded_tree_adoption;
 pub mod campaign_evidence_boundary;
 pub mod campaign_policy_readiness;

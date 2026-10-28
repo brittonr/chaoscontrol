@@ -964,7 +964,7 @@ fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
         .unwrap_or(usize::MAX)
         .min(usize::try_from(maximum_bytes).unwrap_or(usize::MAX));
     let mut bytes = Vec::with_capacity(capacity);
-    file.take(maximum_bytes + 1)
+    file.take(maximum_bytes.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|source| io_error(path, source))?;
     if bytes.len() as u64 > maximum_bytes {
@@ -1200,6 +1200,14 @@ mod tests {
         std::fs::remove_file(&runner).unwrap();
         std::fs::write(&runner, b"different").unwrap();
         assert!(stage_bundled_runner(&bundle, &staged, &expected, 1024).is_err());
+    }
+
+    #[test]
+    fn input_reads_accept_the_maximum_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("input.json");
+        fs::write(&path, b"{}").unwrap();
+        assert_eq!(read_bounded(&path, u64::MAX).unwrap(), b"{}");
     }
 
     #[test]

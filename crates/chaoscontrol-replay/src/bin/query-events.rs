@@ -139,6 +139,7 @@ fn execute(cli: Cli) -> Result<(), String> {
             receipt,
             limits,
         } => {
+            ensure_distinct_outputs(&output, &receipt)?;
             let limits = read_limits(limits)?;
             let events = load_events(events, recording, dlog, markers, &limits)?;
             let query: EventQuery = read_json(&query)?;
@@ -192,6 +193,7 @@ fn execute(cli: Cli) -> Result<(), String> {
             output,
             receipt,
         } => {
+            ensure_distinct_outputs(&output, &receipt)?;
             let facts: Vec<TimelineFact> = read_json(&facts)?;
             let rendered = match format {
                 TimelineFormat::Markdown => render_timeline_markdown(&facts),
@@ -211,6 +213,15 @@ fn execute(cli: Cli) -> Result<(), String> {
                 write_json(&path, &receipt)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn ensure_distinct_outputs(output: &Path, receipt: &Option<PathBuf>) -> Result<(), String> {
+    if receipt.as_deref() == Some(output) {
+        return Err(String::from(
+            "receipt path must differ from the rendered output path",
+        ));
     }
     Ok(())
 }
@@ -498,6 +509,28 @@ mod tests {
         })
         .is_err());
         assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn timeline_rejects_receipt_overwriting_output() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let facts = temp.path().join("facts.json");
+        let output = temp.path().join("out.md");
+        std::fs::write(
+            &facts,
+            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
+        )
+        .unwrap();
+        assert!(execute(Cli {
+            command: Command::Timeline {
+                facts,
+                format: TimelineFormat::Markdown,
+                output: output.clone(),
+                receipt: Some(output.clone()),
+            },
+        })
+        .is_err());
+        assert!(!output.exists());
     }
 
     #[test]

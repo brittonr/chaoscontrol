@@ -2812,10 +2812,7 @@ impl Explorer {
         let (assertion_stats, assertion_details, _, _, _) = self.collect_assertion_detail();
 
         let bugs: Vec<DashboardBug> = self
-            .corpus
-            .entries()
-            .iter()
-            .flat_map(|entry| entry.bugs_found.iter())
+            .all_bugs()
             .map(|b| DashboardBug {
                 bug_id: b.bug_id,
                 assertion_id: b.assertion_id,
@@ -4642,6 +4639,33 @@ mod tests {
         let explorer = Explorer::new(config);
         assert_eq!(explorer.rounds_completed, 0);
         assert_eq!(explorer.total_branches_run, 0);
+    }
+
+    #[test]
+    fn dashboard_state_includes_standalone_bugs() {
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        explorer.standalone_bugs.push(BugReport {
+            bug_id: 1,
+            assertion_id: 1,
+            assertion_identity: crate::test_support::assertion_identity(1),
+            fallback_scope: None,
+            process_instances: Default::default(),
+            marker_context: None,
+            assertion_location: "assertion 1".to_string(),
+            schedule: chaoscontrol_fault::schedule::FaultSchedule::new(),
+            snapshot: None,
+            tick: 0,
+            replay_parent_depth: 0,
+            replay_parent_snapshot_ref: None,
+            dedup_key: 1,
+            schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
+            random_faults: false,
+        });
+        let state = explorer.snapshot_state();
+        assert_eq!(state.bugs.len(), 1);
+        assert_eq!(state.bugs[0].bug_id, 1);
     }
 
     #[test]

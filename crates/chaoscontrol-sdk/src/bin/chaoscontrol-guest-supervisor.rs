@@ -3,6 +3,7 @@ use chaoscontrol_protocol::guest_process::{
 };
 use chaoscontrol_sdk::prelude::*;
 use chaoscontrol_sdk::supervisor::{StdProcessRuntime, Supervisor};
+use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
@@ -39,11 +40,11 @@ fn run_fixture_worker() -> Result<(), String> {
     let mut exit_after_ready = false;
     match role.as_str() {
         "writer" => {
-            std::fs::write(&shared_file, b"committed\n").map_err(|error| error.to_string())?;
+            write_data_file(&shared_file, b"committed\n").map_err(|error| error.to_string())?;
             if std::env::var("CHAOSCONTROL_FIXTURE_LOSE_SHARED_STATE").as_deref() == Ok("1") {
                 std::fs::remove_file(&shared_file).map_err(|error| error.to_string())?;
             }
-            std::fs::write(&commit_marker, b"writer committed\n")
+            write_data_file(&commit_marker, b"writer committed\n")
                 .map_err(|error| error.to_string())?;
             if std::env::var("CHAOSCONTROL_FIXTURE_WRITER_EXIT_ONCE").as_deref() == Ok("1") {
                 match std::fs::OpenOptions::new()
@@ -149,5 +150,46 @@ fn emit_events(events: Vec<ProcessLifecycleEvent>) {
             "guest_process_lifecycle",
             &serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({})),
         );
+    }
+}
+
+fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    file.write_all(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn fixture_writes_reject_symlinks_and_fifos() {
+        let root = std::env::temp_dir().join(format!(
+            "chaoscontrol-guest-supervisor-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let target = root.join("target");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.join("state");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(write_data_file(&link, b"replacement").is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+
+        let fifo = root.join("state.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(write_data_file(&fifo, b"replacement").is_err());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

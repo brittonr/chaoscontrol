@@ -773,6 +773,11 @@ pub fn receipt_for(
     result: &EventQueryResult,
     limits: &EventQueryLimits,
 ) -> Result<EventQueryReceipt, EventQueryError> {
+    limits.validate()?;
+    validate_query(query, limits)?;
+    if events.len() > limits.max_scanned_events {
+        return Err(EventQueryError::ScanBound);
+    }
     for event in events {
         admit_event(event)?;
     }
@@ -1898,6 +1903,15 @@ mod tests {
         assert_eq!(
             receipt_for(&EventQuery::All, &events, &inconsistent, &limits).unwrap_err(),
             EventQueryError::InvalidResult
+        );
+
+        let narrow_scan = EventQueryLimits {
+            max_scanned_events: 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &result, &narrow_scan).unwrap_err(),
+            EventQueryError::ScanBound
         );
     }
 

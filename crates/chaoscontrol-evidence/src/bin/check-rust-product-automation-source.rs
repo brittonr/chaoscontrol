@@ -70,11 +70,13 @@ fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
 fn list_files(root: &Path) -> Result<Vec<String>, String> {
     let mut files = Vec::new();
     let mut pending = vec![root.to_path_buf()];
+    let mut discovered = 0_usize;
     while let Some(directory) = pending.pop() {
         let entries = fs::read_dir(&directory)
             .map_err(|error| format!("{}: {error}", directory.display()))?;
         for entry in entries {
-            if files.len() + pending.len() >= MAX_ENTRIES {
+            discovered += 1;
+            if discovered > MAX_ENTRIES {
                 return Err(String::from("source guard entry bound exceeded"));
             }
             let entry = entry.map_err(|error| format!("{}: {error}", directory.display()))?;
@@ -96,6 +98,17 @@ fn list_files(root: &Path) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn source_walk_rejects_excessive_entries() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..=MAX_ENTRIES {
+            std::fs::create_dir(root.path().join(format!("entry{index}"))).unwrap();
+        }
+
+        let error = list_files(root.path()).expect_err("entry bound must fail");
+        assert!(error.contains("entry bound exceeded"));
+    }
 
     #[test]
     fn flake_reads_reject_symlinks_and_fifos() {

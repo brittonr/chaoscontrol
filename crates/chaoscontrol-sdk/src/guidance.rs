@@ -16,6 +16,7 @@ pub struct GuidanceCatalogEntry {
     pub guidance_type: &'static str,
     pub maximize: bool,
     pub class: &'static str,
+    pub function: fn() -> &'static str,
     pub file: &'static str,
     pub line: u32,
     pub column: u32,
@@ -29,6 +30,11 @@ pub static GUIDANCE_CATALOG: [GuidanceCatalogEntry];
 #[macro_export]
 macro_rules! __cc_register_guidance {
     ($id:expr, $kind:expr, $msg:expr, $guidance_type:expr, $maximize:expr, $class:expr, $file:expr, $line:expr, $column:expr) => {
+        fn __cc_guidance_function_name() -> &'static str {
+            fn __cc_guidance_probe() {}
+            let name = ::core::any::type_name_of_val(&__cc_guidance_probe);
+            &name[..name.len() - "::__cc_guidance_function_name::__cc_guidance_probe".len()]
+        }
         const _: () = {
             #[linkme::distributed_slice($crate::guidance::GUIDANCE_CATALOG)]
             static _GUIDANCE_ENTRY: $crate::guidance::GuidanceCatalogEntry =
@@ -39,6 +45,7 @@ macro_rules! __cc_register_guidance {
                     guidance_type: $guidance_type,
                     maximize: $maximize,
                     class: $class,
+                    function: __cc_guidance_function_name as fn() -> &'static str,
                     file: $file,
                     line: $line,
                     column: $column,
@@ -160,6 +167,7 @@ pub fn emit_numeric(
     kind: crate::assert::AssertionKind,
     message: &str,
     class: &str,
+    function: &str,
     file: &str,
     begin_line: u32,
     begin_column: u32,
@@ -172,6 +180,7 @@ pub fn emit_numeric(
         "numeric",
         message,
         class,
+        function,
         file,
         begin_line,
         begin_column,
@@ -188,6 +197,7 @@ pub fn emit_boolean(
     kind: crate::assert::AssertionKind,
     message: &str,
     class: &str,
+    function: &str,
     file: &str,
     begin_line: u32,
     begin_column: u32,
@@ -200,6 +210,7 @@ pub fn emit_boolean(
         "boolean",
         message,
         class,
+        function,
         file,
         begin_line,
         begin_column,
@@ -217,6 +228,7 @@ pub fn emit_catalog_record(entry: &GuidanceCatalogEntry) {
         entry.guidance_type,
         entry.message,
         entry.class,
+        (entry.function)(),
         entry.file,
         entry.line,
         entry.column,
@@ -233,6 +245,7 @@ fn emit(
     guidance_type: &str,
     message: &str,
     class: &str,
+    function: &str,
     file: &str,
     begin_line: u32,
     begin_column: u32,
@@ -249,7 +262,7 @@ fn emit(
         "id": message,
         "location": {
             "class": class,
-            "function": "",
+            "function": function,
             "file": file,
             "begin_line": begin_line,
             "begin_column": begin_column,
@@ -279,6 +292,7 @@ macro_rules! __cc_numeric_guidance {
                 $kind,
                 $message,
                 $class,
+                __cc_guidance_function_name(),
                 $file,
                 $line,
                 $column,
@@ -305,6 +319,7 @@ macro_rules! __cc_boolean_guidance {
             $kind,
             $message,
             $class,
+            __cc_guidance_function_name(),
             $file,
             $line,
             $column,

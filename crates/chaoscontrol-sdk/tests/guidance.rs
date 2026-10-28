@@ -59,6 +59,10 @@ fn guidance_records_match_the_antithesis_shape_and_watermark() {
     assert!(all["catalog_token"].as_str().is_some());
     assert!(all["assertion_fingerprint"].as_str().is_some());
     assert_eq!(all["location"]["class"], module_path!());
+    assert!(all["location"]["function"]
+        .as_str()
+        .expect("function")
+        .contains("guidance_records_match_the_antithesis_shape_and_watermark"));
     assert!(all["location"]["file"]
         .as_str()
         .expect("file")
@@ -82,6 +86,14 @@ fn guidance_records_match_the_antithesis_shape_and_watermark() {
         assert_eq!(record["catalog_status"], "accepted");
         assert!(record["catalog_token"].as_str().is_some());
         assert!(record["assertion_fingerprint"].as_str().is_some());
+        assert!(
+            record["location"]["function"]
+                .as_str()
+                .expect("function")
+                .ends_with("numeric_site"),
+            "function={:?}",
+            record["location"]["function"]
+        );
         assert_eq!(record["guidance_data"]["right"], 5);
     }
     assert_eq!(numeric[0]["guidance_data"]["left"], 5);

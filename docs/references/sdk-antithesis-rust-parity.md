@@ -162,9 +162,9 @@ Antithesis maximize mapping. Initialization emits one `hit = false` record
 with `guidance_data = null` per linked guidance site, like Antithesis.
 Records travel through the structured event path, so local output is the
 exact `{"antithesis_guidance": ...}` shape while the VMM records a named
-event. Each record also carries the accepted catalog token and assertion
-fingerprint, keeping guidance catalog-bound rather than reintroducing the
-removed unbound command.
+event. Each record also carries the accepted catalog token, assertion
+fingerprint, and caller function path, keeping guidance catalog-bound
+rather than reintroducing the removed unbound command.
 
 Still absent:
 

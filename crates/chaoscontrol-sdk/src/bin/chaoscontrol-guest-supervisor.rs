@@ -189,6 +189,12 @@ fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "fixture data target is not a regular file",
+        ));
+    }
     file.write_all(bytes)
 }
 
@@ -196,6 +202,31 @@ fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn data_writes_reject_non_regular_targets() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "chaoscontrol-supervisor-data-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let fifo = root.join("shared.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let _reader = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&fifo)
+            .unwrap();
+        assert_eq!(
+            write_data_file(&fifo, b"value").unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn manifest_reads_reject_symlinks_and_fifos() {

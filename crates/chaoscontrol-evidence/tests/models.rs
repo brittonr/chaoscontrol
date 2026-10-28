@@ -1786,6 +1786,13 @@ fn empty_replay_proof_coverage_root_is_rejected() {
 }
 
 #[test]
+fn empty_replay_readiness_roots_are_rejected() {
+    assert!(render_replay_readiness_status("").is_err());
+    assert!(check_replay_readiness_status("").is_err());
+    assert!(chaoscontrol_evidence::write_replay_readiness_status("").is_err());
+}
+
+#[test]
 fn empty_assertion_readiness_roots_are_rejected() {
     assert!(chaoscontrol_evidence::render_assertion_readiness_status("").is_err());
     assert!(check_assertion_readiness_status("").is_err());

@@ -953,6 +953,10 @@ pub fn render_replay_proof_coverage_doc_from_parts(
 
 pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<String> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "replay readiness root must not be empty",
+    )?;
     let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
     let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
         EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
@@ -1050,6 +1054,10 @@ fn render_replay_readiness_proof_row(
 
 pub fn check_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "replay readiness root must not be empty",
+    )?;
     let expected = render_replay_readiness_status(root)?;
     let report_path = root.join(REPLAY_READINESS_STATUS_DOC);
     let actual = bounded_file::read_bounded_regular_file(&report_path, MAX_EVIDENCE_JSON_BYTES)?;
@@ -1061,6 +1069,10 @@ pub fn check_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<(
 
 pub fn write_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "replay readiness root must not be empty",
+    )?;
     let rendered = render_replay_readiness_status(root)?;
     let report_path = root.join(REPLAY_READINESS_STATUS_DOC);
     std::fs::write(&report_path, rendered).map_err(|err| {

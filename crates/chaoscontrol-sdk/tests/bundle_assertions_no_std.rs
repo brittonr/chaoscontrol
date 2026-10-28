@@ -41,6 +41,19 @@ fn comparison_macros_accept_the_same_shape_without_details() {
 
 #[cfg(not(feature = "full"))]
 #[test]
+fn local_output_constants_are_available_without_full() {
+    assert_eq!(
+        chaoscontrol_sdk::LOCAL_OUTPUT,
+        "CHAOSCONTROL_SDK_LOCAL_OUTPUT"
+    );
+    assert_eq!(
+        chaoscontrol_sdk::ANTITHESIS_LOCAL_OUTPUT,
+        "ANTITHESIS_SDK_LOCAL_OUTPUT"
+    );
+}
+
+#[cfg(not(feature = "full"))]
+#[test]
 fn random_choice_slice_is_available_without_full() {
     let empty: &[u8] = &[];
     assert_eq!(random_choice(empty), None);

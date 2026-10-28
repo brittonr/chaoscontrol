@@ -82,10 +82,13 @@ pub mod workload;
 #[doc(hidden)]
 pub use serde_json;
 
+/// Primary environment variable for local JSONL output.
+pub const LOCAL_OUTPUT: &str = "CHAOSCONTROL_SDK_LOCAL_OUTPUT";
+/// Antithesis-compatible fallback environment variable for local output.
+pub const ANTITHESIS_LOCAL_OUTPUT: &str = "ANTITHESIS_SDK_LOCAL_OUTPUT";
+
 #[cfg(feature = "full")]
 mod internal;
-#[cfg(feature = "full")]
-pub use internal::{ANTITHESIS_LOCAL_OUTPUT, LOCAL_OUTPUT};
 #[cfg(feature = "full")]
 mod local_json_security;
 

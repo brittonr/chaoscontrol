@@ -32,17 +32,6 @@ enum TransportMode {
 unsafe impl Send for TransportMode {}
 unsafe impl Sync for TransportMode {}
 
-/// Name of the environment variable for local JSON output.
-///
-/// Set `CHAOSCONTROL_SDK_LOCAL_OUTPUT=/path/to/file.json` to enable
-/// local assertion logging when running outside a ChaosControl VM.
-///
-/// This mirrors Antithesis's `ANTITHESIS_SDK_LOCAL_OUTPUT`, which is also
-/// accepted as a fallback when the ChaosControl variable is unset.
-pub const LOCAL_OUTPUT: &str = "CHAOSCONTROL_SDK_LOCAL_OUTPUT";
-/// Antithesis-compatible local output variable, used when [`LOCAL_OUTPUT`]
-/// is unset.
-pub const ANTITHESIS_LOCAL_OUTPUT: &str = "ANTITHESIS_SDK_LOCAL_OUTPUT";
 pub const PROCESS_TRANSPORT_LOCK: &str = "CHAOSCONTROL_SDK_TRANSPORT_LOCK";
 
 enum ProcessTransportLock {
@@ -138,7 +127,7 @@ fn detect_mode() -> TransportMode {
 /// Return the configured local output variable and path, preferring the
 /// ChaosControl name.
 fn local_output_path() -> Option<(&'static str, String)> {
-    for variable in [LOCAL_OUTPUT, ANTITHESIS_LOCAL_OUTPUT] {
+    for variable in [crate::LOCAL_OUTPUT, crate::ANTITHESIS_LOCAL_OUTPUT] {
         if let Ok(path) = std::env::var(variable) {
             return Some((variable, path));
         }

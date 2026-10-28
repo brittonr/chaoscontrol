@@ -33,7 +33,7 @@ Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |
 | Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full`; records names verbatim (0.3.0 behavior) | equivalent |
 | Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` (primary) or `ANTITHESIS_SDK_LOCAL_OUTPUT` (fallback) | equivalent |
-| Local output constant | `LOCAL_OUTPUT` | `LOCAL_OUTPUT` and `ANTITHESIS_LOCAL_OUTPUT` at crate root | superset |
+| Local output constant | `LOCAL_OUTPUT` | `LOCAL_OUTPUT` and `ANTITHESIS_LOCAL_OUTPUT` at crate root in every feature set | superset |
 | Convenience imports | `prelude` | `prelude` with both `cc_*` and unprefixed Antithesis names, `lifecycle`/`random` modules, plus the `compat` module | superset |
 
 ## Assertion macros

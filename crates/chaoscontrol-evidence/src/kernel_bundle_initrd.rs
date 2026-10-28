@@ -229,13 +229,17 @@ pub fn write_private_kfunc_initrd(
     request: &PrivateKfuncInitrdRequest<'_>,
 ) -> EvidenceResult<PrivateKfuncInitrdSummary> {
     validate_request(request)?;
-    if let Some(parent) = request.output_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    let parent = request
+        .output_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let directory = File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     let closure_roots = read_closure_roots(request.closure_list_path)?;
     let artifact_files = private_kfunc_artifact_paths(request.artifacts_dir)?;
-    let output_file = File::create(request.output_path)?;
-    let mut writer = NewcWriter::new(output_file);
+    let mut writer = NewcWriter::new(temporary.as_file_mut());
     let mut seen = BTreeSet::new();
 
     for dir in ROOT_DIRS {
@@ -292,6 +296,17 @@ pub fn write_private_kfunc_initrd(
         writer.add_absolute_tree(&mut seen, root)?;
     }
     writer.finish(&mut seen)?;
+    let entries_written = writer.entries_written;
+    let archive_bytes = writer.bytes_written;
+    temporary.as_file().sync_all()?;
+    temporary.persist(request.output_path).map_err(|error| {
+        EvidenceError::new(format!(
+            "failed to install initrd {}: {}",
+            request.output_path.display(),
+            error.error
+        ))
+    })?;
+    directory.sync_all()?;
 
     Ok(PrivateKfuncInitrdSummary {
         schema_version: PRIVATE_KFUNC_INITRD_SCHEMA_VERSION,
@@ -299,8 +314,8 @@ pub fn write_private_kfunc_initrd(
         expected_kernel_release: request.expected_kernel_release.to_string(),
         bpftool_guest_path: absolute_guest_path(request.bpftool_path)?,
         delete_module_helper_guest_path: delete_module_helper_guest_path.to_string(),
-        entries_written: writer.entries_written,
-        archive_bytes: writer.bytes_written,
+        entries_written,
+        archive_bytes,
         closure_roots: closure_roots.len(),
         artifact_files: artifact_files
             .iter()
@@ -819,6 +834,46 @@ fn unsupported_file_error<T>(path: &Path, mode: u32) -> EvidenceResult<T> {
 mod tests {
     use super::*;
     use std::os::unix::fs as unix_fs;
+
+    #[test]
+    fn initrd_publication_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().expect("root");
+        let artifacts = root.path().join("artifacts");
+        fs::create_dir(&artifacts).expect("artifacts directory");
+        for name in [
+            PRIVATE_KFUNC_MODULE_FILE,
+            PRIVATE_KFUNC_BPF_FILE,
+            PRIVATE_KFUNC_LOADER_FILE,
+        ] {
+            fs::write(artifacts.join(name), b"artifact").expect("artifact");
+        }
+        let busybox = root.path().join("busybox");
+        let bpftool = root.path().join("bpftool");
+        let helper = root.path().join("delete-module");
+        let closure_list = root.path().join("closure.list");
+        fs::write(&busybox, b"busybox").expect("busybox");
+        fs::write(&bpftool, b"bpftool").expect("bpftool");
+        fs::write(&helper, b"helper").expect("helper");
+        fs::write(&closure_list, b"").expect("closure list");
+        let victim = root.path().join("victim");
+        fs::write(&victim, b"victim").expect("victim");
+        let output = root.path().join("initrd.cpio");
+        unix_fs::symlink(&victim, &output).expect("output symlink");
+        let request = PrivateKfuncInitrdRequest {
+            output_path: &output,
+            artifacts_dir: &artifacts,
+            busybox_path: &busybox,
+            bpftool_path: &bpftool,
+            delete_module_helper_path: &helper,
+            closure_list_path: &closure_list,
+            expected_kernel_release: "6.18.20",
+        };
+
+        let summary = write_private_kfunc_initrd(&request).expect("initrd writes");
+        assert_eq!(summary.output_path, output.display().to_string());
+        assert_eq!(fs::read(&victim).expect("victim"), b"victim");
+        assert_ne!(fs::read(&output).expect("initrd"), b"victim");
+    }
 
     #[test]
     fn shared_observation_preserves_ordered_legacy_members() {

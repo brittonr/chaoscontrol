@@ -29,6 +29,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
         ));
     }
     let output = PathBuf::from(&args[0]);
+    if output.as_os_str().is_empty() {
+        return Err(String::from("OUTPUT must not be empty"));
+    }
     let expectations = load_json(Path::new(&required("DOGFOOD_EXPECTATIONS")?))?;
     let dogfood_summary = optional("DOGFOOD_SUMMARY_JSON")
         .filter(|value| !value.is_empty())
@@ -155,6 +158,11 @@ fn write_atomic(path: &Path, value: &Value) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn empty_output_path_is_rejected() {
+        assert!(run(vec![String::new()]).is_err());
+    }
 
     #[test]
     fn input_reads_reject_symlinks_and_fifos() {

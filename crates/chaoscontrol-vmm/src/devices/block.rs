@@ -70,6 +70,7 @@ pub enum CacheRecoveryMode {
 /// Page size for copy-on-write tracking (4 KB, matching Linux page size).
 const PAGE_SIZE: usize = 4096;
 const MAX_PENDING_BLOCK_OBSERVATIONS: usize = 4_096;
+const MAX_BLOCK_IMAGE_BYTES: u64 = 1 << 30;
 
 /// Errors returned by block device operations.
 #[derive(Clone, Debug, Snafu)]
@@ -455,6 +456,12 @@ fn read_image_file(path: &str) -> std::io::Result<Vec<u8>> {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "block image is not a regular file",
+        ));
+    }
+    if metadata.len() > MAX_BLOCK_IMAGE_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "block image exceeds the byte limit",
         ));
     }
     let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
@@ -1258,6 +1265,15 @@ impl DeterministicBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_read_rejects_oversized_file() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("disk.img");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_BLOCK_IMAGE_BYTES + 1).unwrap();
+        assert!(read_image_file(path.to_str().unwrap()).is_err());
+    }
 
     #[test]
     fn image_reads_reject_symlinks_and_fifos() {

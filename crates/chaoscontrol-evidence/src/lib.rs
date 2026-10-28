@@ -3213,6 +3213,17 @@ mod chunk_copy_tests {
     use super::*;
 
     #[test]
+    fn safe_join_rejects_absolute_and_parent_paths() {
+        let base = Path::new("/tmp/base");
+        assert_eq!(
+            safe_join_relative(base, "snapshots/a").unwrap(),
+            base.join("snapshots/a")
+        );
+        assert!(safe_join_relative(base, "/abs").is_err());
+        assert!(safe_join_relative(base, "../escape").is_err());
+    }
+
+    #[test]
     fn artifact_hash_rejects_symlinks() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("artifact");

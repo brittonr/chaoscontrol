@@ -14,6 +14,16 @@ pub use crate::replay_readiness_render::{
 use crate::typed_operator_command::{command_display, parse_plan, CommandPlan};
 use crate::{ensure, EvidenceError, EvidenceResult};
 
+fn same_path(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (std::path::absolute(left), std::path::absolute(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
 pub fn summarize_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
     summarize_receipt(&load_json(path.as_ref())?)
 }
@@ -26,6 +36,11 @@ pub fn write_dashboard_path(
     receipt_path: impl AsRef<Path>,
     output_path: impl AsRef<Path>,
 ) -> EvidenceResult<()> {
+    if same_path(receipt_path.as_ref(), output_path.as_ref()) {
+        return Err(EvidenceError::new(
+            "dashboard output must not overwrite the receipt input",
+        ));
+    }
     let receipt = load_json(receipt_path.as_ref())?;
     let summary = summarize_receipt(&receipt)?;
     let html = render_dashboard(&receipt, &summary)?;
@@ -36,6 +51,14 @@ pub fn write_fleet_triage_index_path(
     receipt_paths: &[impl AsRef<Path>],
     output_path: impl AsRef<Path>,
 ) -> EvidenceResult<()> {
+    if receipt_paths
+        .iter()
+        .any(|path| same_path(path.as_ref(), output_path.as_ref()))
+    {
+        return Err(EvidenceError::new(
+            "fleet index output must not overwrite a receipt input",
+        ));
+    }
     let html = render_fleet_triage_index_path(receipt_paths)?;
     write_bytes(output_path.as_ref(), html.as_bytes())
 }
@@ -4427,5 +4450,32 @@ mod tests {
         let file = std::fs::File::create(&oversized).unwrap();
         file.set_len(crate::MAX_EVIDENCE_JSON_BYTES + 1).unwrap();
         assert!(read_surface_text(&oversized).is_err());
+    }
+}
+
+#[cfg(test)]
+mod output_overlap_tests {
+    use super::*;
+
+    #[test]
+    fn dashboard_output_cannot_overwrite_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        let receipt = sample_replay_readiness_receipt(true, "passed");
+        std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(write_dashboard_path(&path, &path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn fleet_index_output_cannot_overwrite_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        let receipt = sample_replay_readiness_receipt(true, "passed");
+        std::fs::write(&path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(write_fleet_triage_index_path(&[&path], &path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 }

@@ -289,7 +289,10 @@ fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
-    let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
+    let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > MAX_INPUT_BYTES {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
     write_bytes(path, &bytes)
 }
 

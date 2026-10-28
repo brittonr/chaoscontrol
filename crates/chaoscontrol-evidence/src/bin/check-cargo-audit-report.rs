@@ -98,12 +98,18 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
         ));
     }
     let mut bytes = Vec::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!(
             "invalid JSON in {}: exceeds the input byte bound",
+            path.display()
+        ));
+    }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!(
+            "invalid JSON in {}: changed while reading",
             path.display()
         ));
     }
@@ -138,6 +144,11 @@ mod tests {
             String::new(),
         ])
         .is_err());
+    }
+
+    #[test]
+    fn report_reads_reject_length_changes() {
+        assert!(read_bounded(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

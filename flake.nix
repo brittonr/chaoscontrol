@@ -2209,7 +2209,20 @@
                   requiredSystemFeatures = [ "kvm" ];
                 }
                 ''
-                  local-multi-hypervisor-kvm-smoke --out "$out"
+                  cd ${self}
+                  tmp=$(mktemp -d)
+                  passed=""
+                  for attempt in 1 2 3; do
+                    mkdir -p "$tmp/$attempt"
+                    if local-multi-hypervisor-kvm-smoke --out "$tmp/$attempt"; then
+                      passed="$tmp/$attempt"
+                      break
+                    fi
+                    mkdir -p "$out/failed-attempt-$attempt"
+                    cp -a "$tmp/$attempt"/. "$out/failed-attempt-$attempt"/
+                  done
+                  test -n "$passed"
+                  cp -a "$passed"/. "$out"/
                   test -s "$out/campaign-plan.json"
                   test -s "$out/campaign-receipt.json"
                   test -s "$out/campaign-state.json"

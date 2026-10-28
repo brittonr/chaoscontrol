@@ -82,7 +82,7 @@ corrective slots are consumed. No failed or historical source is relabeled.
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >
-> The workspace has 24 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
+> The workspace has 25 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
 >
 > The selected Cargo command owns the test inventory. This projection does not copy a test count. The authority is `cargo test --workspace --all-targets -- --list`.
 >

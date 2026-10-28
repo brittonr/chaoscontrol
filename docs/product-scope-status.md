@@ -4,7 +4,7 @@ Generated from `contracts/product-scope/registry.ncl` and named repository facts
 
 ## Architecture facts
 
-The Cargo workspace has 24 explicit crates. The source is `Cargo.toml`.
+The Cargo workspace has 25 explicit crates. The source is `Cargo.toml`.
 
 | Capability | State | Status label | Owner | Evidence | Boundary |
 | --- | --- | --- | --- | --- | --- |

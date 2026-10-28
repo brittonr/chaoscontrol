@@ -25,6 +25,16 @@ struct AppState {
     tx: broadcast::Sender<DashboardEvent>,
 }
 
+fn read_lock<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
+    lock.read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn write_lock<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
+    lock.write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Default dashboard bind address: loopback only.
 ///
 /// The dashboard has no authentication. Binding to anything beyond
@@ -179,7 +189,7 @@ async fn annotation_js_handler() -> impl IntoResponse {
 }
 
 async fn state_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let data = state.state.read().unwrap();
+    let data = read_lock(&state.state);
     let json = serde_json::to_string(&*data).unwrap_or_else(|_| "{}".to_string());
     (
         StatusCode::OK,
@@ -224,7 +234,7 @@ async fn sse_handler(
 }
 
 async fn bugs_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let data = state.state.read().unwrap();
+    let data = read_lock(&state.state);
     let json = serde_json::to_string(&data.bugs).unwrap_or_else(|_| "[]".to_string());
     (
         StatusCode::OK,
@@ -237,7 +247,7 @@ async fn bug_detail_handler(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<usize>,
 ) -> impl IntoResponse {
-    let data = state.state.read().unwrap();
+    let data = read_lock(&state.state);
     if let Some(bug) = data.bugs.get(id) {
         let json = serde_json::to_string(bug).unwrap_or_else(|_| "{}".to_string());
         (
@@ -262,7 +272,7 @@ async fn event_receiver_loop(
     tokio::task::spawn_blocking(move || {
         while let Ok(event) = rx.recv() {
             {
-                let mut data = state.state.write().unwrap();
+                let mut data = write_lock(&state.state);
                 match &event {
                     DashboardEvent::Started {
                         num_vms,
@@ -353,7 +363,7 @@ async fn event_receiver_loop(
             let _ = broadcast_tx.send(event);
         }
 
-        let mut data = state.state.write().unwrap();
+        let mut data = write_lock(&state.state);
         if data.running {
             data.running = false;
             if data.finish_reason.is_empty() {
@@ -368,6 +378,22 @@ async fn event_receiver_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poisoned_state_locks_remain_readable() {
+        let lock = RwLock::new(1_u32);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _guard = lock.write().unwrap();
+                    panic!("poison dashboard state");
+                }));
+            });
+        });
+        assert_eq!(*read_lock(&lock), 1);
+        *write_lock(&lock) = 2;
+        assert_eq!(*read_lock(&lock), 2);
+    }
 
     #[test]
     fn dashboard_host_accepts_loopback_names_and_addresses() {

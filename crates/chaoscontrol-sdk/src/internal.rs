@@ -440,8 +440,10 @@ fn escape_json(s: &str) -> String {
 /// Uses the host entropy-backed `rand` runtime.  NOT deterministic — that's
 /// the point: outside Antithesis/ChaosControl, random should be truly random.
 pub(crate) fn local_random_u64() -> u64 {
-    let entropy = rand::random::<u64>();
+    use std::hash::BuildHasher;
+
     let sequence = RANDOM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let entropy = std::collections::hash_map::RandomState::new().hash_one(sequence);
     entropy ^ sequence
 }
 

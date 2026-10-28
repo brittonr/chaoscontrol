@@ -10,7 +10,7 @@
 //!
 //! # `rand` crate integration
 //!
-//! With the `full` feature (default), [`ChaosControlRng`] implements
+//! With the `rand_v0_8` feature (default), [`ChaosControlRng`] implements
 //! `rand::RngCore`, allowing use with the entire `rand` ecosystem:
 //!
 //! ```rust,ignore
@@ -97,7 +97,7 @@ fn fill_bytes_with(buf: &mut [u8], mut next: impl FnMut() -> u64) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  rand::RngCore integration (requires `full` feature)
+//  rand::RngCore integration (requires `rand_v0_8` feature)
 // ═══════════════════════════════════════════════════════════════════════
 
 /// A random number generator backed by ChaosControl's guided randomness.
@@ -132,7 +132,7 @@ impl ChaosControlRng {
 /// Antithesis-compatible name for [`ChaosControlRng`].
 pub type AntithesisRng = ChaosControlRng;
 
-#[cfg(feature = "full")]
+#[cfg(feature = "rand_v0_8")]
 impl rand::RngCore for ChaosControlRng {
     fn next_u32(&mut self) -> u32 {
         (get_random() & 0xFFFF_FFFF) as u32
@@ -155,7 +155,7 @@ impl rand::RngCore for ChaosControlRng {
 /// Mark `ChaosControlRng` as cryptographically secure for the `rand`
 /// ecosystem.  The VMM's ChaCha20 PRNG is cryptographically strong
 /// (though the VMM of course knows all values).
-#[cfg(feature = "full")]
+#[cfg(feature = "rand_v0_8")]
 impl rand::CryptoRng for ChaosControlRng {}
 
 #[cfg(feature = "rand_v0_9")]

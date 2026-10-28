@@ -159,6 +159,9 @@ pub fn format_triage_markdown(report: &TriageReport) -> String {
     // Timeline
     md.push_str("## Timeline\n\n");
     md.push_str("Events leading up to the bug:\n\n");
+    if report.timeline_truncated {
+        md.push_str("_Timeline truncated to the most recent entries._\n\n");
+    }
     md.push_str("| Tick | VM | Event |\n");
     md.push_str("|------|-------|-------|\n");
     for entry in &report.timeline {
@@ -283,6 +286,7 @@ mod tests {
                 description: "Leader must be valid".to_string(),
                 details: None,
             },
+            timeline_truncated: false,
             timeline: vec![
                 TimelineEntry {
                     tick: 100,

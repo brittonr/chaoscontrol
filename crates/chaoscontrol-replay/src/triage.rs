@@ -4,6 +4,9 @@ use crate::recording::{RecordedEvent, Recording};
 use crate::text::{prefix_at_char_boundary, suffix_at_char_boundary};
 use serde::{Deserialize, Serialize};
 
+/// Named bound on timeline entries retained in a triage report.
+pub const MAX_TRIAGE_TIMELINE_ENTRIES: usize = 10_000;
+
 /// Automatically generates triage reports for bugs.
 pub struct TriageEngine;
 
@@ -89,6 +92,11 @@ impl TriageEngine {
             })
             .collect();
         timeline.sort_by_key(|entry| entry.tick);
+        let timeline_truncated = timeline.len() > MAX_TRIAGE_TIMELINE_ENTRIES;
+        if timeline_truncated {
+            let start = timeline.len() - MAX_TRIAGE_TIMELINE_ENTRIES;
+            timeline = timeline.split_off(start);
+        }
 
         // VM states (simplified - would need actual snapshot access)
         let vm_states: Vec<_> = (0..recording.config.num_vms)
@@ -148,6 +156,7 @@ impl TriageEngine {
             summary,
             assertion,
             timeline,
+            timeline_truncated,
             schedule_description,
             vm_states,
             reproduction,
@@ -167,6 +176,9 @@ pub struct TriageReport {
     pub assertion: AssertionInfo,
     /// Timeline of events leading up to the bug.
     pub timeline: Vec<TimelineEntry>,
+    /// Whether the timeline keeps only the most recent entries.
+    #[serde(default)]
+    pub timeline_truncated: bool,
     /// The fault schedule that triggered it.
     pub schedule_description: String,
     /// VM states at the time of failure.
@@ -449,6 +461,34 @@ mod tests {
 
         assert!(has_fault);
         assert!(has_assertion);
+    }
+
+    #[test]
+    fn triage_timeline_is_bounded_to_the_latest_entries() {
+        let mut recording = test_recording();
+        recording.events.clear();
+        let bug_tick = u64::try_from(MAX_TRIAGE_TIMELINE_ENTRIES + 1).unwrap();
+        for _ in 0..=MAX_TRIAGE_TIMELINE_ENTRIES {
+            recording.events.push(RecordedEvent::FaultFired {
+                tick: bug_tick - 1,
+                fault: String::from("NetworkPartition"),
+            });
+        }
+        recording.events.push(RecordedEvent::BugDetected {
+            tick: bug_tick,
+            bug_id: 1,
+            description: String::from("bug"),
+            checkpoint_id: None,
+        });
+
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+        assert!(report.timeline_truncated);
+        assert_eq!(report.timeline.len(), MAX_TRIAGE_TIMELINE_ENTRIES);
+        assert_eq!(report.timeline.last().unwrap().tick, bug_tick);
+        assert!(report
+            .timeline
+            .windows(2)
+            .all(|pair| pair[0].tick <= pair[1].tick));
     }
 
     #[test]

@@ -1347,11 +1347,17 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
         }
 
         let path = output_dir.join(format!("bug_{index}.json"));
-        if path.exists() && !overwrite {
-            return Err(CheckpointBugExportError::AlreadyExists { path });
-        }
         let json = serde_json::to_string_pretty(bug)?;
-        write_bug_artifact(&path, json.as_bytes(), overwrite)?;
+        if let Err(error) = write_bug_artifact(&path, json.as_bytes(), overwrite) {
+            if !overwrite {
+                if let CheckpointBugExportError::Io { source } = &error {
+                    if source.kind() == std::io::ErrorKind::AlreadyExists {
+                        return Err(CheckpointBugExportError::AlreadyExists { path });
+                    }
+                }
+            }
+            return Err(error);
+        }
         bugs_written += 1;
     }
 

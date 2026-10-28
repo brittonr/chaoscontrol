@@ -34,6 +34,9 @@ fn run(args: Vec<String>) -> Result<String, String> {
     if receipt_path.as_os_str().is_empty() || output_path.as_os_str().is_empty() {
         return Err(String::from("receipt and output paths must not be empty"));
     }
+    if same_path(&receipt_path, &output_path) {
+        return Err(String::from("OUTPUT must not overwrite the matrix receipt"));
+    }
     let bytes = read_bounded(&receipt_path, MAX_MATRIX_RECEIPT_BYTES)?;
     let receipt: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", receipt_path.display()))?;
@@ -41,6 +44,16 @@ fn run(args: Vec<String>) -> Result<String, String> {
     write_summary(&output_path, format!("{summary}\n").as_bytes())
         .map_err(|error| format!("{}: {error}", output_path.display()))?;
     Ok(summary)
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (std::path::absolute(left), std::path::absolute(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
@@ -87,6 +100,22 @@ fn write_summary(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn output_cannot_alias_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("receipt.json");
+        assert!(run(vec![path.display().to_string(), path.display().to_string()]).is_err());
+        assert!(run(vec![
+            path.display().to_string(),
+            root.path()
+                .join(".")
+                .join("receipt.json")
+                .display()
+                .to_string()
+        ])
+        .is_err());
+    }
 
     #[test]
     fn empty_paths_are_rejected() {

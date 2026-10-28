@@ -3145,9 +3145,18 @@ impl SnapshotChunkManifest {
             self.schema_version == CHUNK_MANIFEST_SCHEMA_VERSION,
             format!("chunk manifest schema_version must be {CHUNK_MANIFEST_SCHEMA_VERSION}"),
         )?;
+        let original_path = Path::new(&self.original_path);
         ensure(
-            !self.original_path.is_empty() && self.original_path.len() <= MAX_SNAPSHOT_PATH_BYTES,
-            "chunk manifest original_path must be non-empty and bounded",
+            !self.original_path.is_empty()
+                && self.original_path.len() <= MAX_SNAPSHOT_PATH_BYTES
+                && !self.original_path.contains("..")
+                && self.original_path.ends_with(".snapshot.bin")
+                && original_path.file_name().is_some()
+                && original_path.components().count() == 1
+                && original_path
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_))),
+            "chunk manifest original_path must be a local snapshot filename",
         )?;
         ensure(
             self.original_size > 0,

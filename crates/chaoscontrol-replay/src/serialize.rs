@@ -86,7 +86,7 @@ fn create_output_file(path: &Path) -> std::io::Result<File> {
         .create(true)
         .truncate(true)
         .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
 }
 
@@ -559,6 +559,20 @@ mod tests {
         let path = Path::new("/nonexistent/recording.json");
         let result = load_recording(path);
         assert!(result.is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_recording_rejects_fifo_target_without_blocking() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let fifo = temp_dir.path().join("fifo");
+        let path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+
+        assert!(save_recording(&test_recording(), &fifo).is_err());
     }
 
     #[test]

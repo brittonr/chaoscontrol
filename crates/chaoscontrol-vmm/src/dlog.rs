@@ -434,7 +434,18 @@ pub struct DlogReader {
 impl DlogReader {
     /// Open a dlog file for reading.
     pub fn open(path: &Path) -> io::Result<Self> {
-        let file = File::open(path)?;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path)?;
+        if !file.metadata()?.file_type().is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "dlog input is not a regular file",
+            ));
+        }
         Ok(Self {
             reader: BufReader::with_capacity(64 * 1024, file),
             offset: 0,
@@ -709,6 +720,18 @@ pub fn dlog_stats(path: &Path) -> io::Result<std::collections::BTreeMap<u8, u64>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reader_rejects_symlink_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.dlog");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("run.dlog");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(DlogReader::open(&link).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
 
     #[test]
     fn writer_rejects_symlink_targets() {

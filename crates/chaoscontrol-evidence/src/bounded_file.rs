@@ -35,7 +35,10 @@ pub(crate) fn read_bounded_regular_bytes(
     let bounded_length = maximum_bytes
         .checked_add(1)
         .ok_or_else(|| EvidenceError::new("input byte limit overflow"))?;
-    let mut bytes = Vec::new();
+    let capacity = usize::try_from(metadata.len())
+        .unwrap_or(usize::MAX)
+        .min(usize::try_from(maximum_bytes).unwrap_or(usize::MAX));
+    let mut bytes = Vec::with_capacity(capacity);
     file.by_ref()
         .take(bounded_length)
         .read_to_end(&mut bytes)

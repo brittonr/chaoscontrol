@@ -300,6 +300,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn triage_json_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested.json");
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        std::fs::write(&path, nested).unwrap();
+        assert!(read_json_value(&path).is_err());
+    }
+
+    #[test]
     fn triage_output_cannot_overwrite_inputs() {
         let root = tempfile::tempdir().unwrap();
         let receipt = root.path().join("receipt.json");

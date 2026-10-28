@@ -265,6 +265,25 @@ mod publication_tests {
     }
 
     #[test]
+    fn template_copy_publishes_content_and_permissions() {
+        let root = tempfile::tempdir().unwrap();
+        let template = root.path().join("template");
+        std::fs::create_dir(&template).unwrap();
+        let source = template.join("main.rs");
+        fs::write(&source, b"fn main() {}\n").unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o440)).unwrap();
+        let destination = root.path().join("workload");
+
+        copy_template(&template, &destination).unwrap();
+        let copied = destination.join("main.rs");
+        assert_eq!(fs::read(&copied).unwrap(), b"fn main() {}\n");
+        assert_eq!(
+            fs::metadata(&copied).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+    }
+
+    #[test]
     fn template_byte_reads_reject_symlinks_and_fifos() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("target.bin");

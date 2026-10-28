@@ -86,8 +86,14 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
     validate_recording(recording).map_err(|error| SerializeError::InvalidRecording {
         message: format!("{error:?}"),
     })?;
-    let file = File::create(path)?;
-    serde_json::to_writer_pretty(file, recording)?;
+    let bytes = serde_json::to_vec_pretty(recording)?;
+    if bytes.len() > MAX_RECORDING_JSON_BYTES {
+        return Err(SerializeError::RecordingTooLarge {
+            limit: MAX_RECORDING_JSON_BYTES,
+        });
+    }
+    let mut file = File::create(path)?;
+    file.write_all(&bytes)?;
     Ok(())
 }
 
@@ -366,6 +372,26 @@ mod tests {
             load_recording(&path),
             Err(SerializeError::RecordingTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn save_recording_rejects_oversized_serialization() {
+        use crate::recording::RecordedEvent;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("oversized.json");
+        let mut recording = test_recording();
+        recording.events.push(RecordedEvent::SerialOutput {
+            tick: 1,
+            vm_index: 0,
+            data: "x".repeat(MAX_RECORDING_JSON_BYTES),
+        });
+
+        assert!(matches!(
+            save_recording(&recording, &path),
+            Err(SerializeError::RecordingTooLarge { .. })
+        ));
+        assert!(!path.exists());
     }
 
     #[test]

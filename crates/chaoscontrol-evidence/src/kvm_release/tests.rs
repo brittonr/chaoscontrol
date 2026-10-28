@@ -161,6 +161,13 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_accepts_safe_nested_retained_artifact_paths() {
+    let mut matrix = sample_matrix();
+    matrix.rows[0].retained_artifacts = vec!["logs/stdout.log".to_string()];
+    validate_matrix(&matrix).expect("safe nested artifact path is admitted");
+}
+
+#[test]
 fn matrix_rejects_unsafe_retained_artifact_paths() {
     for path in ["../escape", "/absolute", "nested/../escape", "bad\\path"] {
         let mut matrix = sample_matrix();

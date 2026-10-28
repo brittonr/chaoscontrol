@@ -67,6 +67,14 @@ fn collect_violations(root: &Path) -> Result<Vec<BoundaryViolation>, String> {
     }
 
     let vmm_source = root.join(VMM_SOURCE_PATH);
+    let metadata = std::fs::symlink_metadata(&vmm_source)
+        .map_err(|error| format!("inspect {}: {error}", vmm_source.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!(
+            "{} is not a real VMM source directory",
+            vmm_source.display()
+        ));
+    }
     let entries = std::fs::read_dir(&vmm_source)
         .map_err(|error| format!("read {}: {error}", vmm_source.display()))?;
     let mut entries_seen = 0_usize;
@@ -150,6 +158,31 @@ mod tests {
     #[test]
     fn empty_root_is_rejected() {
         assert!(admit_root(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn architecture_scan_rejects_symlinked_vmm_source() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        for relative in CORE_PATHS {
+            let path = if let Some(suffix) = relative.strip_prefix(&format!("{VMM_SOURCE_PATH}/")) {
+                outside.path().join(suffix)
+            } else {
+                root.path().join(relative)
+            };
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"").unwrap();
+        }
+        std::fs::write(outside.path().join("module.rs"), b"").unwrap();
+        let vmm_source = root.path().join(VMM_SOURCE_PATH);
+        if vmm_source.exists() {
+            std::fs::remove_dir_all(&vmm_source).unwrap();
+        }
+        std::fs::create_dir_all(vmm_source.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(outside.path(), &vmm_source).unwrap();
+
+        let error = collect_violations(root.path()).expect_err("symlink rejected");
+        assert!(error.contains("not a real VMM source directory"));
     }
 
     #[test]

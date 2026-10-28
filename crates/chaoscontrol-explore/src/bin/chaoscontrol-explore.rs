@@ -2961,12 +2961,8 @@ fn write_atomic_replacing(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn write_new_or_exact_bug(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-    {
-        Ok(file) => commit_reserved_file(file, path, bytes),
+    match write_new_atomic(path, bytes) {
+        Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             let (_bug, existing) =
                 chaoscontrol_explore::checkpoint::load_serializable_bug_artifact(path)
@@ -2982,45 +2978,24 @@ fn write_new_or_exact_bug(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_new_atomic(path, bytes).map_err(|error| error.to_string())
+}
+
+fn write_new_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
 
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let directory = fs::File::open(parent).map_err(|error| error.to_string())?;
-    let mut temporary =
-        tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
-    temporary
-        .write_all(bytes)
-        .and_then(|()| temporary.as_file().sync_all())
-        .map_err(|error| error.to_string())?;
+    let directory = fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
     temporary
         .persist_noclobber(path)
-        .map_err(|error| error.error.to_string())?;
-    directory.sync_all().map_err(|error| error.to_string())
-}
-
-fn commit_reserved_file(mut file: std::fs::File, path: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::io::Write;
-
-    if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {
-        drop(file);
-        return match fs::remove_file(path) {
-            Ok(()) => Err(error.to_string()),
-            Err(cleanup_error) => Err(format!(
-                "{error}; failed to remove partial {}: {cleanup_error}",
-                path.display()
-            )),
-        };
-    }
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
-    fs::File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| error.to_string())?;
-    Ok(())
+        .map_err(|error| error.error)?;
+    directory.sync_all()
 }
 
 fn rollback_minimized_bugs(paths: &[std::path::PathBuf], reason: String) -> Result<(), String> {

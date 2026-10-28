@@ -23,6 +23,8 @@ pub const MAX_SCANNED_EVENTS: usize = 1_000_000;
 pub const MAX_RESULT_ROWS: usize = 100_000;
 pub const MAX_EVENT_TEXT_BYTES: usize = 8 * 1024;
 pub const MAX_EVENT_DETAILS_BYTES: usize = 64 * 1024;
+pub const MAX_DERIVED_FIELDS: usize = MAX_QUERY_NODES;
+pub const MAX_DERIVED_BYTES: usize = MAX_EVENT_DETAILS_BYTES;
 pub const MAX_TIMELINE_NODES: usize = 10_000;
 pub const MAX_TIMELINE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FIELD_BYTES: usize = 256;
@@ -639,6 +641,19 @@ pub fn admit_event(event: &EventEnvelope) -> Result<(), EventQueryError> {
             return Err(EventQueryError::InvalidEvent);
         }
     }
+    if event.derived.len() > MAX_DERIVED_FIELDS {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    let mut derived_bytes = 0_usize;
+    for (field, value) in &event.derived {
+        derived_bytes = derived_bytes
+            .checked_add(field.len())
+            .and_then(|total| total.checked_add(value.len()))
+            .ok_or(EventQueryError::CounterOverflow)?;
+        if derived_bytes > MAX_DERIVED_BYTES {
+            return Err(EventQueryError::InvalidEvent);
+        }
+    }
     Ok(())
 }
 
@@ -695,6 +710,9 @@ pub fn evaluate(
     }
     validate_source_positions(events)?;
     let mut rows = evaluate_rows(query, events)?;
+    for event in &rows {
+        admit_event(event)?;
+    }
     rows.sort_by_key(event_order);
     rows.dedup_by_key(|event| (event.source_id, event.source_sequence));
     let matched = u64::try_from(rows.len()).map_err(|_| EventQueryError::CounterOverflow)?;
@@ -1347,6 +1365,46 @@ mod tests {
                 .unwrap()
                 .matched,
             2
+        );
+    }
+
+    #[test]
+    fn derived_fields_are_bounded() {
+        let mut event = event(
+            1,
+            0,
+            10,
+            "assert",
+            "leader elected",
+            Some(serde_json::json!({"value": "x".repeat(40_000)})),
+        );
+        let mapped = EventQuery::Map {
+            input: Box::new(EventQuery::Map {
+                input: Box::new(EventQuery::All),
+                field: "first".to_string(),
+                pointer: "/value".to_string(),
+            }),
+            field: "second".to_string(),
+            pointer: "/value".to_string(),
+        };
+        assert_eq!(
+            evaluate(
+                &mapped,
+                std::slice::from_ref(&event),
+                &EventQueryLimits::default()
+            )
+            .unwrap_err(),
+            EventQueryError::InvalidEvent
+        );
+
+        for index in 0..=MAX_DERIVED_FIELDS {
+            event
+                .derived
+                .insert(format!("field-{index}"), String::new());
+        }
+        assert_eq!(
+            evaluate(&EventQuery::All, &[event], &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidEvent
         );
     }
 

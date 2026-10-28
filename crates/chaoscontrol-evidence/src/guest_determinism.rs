@@ -107,7 +107,8 @@ pub fn write_guest_determinism_report(
 ) -> Result<(), GuestDeterminismShellError> {
     let bytes = serde_json::to_vec_pretty(report)
         .map_err(|error| GuestDeterminismShellError::Serialization(error.to_string()))?;
-    std::fs::write(path, bytes).map_err(|error| GuestDeterminismShellError::Io(error.to_string()))
+    crate::bounded_file::write_bytes_replace(path, &bytes)
+        .map_err(|error| GuestDeterminismShellError::Io(error.message().to_string()))
 }
 
 #[cfg(test)]
@@ -135,6 +136,39 @@ mod tests {
             encoded_probe()
         );
         assert!(extract_guest_determinism_probe(&serial).is_ok());
+    }
+
+    #[test]
+    fn report_writer_creates_nested_output() {
+        use chaoscontrol_sim_core::{
+            build_guest_determinism_profile, GuestClockMode, GuestDeterminismInput,
+        };
+
+        let profile = build_guest_determinism_profile(GuestDeterminismInput {
+            run_seed: 1,
+            vm_id: 0,
+            vcpu_count: 1,
+            tsc_khz: 1_000,
+            clock_mode: GuestClockMode::VirtualTsc,
+        });
+        let probe = GuestDeterminismProbe {
+            schema: GUEST_DETERMINISM_PROBE_SCHEMA.to_string(),
+            entropy_hex: "ab".repeat(BOOT_ENTROPY_SEED_BYTES),
+            monotonic_delta_ns: 1,
+            text_address: 1,
+            stack_address: 1,
+            heap_address: 1,
+            signal_order: vec![libc::SIGUSR1 as u32, libc::SIGUSR2 as u32],
+        };
+        let report =
+            chaoscontrol_sim_core::compare_guest_determinism_probes(&profile, &probe, &probe)
+                .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/report.json");
+        write_guest_determinism_report(&path, &report).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(value["schema"], report.schema);
     }
 
     #[test]

@@ -867,6 +867,13 @@ pub struct DeterministicVm {
     incremental_base_needs_reconcile: bool,
 }
 
+fn checked_guest_range_end(addr: u64, size: usize, memory_size: usize) -> Option<u64> {
+    let memory_size = u64::try_from(memory_size).ok()?;
+    let size = u64::try_from(size).ok()?;
+    let end = addr.checked_add(size)?;
+    (addr <= memory_size && end <= memory_size).then_some(end)
+}
+
 impl DeterministicVm {
     /// Pin the current thread to a specific physical CPU core.
     ///
@@ -4733,6 +4740,14 @@ impl DeterministicVm {
     /// Fails if the address range is outside guest memory.
     pub fn read_guest_memory(&self, addr: u64, size: usize) -> Result<Vec<u8>, VmError> {
         use vm_memory::{Bytes, GuestAddress};
+        if checked_guest_range_end(addr, size, self.memory.size()).is_none() {
+            return Err(VmError::DiskImage {
+                message: format!(
+                    "read_guest_memory: addr=0x{:x} size={} out of bounds",
+                    addr, size
+                ),
+            });
+        }
         let mut buf = vec![0u8; size];
         self.memory
             .inner()
@@ -5143,6 +5158,16 @@ mod tests {
     use super::*;
     use crate::devices::virtio_types::VirtioFailure;
     use crate::vm_core::MAX_SERIAL_CAPTURE_BYTES;
+
+    #[test]
+    fn guest_memory_range_is_checked_before_allocation() {
+        assert_eq!(checked_guest_range_end(0, 4, 10), Some(4));
+        assert_eq!(checked_guest_range_end(6, 4, 10), Some(10));
+        assert_eq!(checked_guest_range_end(10, 0, 10), Some(10));
+        assert_eq!(checked_guest_range_end(9, 2, 10), None);
+        assert_eq!(checked_guest_range_end(u64::MAX, 1, 10), None);
+        assert_eq!(checked_guest_range_end(0, 11, 10), None);
+    }
 
     #[test]
     fn bootstrap_hlt_wakes_at_virtual_pit_deadline_but_running_guest_times_out() {

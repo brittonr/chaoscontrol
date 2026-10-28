@@ -346,6 +346,7 @@ fn validate_matrix_row(
     );
     push_unless(
         !row.retained_artifacts.is_empty()
+            && row.retained_artifacts.len() <= row.limits.max_artifacts
             && row
                 .retained_artifacts
                 .iter()

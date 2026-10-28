@@ -24,6 +24,7 @@ const WAIT_POLL_MILLISECONDS: u64 = 100;
 const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_EXPECTED_REVISION_BYTES: usize = 256;
+const MAX_ARTIFACT_DIRECTORY_ENTRIES: usize = 4_096;
 const MAX_ARTIFACT_SCAN_DEPTH: usize = 64;
 const KVM_CAPABILITY: &str = "kvm";
 const X86_64_LINUX_CAPABILITY: &str = "x86_64-linux";
@@ -542,6 +543,22 @@ fn collect_artifacts(
     (collector.artifacts, result.err())
 }
 
+fn list_artifact_entries(path: &Path) -> Result<Vec<std::fs::DirEntry>, String> {
+    let mut entries = Vec::new();
+    for entry in
+        fs::read_dir(path).map_err(|error| format!("failed to list artifact directory: {error}"))?
+    {
+        if entries.len() >= MAX_ARTIFACT_DIRECTORY_ENTRIES {
+            return Err(String::from("artifact directory entry bound exceeded"));
+        }
+        entries.push(
+            entry.map_err(|error| format!("failed to read artifact directory entry: {error}"))?,
+        );
+    }
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+    Ok(entries)
+}
+
 fn collect_node(
     root: &Path,
     actual_path: &Path,
@@ -602,11 +619,7 @@ fn collect_node(
         if !collector.visited_directories.insert(canonical) {
             return Ok(());
         }
-        let mut entries = fs::read_dir(actual_path)
-            .map_err(|error| format!("failed to list artifact directory: {error}"))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("failed to read artifact directory entry: {error}"))?;
-        entries.sort_by_key(std::fs::DirEntry::file_name);
+        let entries = list_artifact_entries(actual_path)?;
         for entry in entries {
             collect_node(
                 root,
@@ -802,6 +815,15 @@ mod publication_tests {
             },
             retained_artifacts: vec!["stdout.log".to_string()],
         }
+    }
+
+    #[test]
+    fn artifact_directory_entries_are_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..=MAX_ARTIFACT_DIRECTORY_ENTRIES {
+            fs::write(root.path().join(format!("entry-{index}")), b"").unwrap();
+        }
+        assert!(list_artifact_entries(root.path()).is_err());
     }
 
     #[test]

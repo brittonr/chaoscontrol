@@ -904,16 +904,33 @@ fn prepare_output(output: &Path) -> Result<(), String> {
     if output.as_os_str().is_empty() {
         return Err(String::from("output directory must not be empty"));
     }
-    if output.exists()
-        && fs::read_dir(output)
-            .map_err(|error| format!("{}: {error}", output.display()))?
-            .next()
-            .is_some()
-    {
-        return Err(format!(
-            "output directory is not empty: {}",
-            output.display()
-        ));
+    match fs::symlink_metadata(output) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "output directory must not be a symlink: {}",
+                output.display()
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(format!(
+                "output path is not a directory: {}",
+                output.display()
+            ));
+        }
+        Ok(_) => {
+            if fs::read_dir(output)
+                .map_err(|error| format!("{}: {error}", output.display()))?
+                .next()
+                .is_some()
+            {
+                return Err(format!(
+                    "output directory is not empty: {}",
+                    output.display()
+                ));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("{}: {error}", output.display())),
     }
     fs::create_dir_all(output).map_err(|error| format!("{}: {error}", output.display()))
 }
@@ -988,6 +1005,16 @@ mod publication_tests {
     #[test]
     fn empty_output_directory_is_rejected() {
         assert!(prepare_output(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn output_directory_symlink_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let link = root.path().join("output");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(prepare_output(&link).is_err());
     }
 
     #[test]

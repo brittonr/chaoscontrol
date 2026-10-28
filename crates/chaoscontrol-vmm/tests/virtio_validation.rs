@@ -2,8 +2,9 @@ use chaoscontrol_vmm::devices::virtio_chain::{
     plan_descriptor_chain, VirtqDesc, VIRTQ_DESC_F_INDIRECT, VIRTQ_DESC_F_NEXT, VIRTQ_DESC_F_WRITE,
 };
 use chaoscontrol_vmm::devices::virtio_request::{
-    plan_block_request, plan_entropy_request, plan_net_request, BlockOperation, BlockRequestHeader,
-    NetDirection, BLOCK_HEADER_BYTES, BLOCK_SECTOR_BYTES, VIRTIO_BLK_T_OUT,
+    plan_block_request, plan_entropy_request, plan_net_request, BlockDeviceProfile, BlockOperation,
+    BlockRequestHeader, NetDirection, BLOCK_HEADER_BYTES, BLOCK_SECTOR_BYTES, VIRTIO_BLK_T_FLUSH,
+    VIRTIO_BLK_T_OUT,
 };
 use chaoscontrol_vmm::devices::virtio_types::{
     DescriptorViolation, QueueViolation, RequestViolation, TransportViolation, VirtioLimits,
@@ -174,7 +175,10 @@ fn complete_block_chain_and_request_validate() {
             reserved: 0,
             sector: 0,
         },
-        BLOCK_BYTES,
+        BlockDeviceProfile {
+            disk_size: BLOCK_BYTES,
+            flush_supported: true,
+        },
         VirtioLimits::default(),
     )
     .expect("valid block request");
@@ -274,7 +278,10 @@ fn wrong_directions_shapes_and_lengths_are_typed() {
                 reserved: 0,
                 sector: 0,
             },
-            BLOCK_BYTES,
+            BlockDeviceProfile {
+                disk_size: BLOCK_BYTES,
+                flush_supported: true,
+            },
             VirtioLimits::default(),
         ),
         Err(RequestViolation::DataDirection)
@@ -287,4 +294,106 @@ fn wrong_directions_shapes_and_lengths_are_typed() {
         plan_net_request(&chain, NetDirection::Transmit, 0, VirtioLimits::default()),
         Err(RequestViolation::DataDirection | RequestViolation::NetHeaderLength { .. })
     ));
+}
+
+fn flush_descriptors() -> [VirtqDesc; 2] {
+    [
+        VirtqDesc {
+            addr: HEADER_ADDRESS,
+            len: BLOCK_HEADER_BYTES,
+            flags: VIRTQ_DESC_F_NEXT,
+            next: 1,
+        },
+        VirtqDesc {
+            addr: STATUS_ADDRESS,
+            len: 1,
+            flags: VIRTQ_DESC_F_WRITE,
+            next: 0,
+        },
+    ]
+}
+
+#[test]
+fn flush_requires_the_device_feature_and_carries_no_data_descriptor() {
+    let flush = flush_descriptors();
+    let chain = plan_descriptor_chain(&flush, 0, 2, &memory(), VirtioLimits::default())
+        .expect("flush chain");
+    let header = BlockRequestHeader {
+        operation: VIRTIO_BLK_T_FLUSH,
+        reserved: 0,
+        sector: 0,
+    };
+    let plan = plan_block_request(
+        &chain,
+        header,
+        BlockDeviceProfile {
+            disk_size: BLOCK_BYTES,
+            flush_supported: true,
+        },
+        VirtioLimits::default(),
+    )
+    .expect("admitted flush");
+    assert_eq!(plan.operation, BlockOperation::Flush);
+    assert_eq!(plan.transfer_bytes, 0);
+    assert_eq!(plan.disk_offset, 0);
+    assert_eq!(plan.status_address, STATUS_ADDRESS);
+
+    assert_eq!(
+        plan_block_request(
+            &chain,
+            header,
+            BlockDeviceProfile {
+                disk_size: BLOCK_BYTES,
+                flush_supported: false,
+            },
+            VirtioLimits::default(),
+        ),
+        Err(RequestViolation::FlushUnsupported)
+    );
+
+    let with_data = valid_descriptors();
+    let chain = plan_descriptor_chain(&with_data, 0, 3, &memory(), VirtioLimits::default())
+        .expect("generic chain");
+    assert_eq!(
+        plan_block_request(
+            &chain,
+            header,
+            BlockDeviceProfile {
+                disk_size: BLOCK_BYTES,
+                flush_supported: true,
+            },
+            VirtioLimits::default(),
+        ),
+        Err(RequestViolation::DescriptorShape)
+    );
+}
+
+#[test]
+fn flush_status_descriptor_must_be_a_writable_byte() {
+    let header = BlockRequestHeader {
+        operation: VIRTIO_BLK_T_FLUSH,
+        reserved: 0,
+        sector: 0,
+    };
+    let profile = BlockDeviceProfile {
+        disk_size: BLOCK_BYTES,
+        flush_supported: true,
+    };
+    let mut read_only_status = flush_descriptors();
+    read_only_status[1].flags = 0;
+    let chain = plan_descriptor_chain(&read_only_status, 0, 2, &memory(), VirtioLimits::default())
+        .expect("generic chain");
+    assert_eq!(
+        plan_block_request(&chain, header, profile, VirtioLimits::default()),
+        Err(RequestViolation::StatusDirection)
+    );
+
+    let mut short_status = flush_descriptors();
+    short_status[1].len = 0;
+    let chain = plan_descriptor_chain(&short_status, 0, 2, &memory(), VirtioLimits::default())
+        .expect("generic chain");
+    assert_eq!(
+        plan_block_request(&chain, header, profile, VirtioLimits::default()),
+        Err(RequestViolation::StatusLength { actual: 0 })
+    );
 }

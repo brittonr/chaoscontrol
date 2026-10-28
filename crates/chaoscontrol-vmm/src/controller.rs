@@ -1413,6 +1413,7 @@ impl SimulationController {
             | FaultMechanism::BlockSlow
             | FaultMechanism::BlockFsyncLie
             | FaultMechanism::BlockFsyncFlush
+            | FaultMechanism::BlockFlushError
             | FaultMechanism::BlockPartialRead => self.apply_block_fault_plan(plan),
             FaultMechanism::ProcessKill
             | FaultMechanism::ProcessPause
@@ -1583,6 +1584,15 @@ impl SimulationController {
             FaultPlanEffect::BlockFsyncFlush { target } => {
                 self.vm_slot_mut_checked(*target)?.vm.flush_disk_volatile()
             }
+            FaultPlanEffect::BlockFlushError { target, delay_ns } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .inject_disk_fault_with_attempt(
+                    BlockFault::FlushError {
+                        delay_ns: *delay_ns,
+                    },
+                    plan.attempt_id,
+                ),
             FaultPlanEffect::BlockPartialRead {
                 target,
                 offset,
@@ -6223,6 +6233,13 @@ mod tests {
             (
                 FaultVariant::DiskFsyncFlush,
                 FaultPlanEffect::BlockFsyncFlush { target: 0 },
+            ),
+            (
+                FaultVariant::DiskFlushError,
+                FaultPlanEffect::BlockFlushError {
+                    target: 0,
+                    delay_ns: 0,
+                },
             ),
             (
                 FaultVariant::DiskPartialRead,

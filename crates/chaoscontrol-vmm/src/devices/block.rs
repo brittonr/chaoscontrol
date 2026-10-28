@@ -23,11 +23,49 @@ use chaoscontrol_fault::outcomes::{
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
 
-/// Dirty + volatile page overlays extracted for restart preservation.
-pub type DirtyOverlay = (BTreeMap<usize, Vec<u8>>, BTreeMap<usize, Vec<u8>>);
+/// Dirty, volatile, and failed-flush page state extracted for restart preservation.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DirtyOverlay {
+    /// Pages written through the durable layer.
+    pub dirty: BTreeMap<usize, Vec<u8>>,
+    /// Pages written while fsync-lie mode was active.
+    pub volatile: BTreeMap<usize, Vec<u8>>,
+    /// Volatile pages that survived a failed flush and must not be committed
+    /// until the guest writes them again.
+    pub failed_clean: BTreeSet<usize>,
+}
+
+/// Observed durability of one completed flush attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FlushDurability {
+    /// Volatile pages became durable before the completion.
+    Durable,
+    /// The device acknowledged without publishing volatile pages.
+    AcknowledgedVolatile,
+}
+
+/// Result of one deterministic flush attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlushOutcome {
+    /// Virtual delay applied before completion.
+    pub delay_ns: u64,
+    /// Whether the flush published volatile pages.
+    pub durability: FlushDurability,
+}
+
+/// Restart profile applied to volatile device state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CacheRecoveryMode {
+    /// Application restart with the device cache retained.
+    ApplicationRestartRetained,
+    /// Explicit cache eviction; durable pages survive.
+    CacheEvicted,
+    /// Full guest reboot; volatile state and armed device faults are discarded.
+    GuestReboot,
+}
 
 /// Page size for copy-on-write tracking (4 KB, matching Linux page size).
 const PAGE_SIZE: usize = 4096;
@@ -58,6 +96,10 @@ pub enum BlockError {
         "injected torn write at offset {offset}: only {bytes_written} bytes written"
     ))]
     InjectedTornWrite { offset: u64, bytes_written: usize },
+
+    /// An injected flush error, optionally delayed before completion.
+    #[snafu(display("injected flush error after {delay_ns} ns"))]
+    InjectedFlushError { delay_ns: u64 },
 
     /// Failed to read a disk image file.
     #[snafu(display("failed to read disk image '{path}': {reason}"))]
@@ -92,6 +134,8 @@ pub enum BlockFault {
     /// Return fewer bytes than requested on a read (short read).
     /// One-shot: consumed on the next matching read.
     PartialRead { offset: u64, max_bytes: usize },
+    /// Fail one flush, either immediately or after `delay_ns`.
+    FlushError { delay_ns: u64 },
 }
 
 /// Read/write statistics for a [`DeterministicBlock`].
@@ -117,6 +161,8 @@ pub struct BlockSnapshot {
     base: Arc<Vec<u8>>,
     dirty: BTreeMap<usize, Vec<u8>>,
     volatile: BTreeMap<usize, Vec<u8>>,
+    failed_clean: BTreeSet<usize>,
+    flush_supported: bool,
     faults: VecDeque<BlockFault>,
     fault_attempt_ids: VecDeque<Option<FaultAttemptId>>,
     stats: BlockStats,
@@ -156,6 +202,9 @@ pub enum BlockSnapshotValidationError {
         expected: usize,
         actual: usize,
     },
+    PageNotVolatile {
+        page: usize,
+    },
 }
 
 impl BlockSnapshot {
@@ -183,7 +232,26 @@ impl BlockSnapshot {
             return Err(BlockSnapshotValidationError::ObservationOverflow);
         }
         validate_snapshot_overlay("dirty", &self.dirty, self.base.len())?;
-        validate_snapshot_overlay("volatile", &self.volatile, self.base.len())
+        validate_snapshot_overlay("volatile", &self.volatile, self.base.len())?;
+        for page in &self.failed_clean {
+            let start = page.checked_mul(PAGE_SIZE).ok_or(
+                BlockSnapshotValidationError::PageIndexOverflow {
+                    layer: "failed_clean",
+                    page: *page,
+                },
+            )?;
+            if start >= self.base.len() {
+                return Err(BlockSnapshotValidationError::PageOutOfBounds {
+                    layer: "failed_clean",
+                    page: *page,
+                    base_bytes: self.base.len(),
+                });
+            }
+            if !self.volatile.contains_key(page) {
+                return Err(BlockSnapshotValidationError::PageNotVolatile { page: *page });
+            }
+        }
+        Ok(())
     }
 
     /// Validate pending block mechanisms against an authoritative ledger.
@@ -300,6 +368,10 @@ fn block_fault_effect(
             max_bytes: u64::try_from(*max_bytes)
                 .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
         },
+        BlockFault::FlushError { delay_ns } => FaultPlanEffect::BlockFlushError {
+            target,
+            delay_ns: *delay_ns,
+        },
     };
     Ok(effect)
 }
@@ -340,6 +412,10 @@ pub struct DeterministicBlock {
     dirty: BTreeMap<usize, Vec<u8>>,
     /// Volatile pages (fsync-lie mode): discarded on crash, flushed explicitly.
     volatile: BTreeMap<usize, Vec<u8>>,
+    /// Volatile pages that a failed flush left unpublished until rewritten.
+    failed_clean: BTreeSet<usize>,
+    /// Whether the device advertises flush support to the driver.
+    flush_supported: bool,
     /// Pending fault injection queue.
     faults: VecDeque<BlockFault>,
     /// Attempt identities parallel to the pending fault queue.
@@ -373,6 +449,8 @@ impl DeterministicBlock {
             base: Arc::new(vec![0u8; size_bytes]),
             dirty: BTreeMap::new(),
             volatile: BTreeMap::new(),
+            failed_clean: BTreeSet::new(),
+            flush_supported: true,
             faults: VecDeque::new(),
             fault_attempt_ids: VecDeque::new(),
             stats: BlockStats::default(),
@@ -394,6 +472,8 @@ impl DeterministicBlock {
             base: Arc::new(data),
             dirty: BTreeMap::new(),
             volatile: BTreeMap::new(),
+            failed_clean: BTreeSet::new(),
+            flush_supported: true,
             faults: VecDeque::new(),
             fault_attempt_ids: VecDeque::new(),
             stats: BlockStats::default(),
@@ -672,11 +752,95 @@ impl DeterministicBlock {
         for (page_idx, page_data) in std::mem::take(&mut self.volatile) {
             self.dirty.insert(page_idx, page_data);
         }
+        self.failed_clean.clear();
+    }
+
+    /// Complete one deterministic flush attempt bound to the next fault.
+    ///
+    /// A failed flush leaves volatile pages unpublished and marks them
+    /// failed-clean so a later successful flush cannot silently commit them.
+    /// An fsync-lie flush acknowledges without publishing anything.
+    pub fn flush(&mut self) -> Result<FlushOutcome, BlockError> {
+        let operation_sequence = self.begin_operation(1)?;
+        if let Some(idx) = self.find_fault(|fault| matches!(fault, BlockFault::FlushError { .. })) {
+            let attempt_id = self.remove_fault_attempt(idx);
+            let delay_ns = match self.faults.remove(idx) {
+                Some(BlockFault::FlushError { delay_ns }) => delay_ns,
+                _ => unreachable!(),
+            };
+            self.failed_clean.extend(self.volatile.keys().copied());
+            self.record_observation(
+                attempt_id,
+                operation_sequence,
+                FaultObservationEffect::BlockFlushFailed,
+            );
+            return InjectedFlushSnafu { delay_ns }.fail();
+        }
+        if self.fsync_lie {
+            self.record_observation(
+                self.fsync_lie_attempt_id,
+                operation_sequence,
+                FaultObservationEffect::BlockFlushMadeVolatile,
+            );
+            self.record_slow_observation(operation_sequence);
+            return Ok(FlushOutcome {
+                delay_ns: self.slow_delay_ns,
+                durability: FlushDurability::AcknowledgedVolatile,
+            });
+        }
+        let unpublished = std::mem::take(&mut self.volatile);
+        for (page_idx, page_data) in unpublished {
+            if self.failed_clean.contains(&page_idx) {
+                self.volatile.insert(page_idx, page_data);
+                continue;
+            }
+            self.dirty.insert(page_idx, page_data);
+        }
+        self.record_slow_observation(operation_sequence);
+        Ok(FlushOutcome {
+            delay_ns: self.slow_delay_ns,
+            durability: FlushDurability::Durable,
+        })
+    }
+
+    /// Volatile pages that a failed flush left unpublished.
+    pub fn failed_clean_page_count(&self) -> usize {
+        self.failed_clean.len()
+    }
+
+    /// Whether this device advertises the virtio flush feature.
+    pub fn supports_flush(&self) -> bool {
+        self.flush_supported
+    }
+
+    /// Set whether this device advertises the virtio flush feature.
+    pub fn set_flush_supported(&mut self, is_supported: bool) {
+        self.flush_supported = is_supported;
+    }
+
+    /// Apply one deterministic restart profile to volatile device state.
+    pub fn recover_after_restart(&mut self, mode: CacheRecoveryMode) {
+        match mode {
+            CacheRecoveryMode::ApplicationRestartRetained => {}
+            CacheRecoveryMode::CacheEvicted => self.discard_volatile(),
+            CacheRecoveryMode::GuestReboot => {
+                self.discard_volatile();
+                self.fsync_lie = false;
+                self.fsync_lie_attempt_id = None;
+                self.slow_delay_ns = 0;
+                self.slow_attempt_id = None;
+                self.full = false;
+                self.full_attempt_id = None;
+                self.faults.clear();
+                self.fault_attempt_ids.clear();
+            }
+        }
     }
 
     /// Discard all volatile writes (simulates power loss).
     pub fn discard_volatile(&mut self) {
         self.volatile.clear();
+        self.failed_clean.clear();
     }
 
     /// Number of volatile (unflushed) pages.
@@ -740,6 +904,8 @@ impl DeterministicBlock {
             base: Arc::clone(&self.base),
             dirty: self.dirty.clone(),
             volatile: self.volatile.clone(),
+            failed_clean: self.failed_clean.clone(),
+            flush_supported: self.flush_supported,
             faults: self.faults.clone(),
             fault_attempt_ids: self.fault_attempt_ids.clone(),
             stats: self.stats.clone(),
@@ -763,6 +929,8 @@ impl DeterministicBlock {
             base: Arc::clone(&snapshot.base),
             dirty: snapshot.dirty.clone(),
             volatile: snapshot.volatile.clone(),
+            failed_clean: snapshot.failed_clean.clone(),
+            flush_supported: snapshot.flush_supported,
             faults: snapshot.faults.clone(),
             fault_attempt_ids: snapshot.fault_attempt_ids.clone(),
             stats: snapshot.stats.clone(),
@@ -778,21 +946,23 @@ impl DeterministicBlock {
         }
     }
 
-    /// Extract dirty + volatile page overlays for preservation across restart.
-    ///
-    /// Returns the dirty and volatile maps without consuming the block device.
-    /// Used by the controller to preserve disk state across ProcessRestart.
+    /// Extract dirty, volatile, and failed-clean state for restart preservation.
     pub fn snapshot_dirty(&self) -> DirtyOverlay {
-        (self.dirty.clone(), self.volatile.clone())
+        DirtyOverlay {
+            dirty: self.dirty.clone(),
+            volatile: self.volatile.clone(),
+            failed_clean: self.failed_clean.clone(),
+        }
     }
 
-    /// Apply dirty + volatile page overlays (from a prior `snapshot_dirty`).
+    /// Apply dirty, volatile, and failed-clean state from a prior extraction.
     ///
     /// Merges the provided pages into the device's current state. Pages
     /// in `dirty` overwrite any existing dirty pages at the same index.
     pub fn restore_dirty(&mut self, overlay: DirtyOverlay) {
-        self.dirty = overlay.0;
-        self.volatile = overlay.1;
+        self.dirty = overlay.dirty;
+        self.volatile = overlay.volatile;
+        self.failed_clean = overlay.failed_clean;
     }
 
     /// Current I/O statistics.
@@ -940,12 +1110,22 @@ impl DeterministicBlock {
 
     // ── CoW internals ─────────────────────────────────────────────
 
-    /// Write to the appropriate layer (volatile if fsync_lie, else dirty).
+    /// Write to the appropriate layer (volatile if fsync-lie, else dirty).
     fn write_to_layer(&mut self, offset: usize, data: &[u8]) {
-        if self.fsync_lie {
-            self.volatile_write(offset, data);
-        } else {
-            self.cow_write(offset, data);
+        let mut pos = 0;
+        while pos < data.len() {
+            let abs = offset + pos;
+            let page_idx = abs / PAGE_SIZE;
+            let in_page = abs % PAGE_SIZE;
+            let page_remaining = self.page_len(page_idx) - in_page;
+            let chunk = page_remaining.min(data.len() - pos);
+            let is_failed_clean = self.failed_clean.remove(&page_idx);
+            if self.fsync_lie || is_failed_clean {
+                self.volatile_write(abs, &data[pos..pos + chunk]);
+            } else {
+                self.cow_write(abs, &data[pos..pos + chunk]);
+            }
+            pos += chunk;
         }
     }
 
@@ -1679,14 +1859,14 @@ mod tests {
         blk.write(4096, b"also persistent").unwrap();
 
         // Snapshot just the dirty overlay
-        let (dirty, volatile) = blk.snapshot_dirty();
-        assert_eq!(dirty.len(), 2); // two dirty pages
+        let overlay = blk.snapshot_dirty();
+        assert_eq!(overlay.dirty.len(), 2); // two dirty pages
 
         // Create a fresh block device (simulating restart)
         let mut fresh = DeterministicBlock::from_image(vec![0u8; 8192]);
 
         // Restore dirty pages
-        fresh.restore_dirty((dirty, volatile));
+        fresh.restore_dirty(overlay);
 
         // Verify data survived
         let mut buf = vec![0u8; 10];
@@ -1701,7 +1881,8 @@ mod tests {
     #[test]
     fn snapshot_dirty_empty_on_clean_device() {
         let blk = DeterministicBlock::new(4096);
-        let (dirty, volatile) = blk.snapshot_dirty();
+        let overlay = blk.snapshot_dirty();
+        let (dirty, volatile) = (overlay.dirty, overlay.volatile);
         assert!(dirty.is_empty());
         assert!(volatile.is_empty());
     }
@@ -1880,5 +2061,171 @@ mod tests {
             first[0].effect,
             FaultObservationEffect::BlockWriteRejectedFull
         );
+    }
+
+    // ── flush semantics ────────────────────────────────────────
+
+    #[test]
+    fn successful_flush_commits_volatile_pages_and_reports_durability() {
+        let mut block = DeterministicBlock::new(4096);
+        block.enable_fsync_lie();
+        block.write(0, b"application data").expect("volatile write");
+        assert_eq!(block.volatile_page_count(), 1);
+        block.disable_fsync_lie();
+
+        let outcome = block.flush().expect("flush completes");
+
+        assert_eq!(outcome.durability, FlushDurability::Durable);
+        assert_eq!(block.volatile_page_count(), 0);
+        assert_eq!(block.failed_clean_page_count(), 0);
+        let mut durable = vec![0_u8; 16];
+        DeterministicBlock::restore(&block.snapshot())
+            .read(0, &mut durable)
+            .expect("durable read");
+        assert_eq!(&durable, b"application data");
+    }
+
+    #[test]
+    fn failed_flush_preserves_pages_until_the_guest_rewrites_them() {
+        let mut block = DeterministicBlock::new(4096);
+        block.enable_fsync_lie();
+        block.write(0, b"first value").expect("volatile write");
+        block.inject_fault_with_attempt(
+            BlockFault::FlushError { delay_ns: 0 },
+            FaultAttemptId([7; 32]),
+        );
+
+        let failure = block.flush();
+
+        assert!(matches!(
+            failure,
+            Err(BlockError::InjectedFlushError { delay_ns: 0 })
+        ));
+        assert_eq!(block.volatile_page_count(), 1);
+        assert_eq!(block.failed_clean_page_count(), 1);
+        let (observations, overflowed) = block.drain_fault_observations();
+        assert_eq!(overflowed, 0);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].effect,
+            FaultObservationEffect::BlockFlushFailed
+        );
+
+        // A later successful flush must not publish the failed-clean page.
+        block.disable_fsync_lie();
+        let outcome = block.flush().expect("second flush");
+        assert_eq!(outcome.durability, FlushDurability::Durable);
+        assert_eq!(block.volatile_page_count(), 1);
+        assert_eq!(block.failed_clean_page_count(), 1);
+
+        // A new guest write releases the page, which the next flush publishes.
+        block.write(0, b"second value").expect("rewrite");
+        block.write(16, b"!").expect("rewrite continuation");
+        let outcome = block.flush().expect("third flush");
+        assert_eq!(outcome.durability, FlushDurability::Durable);
+        assert_eq!(block.volatile_page_count(), 0);
+        assert_eq!(block.failed_clean_page_count(), 0);
+    }
+
+    #[test]
+    fn flush_error_delay_binds_one_attempt_and_the_next_flush_succeeds() {
+        let mut block = DeterministicBlock::new(4096);
+        block.inject_fault_with_attempt(
+            BlockFault::FlushError { delay_ns: 4_000 },
+            FaultAttemptId([9; 32]),
+        );
+
+        assert!(matches!(
+            block.flush(),
+            Err(BlockError::InjectedFlushError { delay_ns: 4_000 })
+        ));
+        let outcome = block.flush().expect("later flush completes");
+        assert_eq!(outcome.durability, FlushDurability::Durable);
+        assert_eq!(block.failed_clean_page_count(), 0);
+    }
+
+    #[test]
+    fn lying_flush_acknowledges_without_committing_volatile_pages() {
+        let mut block = DeterministicBlock::new(4096);
+        block.enable_fsync_lie_with_attempt(FaultAttemptId([3; 32]));
+        block.write(0, b"not durable").expect("volatile write");
+
+        let outcome = block.flush().expect("acknowledged flush");
+
+        assert_eq!(outcome.durability, FlushDurability::AcknowledgedVolatile);
+        assert_eq!(block.volatile_page_count(), 1);
+        let (observations, overflowed) = block.drain_fault_observations();
+        assert_eq!(overflowed, 0);
+        assert!(observations.iter().any(
+            |observation| observation.effect == FaultObservationEffect::BlockFlushMadeVolatile
+        ));
+    }
+
+    #[test]
+    fn restart_profiles_distinguish_retained_cache_eviction_and_reboot() {
+        for (mode, expected_volatile, expected_pending) in [
+            (
+                CacheRecoveryMode::ApplicationRestartRetained,
+                1_usize,
+                1_usize,
+            ),
+            (CacheRecoveryMode::CacheEvicted, 0, 1),
+            (CacheRecoveryMode::GuestReboot, 0, 0),
+        ] {
+            let mut block = DeterministicBlock::new(4096);
+            block.enable_fsync_lie();
+            block.inject_fault(BlockFault::FlushError { delay_ns: 0 });
+            block.write(0, b"cached").expect("volatile write");
+
+            block.recover_after_restart(mode);
+
+            assert_eq!(block.volatile_page_count(), expected_volatile, "{mode:?}");
+            assert_eq!(block.failed_clean_page_count(), 0, "{mode:?}");
+            let pending = block.snapshot().faults.len();
+            assert_eq!(pending, expected_pending, "{mode:?}");
+        }
+    }
+
+    #[test]
+    fn snapshot_rejects_failed_clean_pages_absent_from_the_volatile_layer() {
+        let mut block = DeterministicBlock::new(4096);
+        block.enable_fsync_lie();
+        block.write(0, b"cached").expect("volatile write");
+        let mut snapshot = block.snapshot();
+        snapshot.failed_clean.insert(0);
+        assert!(snapshot.validate_structure().is_ok());
+
+        snapshot.volatile.clear();
+
+        assert_eq!(
+            snapshot.validate_structure(),
+            Err(BlockSnapshotValidationError::PageNotVolatile { page: 0 })
+        );
+    }
+
+    #[test]
+    fn stale_cache_survives_application_restart_but_not_reboot() {
+        let mut block = DeterministicBlock::new(4096);
+        block.enable_fsync_lie();
+        block.write(0, b"cached value").expect("volatile write");
+        let acknowledged = block.flush().expect("lying flush");
+        assert_eq!(
+            acknowledged.durability,
+            FlushDurability::AcknowledgedVolatile
+        );
+        let overlay = block.snapshot_dirty();
+
+        let mut restarted = DeterministicBlock::new(4096);
+        restarted.restore_dirty(overlay);
+        let mut stale = [0_u8; 12];
+        restarted.read(0, &mut stale).expect("cached read");
+        assert_eq!(&stale, b"cached value");
+        assert_eq!(restarted.volatile_page_count(), 1);
+
+        restarted.recover_after_restart(CacheRecoveryMode::GuestReboot);
+        let mut durable = [0_u8; 12];
+        restarted.read(0, &mut durable).expect("durable read");
+        assert_eq!(durable, [0_u8; 12]);
+        assert_eq!(restarted.volatile_page_count(), 0);
     }
 }

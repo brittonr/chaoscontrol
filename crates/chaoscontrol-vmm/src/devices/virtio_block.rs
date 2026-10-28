@@ -18,6 +18,7 @@ use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
 const VIRTIO_BLK_DEVICE_ID: u32 = 2;
 const VIRTIO_BLK_F_SIZE_MAX: u64 = 1 << 1;
 const VIRTIO_BLK_F_SEG_MAX: u64 = 1 << 2;
+const VIRTIO_BLK_F_FLUSH: u64 = 1 << 9;
 const BLOCK_SECTOR_BYTES: u64 = 512;
 const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
@@ -78,18 +79,60 @@ impl VirtioBlock {
             Ok(header) => header,
             Err(failure) => return self.complete_request_error(queue, mem, available, failure),
         };
-        let plan =
-            match plan_block_request(&available.chain, header, self.disk.size(), queue.limits()) {
-                Ok(plan) => plan,
-                Err(violation) => {
-                    return self.complete_request_error(
-                        queue,
-                        mem,
-                        available,
-                        VirtioFailure::Request(violation),
-                    );
+        let plan = match plan_block_request(
+            &available.chain,
+            header,
+            super::virtio_request::BlockDeviceProfile {
+                disk_size: self.disk.size(),
+                flush_supported: self.disk.supports_flush(),
+            },
+            queue.limits(),
+        ) {
+            Ok(plan) => plan,
+            Err(violation) => {
+                return self.complete_request_error(
+                    queue,
+                    mem,
+                    available,
+                    VirtioFailure::Request(violation),
+                );
+            }
+        };
+        match plan.operation {
+            BlockOperation::Flush => match self.disk.flush() {
+                Ok(_) => self.complete_flush(queue, mem, available.head_index, plan.status_address),
+                Err(_) => {
+                    self.complete_request_error(queue, mem, available, VirtioFailure::BackendFlush)
                 }
-            };
+            },
+            BlockOperation::Read | BlockOperation::Write => {
+                self.complete_transfer(queue, mem, available, plan)
+            }
+        }
+    }
+
+    fn complete_flush(
+        &mut self,
+        queue: &mut VirtQueue,
+        mem: &GuestMemoryMmap,
+        head_index: u16,
+        status_address: u64,
+    ) -> Result<bool, VirtioFailure> {
+        queue.stage_completion(head_index, STATUS_USED_BYTES)?;
+        queue.mark_backend_started()?;
+        mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(status_address))
+            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
+        queue.complete(mem, head_index, STATUS_USED_BYTES)?;
+        Ok(true)
+    }
+
+    fn complete_transfer(
+        &mut self,
+        queue: &mut VirtQueue,
+        mem: &GuestMemoryMmap,
+        available: super::virtio_mmio::PlannedAvail,
+        plan: super::virtio_request::BlockRequestPlan,
+    ) -> Result<bool, VirtioFailure> {
         let data = block_data_buffers(&available.chain)?;
         let (requested, maximum) =
             plan_chunked_scratch(plan.transfer_bytes, queue.limits().scratch_bytes)
@@ -100,24 +143,22 @@ impl VirtioBlock {
             if plan.operation == BlockOperation::Write {
                 preflight_guest_reads(mem, data, scratch)?;
             }
-            let used_length = match plan.operation {
-                BlockOperation::Read => u32::try_from(
+            let used_length = if plan.operation == BlockOperation::Read {
+                u32::try_from(
                     plan.transfer_bytes
                         .checked_add(u64::from(STATUS_USED_BYTES))
                         .ok_or(VirtioFailure::BackendRead)?,
                 )
-                .map_err(|_| VirtioFailure::BackendRead)?,
-                BlockOperation::Write => STATUS_USED_BYTES,
+                .map_err(|_| VirtioFailure::BackendRead)?
+            } else {
+                STATUS_USED_BYTES
             };
             queue.stage_completion(available.head_index, used_length)?;
             queue.mark_backend_started()?;
-            match plan.operation {
-                BlockOperation::Write => {
-                    transfer_guest_to_disk(mem, disk, data, plan.disk_offset, scratch)?;
-                }
-                BlockOperation::Read => {
-                    transfer_disk_to_guest(mem, disk, data, plan.disk_offset, scratch)?
-                }
+            if plan.operation == BlockOperation::Write {
+                transfer_guest_to_disk(mem, disk, data, plan.disk_offset, scratch)?;
+            } else {
+                transfer_disk_to_guest(mem, disk, data, plan.disk_offset, scratch)?;
             }
             mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(plan.status_address))
                 .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
@@ -152,7 +193,12 @@ impl VirtioBackend for VirtioBlock {
     }
 
     fn device_features(&self) -> u64 {
-        VIRTIO_BLK_F_SIZE_MAX | VIRTIO_BLK_F_SEG_MAX
+        let flush = if self.disk.supports_flush() {
+            VIRTIO_BLK_F_FLUSH
+        } else {
+            0
+        };
+        VIRTIO_BLK_F_SIZE_MAX | VIRTIO_BLK_F_SEG_MAX | flush
     }
 
     fn num_queues(&self) -> usize {

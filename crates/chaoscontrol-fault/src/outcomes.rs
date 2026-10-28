@@ -378,6 +378,10 @@ fn hash_disk_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
         Fault::DiskFull { target }
         | Fault::DiskFsyncLie { target }
         | Fault::DiskFsyncFlush { target } => hash_usize(hasher, *target),
+        Fault::DiskFlushError { target, delay_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&delay_ns.to_le_bytes());
+        }
         Fault::DiskSlow { target, delay_ns } => {
             hash_usize(hasher, *target);
             hasher.update(&delay_ns.to_le_bytes());
@@ -622,6 +626,7 @@ pub enum FaultMechanism {
     BlockSlow,
     BlockFsyncLie,
     BlockFsyncFlush,
+    BlockFlushError,
     BlockPartialRead,
     CpuRegisterBitflip,
     VirtualClockFreeze,
@@ -781,6 +786,10 @@ pub enum FaultPlanEffect {
     BlockFsyncFlush {
         target: u32,
     },
+    BlockFlushError {
+        target: u32,
+        delay_ns: u64,
+    },
     BlockPartialRead {
         target: u32,
         offset: u64,
@@ -856,6 +865,7 @@ impl FaultPlanEffect {
             Self::BlockSlow { .. } => FaultMechanism::BlockSlow,
             Self::BlockFsyncLie { .. } => FaultMechanism::BlockFsyncLie,
             Self::BlockFsyncFlush { .. } => FaultMechanism::BlockFsyncFlush,
+            Self::BlockFlushError { .. } => FaultMechanism::BlockFlushError,
             Self::BlockPartialRead { .. } => FaultMechanism::BlockPartialRead,
             Self::CpuRegisterBitflip { .. } => FaultMechanism::CpuRegisterBitflip,
             Self::VirtualClockFreeze { .. } => FaultMechanism::VirtualClockFreeze,
@@ -886,6 +896,7 @@ impl FaultPlanEffect {
             }
             | Self::PacketDuplicate { rate_ppm: 0, .. }
             | Self::BlockSlow { delay_ns: 0, .. }
+            | Self::BlockFlushError { delay_ns: 0, .. }
             | Self::NetworkHeal
             | Self::ProcessKill { .. }
             | Self::VirtualClockSkew { .. }
@@ -1234,6 +1245,13 @@ fn plan_disk_fault(
         Fault::DiskFsyncFlush { target } => Ok(FaultPlanEffect::BlockFsyncFlush {
             target: checked_block_target(*target, facts)?,
         }),
+        Fault::DiskFlushError { target, delay_ns } => {
+            checked_duration_ns(*delay_ns, policy, true)?;
+            Ok(FaultPlanEffect::BlockFlushError {
+                target: checked_block_target(*target, facts)?,
+                delay_ns: *delay_ns,
+            })
+        }
         Fault::DiskPartialRead {
             target,
             offset,
@@ -1810,6 +1828,8 @@ pub enum FaultObservationEffect {
     BlockWriteRejectedFull,
     BlockOperationDelayed,
     BlockWriteMadeVolatile,
+    BlockFlushFailed,
+    BlockFlushMadeVolatile,
     ProcessSkipped,
     ProcessRestarted,
     VirtualClockChanged,
@@ -2857,7 +2877,9 @@ fn observation_effect_subsystem(effect: FaultObservationEffect) -> FaultObservat
         | FaultObservationEffect::BlockReadShortened
         | FaultObservationEffect::BlockWriteRejectedFull
         | FaultObservationEffect::BlockOperationDelayed
-        | FaultObservationEffect::BlockWriteMadeVolatile => FaultObservationSubsystem::Block,
+        | FaultObservationEffect::BlockWriteMadeVolatile
+        | FaultObservationEffect::BlockFlushFailed
+        | FaultObservationEffect::BlockFlushMadeVolatile => FaultObservationSubsystem::Block,
         FaultObservationEffect::ProcessSkipped | FaultObservationEffect::ProcessRestarted => {
             FaultObservationSubsystem::Process
         }
@@ -2938,6 +2960,12 @@ fn mechanism_accepts_observation(
         ) | (
             FaultMechanism::BlockFsyncLie,
             FaultObservationEffect::BlockWriteMadeVolatile
+        ) | (
+            FaultMechanism::BlockFsyncLie,
+            FaultObservationEffect::BlockFlushMadeVolatile
+        ) | (
+            FaultMechanism::BlockFlushError,
+            FaultObservationEffect::BlockFlushFailed
         ) | (
             FaultMechanism::BlockPartialRead,
             FaultObservationEffect::BlockReadShortened
@@ -4068,6 +4096,10 @@ mod tests {
             },
             Fault::DiskFsyncLie { target: 0 },
             Fault::DiskFsyncFlush { target: 0 },
+            Fault::DiskFlushError {
+                target: 0,
+                delay_ns: 0,
+            },
             Fault::DiskPartialRead {
                 target: 0,
                 offset: 0,

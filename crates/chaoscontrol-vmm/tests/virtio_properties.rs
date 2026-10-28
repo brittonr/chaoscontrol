@@ -91,7 +91,15 @@ fn generated_guest_inputs_never_panic_or_escape_limits() {
                         reserved: corpus.next_u32(),
                         sector: corpus.next(),
                     };
-                    let _ = plan_block_request(&chain, header, DISK_BYTES, limits);
+                    let _ = plan_block_request(
+                        &chain,
+                        header,
+                        chaoscontrol_vmm::devices::virtio_request::BlockDeviceProfile {
+                            disk_size: DISK_BYTES,
+                            flush_supported: true,
+                        },
+                        limits,
+                    );
                     let _ = plan_net_request(&chain, NetDirection::Transmit, corpus.next(), limits);
                     let _ = plan_net_request(&chain, NetDirection::Receive, corpus.next(), limits);
                     let _ = plan_entropy_request(&chain, limits);

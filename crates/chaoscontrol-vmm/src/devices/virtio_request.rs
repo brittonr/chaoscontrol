@@ -8,6 +8,7 @@ pub const BLOCK_HEADER_BYTES: u32 = 16;
 pub const BLOCK_STATUS_BYTES: u32 = 1;
 pub const VIRTIO_BLK_T_IN: u32 = 0;
 pub const VIRTIO_BLK_T_OUT: u32 = 1;
+pub const VIRTIO_BLK_T_FLUSH: u32 = 4;
 pub const NET_HEADER_BYTES: u64 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +22,14 @@ pub struct BlockRequestHeader {
 pub enum BlockOperation {
     Read,
     Write,
+    Flush,
+}
+
+/// Independently supplied block-device facts used to admit one request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BlockDeviceProfile {
+    pub disk_size: u64,
+    pub flush_supported: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,13 +103,10 @@ pub fn plan_chunked_scratch(
 pub fn plan_block_request(
     chain: &DescriptorChainPlan,
     header: BlockRequestHeader,
-    disk_size: u64,
+    device: BlockDeviceProfile,
     limits: VirtioLimits,
 ) -> Result<BlockRequestPlan, RequestViolation> {
     let buffers = chain.buffers();
-    if buffers.len() < 3 {
-        return Err(RequestViolation::DescriptorShape);
-    }
     let request_header = buffers.first().ok_or(RequestViolation::DescriptorShape)?;
     if request_header.write {
         return Err(RequestViolation::HeaderDirection);
@@ -125,8 +131,26 @@ pub fn plan_block_request(
     let operation = match header.operation {
         VIRTIO_BLK_T_IN => BlockOperation::Read,
         VIRTIO_BLK_T_OUT => BlockOperation::Write,
+        VIRTIO_BLK_T_FLUSH => {
+            if !device.flush_supported {
+                return Err(RequestViolation::FlushUnsupported);
+            }
+            // A flush carries no data descriptor: header and status only.
+            if buffers.len() != 2 {
+                return Err(RequestViolation::DescriptorShape);
+            }
+            return Ok(BlockRequestPlan {
+                operation: BlockOperation::Flush,
+                disk_offset: 0,
+                transfer_bytes: 0,
+                status_address: status.addr,
+            });
+        }
         operation => return Err(RequestViolation::UnsupportedOperation { operation }),
     };
+    if buffers.len() < 3 {
+        return Err(RequestViolation::DescriptorShape);
+    }
     let data = &buffers[1..buffers.len() - 1];
     let transfer_bytes = validate_block_data(data, operation, limits)?;
     let disk_offset = header
@@ -136,10 +160,10 @@ pub fn plan_block_request(
     let disk_end = disk_offset
         .checked_add(transfer_bytes)
         .ok_or(RequestViolation::StorageOverflow)?;
-    if disk_end > disk_size {
+    if disk_end > device.disk_size {
         return Err(RequestViolation::StorageOutsideDevice {
             end: disk_end,
-            device_size: disk_size,
+            device_size: device.disk_size,
         });
     }
     Ok(BlockRequestPlan {

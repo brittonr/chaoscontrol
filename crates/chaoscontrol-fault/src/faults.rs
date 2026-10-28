@@ -110,6 +110,7 @@ pub enum FaultVariant {
     DiskSlow,
     DiskFsyncLie,
     DiskFsyncFlush,
+    DiskFlushError,
     DiskPartialRead,
     CpuBitflip,
     CpuStall,
@@ -121,7 +122,7 @@ pub enum FaultVariant {
 }
 
 impl FaultVariant {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 36] = [
         Self::NetworkPartition,
         Self::NetworkLatency,
         Self::PacketLoss,
@@ -149,6 +150,7 @@ impl FaultVariant {
         Self::DiskSlow,
         Self::DiskFsyncLie,
         Self::DiskFsyncFlush,
+        Self::DiskFlushError,
         Self::DiskPartialRead,
         Self::CpuBitflip,
         Self::CpuStall,
@@ -398,6 +400,14 @@ pub enum Fault {
         target: usize,
     },
 
+    /// Fail one guest-issued flush, either immediately or after a delay.
+    DiskFlushError {
+        /// Target VM index.
+        target: usize,
+        /// Virtual delay before the error completion.
+        delay_ns: u64,
+    },
+
     /// Return fewer bytes than requested on the next read at a
     /// specific offset. One-shot fault.
     DiskPartialRead {
@@ -526,6 +536,7 @@ impl Fault {
             Self::DiskSlow { .. } => FaultVariant::DiskSlow,
             Self::DiskFsyncLie { .. } => FaultVariant::DiskFsyncLie,
             Self::DiskFsyncFlush { .. } => FaultVariant::DiskFsyncFlush,
+            Self::DiskFlushError { .. } => FaultVariant::DiskFlushError,
             Self::DiskPartialRead { .. } => FaultVariant::DiskPartialRead,
             Self::CpuBitflip { .. } => FaultVariant::CpuBitflip,
             Self::CpuStall { .. } => FaultVariant::CpuStall,
@@ -568,6 +579,7 @@ impl Fault {
             | Fault::DiskSlow { target, .. }
             | Fault::DiskFsyncLie { target }
             | Fault::DiskFsyncFlush { target }
+            | Fault::DiskFlushError { target, .. }
             | Fault::DiskPartialRead { target, .. }
             | Fault::CpuBitflip { target, .. }
             | Fault::CpuStall { target, .. }
@@ -601,6 +613,7 @@ impl Fault {
             | Fault::DiskSlow { .. }
             | Fault::DiskFsyncLie { .. }
             | Fault::DiskFsyncFlush { .. }
+            | Fault::DiskFlushError { .. }
             | Fault::DiskPartialRead { .. } => FaultCategory::Disk,
 
             Fault::ProcessKill { .. }
@@ -712,6 +725,9 @@ impl fmt::Display for Fault {
             }
             Fault::DiskFsyncLie { target } => write!(f, "disk-fsync-lie(vm={target})"),
             Fault::DiskFsyncFlush { target } => write!(f, "disk-fsync-flush(vm={target})"),
+            Fault::DiskFlushError { target, delay_ns } => {
+                write!(f, "disk-flush-error(vm={target}, {delay_ns}ns)")
+            }
             Fault::DiskPartialRead {
                 target,
                 offset,
@@ -819,6 +835,7 @@ impl Fault {
             Fault::DiskSlow { .. } => "disk-slow",
             Fault::DiskFsyncLie { .. } => "disk-fsync-lie",
             Fault::DiskFsyncFlush { .. } => "disk-fsync-flush",
+            Fault::DiskFlushError { .. } => "disk-flush-error",
             Fault::DiskPartialRead { .. } => "disk-partial-read",
             Fault::CpuBitflip { .. } => "cpu-bitflip",
             Fault::CpuStall { .. } => "cpu-stall",

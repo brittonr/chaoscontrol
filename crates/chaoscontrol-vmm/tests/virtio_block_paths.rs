@@ -4,9 +4,9 @@ use chaoscontrol_vmm::devices::block::{BlockFault, DeterministicBlock};
 use chaoscontrol_vmm::devices::virtio_block::VirtioBlock;
 use chaoscontrol_vmm::devices::virtio_buffer::RejectingBufferAllocator;
 use chaoscontrol_vmm::devices::virtio_chain::{VirtqDesc, VIRTQ_DESC_F_NEXT, VIRTQ_DESC_F_WRITE};
-use chaoscontrol_vmm::devices::virtio_mmio::{VirtioMmioDevice, VIRTIO_MMIO_CONFIG};
+use chaoscontrol_vmm::devices::virtio_mmio::{VirtioBackend, VirtioMmioDevice, VIRTIO_MMIO_CONFIG};
 use chaoscontrol_vmm::devices::virtio_request::{
-    BLOCK_HEADER_BYTES, BLOCK_SECTOR_BYTES, VIRTIO_BLK_T_OUT,
+    BLOCK_HEADER_BYTES, BLOCK_SECTOR_BYTES, VIRTIO_BLK_T_FLUSH, VIRTIO_BLK_T_OUT,
 };
 use chaoscontrol_vmm::devices::virtio_types::{
     LastRequestLiveOutcome, ResourceViolation, UsedWriteFailurePoint, VirtioFailure,
@@ -27,6 +27,7 @@ const CAPACITY_FIELD_BYTES: usize = 8;
 const WIDE_CONFIG_BYTES: usize = 12;
 const CONFIG_CROSS_BOUNDARY_OFFSET: u64 = 7;
 const INITIAL_CONFIG_BYTE: u8 = 0xA5;
+const FLUSH_FEATURE: u64 = 1 << 9;
 
 fn block_device(block: VirtioBlock) -> VirtioMmioDevice {
     VirtioMmioDevice::new(DEVICE_BASE, DEVICE_IRQ, Box::new(block))
@@ -70,6 +71,36 @@ fn write_request(mem: &GuestMemoryMmap, data_flags: u16, sector: u64) {
     write_descriptor(
         mem,
         2,
+        VirtqDesc {
+            addr: STATUS_ADDRESS,
+            len: 1,
+            flags: VIRTQ_DESC_F_WRITE,
+            next: 0,
+        },
+    );
+    publish_head(mem, 0, FIRST_AVAILABLE_INDEX);
+}
+
+fn flush_request(mem: &GuestMemoryMmap) {
+    mem.write_obj(VIRTIO_BLK_T_FLUSH, GuestAddress(HEADER_ADDRESS))
+        .expect("operation");
+    mem.write_obj(0u32, GuestAddress(HEADER_ADDRESS + HEADER_RESERVED_OFFSET))
+        .expect("reserved");
+    mem.write_obj(0u64, GuestAddress(HEADER_ADDRESS + HEADER_SECTOR_OFFSET))
+        .expect("sector");
+    write_descriptor(
+        mem,
+        0,
+        VirtqDesc {
+            addr: HEADER_ADDRESS,
+            len: BLOCK_HEADER_BYTES,
+            flags: VIRTQ_DESC_F_NEXT,
+            next: 1,
+        },
+    );
+    write_descriptor(
+        mem,
+        1,
         VirtqDesc {
             addr: STATUS_ADDRESS,
             len: 1,
@@ -326,4 +357,72 @@ fn out_of_range_storage_gets_typed_error_completion() {
         STATUS_IOERR
     );
     assert_eq!(used_index(&mem), FIRST_AVAILABLE_INDEX);
+}
+
+#[test]
+fn supported_flush_commits_volatile_state_and_is_advertised() {
+    let mem = memory();
+    let mut disk = DeterministicBlock::new(DISK_BYTES);
+    disk.enable_fsync_lie();
+    disk.write(0, &[0xA5; TRANSFER_BYTES])
+        .expect("volatile write");
+    disk.disable_fsync_lie();
+    let mut device = block_device(VirtioBlock::new(disk));
+    configure(&mut device, &mem);
+    assert_eq!(
+        block_backend(&device).device_features() & FLUSH_FEATURE,
+        FLUSH_FEATURE
+    );
+    flush_request(&mem);
+
+    assert!(notify(&mut device, &mem, 0));
+
+    assert_eq!(
+        mem.read_obj::<u8>(GuestAddress(STATUS_ADDRESS))
+            .expect("status"),
+        STATUS_OK
+    );
+    assert_eq!(block_backend(&device).disk().volatile_page_count(), 0);
+}
+
+#[test]
+fn failed_flush_reports_ioerr_and_retains_volatile_state() {
+    let mem = memory();
+    let mut disk = DeterministicBlock::new(DISK_BYTES);
+    disk.enable_fsync_lie();
+    disk.write(0, &[0xA5; TRANSFER_BYTES])
+        .expect("volatile write");
+    disk.inject_fault(BlockFault::FlushError { delay_ns: 0 });
+    let mut device = block_device(VirtioBlock::new(disk));
+    configure(&mut device, &mem);
+    flush_request(&mem);
+
+    assert!(notify(&mut device, &mem, 0));
+
+    assert_eq!(
+        mem.read_obj::<u8>(GuestAddress(STATUS_ADDRESS))
+            .expect("status"),
+        STATUS_IOERR
+    );
+    assert_eq!(block_backend(&device).disk().volatile_page_count(), 1);
+    assert_eq!(block_backend(&device).disk().failed_clean_page_count(), 1);
+}
+
+#[test]
+fn device_without_flush_support_neither_advertises_nor_executes_flush() {
+    let mem = memory();
+    let mut disk = DeterministicBlock::new(DISK_BYTES);
+    disk.set_flush_supported(false);
+    let mut device = block_device(VirtioBlock::new(disk));
+    configure(&mut device, &mem);
+    assert_eq!(block_backend(&device).device_features() & FLUSH_FEATURE, 0);
+    flush_request(&mem);
+
+    assert!(notify(&mut device, &mem, 0));
+
+    assert_eq!(
+        mem.read_obj::<u8>(GuestAddress(STATUS_ADDRESS))
+            .expect("status"),
+        STATUS_IOERR
+    );
 }

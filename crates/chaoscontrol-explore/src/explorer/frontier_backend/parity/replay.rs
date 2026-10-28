@@ -25,8 +25,10 @@ use crate::explorer::{ExplorationMode, ExplorationStop, ExplorerConfig, Frontier
 use crate::marker_branching::MarkerFrontierMetadata;
 use rand::RngCore;
 use std::collections::{BTreeMap, VecDeque};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+
+const MAX_PARITY_TRACE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// Schema of a parity receipt; product evidence admission refuses it as
 /// structural (`chaoscontrol_evidence::campaign_evidence_boundary`).
@@ -843,15 +845,52 @@ pub fn check_trace_pair(
     legacy: &Path,
     campaign: &Path,
 ) -> Result<FrontierParityReceipt, ParityCheckError> {
-    let read = |path: &Path| {
-        std::fs::read(path).map_err(|source| ParityCheckError::Read {
+    let legacy_bytes = read_trace_bytes(legacy)?;
+    let campaign_bytes = read_trace_bytes(campaign)?;
+    check_trace_bytes((legacy, &legacy_bytes), (campaign, &campaign_bytes))
+}
+
+fn read_trace_bytes(path: &Path) -> Result<Vec<u8>, ParityCheckError> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|source| ParityCheckError::Read {
             path: path.to_path_buf(),
             source,
-        })
-    };
-    let legacy_bytes = read(legacy)?;
-    let campaign_bytes = read(campaign)?;
-    check_trace_bytes((legacy, &legacy_bytes), (campaign, &campaign_bytes))
+        })?;
+    let metadata = file.metadata().map_err(|source| ParityCheckError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if !metadata.file_type().is_file() {
+        return Err(ParityCheckError::Read {
+            path: path.to_path_buf(),
+            source: io::Error::new(io::ErrorKind::InvalidData, "trace is not a regular file"),
+        });
+    }
+    if metadata.len() > MAX_PARITY_TRACE_BYTES {
+        return Err(ParityCheckError::Read {
+            path: path.to_path_buf(),
+            source: io::Error::new(io::ErrorKind::InvalidData, "trace exceeds the byte limit"),
+        });
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_PARITY_TRACE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|source| ParityCheckError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if bytes.len() as u64 > MAX_PARITY_TRACE_BYTES {
+        return Err(ParityCheckError::Read {
+            path: path.to_path_buf(),
+            source: io::Error::new(io::ErrorKind::InvalidData, "trace exceeds the byte limit"),
+        });
+    }
+    Ok(bytes)
 }
 
 /// Writes a receipt as pretty JSON to a new file and synchronizes it; never
@@ -874,4 +913,24 @@ pub fn write_receipt(path: &Path, receipt: &FrontierParityReceipt) -> Result<(),
         .map_err(failure)?;
     file.write_all(&bytes).map_err(failure)?;
     file.sync_all().map_err(failure)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trace_pair_rejects_symlinks_and_oversized_files() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.jsonl");
+        std::fs::write(&target, b"").unwrap();
+        let link = root.path().join("link.jsonl");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(check_trace_pair(&link, &target).is_err());
+
+        let oversized = root.path().join("oversized.jsonl");
+        let file = std::fs::File::create(&oversized).unwrap();
+        file.set_len(MAX_PARITY_TRACE_BYTES + 1).unwrap();
+        assert!(check_trace_pair(&oversized, &target).is_err());
+    }
 }

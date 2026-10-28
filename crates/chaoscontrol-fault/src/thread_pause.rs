@@ -229,6 +229,28 @@ mod tests {
     }
 
     #[test]
+    fn plan_enforces_the_default_active_thread_boundary() {
+        let limits = ThreadPauseLimits::default();
+        let mut active = BTreeMap::new();
+        for ordinal in 1..MAX_ACTIVE_PAUSED_THREADS as u32 {
+            active.insert(thread(ordinal), 30);
+        }
+        let mut facts = ThreadPauseFacts {
+            active,
+            ..ThreadPauseFacts::default()
+        };
+        admit_thread_pause(thread(999), window(), &abi(), &limits, &facts).unwrap();
+
+        facts
+            .active
+            .insert(thread(MAX_ACTIVE_PAUSED_THREADS as u32), 30);
+        assert_eq!(
+            admit_thread_pause(thread(999), window(), &abi(), &limits, &facts).unwrap_err(),
+            ThreadPauseError::TooManyActiveThreads
+        );
+    }
+
+    #[test]
     fn plan_enforces_the_default_event_boundary() {
         let limits = ThreadPauseLimits::default();
         let mut facts = ThreadPauseFacts {

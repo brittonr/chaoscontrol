@@ -448,18 +448,8 @@ fn scan_files_at(
             root.display()
         ),
     )?;
-    let mut entries = std::fs::read_dir(root)?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|entry| entry.path())
-        .collect::<Vec<_>>();
-    entries.sort();
+    let entries = list_entries(root, discovered, MAX_DOGFOOD_SCAN_ENTRIES)?;
     for path in entries {
-        *discovered += 1;
-        ensure(
-            *discovered <= MAX_DOGFOOD_SCAN_ENTRIES,
-            "dogfood artifact scan exceeds entry bound",
-        )?;
         let metadata = std::fs::symlink_metadata(&path)?;
         let file_type = metadata.file_type();
         if file_type.is_symlink() {
@@ -472,6 +462,24 @@ fn scan_files_at(
         }
     }
     Ok(())
+}
+
+fn list_entries(
+    root: &Path,
+    discovered: &mut usize,
+    maximum: usize,
+) -> EvidenceResult<Vec<std::path::PathBuf>> {
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(root)? {
+        *discovered += 1;
+        ensure(
+            *discovered <= maximum,
+            "dogfood artifact scan exceeds entry bound",
+        )?;
+        entries.push(entry?.path());
+    }
+    entries.sort();
+    Ok(entries)
 }
 
 fn load_json(path: &Path) -> EvidenceResult<Value> {
@@ -541,6 +549,17 @@ fn display_value(value: Option<&Value>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_entry_bound_applies_before_collection() {
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..3 {
+            std::fs::write(root.path().join(format!("entry-{index}")), b"{}").unwrap();
+        }
+        let mut discovered = 0;
+        assert!(list_entries(root.path(), &mut discovered, 2).is_err());
+        assert_eq!(discovered, 3);
+    }
 
     #[test]
     fn empty_dogfood_root_is_rejected() {

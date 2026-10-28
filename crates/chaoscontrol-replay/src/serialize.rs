@@ -96,6 +96,7 @@ fn write_output(path: &Path, bytes: &[u8]) -> Result<(), SerializeError> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
     let directory = std::fs::File::open(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(bytes)?;
@@ -372,6 +373,14 @@ mod tests {
 
         assert!(save_recording(&test_recording(), &target).is_err());
         assert_eq!(std::fs::read_dir(temp_dir.path()).unwrap().count(), before);
+    }
+
+    #[test]
+    fn save_recording_creates_parent_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/recording.json");
+        save_recording(&test_recording(), &path).unwrap();
+        assert!(path.is_file());
     }
 
     #[test]

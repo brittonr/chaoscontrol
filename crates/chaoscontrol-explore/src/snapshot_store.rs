@@ -272,6 +272,8 @@ impl SnapshotStore for FileSnapshotStore {
                 "snapshot destination has no parent",
             ),
         })?;
+        let directory =
+            fs::File::open(parent).map_err(|source| SnapshotStoreError::Io { source })?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent)
             .map_err(|source| SnapshotStoreError::Io { source })?;
         temporary
@@ -286,6 +288,9 @@ impl SnapshotStore for FileSnapshotStore {
             .map_err(|error| SnapshotStoreError::Io {
                 source: error.error,
             })?;
+        directory
+            .sync_all()
+            .map_err(|source| SnapshotStoreError::Io { source })?;
         Ok(ReplayParentSnapshotRef {
             store: FILE_STORE_KIND.to_string(),
             digest,
@@ -643,6 +648,24 @@ mod tests {
             store.get_snapshot_artifact(&reference),
             Err(SnapshotStoreError::Io { .. })
         ));
+    }
+
+    #[test]
+    fn repeated_snapshot_publication_leaves_no_temporary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileSnapshotStore::new(dir.path());
+        let snapshot = dummy_snapshot(99);
+
+        let first = store.put_snapshot(&snapshot, 1).unwrap();
+        let second = store.put_snapshot(&snapshot, 1).unwrap();
+        assert_eq!(first, second);
+
+        let names = fs::read_dir(dir.path().join(SNAPSHOT_DIR))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), 1);
+        assert!(names[0].ends_with(".snapshot.bin"));
     }
 
     #[test]

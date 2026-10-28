@@ -2369,6 +2369,10 @@ fn validate_fresh_receipt_artifacts(
     }))
 }
 
+pub fn preflight_json_document(input: &str) -> EvidenceResult<()> {
+    json_preflight::preflight_json(input, json_preflight::QUALITY_REPORT_LIMITS)
+}
+
 fn load_json<T>(root: &Path, path: &Path) -> EvidenceResult<T>
 where
     T: for<'de> Deserialize<'de>,
@@ -3032,5 +3036,18 @@ mod chunk_copy_tests {
         let mut chunk = Sha256::new();
         assert!(copy_open_chunk(&mut file, &mut output, &mut aggregate, &mut chunk, 3).is_err());
         assert!(output.len() <= 3);
+    }
+}
+
+#[cfg(test)]
+mod json_preflight_tests {
+    use super::*;
+
+    #[test]
+    fn document_preflight_rejects_excessive_nesting() {
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        let error = preflight_json_document(&nested).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+        preflight_json_document(r#"{"ok":true}"#).unwrap();
     }
 }

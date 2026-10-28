@@ -166,6 +166,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 
 fn load_json(path: &Path) -> Result<Value, String> {
     let bytes = read_bounded(path, MAX_JSON_BYTES)?;
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))
 }

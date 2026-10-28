@@ -1315,6 +1315,9 @@ impl NetworkFabric {
         side_b: Vec<usize>,
         attempt_id: FaultAttemptId,
     ) -> bool {
+        if self.partitions.len() >= chaoscontrol_fault::mechanisms::MAX_ACTIVE_NETWORK_FAULTS {
+            return false;
+        }
         self.partitions.push((side_a, side_b));
         self.partition_attempt_ids.push(Some(attempt_id));
         true
@@ -1785,6 +1788,16 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+
+    #[test]
+    fn active_partitions_are_bounded() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        let attempt = chaoscontrol_fault::outcomes::FaultAttemptId([1; 32]);
+        for _ in 0..chaoscontrol_fault::mechanisms::MAX_ACTIVE_NETWORK_FAULTS {
+            assert!(fabric.arm_partition(vec![0], vec![1], attempt));
+        }
+        assert!(!fabric.arm_partition(vec![0], vec![1], attempt));
     }
 
     #[test]

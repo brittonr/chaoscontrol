@@ -5,12 +5,16 @@
 //! [`shutdown_requested()`] after each round/seed to stop cleanly.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Once;
 
 /// Global shutdown flag — set by signal handler, polled by explorer.
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 /// How many signals have been received. Second signal force-exits.
 static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
+
+/// Ensures the signal handlers are installed at most once.
+static HANDLERS_INSTALLED: Once = Once::new();
 
 /// Returns `true` if a shutdown signal has been received.
 pub fn shutdown_requested() -> bool {
@@ -32,7 +36,7 @@ pub fn request_shutdown() {
 ///
 /// Safe to call multiple times — subsequent calls are no-ops.
 pub fn install_signal_handlers() {
-    unsafe {
+    HANDLERS_INSTALLED.call_once(|| unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
         sa.sa_sigaction = signal_handler as *const () as usize;
         sa.sa_flags = libc::SA_SIGINFO;
@@ -43,7 +47,7 @@ pub fn install_signal_handlers() {
 
         libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
         libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
-    }
+    });
 }
 
 /// Signal handler — async-signal-safe (only atomics + process::exit).

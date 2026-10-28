@@ -10,7 +10,7 @@ pub use crate::assert::AssertType;
 /// Antithesis-compatible `assert` submodule paths.
 pub mod assert {
     pub use crate::assert::assert_raw;
-    pub use crate::assert::{AssertType, AssertionKind};
+    pub use crate::assert::{AssertType, AssertionKind, TrackingInfo};
     #[cfg(feature = "full")]
     pub use crate::guidance;
 }

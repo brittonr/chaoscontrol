@@ -99,6 +99,27 @@ impl AssertionKind {
     }
 }
 
+/// Per-site pass/fail counters exposed by the Antithesis assertion surface.
+pub struct TrackingInfo {
+    pub pass_count: core::sync::atomic::AtomicU64,
+    pub fail_count: core::sync::atomic::AtomicU64,
+}
+
+impl TrackingInfo {
+    pub const fn new() -> Self {
+        Self {
+            pass_count: core::sync::atomic::AtomicU64::new(0),
+            fail_count: core::sync::atomic::AtomicU64::new(0),
+        }
+    }
+}
+
+impl Default for TrackingInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Antithesis-compatible assertion classification.
 ///
 /// Unlike [`AssertionKind`], reachability is a single variant. Use

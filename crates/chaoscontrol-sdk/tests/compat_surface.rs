@@ -23,6 +23,13 @@ fn compat_module_exposes_the_antithesis_assertion_names() {
     let _: AntithesisRng = AntithesisRng::new();
     let _: AssertType = AssertionKind::Always.into();
     let _: assert::AssertType = assert::AssertType::Always;
+    let tracking = assert::TrackingInfo::new();
+    assert_eq!(
+        tracking
+            .pass_count
+            .load(std::sync::atomic::Ordering::Relaxed),
+        0
+    );
     #[cfg(feature = "full")]
     let _ = assert::guidance::GuidanceType::Numeric;
     assert_eq!(

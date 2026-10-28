@@ -47,6 +47,7 @@ Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
 | Unreachable | `assert_unreachable!` | `cc_assert_unreachable!` | equivalent |
 | Raw / third-party | `assert::assert_raw(13 args)` | `assert::assert_raw(13 args)` for sites declared before catalog emission; `cc_assert_raw!` for compiled sites | equivalent |
 | Assertion type enum | `assert::AssertType` | `assert::AssertType` with lowercase serialization, `to_kind`, and `From<AssertionKind>` | equivalent |
+| Tracking counters | `assert::TrackingInfo` | `assert::TrackingInfo` with pass/fail atomics | equivalent |
 | Implication | (none) | `cc_assert_implies!` | absent |
 | Result ok | (none) | `cc_assert_{always,sometimes}_ok!` | absent |
 | Result err | (none) | `cc_assert_{always,sometimes}_err!` | absent |

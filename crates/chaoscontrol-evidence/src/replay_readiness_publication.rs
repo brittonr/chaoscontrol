@@ -56,4 +56,16 @@ mod tests {
             write_bytes(root.path(), b"not a directory").expect_err("directory output must fail");
         assert!(!error.to_string().is_empty());
     }
+
+    #[test]
+    fn failed_publication_leaves_no_temporary_files() {
+        let root = tempfile::tempdir().expect("temporary publication root");
+        let directory_target = root.path().join("target");
+        std::fs::create_dir(&directory_target).unwrap();
+        let before = std::fs::read_dir(root.path()).unwrap().count();
+
+        write_bytes(&directory_target, b"replacement").expect_err("directory target must fail");
+        let after = std::fs::read_dir(root.path()).unwrap().count();
+        assert_eq!(before, after);
+    }
 }

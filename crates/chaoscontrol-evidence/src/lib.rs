@@ -520,27 +520,21 @@ pub fn materialize_snapshot_chunks(
         ),
     )?;
 
-    let tmp_path = original_path.with_file_name(format!("{}.tmp", manifest.original_path));
-    let materialized =
-        write_materialized_snapshot(&manifest, evidence_dir, &original_path, &tmp_path);
-    if materialized.is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-    materialized
+    write_materialized_snapshot(&manifest, evidence_dir, &original_path)
 }
 
 fn write_materialized_snapshot(
     manifest: &SnapshotChunkManifest,
     evidence_dir: &Path,
     original_path: &Path,
-    tmp_path: &Path,
 ) -> EvidenceResult<MaterializedSnapshot> {
     let mut aggregate = Sha256::new();
     let mut total_size = 0_u64;
-    let mut output = File::create(tmp_path).map_err(|err| {
+    let parent = original_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut output = tempfile::NamedTempFile::new_in(parent).map_err(|err| {
         EvidenceError::new(format!(
-            "failed to create temp snapshot {}: {err}",
-            tmp_path.display()
+            "failed to create temp snapshot in {}: {err}",
+            parent.display()
         ))
     })?;
 
@@ -576,11 +570,9 @@ fn write_materialized_snapshot(
                 actual_chunk_sha
             ),
         )?;
-        copy_file_into(&chunk_path, &mut output, &mut aggregate)?;
+        copy_file_into(&chunk_path, output.as_file_mut(), &mut aggregate)?;
         total_size += metadata.len();
     }
-    drop(output);
-
     ensure(
         total_size == manifest.original_size,
         format!(
@@ -600,10 +592,17 @@ fn write_materialized_snapshot(
             actual
         ),
     )?;
-    std::fs::rename(tmp_path, original_path).map_err(|err| {
+    output.as_file().sync_all().map_err(|err| {
         EvidenceError::new(format!(
-            "failed to install materialized snapshot {}: {err}",
+            "failed to sync materialized snapshot {}: {err}",
             original_path.display()
+        ))
+    })?;
+    output.persist(original_path).map_err(|error| {
+        EvidenceError::new(format!(
+            "failed to install materialized snapshot {}: {}",
+            original_path.display(),
+            error.error
         ))
     })?;
 
@@ -710,6 +709,23 @@ pub fn run_materialize_snapshot_chunks_selftest() -> EvidenceResult<()> {
     ensure(
         err.message().contains("snapshot chunk hash mismatch"),
         format!("corrupt chunk error mismatch: {}", err.message()),
+    )?;
+
+    let temp = tempfile::tempdir()?;
+    let manifest_path = write_snapshot_chunk_fixture(temp.path())?;
+    let manifest: SnapshotChunkManifest = load_json(Path::new(""), &manifest_path)?;
+    let victim = temp.path().join("victim");
+    std::fs::write(&victim, b"victim")?;
+    let original = temp.path().join("snapshots").join(&manifest.original_path);
+    std::os::unix::fs::symlink(&victim, &original)?;
+    materialize_snapshot_chunks(&manifest_path, true)?;
+    ensure(
+        std::fs::read(&victim)? == b"victim",
+        "materialization followed the destination symlink",
+    )?;
+    ensure(
+        std::fs::read(&original)? == b"alpha-beta-gamma",
+        "materialized snapshot content mismatch",
     )
 }
 

@@ -287,7 +287,7 @@ pub fn random_choice<T>(choices: &[T]) -> Option<&T> {
 }
 
 /// Map random values to `0..len` without modulo bias.
-fn unbiased_index(len: usize, mut next: impl FnMut() -> u64) -> usize {
+pub(crate) fn unbiased_index(len: usize, mut next: impl FnMut() -> u64) -> usize {
     debug_assert!(len > 1);
     let len = len as u64;
     let ceiling = (u64::MAX / len) * len;

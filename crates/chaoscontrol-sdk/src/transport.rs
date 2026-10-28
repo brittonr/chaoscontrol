@@ -174,7 +174,8 @@ pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
                 let choice = if n <= 1 {
                     0
                 } else {
-                    crate::internal::local_random_u64() % n
+                    crate::random::unbiased_index(n as usize, crate::internal::local_random_u64)
+                        as u64
                 };
                 crate::internal::local_emit_random_choice(id, choice);
                 (choice, 0)

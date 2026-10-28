@@ -979,6 +979,7 @@ mod publication_tests {
         let link = root.path().join("checkpoint.json");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(read_bounded(&link, MAX_JSON_BYTES).is_err());
+        assert!(sha256(&link).is_err());
 
         let fifo = root.path().join("checkpoint.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

@@ -385,7 +385,7 @@ impl ScheduleMutator {
         }
 
         let target = rng.gen_range(0..config.num_vms);
-        let fault_type = rng.gen_range(0..22);
+        let fault_type = rng.gen_range(0..23);
 
         match fault_type {
             0 => Fault::ProcessKill { target },
@@ -471,6 +471,10 @@ impl ScheduleMutator {
             21 => Fault::ClockJitter {
                 target,
                 bound_tsc: rng.gen_range(100..5000),
+            },
+            22 => Fault::DiskFlushError {
+                target,
+                delay_ns: rng.gen_range(0..10_000_000),
             },
             _ => Fault::NetworkHeal,
         }
@@ -636,6 +640,27 @@ mod tests {
 
         assert_eq!(schedule.total(), 1);
         // Fault type might have changed (can't assert exact type due to randomness)
+    }
+
+    #[test]
+    fn random_faults_reach_disk_flush_errors() {
+        let mutator = ScheduleMutator::new(42);
+        let config = MutationConfig {
+            num_vms: 3,
+            ..Default::default()
+        };
+        let mut rng = ChaCha8Rng::seed_from_u64(7);
+        let mut found = false;
+        for _ in 0..512 {
+            if matches!(
+                mutator.random_fault(&config, &mut rng),
+                Fault::DiskFlushError { .. }
+            ) {
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
     }
 
     #[test]

@@ -1424,7 +1424,7 @@ impl FaultEngine {
         }
 
         let target = (rng.next_u64() as usize) % num_vms;
-        let fault_type = rng.next_u64() % 20;
+        let fault_type = rng.next_u64() % 21;
 
         Some(match fault_type {
             0 => Fault::ProcessKill { target },
@@ -1505,6 +1505,10 @@ impl FaultEngine {
                 target,
                 bound_tsc: (rng.next_u64() % 5000) + 100,
             },
+            20 => Fault::DiskFlushError {
+                target,
+                delay_ns: rng.next_u64() % 10_000_000,
+            },
             _ => unreachable!(),
         })
     }
@@ -1535,6 +1539,22 @@ mod tests {
             page.payload_len = len as u16;
         }
         page
+    }
+
+    #[test]
+    fn random_fault_generation_reaches_disk_flush_errors() {
+        let mut rng = ChaCha20Rng::seed_from_u64(7);
+        let mut found = false;
+        for _ in 0..512 {
+            if matches!(
+                FaultEngine::generate_random_fault(&mut rng, 2),
+                Some(Fault::DiskFlushError { .. })
+            ) {
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
     }
 
     #[test]

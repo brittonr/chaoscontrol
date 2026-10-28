@@ -742,15 +742,8 @@ pub fn evaluate(
     if truncated {
         rows.truncate(limits.max_result_rows);
     }
-    let mut result_bytes = 0_usize;
-    for row in &rows {
-        let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
-        result_bytes = result_bytes
-            .checked_add(bytes.len())
-            .ok_or(EventQueryError::CounterOverflow)?;
-        if result_bytes > limits.max_result_bytes {
-            return Err(EventQueryError::ResultBound);
-        }
+    if serialized_rows_bytes(&rows)? > limits.max_result_bytes {
+        return Err(EventQueryError::ResultBound);
     }
     Ok(EventQueryResult {
         schema: EVENT_QUERY_RESULT_SCHEMA.to_string(),
@@ -759,6 +752,18 @@ pub fn evaluate(
         matched,
         truncated,
     })
+}
+
+fn serialized_rows_bytes(rows: &[EventEnvelope]) -> Result<usize, EventQueryError> {
+    let mut total = 2_usize;
+    for row in rows {
+        let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
+        total = total
+            .checked_add(bytes.len())
+            .and_then(|total| total.checked_add(1))
+            .ok_or(EventQueryError::CounterOverflow)?;
+    }
+    Ok(total)
 }
 
 /// Build a receipt binding the query, source identities, limits, and rows.
@@ -805,16 +810,11 @@ pub fn receipt_for(
     if canonical_rows != result.rows {
         return Err(EventQueryError::InvalidResult);
     }
-    let mut result_bytes = 0_usize;
     for row in &result.rows {
         admit_event(row)?;
-        let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
-        result_bytes = result_bytes
-            .checked_add(bytes.len())
-            .ok_or(EventQueryError::CounterOverflow)?;
-        if result_bytes > limits.max_result_bytes {
-            return Err(EventQueryError::ResultBound);
-        }
+    }
+    if serialized_rows_bytes(&result.rows)? > limits.max_result_bytes {
+        return Err(EventQueryError::ResultBound);
     }
     let rows = serde_json::to_vec(&result.rows).map_err(|_| EventQueryError::Digest)?;
     let rows_digest = *blake3::hash(&rows).as_bytes();
@@ -1709,6 +1709,25 @@ mod tests {
         assert_eq!(
             evaluate(&EventQuery::All, &events(), &narrow_result).unwrap_err(),
             EventQueryError::ResultBound
+        );
+        let empty_window = EventQuery::Window {
+            input: Box::new(EventQuery::All),
+            start_tick: u64::MAX,
+            end_tick: u64::MAX,
+        };
+        assert_eq!(
+            evaluate(&empty_window, &events(), &narrow_result).unwrap_err(),
+            EventQueryError::ResultBound
+        );
+        let exact_empty = EventQueryLimits {
+            max_result_bytes: 2,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&empty_window, &events(), &exact_empty)
+                .unwrap()
+                .matched,
+            0
         );
         let over_bound_result = EventQueryLimits {
             max_result_bytes: MAX_RESULT_BYTES + 1,

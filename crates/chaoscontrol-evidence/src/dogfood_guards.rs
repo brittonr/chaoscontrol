@@ -562,6 +562,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn zero_artifact_byte_bound_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(check_dogfood_artifact_sizes(root.path(), 0).is_err());
+    }
+
+    #[test]
     fn artifact_depth_is_bounded() {
         let root = tempfile::tempdir().unwrap();
         let mut depth = root.path().to_path_buf();

@@ -98,6 +98,8 @@ fn read_topology(path: &std::path::Path) -> Result<Vec<u8>, String> {
     if bytes.len() as u64 > MAX_TOPOLOGY_BYTES {
         return Err("topology must be a bounded regular file".to_string());
     }
+    chaoscontrol_evidence::preflight_json_document(&String::from_utf8_lossy(&bytes))
+        .map_err(|error| error.message().to_string())?;
     Ok(bytes)
 }
 
@@ -105,6 +107,14 @@ fn read_topology(path: &std::path::Path) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn topology_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("topology.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        assert!(read_topology(&path).is_err());
+    }
 
     #[test]
     fn topology_reads_reject_symlinks_and_fifos() {

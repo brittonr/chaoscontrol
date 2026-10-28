@@ -848,6 +848,7 @@ mod tests {
         assert!(reader.next_record().unwrap().is_some());
         assert!(reader.next_record().is_err());
         assert!(dlog_stats(&path).is_err());
+        assert!(dlog_dump(&path, 0, 2, &mut Vec::new()).is_err());
     }
 
     #[test]

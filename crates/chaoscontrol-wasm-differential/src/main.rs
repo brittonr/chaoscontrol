@@ -901,12 +901,22 @@ fn hash_file(path: &Path, maximum_bytes: u64) -> Result<String, Error> {
     }
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; HASH_BUFFER_BYTES];
+    let mut total = 0_u64;
     loop {
         let count = input
             .read(&mut buffer)
             .map_err(|source| io_error(path, source))?;
         if count == 0 {
             break;
+        }
+        total = total.checked_add(count as u64).ok_or_else(|| {
+            Error::Invalid(format!("hash byte count overflow: {}", path.display()))
+        })?;
+        if total > maximum_bytes {
+            return Err(Error::Invalid(format!(
+                "file exceeds hash bound: {}",
+                path.display()
+            )));
         }
         hasher.update(&buffer[..count]);
     }

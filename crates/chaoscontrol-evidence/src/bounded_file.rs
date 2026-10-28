@@ -91,6 +91,12 @@ pub(crate) fn read_bounded_regular_bytes(
             path.display()
         )));
     }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(EvidenceError::new(format!(
+            "{}: file changed while reading",
+            path.display()
+        )));
+    }
     Ok(bytes)
 }
 

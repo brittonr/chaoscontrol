@@ -756,11 +756,17 @@ pub fn evaluate(
 
 fn serialized_rows_bytes(rows: &[EventEnvelope]) -> Result<usize, EventQueryError> {
     let mut total = 2_usize;
-    for row in rows {
+    for (index, row) in rows.iter().enumerate() {
         let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
         total = total
             .checked_add(bytes.len())
-            .and_then(|total| total.checked_add(1))
+            .and_then(|total| {
+                if index > 0 {
+                    total.checked_add(1)
+                } else {
+                    Some(total)
+                }
+            })
             .ok_or(EventQueryError::CounterOverflow)?;
     }
     Ok(total)
@@ -2080,6 +2086,14 @@ mod tests {
         };
         let envelope = envelope_from_recorded_event([5; 32], 4, &long);
         assert_eq!(envelope.text.len(), MAX_EVENT_TEXT_BYTES);
+    }
+
+    #[test]
+    fn serialized_rows_bytes_matches_the_json_array() {
+        let rows = events();
+        let expected = serde_json::to_vec(&rows).unwrap().len();
+        assert_eq!(serialized_rows_bytes(&rows).unwrap(), expected);
+        assert_eq!(serialized_rows_bytes(&[]).unwrap(), 2);
     }
 
     #[test]

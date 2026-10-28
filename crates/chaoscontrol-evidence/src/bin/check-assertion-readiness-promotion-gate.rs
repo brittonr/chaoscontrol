@@ -46,12 +46,27 @@ fn parse_args() -> Result<Args, String> {
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
+    admit_path("ROOT", &root)?;
+    if let Some(path) = &manifest {
+        admit_path("--manifest", path)?;
+    }
+    if let Some(path) = &report {
+        admit_path("--report", path)?;
+    }
     Ok(Args {
         manifest,
         report,
         selftest,
-        root: root.unwrap_or_else(|| PathBuf::from(".")),
+        root,
     })
+}
+
+fn admit_path(label: &str, path: &std::path::Path) -> Result<(), String> {
+    if path.as_os_str().is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    Ok(())
 }
 
 fn main() {
@@ -98,5 +113,16 @@ fn main() {
             eprintln!("assertion readiness promotion gate failed: {err}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(admit_path("ROOT", std::path::Path::new("")).is_err());
+        assert!(admit_path("--manifest", std::path::Path::new("manifest.json")).is_ok());
     }
 }

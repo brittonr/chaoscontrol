@@ -53,6 +53,13 @@ The VMM exposes the current ceiling through `chaoscontrol_sdk::resources::memory
 
 The ceiling is an observation and policy surface. It does not change mapped guest memory or guarantee an allocation failure.
 
+## Block flush failures
+
+`DiskFlushError` names a VM target and an optional virtual delay. Admission requires a block
+device and a bounded delay. The deterministic block path fails one guest-issued flush, applying
+the virtual delay before the error completion. This is a guest-visible storage failure, not a
+claim about host storage failure, power loss, or durability.
+
 ## Thread pause
 
 The cooperative thread fixture uses `crates/chaoscontrol-thread-runtime` for stable

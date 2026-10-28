@@ -906,6 +906,14 @@ mod tests {
             FaultCategory::Disk
         );
         assert_eq!(
+            Fault::DiskFlushError {
+                target: 0,
+                delay_ns: 0
+            }
+            .category(),
+            FaultCategory::Disk
+        );
+        assert_eq!(
             Fault::ProcessKill { target: 0 }.category(),
             FaultCategory::Process
         );

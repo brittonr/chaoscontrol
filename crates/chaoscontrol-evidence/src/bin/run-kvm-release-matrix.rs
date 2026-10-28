@@ -860,6 +860,19 @@ mod publication_tests {
     }
 
     #[test]
+    fn artifact_depth_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let row_output = root.path().join("row");
+        let mut depth = row_output.clone();
+        for index in 0..=MAX_ARTIFACT_SCAN_DEPTH {
+            depth.push(format!("d{index}"));
+        }
+        fs::create_dir_all(&depth).unwrap();
+        let (_, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(error.unwrap().contains("depth bound"));
+    }
+
+    #[test]
     fn artifact_directory_count_is_bounded() {
         let root = tempfile::tempdir().unwrap();
         let row_output = root.path().join("row");

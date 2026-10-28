@@ -646,6 +646,12 @@ fn write_materialized_snapshot(
             error.error
         ))
     })?;
+    File::open(parent)?.sync_all().map_err(|error| {
+        EvidenceError::new(format!(
+            "failed to sync snapshot directory {}: {error}",
+            parent.display()
+        ))
+    })?;
 
     Ok(MaterializedSnapshot {
         path: original_path.to_path_buf(),

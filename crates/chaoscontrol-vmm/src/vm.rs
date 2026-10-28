@@ -794,6 +794,8 @@ pub struct DeterministicVm {
     pmu_counter_base_progress: u64,
     /// Whether KVM guest debug single-step is currently active.
     singlestep_active: bool,
+    /// Operational host watchdog interval for one vCPU run.
+    watchdog_microseconds: i64,
 
     // Execution statistics
     exit_count: u64,
@@ -1299,6 +1301,11 @@ impl DeterministicVm {
             instruction_counter,
             pmu_counter_base_progress: 0,
             singlestep_active: false,
+            watchdog_microseconds: std::env::var("CHAOSCONTROL_WATCHDOG_US")
+                .ok()
+                .and_then(|value| value.parse::<i64>().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(SINGLE_VCPU_WATCHDOG_MICROSECONDS),
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
@@ -4056,7 +4063,7 @@ impl DeterministicVm {
         // Deterministic SMP never arms this wall-clock timer.
         if num_vcpus == 1 {
             Self::install_sigalrm_handler();
-            self.arm_preemption_timer(SINGLE_VCPU_WATCHDOG_MICROSECONDS);
+            self.arm_preemption_timer(self.watchdog_microseconds);
         }
         let run_result = self.vcpus[executed_vcpu].run().or_else(|error| {
             if error.errno() == libc::EINTR {

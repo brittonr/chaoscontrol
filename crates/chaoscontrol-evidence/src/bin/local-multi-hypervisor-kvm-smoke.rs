@@ -8,8 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chaoscontrol_evidence::rust_automation::local_kvm::{campaign_plan, parse_workloads};
 use chaoscontrol_evidence::rust_automation::time::rfc3339_utc;
 use chaoscontrol_evidence::typed_operator_command::{
-    CommandPlan, EnvironmentMode, EnvironmentSpec, LimitSpec, StdinSpec, TerminationScope,
-    MECHANISM_REVISION, PLAN_SCHEMA,
+    CommandPlan, EnvironmentEntry, EnvironmentMode, EnvironmentSpec, LimitSpec, StdinSpec,
+    TerminationScope, MECHANISM_REVISION, PLAN_SCHEMA,
 };
 use chaoscontrol_evidence::{execute_typed_operator_command_captured, observe_typed_executable};
 use serde_json::{json, Value};
@@ -197,7 +197,10 @@ fn command_plan(
         working_directory: String::from("."),
         environment: EnvironmentSpec {
             mode: EnvironmentMode::Clear,
-            entries: Vec::new(),
+            entries: vec![EnvironmentEntry {
+                name: String::from("CHAOSCONTROL_WATCHDOG_US"),
+                value: String::from("5000000"),
+            }],
         },
         stdin: StdinSpec::Null,
         limits: LimitSpec {

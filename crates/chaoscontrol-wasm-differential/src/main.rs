@@ -847,29 +847,24 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path, maximum_bytes: u64) ->
     })
 }
 
-fn open_regular_input(path: &Path) -> Result<File, Error> {
+fn open_regular_input(path: &Path) -> Result<(File, fs::Metadata), Error> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .map_err(|source| io_error(path, source))?;
-    if !file
-        .metadata()
-        .map_err(|source| io_error(path, source))?
-        .file_type()
-        .is_file()
-    {
+    let metadata = file.metadata().map_err(|source| io_error(path, source))?;
+    if !metadata.file_type().is_file() {
         return Err(Error::Invalid(format!(
             "path is not one regular no-follow file: {}",
             path.display()
         )));
     }
-    Ok(file)
+    Ok((file, metadata))
 }
 
 fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
-    let file = open_regular_input(path)?;
-    let metadata = file.metadata().map_err(|source| io_error(path, source))?;
+    let (file, metadata) = open_regular_input(path)?;
     if metadata.len() > maximum_bytes {
         return Err(Error::Invalid(format!(
             "file exceeds byte bound at {}: actual={} maximum={maximum_bytes}",
@@ -894,8 +889,7 @@ fn read_bounded(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, Error> {
 }
 
 fn hash_file(path: &Path, maximum_bytes: u64) -> Result<String, Error> {
-    let mut input = open_regular_input(path)?;
-    let metadata = input.metadata().map_err(|source| io_error(path, source))?;
+    let (mut input, metadata) = open_regular_input(path)?;
     if metadata.len() > maximum_bytes {
         return Err(Error::Invalid(format!(
             "file exceeds hash bound: {}",

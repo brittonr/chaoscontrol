@@ -11,6 +11,7 @@ use crate::{EvidenceError, EvidenceResult};
 pub(crate) fn load_json(path: &Path) -> EvidenceResult<Value> {
     let text = crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
         .map_err(|error| EvidenceError::new(format!("{}: {error}", path.display())))?;
+    crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&text).map_err(Into::into)
 }
 
@@ -25,6 +26,15 @@ mod tests {
         std::fs::write(&path, br#"{"status":"passed"}"#).expect("write valid JSON");
         let loaded = load_json(&path).expect("load valid JSON");
         assert_eq!(loaded["status"], "passed");
+    }
+
+    #[test]
+    fn loader_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().expect("temporary loader root");
+        let path = root.path().join("nested.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512)))
+            .expect("write nested JSON");
+        assert!(load_json(&path).is_err());
     }
 
     #[test]

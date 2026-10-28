@@ -1002,6 +1002,17 @@ mod active_change_bound_tests {
     use super::*;
 
     #[test]
+    fn invalid_fixture_count_is_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join(INVALID_FIXTURES_DIRECTORY);
+        std::fs::create_dir_all(&directory).unwrap();
+        for index in 0..=MAX_INVALID_FIXTURES {
+            std::fs::write(directory.join(format!("fixture-{index}.ncl")), b"{}").unwrap();
+        }
+        assert!(check_invalid_nickel_fixtures(root.path()).is_err());
+    }
+
+    #[test]
     fn invalid_fixture_symlink_directory_is_rejected() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();

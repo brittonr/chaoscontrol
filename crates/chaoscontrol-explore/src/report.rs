@@ -710,7 +710,7 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
     if !report.failed_seeds.is_empty() {
         output.push_str("─── Failed Seeds ─────────────────────────────────────────────────────\n");
         for (seed, error) in &report.failed_seeds {
-            output.push_str(&format!("  Seed {}: {}\n", seed, error));
+            output.push_str(&format!("  Seed {}: {}\n", seed, flatten_lines(error)));
         }
     }
     output.push('\n');
@@ -1719,7 +1719,7 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
             wall_clock_seconds: 26.0,
-            failed_seeds: Vec::new(),
+            failed_seeds: vec![(7, String::from("a\nb"))],
             scenario_config: None,
             frontier_policy: FrontierPolicy::Campaign,
             release_eligible: true,
@@ -1746,6 +1746,7 @@ mod tests {
         assert!(formatted.contains("election safety"));
         assert!(formatted.contains("Failed Assertions"));
         assert!(formatted.contains("Passed Assertions"));
+        assert!(formatted.contains("Seed 7: a b"));
     }
 
     #[test]

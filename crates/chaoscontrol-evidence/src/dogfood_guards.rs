@@ -553,8 +553,13 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(outside.path().join("large.bin"), vec![0_u8; 2_048]).unwrap();
         std::os::unix::fs::symlink(outside.path(), root.path().join("outside")).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("large.bin"),
+            root.path().join("large-link.bin"),
+        )
+        .unwrap();
 
-        check_dogfood_artifact_sizes(root.path(), 1_024).expect("symlink target is not scanned");
+        check_dogfood_artifact_sizes(root.path(), 1_024).expect("symlink targets are not scanned");
     }
 
     #[test]

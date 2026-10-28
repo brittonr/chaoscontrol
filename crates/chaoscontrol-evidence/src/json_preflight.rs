@@ -96,3 +96,37 @@ fn count_structural(count: &mut usize, limits: JsonLimits) -> EvidenceResult<()>
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_nesting_at_the_limit() {
+        let input = format!(
+            "{}{}",
+            "[".repeat(MAX_JSON_DEPTH),
+            "]".repeat(MAX_JSON_DEPTH)
+        );
+        preflight_json(&input, QUALITY_REPORT_LIMITS).unwrap();
+        let over = format!(
+            "{}{}",
+            "[".repeat(MAX_JSON_DEPTH + 1),
+            "]".repeat(MAX_JSON_DEPTH + 1)
+        );
+        assert!(preflight_json(&over, QUALITY_REPORT_LIMITS).is_err());
+    }
+
+    #[test]
+    fn rejects_structural_token_and_string_overruns() {
+        let many_tokens = format!("[{}0]", "0,".repeat(5_000));
+        assert!(preflight_json(&many_tokens, JSONL_LINE_LIMITS).is_err());
+        let long_string = format!("\"{}\"", "a".repeat(MAX_JSONL_STRING_BYTES + 1));
+        assert!(preflight_json(&long_string, JSONL_LINE_LIMITS).is_err());
+    }
+
+    #[test]
+    fn rejects_mismatched_structures() {
+        assert!(preflight_json(" {] ", QUALITY_REPORT_LIMITS).is_err());
+    }
+}

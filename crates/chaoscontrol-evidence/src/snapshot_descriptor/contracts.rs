@@ -183,7 +183,10 @@ fn build_freshness(root: &Path) -> EvidenceResult<FreshnessManifest> {
     let mut files = FRESHNESS_INPUTS
         .iter()
         .map(|relative| {
-            let bytes = std::fs::read(root.join(relative))?;
+            let bytes = crate::bounded_file::read_bounded_regular_bytes(
+                &root.join(relative),
+                crate::MAX_EVIDENCE_JSON_BYTES,
+            )?;
             Ok(FreshnessFile {
                 path: relative.to_string(),
                 blake3: blake3::hash(&bytes).to_hex().to_string(),
@@ -212,15 +215,9 @@ fn nickel_command() -> EvidenceResult<Vec<String>> {
 }
 
 fn write_json(path: impl AsRef<Path>, value: &impl Serialize) -> EvidenceResult<()> {
-    let path = path.as_ref();
-    let parent = path
-        .parent()
-        .ok_or_else(|| EvidenceError::new("generated contract path lacks a parent"))?;
-    std::fs::create_dir_all(parent)?;
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');
-    std::fs::write(path, bytes)?;
-    Ok(())
+    crate::replay_readiness_publication::write_bytes(path, bytes)
 }
 
 pub fn contract_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
@@ -241,6 +238,24 @@ pub fn contract_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn freshness_rejects_symlinked_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        for input in FRESHNESS_INPUTS {
+            let path = root.path().join(input);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"{}").unwrap();
+        }
+        assert!(build_freshness(root.path()).is_ok());
+
+        let input = root.path().join(FRESHNESS_INPUTS[0]);
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        std::fs::remove_file(&input).unwrap();
+        std::os::unix::fs::symlink(&target, &input).unwrap();
+        assert!(build_freshness(root.path()).is_err());
+    }
 
     #[test]
     fn contract_json_reads_reject_symlinks() {

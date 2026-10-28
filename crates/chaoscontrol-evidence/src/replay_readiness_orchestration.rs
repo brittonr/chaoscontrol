@@ -58,10 +58,23 @@ pub fn run_plan_command_captured(
         ))
     })?;
     let working_directory = execution_root.join(&plan.working_directory);
+    let working_directory = std::fs::canonicalize(&working_directory).map_err(|error| {
+        EvidenceError::new(format!(
+            "typed command working directory {}: {error}",
+            working_directory.display()
+        ))
+    })?;
     ensure(
         working_directory.is_dir(),
         format!(
             "typed command working directory is not a directory: {}",
+            working_directory.display()
+        ),
+    )?;
+    ensure(
+        working_directory.starts_with(&execution_root),
+        format!(
+            "typed command working directory escapes the execution root: {}",
             working_directory.display()
         ),
     )?;

@@ -150,6 +150,21 @@ fn signal_termination_is_not_success() {
 
 #[cfg(unix)]
 #[test]
+fn symlinked_working_directory_cannot_escape_the_root() {
+    let root = tempfile::tempdir().expect("root");
+    let outside = tempfile::tempdir().expect("outside");
+    std::os::unix::fs::symlink(outside.path(), root.path().join("escape"))
+        .expect("symlink directory");
+    let mut plan = fixture_plan("exit", "0", "");
+    plan.working_directory = String::from("escape");
+
+    let error = execute_typed_operator_command(&plan, root.path())
+        .expect_err("escaping working directory must be rejected");
+    assert!(error.message().contains("escapes the execution root"));
+}
+
+#[cfg(unix)]
+#[test]
 fn symlink_executable_is_rejected_before_spawn() {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut plan = fixture_plan("exit", "0", "");

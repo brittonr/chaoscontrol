@@ -93,6 +93,10 @@ pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'stat
 // r[impl chaoscontrol.simulator_campaign_profiles.fixtures]
 pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "evidence-contract fixture root must not be empty",
+    )?;
     let contracts = root.join("contracts/evidence");
     let dogfood = root.join("dogfood-results/raft-20260506-095025");
 
@@ -1662,6 +1666,11 @@ fn sorted<const N: usize>(values: [&'static str; N]) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_evidence_contract_fixture_root_is_rejected() {
+        assert!(check_evidence_contract_fixtures("").is_err());
+    }
 
     #[test]
     fn empty_evidence_contract_root_is_rejected() {

@@ -780,6 +780,23 @@ mod publication_tests {
     }
 
     #[test]
+    fn artifact_scan_follows_symlinks_inside_row_output() {
+        let root = tempfile::tempdir().unwrap();
+        let row_output = root.path().join("row");
+        fs::create_dir(&row_output).unwrap();
+        let target = row_output.join("target.log");
+        fs::write(&target, b"inside").unwrap();
+        std::os::unix::fs::symlink(&target, row_output.join("link.log")).unwrap();
+
+        let (artifacts, error) = collect_artifacts(&row_output, &artifact_row());
+        assert!(error.is_none());
+        assert!(artifacts.iter().any(|artifact| artifact.path == "link.log"));
+        assert!(artifacts
+            .iter()
+            .any(|artifact| artifact.path == "target.log"));
+    }
+
+    #[test]
     fn artifact_scan_rejects_symlinks_outside_row_output() {
         let root = tempfile::tempdir().unwrap();
         let row_output = root.path().join("row");

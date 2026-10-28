@@ -1628,6 +1628,12 @@ impl SimulationController {
                 restart_at_tick,
             } => {
                 let slot = self.vm_slot_mut_checked(*target)?;
+                if matches!(
+                    slot.status,
+                    VmStatus::Restarting { .. } | VmStatus::Resuming { .. }
+                ) {
+                    return Err(target_state_application_error());
+                }
                 slot.status = VmStatus::Restarting {
                     restart_at_tick: *restart_at_tick,
                 };
@@ -4484,6 +4490,35 @@ mod tests {
         assert_eq!(
             controller.vms[0].process_fault_attempt,
             Some(FaultAttemptId([45; 32]))
+        );
+    }
+
+    #[test]
+    fn overlapping_process_restart_is_rejected() {
+        let mut controller = adapter_test_controller();
+        let first = FaultPlan {
+            attempt_id: FaultAttemptId([55; 32]),
+            effect: FaultPlanEffect::ProcessRestart {
+                target: 0,
+                restart_at_tick: 5,
+            },
+        };
+        controller.apply_fault_plan(&first).expect("first restart");
+        let second = FaultPlan {
+            attempt_id: FaultAttemptId([56; 32]),
+            effect: FaultPlanEffect::ProcessRestart {
+                target: 0,
+                restart_at_tick: 9,
+            },
+        };
+        assert!(controller.apply_fault_plan(&second).is_err());
+        assert_eq!(
+            controller.vms[0].status,
+            VmStatus::Restarting { restart_at_tick: 5 }
+        );
+        assert_eq!(
+            controller.vms[0].process_fault_attempt,
+            Some(FaultAttemptId([55; 32]))
         );
     }
 

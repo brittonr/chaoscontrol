@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use chaoscontrol_snapshot_descriptor as snapshot_core;
 
+use crate::replay_readiness_publication::write_bytes;
 use crate::snapshot_descriptor::{
     chunked_closure_from_manifest, consumer_reference, descriptor_from_metadata, envelope,
     matching_destination, monolithic_closure_from_file, read_envelope, successful_restore_receipt,
@@ -75,7 +76,7 @@ pub fn write_fixture_bundle(root: impl AsRef<Path>) -> EvidenceResult<Descriptor
     }
     std::fs::create_dir_all(root)?;
     let payload_path = root.join(MONOLITHIC_PAYLOAD_FILE);
-    std::fs::write(&payload_path, FIXTURE_PAYLOAD)?;
+    write_bytes(&payload_path, FIXTURE_PAYLOAD)?;
     let monolithic_payload =
         monolithic_closure_from_file(&payload_path, MAX_FIXTURE_PAYLOAD_BYTES)?;
     let monolithic =
@@ -241,7 +242,7 @@ fn content(
 }
 
 fn write_json(path: impl AsRef<Path>, value: &impl serde::Serialize) -> EvidenceResult<()> {
-    std::fs::write(path, serde_json::to_vec_pretty(value)?)?;
+    write_bytes(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
 }
 

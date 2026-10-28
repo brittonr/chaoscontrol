@@ -632,12 +632,7 @@ pub fn write_snapshot_chunk_fixture(root: impl AsRef<Path>) -> EvidenceResult<Pa
     for (idx, data) in parts.iter().enumerate() {
         let name = format!("{digest}.snapshot.bin.part{idx:02}");
         let path = snapshots.join(&name);
-        std::fs::write(&path, data).map_err(|err| {
-            EvidenceError::new(format!(
-                "failed to write fixture chunk {}: {err}",
-                path.display()
-            ))
-        })?;
+        crate::replay_readiness_publication::write_bytes(&path, data)?;
         chunks.push(SnapshotChunk {
             path: format!("snapshots/{name}"),
             size: data.len() as u64,
@@ -654,12 +649,10 @@ pub fn write_snapshot_chunk_fixture(root: impl AsRef<Path>) -> EvidenceResult<Pa
     };
     let manifest_path = snapshots.join(format!("{digest}.snapshot.bin.chunks.json"));
     let rendered = serde_json::to_string_pretty(&manifest)?;
-    std::fs::write(&manifest_path, format!("{rendered}\n")).map_err(|err| {
-        EvidenceError::new(format!(
-            "failed to write fixture manifest {}: {err}",
-            manifest_path.display()
-        ))
-    })?;
+    crate::replay_readiness_publication::write_bytes(
+        &manifest_path,
+        format!("{rendered}\n").as_bytes(),
+    )?;
     Ok(manifest_path)
 }
 

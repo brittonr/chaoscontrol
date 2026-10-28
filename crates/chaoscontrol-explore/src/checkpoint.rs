@@ -1402,6 +1402,27 @@ mod tests {
     }
 
     #[test]
+    fn standalone_bug_loader_accepts_the_exact_schedule_bound() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("bug.json");
+        let mut bug = minimal_bug(1);
+        let fault = SerializableScheduledFault {
+            time_ns: 0,
+            fault: SerializableFault::NetworkLatency {
+                target: 0,
+                latency_ns: 1,
+            },
+            label: None,
+        };
+        bug.schedule.faults = vec![fault; MAX_SERIALIZABLE_FAULTS];
+        fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
+            .expect("write bug fixture");
+
+        let loaded = load_serializable_bug(&path).expect("boundary schedule loads");
+        assert_eq!(loaded.schedule.faults.len(), MAX_SERIALIZABLE_FAULTS);
+    }
+
+    #[test]
     fn standalone_bug_loader_rejects_an_oversized_schedule() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("bug.json");

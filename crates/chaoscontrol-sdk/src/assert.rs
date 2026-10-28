@@ -903,6 +903,35 @@ macro_rules! __cc_option_details {
     };
 }
 
+/// Merge named boolean conditions into the assertion details.
+///
+/// Used by the multi-condition bundle macros. Every condition is already
+/// bound to its name in the caller, so each one is evaluated exactly once
+/// and no evaluation short-circuits.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_bundle_details {
+    ($details:expr $(, $name:ident)*) => {{
+        let mut __cc_bundle = ($details).clone();
+        $(
+            __cc_bundle[::core::stringify!($name)] =
+                $crate::serde_json::json!($name);
+        )*
+        __cc_bundle
+    }};
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_bundle_details {
+    ($details:expr $(, $name:ident)*) => {{
+        let _: &() = $details;
+        ()
+    }};
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Numeric comparison macros
 // ═══════════════════════════════════════════════════════════════════════
@@ -1368,6 +1397,105 @@ macro_rules! cc_assert_sometimes_some {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Multi-condition bundle macros
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Assert that at least one named condition holds.
+///
+/// Antithesis calls this shape `assert_always_some!`. ChaosControl keeps
+/// `cc_assert_always_some!` for `Option::is_some`, so the bundle form is
+/// named `cc_assert_always_any!`.
+///
+/// Unlike `cc_assert_always!(a || b)`, every condition is evaluated (no
+/// short-circuiting), and the details carry each named boolean. The
+/// per-condition values are merged into caller-supplied details.
+///
+/// ```rust,ignore
+/// cc_assert_always_any!({leader: elected, follower: has_leader}, "one role active");
+/// ```
+#[macro_export]
+macro_rules! cc_assert_always_any {
+    ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr $(,)?) => {{
+        const _ID: u32 =
+            $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $(let $name = $cond;)*
+        let __cc_cond = false $(|| $name)*;
+        let __cc_det = $crate::__cc_bundle_details!(
+            &$crate::__cc_empty_json!() $(, $name)*
+        );
+        $crate::assert::emit_registered_assertion(
+            $crate::assert::AssertionKind::Always,
+            __cc_cond,
+            _ID,
+            $msg,
+            &__cc_det,
+        );
+    }};
+    ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 =
+            $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $(let $name = $cond;)*
+        let __cc_cond = false $(|| $name)*;
+        let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
+        $crate::assert::emit_registered_assertion(
+            $crate::assert::AssertionKind::Always,
+            __cc_cond,
+            _ID,
+            $msg,
+            &__cc_det,
+        );
+    }};
+}
+
+/// Assert that all named conditions hold at least once across runs.
+///
+/// Equivalent to `cc_assert_sometimes!(a && b)`, except every condition is
+/// evaluated (no short-circuiting) and the details carry each named
+/// boolean. The per-condition values are merged into caller-supplied
+/// details.
+///
+/// ```rust,ignore
+/// cc_assert_sometimes_all!({elected: is_leader, logged: has_log}, "role reached");
+/// ```
+#[macro_export]
+macro_rules! cc_assert_sometimes_all {
+    ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr $(,)?) => {{
+        const _ID: u32 =
+            $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $(let $name = $cond;)*
+        let __cc_cond = true $(&& $name)*;
+        let __cc_det = $crate::__cc_bundle_details!(
+            &$crate::__cc_empty_json!() $(, $name)*
+        );
+        $crate::assert::emit_registered_assertion(
+            $crate::assert::AssertionKind::Sometimes,
+            __cc_cond,
+            _ID,
+            $msg,
+            &__cc_det,
+        );
+    }};
+    ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 =
+            $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $(let $name = $cond;)*
+        let __cc_cond = true $(&& $name)*;
+        let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
+        $crate::assert::emit_registered_assertion(
+            $crate::assert::AssertionKind::Sometimes,
+            __cc_cond,
+            _ID,
+            $msg,
+            &__cc_det,
+        );
+    }};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Implication macro
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -1799,6 +1927,49 @@ mod tests {
         use serde_json::json;
         cc_assert_always_some!(Some(1), "some", &json!({"x": 1}));
         cc_assert_sometimes_some!(Some(1), "some2", &json!({"x": 2}));
+    }
+
+    // ── Multi-condition bundle tests ───────────────────────────────
+
+    #[test]
+    fn bundle_macros_compile() {
+        use serde_json::json;
+        cc_assert_always_any!({a: true, b: false}, "any");
+        cc_assert_always_any!({a: false, b: false}, "any fails", &json!({"x": 1}));
+        cc_assert_sometimes_all!({a: true, b: true}, "all");
+        cc_assert_sometimes_all!({a: true, b: false}, "all fails", &json!({"x": 2}));
+        cc_assert_always_any!({}, "empty any fails");
+        cc_assert_sometimes_all!({}, "empty all holds");
+    }
+
+    #[test]
+    fn bundle_macros_evaluate_every_condition() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        fn inc() -> bool {
+            COUNTER.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+
+        COUNTER.store(0, Ordering::SeqCst);
+        // The first condition already satisfies the disjunction; the second
+        // must still be evaluated.
+        cc_assert_always_any!({first: inc(), second: inc()}, "no short circuit");
+        assert_eq!(COUNTER.load(Ordering::SeqCst), 2);
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn bundle_details_merge_named_conditions() {
+        use serde_json::json;
+        let a = true;
+        let b = false;
+        let details = crate::__cc_bundle_details!(&json!({"custom": 1}), a, b);
+        assert_eq!(details, json!({"custom": 1, "a": true, "b": false}));
+
+        let empty = crate::__cc_bundle_details!(&json!({}));
+        assert_eq!(empty, json!({}));
     }
 
     // ── Implies macro tests ────────────────────────────────────────

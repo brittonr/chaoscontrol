@@ -11,7 +11,7 @@ for the Antithesis material, and this parity map does not create parity
 claims against it.
 
 Versions compared: `antithesis_sdk` 0.2.9 (crates.io), `chaoscontrol-sdk`
-0.1.0 (workspace). Public surface inventory reviewed on 2026-10-17 against
+0.1.0 (workspace). Public surface inventory reviewed on 2026-10-28 against
 the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 
 ## Parity status codes
@@ -47,8 +47,9 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Implication | (none) | `cc_assert_implies!` | absent |
 | Result ok | (none) | `cc_assert_{always,sometimes}_ok!` | absent |
 | Result err | (none) | `cc_assert_{always,sometimes}_err!` | absent |
-| Option some | `assert_always_some!({name: cond, ...})` (boolean bundle) | `cc_assert_{always,sometimes}_some!` (Option) | divergent |
-| Multi-condition | `assert_sometimes_all!({name: cond, ...})` | (none) | absent |
+| Option some | `assert_always_some!` (boolean bundle, OR) | `cc_assert_{always,sometimes}_some!` (Option) | divergent |
+| Multi-condition any | `assert_always_some!({name: cond, ...})` (OR) | `cc_assert_always_any!({name: cond, ...})` (OR) | divergent |
+| Multi-condition all | `assert_sometimes_all!({name: cond, ...})` (AND) | `cc_assert_sometimes_all!({name: cond, ...})` (AND) | equivalent |
 | Stable identity | (none) | `cc_assert_{always,sometimes,reachable,unreachable}_stable!` | absent |
 | Category/guest | (none) | `cc_assert_{always,sometimes,reachable}_category!` | absent |
 
@@ -168,6 +169,15 @@ reopened with a new change.
 
 ## Notes and sharp edges
 
+- Antithesis uses the name `assert_always_some!` for the boolean bundle
+  meaning "at least one named condition". ChaosControl uses
+  `cc_assert_always_some!` for `Option::is_some`, so the bundle form is
+  `cc_assert_always_any!`; the conjunction bundle is
+  `cc_assert_sometimes_all!`. Both ChaosControl bundle macros evaluate
+  every condition (no short-circuiting) and merge each named boolean into
+  the assertion details, matching the Antithesis bundle behavior. An empty
+  bundle is admitted: the any-bundle is `false` and the all-bundle is
+  `true`.
 - `random_choice` has the same name in both SDKs but a different signature:
   Antithesis takes a slice and returns `Option<&T>`, ChaosControl takes a
   bound `n` and returns a `usize` index. Use `random_choice_from` for slice

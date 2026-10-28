@@ -4,6 +4,7 @@
 //! locations. This module lets an instrumented guest declare the modules it
 //! actually loaded, so a consumer can join catalogs and observations exactly.
 
+#[cfg(feature = "full")]
 use core::sync::atomic::{AtomicU32, Ordering};
 
 /// Stable event name for one loaded instrumented module.
@@ -15,6 +16,7 @@ pub const MAX_DECLARED_MODULES: u32 = 256;
 /// Maximum reviewed module path bytes.
 pub const MAX_MODULE_PATH_BYTES: usize = 1_024;
 
+#[cfg(feature = "full")]
 static DECLARED_MODULES: AtomicU32 = AtomicU32::new(0);
 
 /// Module declaration failure.
@@ -36,7 +38,7 @@ impl core::fmt::Display for ModuleLoadError {
     }
 }
 
-impl std::error::Error for ModuleLoadError {}
+impl core::error::Error for ModuleLoadError {}
 
 /// Declare one loaded instrumented module.
 ///

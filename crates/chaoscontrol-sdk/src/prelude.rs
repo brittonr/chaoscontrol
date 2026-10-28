@@ -29,6 +29,7 @@ pub use crate::cc_branch_marker;
 pub use crate::{
     // Core
     cc_assert_always,
+    cc_assert_always_any,
     cc_assert_always_category,
     // Always comparisons
     cc_assert_always_eq,
@@ -50,6 +51,7 @@ pub use crate::{
     cc_assert_reachable_category,
     cc_assert_reachable_stable,
     cc_assert_sometimes,
+    cc_assert_sometimes_all,
     cc_assert_sometimes_category,
     // Sometimes comparisons
     cc_assert_sometimes_eq,

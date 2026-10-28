@@ -10,6 +10,11 @@ description = "Guest-side SDK for ChaosControl deterministic simulation testing"
 default = ["full"]
 full = ["dep:libc", "dep:rand", "dep:serde_json", "dep:linkme", "chaoscontrol-protocol/std"]
 
+[[bin]]
+name = "chaoscontrol-guest-supervisor"
+path = "src/bin/chaoscontrol-guest-supervisor.rs"
+required-features = ["full"]
+
 [dependencies]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
 libc = { version = "0.2", optional = true }

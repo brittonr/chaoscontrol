@@ -1,6 +1,6 @@
 use std::ffi::OsString;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,6 +19,7 @@ const FAILURE_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 2;
 const DEFAULT_MATRIX_SOURCE: &str = "contracts/kvm-release/matrix.ncl";
 const DEFAULT_MATRIX_PROJECTION: &str = "contracts/kvm-release/matrix.json";
+const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const INVALID_NICKEL_FIXTURES: [&str; 2] = [
     "contracts/kvm-release/fixtures/invalid/missing-timeout.invalid.ncl",
     "contracts/kvm-release/fixtures/invalid/legacy-diagnostic-row.invalid.ncl",
@@ -260,10 +261,33 @@ fn resolve_path(root: &Path, path: &Path) -> PathBuf {
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let bytes =
-        fs::read(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let bytes = read_bytes(path, MAX_INPUT_BYTES)?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))
+}
+
+fn read_bytes(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("failed to inspect {}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(bytes)
 }
 
 fn check_projection(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
@@ -500,7 +524,7 @@ fn write_curated_receipt(
     receipt: &KvmReleaseReceipt,
     checked_unix_seconds: u64,
 ) -> Result<(), String> {
-    let full_receipt = fs::read(full_receipt_path).map_err(|error| {
+    let full_receipt = read_bytes(full_receipt_path, MAX_INPUT_BYTES).map_err(|error| {
         format!(
             "failed to read full receipt {}: {error}",
             full_receipt_path.display()
@@ -580,6 +604,22 @@ fn unix_seconds() -> Result<u64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bytes(&link, MAX_INPUT_BYTES).is_err());
+
+        let fifo = root.path().join("receipt.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bytes(&fifo, MAX_INPUT_BYTES).is_err());
+    }
 
     #[test]
     fn atomic_fixture_replacement_does_not_follow_symlinks() {

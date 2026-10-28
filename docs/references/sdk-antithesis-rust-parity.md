@@ -146,7 +146,7 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 |---|---|---|---|
 | Fallback JSONL schema | assertion/setup/named-event records | those records plus catalog/random/identity extensions | superset |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
-| Guidance records | `antithesis_guidance` watermarks | comparison details and `coverage::record_state`, not matching guidance watermarks | divergent |
+| Guidance records | `antithesis_guidance` watermarks | `antithesis_guidance` records for numeric and boolean macros with per-site watermarks; no guidance catalog at init | subset |
 
 ## Guidance decision
 
@@ -156,21 +156,23 @@ records. A numeric guidance uses an atomic watermark guard
 per site. The `maximize` flag says whether the SDK maximizes or minimizes
 the reported difference.
 
-**Decision: guidance watermarks are not a current ChaosControl requirement.**
+ChaosControl now emits the same record shape for its numeric (`gt`/`ge`/
+`lt`/`le`) and boolean bundle macros, with an atomic per-site watermark and
+the Antithesis maximize mapping. Records travel through the structured
+event path, so local output is the exact `{"antithesis_guidance": ...}`
+shape while the VMM records a named event. Each record also carries the
+accepted catalog token and assertion fingerprint, keeping guidance
+catalog-bound rather than reintroducing the removed unbound command.
 
-Rationale:
+Still absent:
 
-- ChaosControl already captures `left`/`right` comparison values in failure
-  details and has `record_state` protocol-state hashing for the explorer.
-- The Antithesis material is a comparison source, not a requirement source,
-  per AGENTS.md.
-- Guidance is an explorer signal, and the explorer coverage model is
-  internal to ChaosControl; matching Antithesis guidance exactly is not
-  needed for the current deterministic VMM.
+- guidance catalog records emitted at initialization (`hit = false`),
+- `json` guidance,
+- a first-class VMM guidance consumer; the explorer does not yet use these
+  records for frontier selection.
 
-Recorded as a MAY-level item for future explorer work. If the explorer
-later needs closeness or extremal-violation signals, this decision can be
-reopened with a new change.
+They remain MAY-level explorer work. Emitting guidance does not change the
+assertion oracle or prove exploration quality.
 
 ## Notes and sharp edges
 
@@ -182,6 +184,8 @@ reopened with a new change.
   short-circuiting) and merge each named boolean into the assertion details,
   matching the Antithesis bundle behavior. An empty bundle is admitted: the
   any-bundle is `false` and the all-bundle is `true`.
+- Numeric macros merge `left`/`right` into details and, with `full`, require
+  `guidance::GuidanceDiff` (primitive numeric types) to emit watermarks.
 - `random_choice` now has the Antithesis slice signature. Use the
   `random_choice_index(n)` extension when an index bound is more natural.
 - ChaosControl's no-op lifecycle functions accept a generic detail

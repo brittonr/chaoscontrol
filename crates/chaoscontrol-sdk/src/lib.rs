@@ -91,6 +91,9 @@ mod local_json_security;
 pub mod kcov;
 
 #[cfg(feature = "full")]
+pub mod guidance;
+
+#[cfg(feature = "full")]
 pub mod runtime;
 #[cfg(feature = "full")]
 pub mod supervisor;

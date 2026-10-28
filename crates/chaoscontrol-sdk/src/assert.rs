@@ -955,6 +955,24 @@ macro_rules! __cc_bundle_details {
     }};
 }
 
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_numeric_guidance {
+    ($left:ident, $right:ident, $message:expr, $maximize:literal, $file:expr, $line:expr, $column:expr, $class:expr, $kind:expr, $id:expr) => {
+        ()
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_boolean_guidance {
+    ($message:expr, $maximize:literal, {$($name:ident: $cond:expr),* $(,)?}, $file:expr, $line:expr, $column:expr, $class:expr, $kind:expr, $id:expr) => {
+        ()
+    };
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Numeric comparison macros
 // ═══════════════════════════════════════════════════════════════════════
@@ -978,6 +996,18 @@ macro_rules! cc_assert_always_lt {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -993,6 +1023,18 @@ macro_rules! cc_assert_always_lt {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
         );
     }};
 }
@@ -1016,6 +1058,18 @@ macro_rules! cc_assert_always_le {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1031,6 +1085,18 @@ macro_rules! cc_assert_always_le {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
         );
     }};
 }
@@ -1054,6 +1120,18 @@ macro_rules! cc_assert_always_gt {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1069,6 +1147,18 @@ macro_rules! cc_assert_always_gt {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
         );
     }};
 }
@@ -1092,6 +1182,18 @@ macro_rules! cc_assert_always_ge {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1107,6 +1209,18 @@ macro_rules! cc_assert_always_ge {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
         );
     }};
 }
@@ -1206,6 +1320,18 @@ macro_rules! cc_assert_sometimes_lt {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1221,6 +1347,18 @@ macro_rules! cc_assert_sometimes_lt {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
         );
     }};
 }
@@ -1244,6 +1382,18 @@ macro_rules! cc_assert_sometimes_le {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1259,6 +1409,18 @@ macro_rules! cc_assert_sometimes_le {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            false,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
         );
     }};
 }
@@ -1282,6 +1444,18 @@ macro_rules! cc_assert_sometimes_gt {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1297,6 +1471,18 @@ macro_rules! cc_assert_sometimes_gt {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
         );
     }};
 }
@@ -1320,6 +1506,18 @@ macro_rules! cc_assert_sometimes_ge {
             $msg,
             &__cc_det,
         );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
+        );
     }};
     ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
@@ -1335,6 +1533,18 @@ macro_rules! cc_assert_sometimes_ge {
             _ID,
             $msg,
             &__cc_det,
+        );
+        $crate::__cc_numeric_guidance!(
+            __cc_left,
+            __cc_right,
+            $msg,
+            true,
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
         );
     }};
 }
@@ -1513,7 +1723,19 @@ macro_rules! cc_assert_always_some {
             $msg,
             &__cc_det,
         );
-    }};
+
+        $crate::__cc_boolean_guidance!(
+            $msg,
+            false,
+            { $($name: $name),* },
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
+        }};
     ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
@@ -1528,7 +1750,19 @@ macro_rules! cc_assert_always_some {
             $msg,
             &__cc_det,
         );
-    }};
+
+        $crate::__cc_boolean_guidance!(
+            $msg,
+            false,
+            { $($name: $name),* },
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
+        }};
     ($expr:expr, $msg:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
@@ -1596,9 +1830,9 @@ macro_rules! cc_assert_sometimes_some {
 
 /// Assert that at least one named condition holds.
 ///
-/// Antithesis calls this shape `assert_always_some!`. ChaosControl keeps
-/// `cc_assert_always_some!` for `Option::is_some`, so the bundle form is
-/// named `cc_assert_always_any!`.
+/// Antithesis calls this shape `assert_always_some!`.
+/// `cc_assert_always_some!` also accepts it; `cc_assert_always_any!` is the
+/// unambiguous spelling.
 ///
 /// Unlike `cc_assert_always!(a || b)`, every condition is evaluated (no
 /// short-circuiting), and the details carry each named boolean. The
@@ -1625,7 +1859,19 @@ macro_rules! cc_assert_always_any {
             $msg,
             &__cc_det,
         );
-    }};
+
+        $crate::__cc_boolean_guidance!(
+            $msg,
+            false,
+            { $($name: $name),* },
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
+        }};
     ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
@@ -1640,7 +1886,19 @@ macro_rules! cc_assert_always_any {
             $msg,
             &__cc_det,
         );
-    }};
+
+        $crate::__cc_boolean_guidance!(
+            $msg,
+            false,
+            { $($name: $name),* },
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Always,
+            _ID
+        );
+        }};
 }
 
 /// Assert that all named conditions hold at least once across runs.
@@ -1671,7 +1929,19 @@ macro_rules! cc_assert_sometimes_all {
             $msg,
             &__cc_det,
         );
-    }};
+
+        $crate::__cc_boolean_guidance!(
+            $msg,
+            true,
+            { $($name: $name),* },
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
+        );
+        }};
     ({$($name:ident: $cond:expr),* $(,)?}, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
@@ -1686,7 +1956,19 @@ macro_rules! cc_assert_sometimes_all {
             $msg,
             &__cc_det,
         );
-    }};
+
+        $crate::__cc_boolean_guidance!(
+            $msg,
+            true,
+            { $($name: $name),* },
+            file!(),
+            line!(),
+            column!(),
+            module_path!(),
+            $crate::assert::AssertionKind::Sometimes,
+            _ID
+        );
+        }};
 }
 
 // ═══════════════════════════════════════════════════════════════════════

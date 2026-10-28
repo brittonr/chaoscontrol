@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -555,8 +556,18 @@ fn write_json(path: PathBuf, value: &impl Serialize) -> Result<(), String> {
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("failed to serialize fixture: {error}"))?;
     bytes.push(b'\n');
-    fs::write(&path, bytes)
-        .map_err(|error| format!("failed to write fixture {}: {error}", path.display()))
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(&bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| error.to_string())?;
+    temporary
+        .persist(&path)
+        .map_err(|error| error.error.to_string())?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| error.to_string())
 }
 
 fn unix_seconds() -> Result<u64, String> {
@@ -564,4 +575,26 @@ fn unix_seconds() -> Result<u64, String> {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .map_err(|error| format!("system clock is before the Unix epoch: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_fixture_replacement_does_not_follow_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        fs::write(&target, b"original").unwrap();
+        let link = root.path().join("receipt.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_json(link.clone(), &serde_json::json!({"status": "passed"})).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&fs::read(&link).unwrap()).unwrap()
+                ["status"],
+            "passed"
+        );
+    }
 }

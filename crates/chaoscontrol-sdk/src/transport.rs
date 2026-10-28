@@ -218,7 +218,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
 
     let condition = flags & chaoscontrol_protocol::CONDITION_FLAG_MASK != 0;
     let always_or_unreachable = flags & chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK != 0;
-    use crate::internal::LocalAssert;
+    use crate::internal::{LocalAssert, LocalAssertLocation};
 
     match command {
         CMD_ASSERT_ALWAYS => {
@@ -234,6 +234,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
                 condition,
                 message,
                 id,
+                location: LocalAssertLocation::EMPTY,
                 json_details,
             });
         }
@@ -246,6 +247,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
                 condition,
                 message,
                 id,
+                location: LocalAssertLocation::EMPTY,
                 json_details,
             });
         }
@@ -258,6 +260,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
                 condition: true,
                 message,
                 id,
+                location: LocalAssertLocation::EMPTY,
                 json_details,
             });
         }
@@ -270,6 +273,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
                 condition: false,
                 message,
                 id,
+                location: LocalAssertLocation::EMPTY,
                 json_details,
             });
         }
@@ -365,6 +369,13 @@ fn dispatch_local_bound(
     use chaoscontrol_protocol::*;
     let always_or_unreachable = flags & chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK != 0;
     let condition_flag = flags & chaoscontrol_protocol::CONDITION_FLAG_MASK != 0;
+    let kind = match command {
+        CMD_ASSERT_ALWAYS => crate::assert::AssertionKind::Always,
+        CMD_ASSERT_SOMETIMES => crate::assert::AssertionKind::Sometimes,
+        CMD_ASSERT_REACHABLE => crate::assert::AssertionKind::Reachable,
+        CMD_ASSERT_UNREACHABLE => crate::assert::AssertionKind::Unreachable,
+        _ => return,
+    };
     let (assert_type, display_type, must_hit, condition) = match command {
         CMD_ASSERT_ALWAYS => (
             "always",
@@ -381,6 +392,18 @@ fn dispatch_local_bound(
         CMD_ASSERT_UNREACHABLE => ("reachability", "Unreachable", false, false),
         _ => return,
     };
+    let location = identity
+        .compatibility_id
+        .and_then(|id| crate::assertion_catalog::location_for_compatibility(id, kind, message))
+        .map_or(crate::internal::LocalAssertLocation::EMPTY, |location| {
+            crate::internal::LocalAssertLocation {
+                class: location.class,
+                function: location.function,
+                file: location.file,
+                line: location.line,
+                column: location.column,
+            }
+        });
     let (_, report_id) = bound_event_ids(&identity);
     let value = serde_json::json!({
         "antithesis_assert": {
@@ -391,6 +414,13 @@ fn dispatch_local_bound(
             "id": report_id,
             "message": message,
             "display_type": display_type,
+            "location": {
+                "class": location.class,
+                "function": location.function,
+                "file": location.file,
+                "begin_line": location.line,
+                "begin_column": location.column,
+            },
             "details": details,
             "identity_version": chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION,
             "catalog_token": identity.catalog_token,

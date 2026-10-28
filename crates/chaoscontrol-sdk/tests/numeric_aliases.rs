@@ -42,6 +42,24 @@ fn antithesis_named_numeric_aliases_emit_the_expected_conditions() {
 
     assert_eq!(assertions.len(), 10);
 
+    let descriptor_files = content
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
+        .filter_map(|record| record.get("chaoscontrol_assertion_catalog").cloned())
+        .filter(|record| record["record"] == "descriptor")
+        .filter_map(|record| {
+            record["descriptor"]["source_file"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        descriptor_files
+            .iter()
+            .any(|file| file.ends_with("numeric_aliases.rs")),
+        "descriptor source files: {descriptor_files:?}"
+    );
+
     let expected = [
         ("always greater than passes", "always", true),
         ("always greater than fails", "always", false),

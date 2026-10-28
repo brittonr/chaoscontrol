@@ -207,6 +207,28 @@ fn strict_event_rejects_display_and_must_hit_mismatches() {
 }
 
 #[test]
+fn strict_event_accepts_location_metadata_and_rejects_non_objects() {
+    let descriptor = descriptor("stable:location", AssertionKind::Always, "location");
+    let mut event: Value =
+        serde_json::from_str(event_line(&descriptor, true).trim()).expect("event JSON");
+    event["antithesis_assert"]["location"] = json!({
+        "class": "crate::module",
+        "function": "crate::module::caller",
+        "file": "src/main.rs",
+        "begin_line": 3,
+        "begin_column": 4,
+    });
+    let mut content = catalog_jsonl(&descriptor);
+    content.push_str(&render(&[event.clone()]));
+    summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).expect("location is accepted");
+
+    event["antithesis_assert"]["location"] = json!("not an object");
+    let mut content = catalog_jsonl(&descriptor);
+    content.push_str(&render(&[event]));
+    assert!(summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).is_err());
+}
+
+#[test]
 fn legacy_fingerprint_alias_does_not_mutate_the_strict_site() {
     let value = descriptor("stable:mixed", AssertionKind::Always, "strict");
     let fingerprint = value.fingerprint().expect("fingerprint").to_hex();

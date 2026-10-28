@@ -284,6 +284,26 @@ pub(crate) unsafe fn vm_trigger() {
 //  Local JSON output (Antithesis fallback schema)
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Source location fields for a local assertion record.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LocalAssertLocation {
+    pub class: &'static str,
+    pub function: &'static str,
+    pub file: &'static str,
+    pub line: u32,
+    pub column: u32,
+}
+
+impl LocalAssertLocation {
+    pub(crate) const EMPTY: Self = Self {
+        class: "",
+        function: "",
+        file: "",
+        line: 0,
+        column: 0,
+    };
+}
+
 /// Parameters for a local assertion record.
 pub(crate) struct LocalAssert<'a> {
     pub assert_type: &'a str,
@@ -293,6 +313,7 @@ pub(crate) struct LocalAssert<'a> {
     pub condition: bool,
     pub message: &'a str,
     pub id: u32,
+    pub location: LocalAssertLocation,
     /// Pre-serialized JSON bytes for details (e.g. `b"{}"`).
     pub json_details: &'a [u8],
 }
@@ -319,6 +340,7 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
             "\"id\": \"{id:08x}\", ",
             "\"message\": \"{message}\", ",
             "\"display_type\": \"{display_type}\", ",
+            "\"location\": {{\"class\": \"{class}\", \"function\": \"{function}\", \"file\": \"{file}\", \"begin_line\": {line}, \"begin_column\": {column}}}, ",
             "\"details\": {details}",
             "}}}}\n"
         ),
@@ -329,6 +351,11 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
         id = params.id,
         message = escape_json(params.message),
         display_type = params.display_type,
+        class = escape_json(params.location.class),
+        function = escape_json(params.location.function),
+        file = escape_json(params.location.file),
+        line = params.location.line,
+        column = params.location.column,
         details = details_str,
     );
 

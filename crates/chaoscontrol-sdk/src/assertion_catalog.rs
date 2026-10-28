@@ -16,6 +16,16 @@ use chaoscontrol_protocol::{
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+/// Source metadata for one catalog entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CatalogLocation {
+    pub class: &'static str,
+    pub function: &'static str,
+    pub file: &'static str,
+    pub line: u32,
+    pub column: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BoundIdentity {
     pub catalog_token: AssertionFingerprint,
@@ -95,6 +105,29 @@ pub(crate) fn resolve_compatibility(
         catalog_token: accepted.token,
         fingerprint: first.fingerprint,
         compatibility_id: first.descriptor.compatibility_id,
+    })
+}
+
+/// Resolve the source metadata for one compatibility assertion site.
+pub(crate) fn location_for_compatibility(
+    id: u32,
+    kind: AssertionKind,
+    message: &str,
+) -> Option<CatalogLocation> {
+    let catalog_kind = kind.to_catalog_kind();
+    let mut matches = ASSERTION_CATALOG
+        .iter()
+        .filter(|entry| entry.id == id && entry.kind == catalog_kind && entry.message == message);
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(CatalogLocation {
+        class: first.class,
+        function: (first.function)(),
+        file: first.file,
+        line: first.line,
+        column: first.column,
     })
 }
 
@@ -184,8 +217,8 @@ fn accept_descriptors(
 
 fn descriptor_from_entry(entry: &CatalogEntry) -> Result<AssertionDescriptor, CatalogConflict> {
     let logical_key = match entry.logical_key {
-        CatalogLogicalKey::Automatic(source_site) => AssertionLogicalKey::Automatic {
-            source_site: source_site.to_string(),
+        CatalogLogicalKey::Automatic(_) => AssertionLogicalKey::Automatic {
+            source_site: format!("{}:{}:{}", entry.file, entry.line, entry.column),
         },
         CatalogLogicalKey::Stable(key) => AssertionLogicalKey::Stable {
             key: key.to_string(),

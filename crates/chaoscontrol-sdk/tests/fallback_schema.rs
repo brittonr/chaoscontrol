@@ -60,5 +60,20 @@ fn fallback_schema_reports_antithesis_display_types_and_must_hit() {
         assert_eq!(assertion["must_hit"], must_hit, "{message}");
     }
 
+    let always = &assertions["always assertion"];
+    assert!(always["location"]["file"]
+        .as_str()
+        .expect("location file")
+        .ends_with("fallback_schema.rs"));
+    assert!(always["location"]["begin_line"].as_u64().expect("line") > 0);
+    assert!(!always["location"]["class"]
+        .as_str()
+        .expect("class")
+        .is_empty());
+    assert!(always["location"]["function"]
+        .as_str()
+        .expect("function")
+        .contains("fallback_schema_reports_antithesis_display_types_and_must_hit"));
+
     std::fs::remove_file(output).expect("remove local output");
 }

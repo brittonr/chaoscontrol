@@ -42,6 +42,7 @@ struct AssertionBody {
     id: String,
     message: String,
     display_type: Option<String>,
+    location: Option<Value>,
     details: Value,
     identity_version: Option<u8>,
     catalog_token: Option<AssertionFingerprint>,
@@ -204,6 +205,13 @@ fn resolve_assertion(
     }
     if !assertion.hit {
         return line_error(line_index, "assertion event shape is invalid");
+    }
+    if assertion
+        .location
+        .as_ref()
+        .is_some_and(|location| !location.is_object())
+    {
+        return line_error(line_index, "assertion location must be an object");
     }
     let expected_must_hit = match (kind, assertion.display_type.as_deref()) {
         (AssertionKind::Always, Some("Always")) => true,

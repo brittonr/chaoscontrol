@@ -148,6 +148,7 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 |---|---|---|---|
 | Fallback JSONL schema | assertion/setup/named-event records | those records plus catalog/random/identity extensions | superset |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
+| Assertion location | `location` with class, function, file, line, column | same object, from the call-site catalog entry | equivalent |
 | Guidance records | `antithesis_guidance` watermarks and initialization catalog | same record shape, per-site watermarks, and `hit = false` catalog records at init | equivalent |
 
 ## Guidance decision

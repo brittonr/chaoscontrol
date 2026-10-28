@@ -537,6 +537,10 @@ pub fn replace_marked_block(
 // r[impl chaoscontrol.product_scope.validation]
 pub fn check_product_scope(root: impl AsRef<Path>, write: bool) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "product-scope root must not be empty",
+    )?;
     let registry = load_and_check_registry_projection(root)?;
     validate_product_scope_registry(&registry)?;
     let facts = collect_repository_facts(root, &registry)?;
@@ -792,6 +796,11 @@ mod tests {
         let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
         let error = parse_projection_json(nested.as_bytes(), "projection").unwrap_err();
         assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
+
+    #[test]
+    fn empty_product_scope_root_is_rejected() {
+        assert!(check_product_scope("", false).is_err());
     }
 
     #[test]

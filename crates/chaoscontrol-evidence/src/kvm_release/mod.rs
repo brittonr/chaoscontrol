@@ -21,6 +21,8 @@ const BLAKE3_HEX_CHARS: usize = 64;
 const MAX_MATRIX_ROWS: usize = 32;
 const MAX_MATRIX_ROW_ID_BYTES: usize = 128;
 const MAX_MATRIX_PROFILE_ID_BYTES: usize = 128;
+const MAX_MATRIX_CLAIM_BYTES: usize = 1024;
+const MAX_MATRIX_NON_CLAIMS: usize = 32;
 const MAX_RETAINED_ARTIFACT_PATH_BYTES: usize = 256;
 const MAX_MATRIX_CAPABILITIES: usize = 16;
 const MAX_COMMAND_ARGS: usize = 64;
@@ -253,9 +255,22 @@ pub fn validate_matrix(matrix: &KvmReleaseMatrix) -> Result<(), Vec<String>> {
         "matrix row count is empty or exceeds its bound",
     );
     push_unless(
-        !matrix.bounded_claim.is_empty() && !contains_overclaim(&matrix.bounded_claim),
+        !matrix.bounded_claim.is_empty()
+            && matrix.bounded_claim.len() <= MAX_MATRIX_CLAIM_BYTES
+            && !matrix.bounded_claim.chars().any(char::is_control)
+            && !contains_overclaim(&matrix.bounded_claim),
         &mut issues,
-        "matrix bounded claim is empty or overclaims",
+        "matrix bounded claim is empty, oversized, malformed, or overclaims",
+    );
+    push_unless(
+        matrix.non_claims.len() <= MAX_MATRIX_NON_CLAIMS
+            && matrix.non_claims.iter().all(|claim| {
+                !claim.is_empty()
+                    && claim.len() <= MAX_MATRIX_CLAIM_BYTES
+                    && !claim.chars().any(char::is_control)
+            }),
+        &mut issues,
+        "matrix non-claim set is oversized or malformed",
     );
     validate_non_claims(&matrix.non_claims, &mut issues);
 

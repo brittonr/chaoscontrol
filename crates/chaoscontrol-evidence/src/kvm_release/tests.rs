@@ -170,6 +170,19 @@ fn matrix_rejects_unsafe_row_ids() {
 }
 
 #[test]
+fn matrix_rejects_malformed_claim_text() {
+    let mut matrix = sample_matrix();
+    matrix.bounded_claim = "x".repeat(MAX_MATRIX_CLAIM_BYTES + 1);
+    assert!(validate_matrix(&matrix).is_err());
+
+    let mut matrix = sample_matrix();
+    matrix.non_claims = (0..=MAX_MATRIX_NON_CLAIMS)
+        .map(|index| format!("non-claim {index}"))
+        .collect();
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_rejects_invalid_profile_ids() {
     let mut matrix = sample_matrix();
     matrix.profile_id = "bad\nid".to_string();

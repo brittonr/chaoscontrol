@@ -768,10 +768,10 @@ fn validate_document_targets(root: &Path, registry: &ProductScopeRegistry) -> Ev
 }
 
 fn read_optional_bounded(path: &Path) -> EvidenceResult<String> {
-    if !path.exists() {
-        return Ok(String::new());
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        _ => crate::bounded_file::read_bounded_regular_file(path, MAX_PRODUCT_SCOPE_FILE_BYTES),
     }
-    crate::bounded_file::read_bounded_regular_file(path, MAX_PRODUCT_SCOPE_FILE_BYTES)
 }
 
 fn check_or_write(path: &Path, actual: &str, expected: &str, write: bool) -> EvidenceResult<()> {
@@ -1000,6 +1000,16 @@ mod fixture_admission_tests {
 #[cfg(test)]
 mod active_change_bound_tests {
     use super::*;
+
+    #[test]
+    fn optional_reads_distinguish_absence_from_broken_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing.md");
+        assert_eq!(read_optional_bounded(&missing).unwrap(), "");
+        let link = root.path().join("broken.md");
+        std::os::unix::fs::symlink(root.path().join("absent.md"), &link).unwrap();
+        assert!(read_optional_bounded(&link).is_err());
+    }
 
     #[test]
     fn invalid_fixture_count_is_bounded() {

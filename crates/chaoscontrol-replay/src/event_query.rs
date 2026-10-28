@@ -1112,8 +1112,9 @@ fn evaluate_rows(
         EventQuery::Union { inputs } => {
             let mut rows = Vec::new();
             for input in inputs {
-                rows.extend(evaluate_rows(input, events, operations, max_operations)?);
-                charge_operations(operations, rows.len(), max_operations)?;
+                let branch = evaluate_rows(input, events, operations, max_operations)?;
+                charge_operations(operations, branch.len(), max_operations)?;
+                rows.extend(branch);
             }
             Ok(rows)
         }
@@ -1889,6 +1890,30 @@ mod tests {
         assert_eq!(
             render_timeline_dot(&missing_parent).unwrap_err(),
             EventQueryError::MissingTimelineParent
+        );
+    }
+
+    #[test]
+    fn union_charges_only_new_rows() {
+        let query = EventQuery::Union {
+            inputs: vec![EventQuery::All; 2],
+        };
+        let exact = EventQueryLimits {
+            max_operations: 16,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&query, &events(), &exact).unwrap().matched,
+            events().len() as u64
+        );
+
+        let tight = EventQueryLimits {
+            max_operations: 15,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&query, &events(), &tight).unwrap_err(),
+            EventQueryError::OperationBound
         );
     }
 

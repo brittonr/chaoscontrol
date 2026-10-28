@@ -30,6 +30,9 @@ fn run(args: Vec<String>) -> Result<String, String> {
         ));
     }
     let path = PathBuf::from(&args[0]);
+    if path.as_os_str().is_empty() {
+        return Err(String::from("receipt path must not be empty"));
+    }
     let bytes = read_bounded(&path, MAX_DRIFT_RECEIPT_BYTES)?;
     let receipt: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))?;
@@ -69,6 +72,11 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn empty_receipt_path_is_rejected() {
+        assert!(run(vec![String::new()]).is_err());
+    }
 
     #[test]
     fn receipt_reads_reject_symlinks_and_fifos() {

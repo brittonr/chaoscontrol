@@ -201,7 +201,14 @@ fn matrix_accepts_safe_nested_retained_artifact_paths() {
 
 #[test]
 fn matrix_rejects_unsafe_retained_artifact_paths() {
-    for path in ["../escape", "/absolute", "nested/../escape", "bad\\path"] {
+    for path in [
+        "../escape",
+        "/absolute",
+        "nested/../escape",
+        "bad\\path",
+        "nested//file",
+        "nested/",
+    ] {
         let mut matrix = sample_matrix();
         matrix.rows[0].retained_artifacts = vec![path.to_string()];
         assert!(
@@ -209,6 +216,10 @@ fn matrix_rejects_unsafe_retained_artifact_paths() {
             "retained artifact path should be rejected: {path}"
         );
     }
+
+    let mut matrix = sample_matrix();
+    matrix.rows[0].retained_artifacts = vec!["x".repeat(MAX_RETAINED_ARTIFACT_PATH_BYTES + 1)];
+    assert!(validate_matrix(&matrix).is_err());
 }
 
 #[test]

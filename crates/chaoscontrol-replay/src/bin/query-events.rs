@@ -10,7 +10,6 @@ use chaoscontrol_replay::event_query::{
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
@@ -141,13 +140,7 @@ fn run() -> Result<(), String> {
             let result = evaluate(&query, &events, &limits).map_err(|error| error.to_string())?;
             write_json(&output, &result)?;
             if let Some(receipt_path) = receipt {
-                let source_ids: Vec<[u8; 32]> = events
-                    .iter()
-                    .map(|event| event.source_id)
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
-                    .collect();
-                let receipt = receipt_for(&query, &source_ids, &result, &limits)
+                let receipt = receipt_for(&query, &events, &result, &limits)
                     .map_err(|error| error.to_string())?;
                 write_json(&receipt_path, &receipt)?;
             }

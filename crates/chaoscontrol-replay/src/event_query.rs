@@ -517,6 +517,8 @@ pub struct EventQueryResult {
 pub struct EventQueryReceipt {
     pub schema: String,
     pub source_ids: Vec<[u8; 32]>,
+    #[serde(default)]
+    pub events_digest: [u8; 32],
     pub query: EventQuery,
     #[serde(default = "no_u64", skip_serializing_if = "Option::is_none")]
     pub moment_tick: Option<u64>,
@@ -585,7 +587,9 @@ impl core::fmt::Display for EventQueryError {
             Self::InvalidPointer => "event query JSON pointer is not confined",
             Self::ReceiptDrift => "event query receipt does not match the admitted query facts",
             Self::ResultDrift => "event query result does not match a fresh evaluation",
-            Self::SourceDrift => "event query receipt source identities do not match the inputs",
+            Self::SourceDrift => {
+                "event query receipt source identity or content does not match the inputs"
+            }
             Self::TimelineReceiptDrift => {
                 "event timeline receipt does not match the admitted facts and output"
             }
@@ -710,18 +714,19 @@ pub fn evaluate(
 /// Build a receipt binding the query, source identities, limits, and rows.
 pub fn receipt_for(
     query: &EventQuery,
-    source_ids: &[[u8; 32]],
+    events: &[EventEnvelope],
     result: &EventQueryResult,
     limits: &EventQueryLimits,
 ) -> Result<EventQueryReceipt, EventQueryError> {
     let rows = serde_json::to_vec(&result.rows).map_err(|_| EventQueryError::Digest)?;
     let rows_digest = *blake3::hash(&rows).as_bytes();
-    let mut source_ids = source_ids.to_vec();
+    let mut source_ids: Vec<[u8; 32]> = events.iter().map(|event| event.source_id).collect();
     source_ids.sort_unstable();
     source_ids.dedup();
     Ok(EventQueryReceipt {
         schema: EVENT_QUERY_RECEIPT_SCHEMA.to_string(),
         source_ids,
+        events_digest: events_digest(events)?,
         query: query.clone(),
         moment_tick: moment_of(query)?,
         limits: *limits,
@@ -731,6 +736,54 @@ pub fn receipt_for(
         truncated: result.truncated,
         rows_digest,
     })
+}
+
+#[derive(Serialize)]
+struct EventSourceFingerprint<'a> {
+    schema: &'a str,
+    source_id: [u8; 32],
+    source_kind: EventSourceKind,
+    source_sequence: u64,
+    tick: u64,
+    vm_index: Option<u32>,
+    process: Option<&'a str>,
+    thread: Option<u32>,
+    kind: &'a str,
+    text: &'a str,
+    payload_digest: [u8; 32],
+    details: Option<&'a serde_json::Value>,
+}
+
+/// Digest every source-visible field in canonical source order.
+///
+/// `derived` is query-local and excluded so a prior projection cannot change
+/// the receipt for otherwise identical inputs.
+fn events_digest(events: &[EventEnvelope]) -> Result<[u8; 32], EventQueryError> {
+    let mut ordered: Vec<&EventEnvelope> = events.iter().collect();
+    ordered.sort_by_key(|event| (event.source_id, event.source_sequence));
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"chaoscontrol.event-query-source.v1\0");
+    for event in ordered {
+        let fingerprint = EventSourceFingerprint {
+            schema: &event.schema,
+            source_id: event.source_id,
+            source_kind: event.source_kind,
+            source_sequence: event.source_sequence,
+            tick: event.tick,
+            vm_index: event.vm_index,
+            process: event.process.as_deref(),
+            thread: event.thread,
+            kind: &event.kind,
+            text: &event.text,
+            payload_digest: event.payload_digest,
+            details: event.details.as_ref(),
+        };
+        let bytes = serde_json::to_vec(&fingerprint).map_err(|_| EventQueryError::Digest)?;
+        let length = u64::try_from(bytes.len()).map_err(|_| EventQueryError::CounterOverflow)?;
+        hasher.update(&length.to_le_bytes());
+        hasher.update(&bytes);
+    }
+    Ok(*hasher.finalize().as_bytes())
 }
 
 /// Validate a receipt against the admitted query, sources, result, and limits.
@@ -760,10 +813,10 @@ pub fn validate_receipt(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    if receipt.source_ids != source_ids {
+    if receipt.source_ids != source_ids || receipt.events_digest != events_digest(events)? {
         return Err(EventQueryError::SourceDrift);
     }
-    if receipt_for(query, &source_ids, &fresh, limits)? != *receipt {
+    if receipt_for(query, events, &fresh, limits)? != *receipt {
         return Err(EventQueryError::ReceiptDrift);
     }
     Ok(())
@@ -1317,7 +1370,7 @@ mod tests {
         };
         let result = evaluate(&same, &events(), &limits).unwrap();
         assert_eq!(result.matched, 0);
-        let receipt = receipt_for(&same, &[], &result, &limits).unwrap();
+        let receipt = receipt_for(&same, &events(), &result, &limits).unwrap();
         assert_eq!(receipt.moment_tick, Some(5));
 
         let mixed = EventQuery::Union {
@@ -1601,7 +1654,7 @@ mod tests {
         };
         let limits = EventQueryLimits::default();
         let result = evaluate(&query, &events, &limits).unwrap();
-        let receipt = receipt_for(&query, &[[2; 32], [1; 32]], &result, &limits).unwrap();
+        let receipt = receipt_for(&query, &events, &result, &limits).unwrap();
         validate_receipt(&receipt, &query, &events, &result, &limits).unwrap();
 
         let mut tampered = receipt.clone();
@@ -1615,6 +1668,13 @@ mod tests {
         drifted.source_ids.push([9; 32]);
         assert_eq!(
             validate_receipt(&drifted, &query, &events, &result, &limits).unwrap_err(),
+            EventQueryError::SourceDrift
+        );
+
+        let mut changed_source = events.clone();
+        changed_source[1].text = String::from("changed after the query");
+        assert_eq!(
+            validate_receipt(&receipt, &query, &changed_source, &result, &limits).unwrap_err(),
             EventQueryError::SourceDrift
         );
 
@@ -1926,7 +1986,7 @@ mod tests {
         };
         let limits = EventQueryLimits::default();
         let result = evaluate(&query, &events, &limits).unwrap();
-        let receipt = receipt_for(&query, &[[2; 32], [1; 32], [1; 32]], &result, &limits).unwrap();
+        let receipt = receipt_for(&query, &events, &result, &limits).unwrap();
         assert_eq!(receipt.source_ids, vec![[1; 32], [2; 32]]);
         assert_eq!(receipt.rows, 2);
         let bytes = serde_json::to_vec(&result.rows).unwrap();
@@ -1941,8 +2001,7 @@ mod tests {
         assert!(truncated_result.truncated);
         assert_eq!(truncated_result.rows.len(), 1);
         assert_eq!(truncated_result.matched, 2);
-        let truncated_receipt =
-            receipt_for(&query, &[[1; 32]], &truncated_result, &limited).unwrap();
+        let truncated_receipt = receipt_for(&query, &events, &truncated_result, &limited).unwrap();
         assert!(truncated_receipt.truncated);
         assert_eq!(truncated_receipt.rows, 1);
         assert_eq!(truncated_receipt.matched, 2);

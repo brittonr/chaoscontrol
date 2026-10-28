@@ -439,6 +439,7 @@ impl FaultEngine {
         self.process_fault_queue.clear();
         self.assertion_hits.clear();
         self.assertion_hit_overflow = 0;
+        self.pause_control.clear();
         match self.run_sequence.checked_add(1) {
             Some(run_sequence) => {
                 self.run_sequence = run_sequence;
@@ -473,6 +474,7 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        self.pause_control.clear();
     }
 
     /// Start a clean counterfactual run after the current bounded run.
@@ -501,6 +503,7 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        self.pause_control.clear();
         Ok(())
     }
 
@@ -1751,6 +1754,48 @@ mod tests {
             }),
             Err(crate::mechanisms::MechanismError::DuplicatePauseRequest)
         );
+    }
+
+    #[test]
+    fn run_restarts_clear_pause_control() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule.clone()),
+            ..EngineConfig::default()
+        });
+        let pause = || PauseControlRequest {
+            requester: String::from("operator"),
+            start_tick: 0,
+            end_tick: 5,
+        };
+
+        engine.begin_run();
+        engine.force_setup_complete();
+        engine
+            .request_pause_control(pause())
+            .expect("pause admitted");
+        assert!(engine.poll_faults(0).unwrap().is_empty());
+
+        engine.begin_run();
+        engine.force_setup_complete();
+        assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
+
+        engine
+            .request_pause_control(pause())
+            .expect("pause admitted");
+        engine
+            .begin_counterfactual_run(schedule.clone())
+            .expect("counterfactual run");
+        assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
+
+        engine
+            .request_pause_control(pause())
+            .expect("pause admitted");
+        engine.rebind_fresh_run_at(schedule, 9);
+        engine.force_setup_complete();
+        assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
     }
 
     #[test]

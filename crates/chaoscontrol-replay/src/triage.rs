@@ -32,7 +32,7 @@ impl TriageEngine {
         let assertion = recording
             .events
             .iter()
-            .find_map(|e| {
+            .filter_map(|e| {
                 if let RecordedEvent::AssertionHit {
                     tick,
                     assertion_id,
@@ -42,17 +42,22 @@ impl TriageEngine {
                 } = e
                 {
                     if *tick <= bug_tick && !passed {
-                        return Some(AssertionInfo {
-                            id: *assertion_id,
-                            location: location.clone(),
-                            kind: "always".to_string(), // Would need to track assertion types
-                            description: description.clone(),
-                            details: None,
-                        });
+                        return Some((
+                            *tick,
+                            AssertionInfo {
+                                id: *assertion_id,
+                                location: location.clone(),
+                                kind: "always".to_string(), // Would need to track assertion types
+                                description: description.clone(),
+                                details: None,
+                            },
+                        ));
                     }
                 }
                 None
             })
+            .max_by_key(|(tick, _)| *tick)
+            .map(|(_, info)| info)
             .unwrap_or_else(|| AssertionInfo {
                 id: 0,
                 location: "unknown".to_string(),
@@ -426,6 +431,35 @@ mod tests {
         assert_eq!(report.vm_states.len(), 2);
         assert_eq!(report.vm_states[0].vm_index, 0);
         assert_eq!(report.vm_states[1].vm_index, 1);
+    }
+
+    #[test]
+    fn triage_uses_the_latest_failed_assertion_before_the_bug() {
+        let mut recording = test_recording();
+        recording.events.clear();
+        recording.events.push(RecordedEvent::AssertionHit {
+            tick: 500,
+            vm_index: 0,
+            assertion_id: 1,
+            location: String::from("early.rs:1"),
+            passed: false,
+        });
+        recording.events.push(RecordedEvent::AssertionHit {
+            tick: 1_800,
+            vm_index: 0,
+            assertion_id: 2,
+            location: String::from("late.rs:2"),
+            passed: false,
+        });
+        recording.events.push(RecordedEvent::BugDetected {
+            tick: 2_000,
+            bug_id: 1,
+            description: String::from("bug"),
+            checkpoint_id: None,
+        });
+
+        let report = TriageEngine::triage(&recording, 1).unwrap();
+        assert_eq!(report.assertion.location, "late.rs:2");
     }
 
     #[test]

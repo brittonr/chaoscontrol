@@ -15,7 +15,14 @@ fn main() {
 
 fn run() -> EvidenceResult<()> {
     let root = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
-    let root = Path::new(&root);
+    run_at(&root)
+}
+
+fn run_at(root: &str) -> EvidenceResult<()> {
+    if root.is_empty() {
+        return Err(EvidenceError::new("ROOT must not be empty"));
+    }
+    let root = Path::new(root);
     let good_path = root.join("dogfood-results/consistency-checker-fixtures/register-good.json");
     let good_report_path =
         root.join("dogfood-results/consistency-checker-fixtures/register-good.report.json");
@@ -87,5 +94,15 @@ fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
         Ok(())
     } else {
         Err(EvidenceError::new(message.into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(run_at("").is_err());
     }
 }

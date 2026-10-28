@@ -3224,6 +3224,7 @@ mod chunk_copy_tests {
         let link = root.path().join("link");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(sha256_file(&link).is_err());
+        assert!(sha256_file(Path::new("/proc/self/cmdline")).is_err());
     }
 
     #[test]

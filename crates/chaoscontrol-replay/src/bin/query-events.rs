@@ -10,7 +10,7 @@ use chaoscontrol_replay::event_query::{
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
@@ -205,8 +205,7 @@ fn execute(cli: Cli) -> Result<(), String> {
                 )),
                 None => None,
             };
-            std::fs::write(&output, rendered)
-                .map_err(|error| format!("{}: {error}", output.display()))?;
+            write_bytes(&output, rendered.as_bytes())?;
             if let Some((path, receipt)) = receipt {
                 write_json(&path, &receipt)?;
             }
@@ -285,7 +284,21 @@ fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    std::fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+    write_bytes(path, &bytes)
+}
+
+fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    file.write_all(bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))
 }
 
 #[cfg(test)]
@@ -447,6 +460,31 @@ mod tests {
         })
         .is_err());
         assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn timeline_refuses_a_symlink_output_target() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let facts = temp.path().join("facts.json");
+        let target = temp.path().join("target.md");
+        let link = temp.path().join("out.md");
+        std::fs::write(
+            &facts,
+            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
+        )
+        .unwrap();
+        std::fs::write(&target, b"original").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(execute(Cli {
+            command: Command::Timeline {
+                facts,
+                format: TimelineFormat::Markdown,
+                output: link,
+                receipt: None,
+            },
+        })
+        .is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
     }
 
     #[test]

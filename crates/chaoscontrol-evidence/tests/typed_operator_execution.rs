@@ -23,6 +23,8 @@ const FLOOD_BYTES: usize = 4_096;
 const FLOOD_OUTPUT_MAX_BYTES: u64 = 16;
 const TIMEOUT_TEST_MS: u64 = 20;
 const SLEEP_TEST_MS: u64 = 1_000;
+// Abort may block while the host collects a core dump.
+const SIGNAL_TEST_TIMEOUT_MS: u64 = 10_000;
 
 fn fixture_plan(action: &str, first: &str, second: &str) -> CommandPlan {
     let fixture = typed_command_fixture_support::fixture_spec(action, first, second);
@@ -135,7 +137,9 @@ fn timeout_records_owned_teardown() {
 #[test]
 fn signal_termination_is_not_success() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let plan = fixture_plan("abort", "", "");
+    let mut plan = fixture_plan("abort", "", "");
+    plan.limits.timeout_ms = SIGNAL_TEST_TIMEOUT_MS;
+    plan.limits.teardown_timeout_ms = SIGNAL_TEST_TIMEOUT_MS;
 
     let observation = execute(&plan, temp.path());
 

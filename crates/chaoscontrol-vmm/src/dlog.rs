@@ -720,6 +720,33 @@ pub fn dlog_stats(path: &Path) -> io::Result<std::collections::BTreeMap<u8, u64>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    fn make_fifo(path: &std::path::Path) {
+        let path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `path` is a valid NUL-terminated path and the test owns the location.
+        let result = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
+        assert_eq!(result, 0, "mkfifo failed: {}", io::Error::last_os_error());
+    }
+
+    #[test]
+    fn reader_rejects_fifo_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("run.dlog");
+        make_fifo(&fifo);
+
+        assert!(DlogReader::open(&fifo).is_err());
+    }
+
+    #[test]
+    fn writer_rejects_fifo_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("run.dlog");
+        make_fifo(&fifo);
+
+        assert!(DlogWriter::create(&fifo).is_err());
+    }
 
     #[test]
     fn reader_rejects_symlink_targets() {

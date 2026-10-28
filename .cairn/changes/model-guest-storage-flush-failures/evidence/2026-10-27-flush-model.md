@@ -72,6 +72,48 @@ later successful flush; stale cache surviving application restart and vanishing
 after reboot; snapshot validation rejecting failed-clean pages absent from the
 volatile layer.
 
+## Persistent nodes, oracles, and progress
+
+`crates/chaoscontrol-smr/src/persistence.rs` adds a bounded, pure node storage
+model: `PersistentNodeState` (term, vote, snapshot, retained log suffix, and
+application bytes), a versioned length-framed record with a BLAKE3 identity, and
+`SmrDisk` stage/flush/load with write failure, flush failure, corruption,
+truncation, capacity, and framing denials. `PersistentNodeCohort` allocates one
+independent disk per declared participant. The model performs no host I/O.
+
+`crates/chaoscontrol-smr/src/storage_recovery.rs` adds the protocol safety
+oracle and participant-scoped progress decision. The oracle reports
+acknowledged-data loss, committed-entry truncation, unsafe post-repair voting,
+conflicting committed history, and progress that assumes unknown commitment.
+Progress is `pass`, `fail`, `not-evaluated`, or `incomplete` and distinguishes
+local sufficiency, admitted-peer repair, missed available repair, complete
+global absence, unreached horizon, and incomplete observation.
+
+Executed:
+
+```sh
+nix develop -c cargo test -p chaoscontrol-smr --lib
+nix develop -c cargo fmt --check
+nix develop -c cargo clippy -p chaoscontrol-smr --all-targets -- -D warnings
+```
+
+Results: 28 passed (14 pre-existing + 6 persistence + 8 recovery), 0 failed;
+formatting and strict Clippy clean.
+
+Positive coverage: full member round trip, crash-before-flush retaining only
+published state, independent cohort disks, consistent durable state passing the
+safety oracle, local sufficiency passing without remote repair, admitted-peer
+repair passing, complete global absence as fail-closed unavailability.
+
+Negative coverage: write failure, capacity denial, corruption, truncation,
+inconsistent log gap, snapshot/log overlap, truncated/acknowledged loss, unsafe
+voting, conflicting committed history, unknown commitment, unnecessary remote
+repair, missed available repair, unreached horizon, and incomplete observation.
+
+Still open: workload schedules (restart, lagging replica, unavailable peer,
+corruption, local repair), receipt cohort binding, saved-evidence campaigns,
+and the closing KVM/Nix gates. These are not claimed by the tests above.
+
 ## Non-claims
 
 These are deterministic model observations for the declared code paths. They do

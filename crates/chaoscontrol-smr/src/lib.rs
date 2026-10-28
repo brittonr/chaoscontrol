@@ -9,8 +9,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub mod control;
+pub mod persistence;
 pub mod phenomena;
 pub mod retained;
+pub mod storage_recovery;
 
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.smr-workload-profile.v1";
 pub const RECEIPT_SCHEMA: &str = "chaoscontrol.smr-workload-receipt.v1";

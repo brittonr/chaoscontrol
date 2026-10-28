@@ -24,10 +24,13 @@
 
 ## Persistent consensus workload
 
-- [ ] [serial] Add one persistent deterministic block device per Raft node and bind term, vote, log, snapshot, and application state. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
+- [x] [serial] Add one persistent deterministic block device per Raft node and bind term, vote, log, snapshot, and application state. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
+  - Evidence: `chaoscontrol-smr` `persistence`; six cases cover round trip, crash-before-flush, write/capacity denial, corruption/truncation, inconsistent logs, and independent cohort disks.
 - [ ] [serial] Add restart, lagging-replica, unavailable-peer, corruption, and local-repair schedules. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
-- [ ] [depends:protocol-observation-cohorts] Add oracles for acknowledged-data loss, committed truncation, unsafe voting, conflicting history, and unknown-commitment progress. r[chaoscontrol.smr_storage_recovery.protocol_oracles]
-- [ ] [depends:protocol-observation-cohorts] Add participant-scoped recovery progress for local sufficiency, peer-available repair, complete global absence, incomplete observation, and finite virtual horizons. r[chaoscontrol.smr_storage_recovery.recovery_progress]
+- [x] [depends:protocol-observation-cohorts] Add oracles for acknowledged-data loss, committed truncation, unsafe voting, conflicting history, and unknown-commitment progress. r[chaoscontrol.smr_storage_recovery.protocol_oracles]
+  - Evidence: `chaoscontrol-smr` `storage_recovery::validate_storage_recovery` with positive and five negative classes.
+- [x] [depends:protocol-observation-cohorts] Add participant-scoped recovery progress for local sufficiency, peer-available repair, complete global absence, incomplete observation, and finite virtual horizons. r[chaoscontrol.smr_storage_recovery.recovery_progress]
+  - Evidence: `storage_recovery::evaluate_recovery_progress` returns pass/fail/not-evaluated/incomplete for local, peer, global-absence, unnecessary-repair, missed-repair, horizon, and incomplete-observation cases.
 - [ ] [parallel] Add positive local-only and peer repair plus negative unnecessary remote repair, missed available item, incomplete observation, and quorum-intersection storage-loss campaigns. r[chaoscontrol.smr_storage_recovery.recovery_progress] r[chaoscontrol.smr_storage_recovery.validation]
 
 ## Evidence and closeout

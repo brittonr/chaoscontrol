@@ -906,18 +906,37 @@ pub fn write_receipt(path: &Path, receipt: &FrontierParityReceipt) -> Result<(),
     };
     let mut bytes = serde_json::to_vec_pretty(receipt).map_err(|error| failure(error.into()))?;
     bytes.push(b'\n');
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(failure)?;
-    file.write_all(&bytes).map_err(failure)?;
-    file.sync_all().map_err(failure)
+    write_new_file(path, &bytes).map_err(failure)
+}
+
+fn write_new_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .persist_noclobber(path)
+        .map_err(|error| error.error)?;
+    std::fs::File::open(parent)?.sync_all()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_publication_is_atomic_and_never_overwrites() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/receipt.json");
+        write_new_file(&path, b"{}\n").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"{}\n");
+        assert!(write_new_file(&path, b"replacement").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"{}\n");
+    }
 
     #[test]
     fn trace_pair_rejects_symlinks_and_oversized_files() {

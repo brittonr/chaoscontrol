@@ -381,16 +381,18 @@ pub fn save_campaign_progress(
 }
 
 fn write_campaign_report(path: &str, bytes: &[u8]) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
-    file.write_all(bytes)
+    let path = Path::new(path);
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let directory = std::fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()
 }
 
 /// Load campaign progress from `{dir}/campaign_progress.json`.
@@ -988,15 +990,16 @@ mod tests {
     const TWO_REPORT_SECONDS: f64 = 2.0;
 
     #[test]
-    fn campaign_report_writer_rejects_symlink_targets() {
+    fn campaign_report_writer_replaces_symlink_without_following() {
         let temporary = tempfile::tempdir().expect("temporary directory");
         let target = temporary.path().join("target.txt");
         std::fs::write(&target, b"original").unwrap();
         let link = temporary.path().join("report.txt");
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        assert!(write_campaign_report(link.to_str().unwrap(), b"report").is_err());
+        write_campaign_report(link.to_str().unwrap(), b"report").unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        assert_eq!(std::fs::read(&link).unwrap(), b"report");
     }
 
     // ── 6.1: seed generation ────────────────────────────────────────

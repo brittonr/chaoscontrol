@@ -462,6 +462,7 @@ impl FaultEngine {
 
     /// Rebind a controller run that already started its property oracle.
     pub fn rebind_fresh_run_at(&mut self, schedule: FaultSchedule, run_sequence: u64) {
+        self.catalog_builder = None;
         self.schedule = schedule;
         self.schedule.reset();
         self.outcomes = FaultOutcomeLedger::default();
@@ -495,6 +496,7 @@ impl FaultEngine {
                 .record_setup_complete()
                 .map_err(|_| FaultSelectionError::SetupStateMismatch)?;
         }
+        self.catalog_builder = None;
         self.schedule = schedule;
         self.schedule.reset();
         self.schedule_id = self.schedule.identity();
@@ -1835,6 +1837,21 @@ mod tests {
         engine.rebind_fresh_run_at(FaultSchedule::new(), 9);
         assert!(engine.take_assertion_hits().is_empty());
         assert_eq!(engine.assertion_hit_overflow(), 0);
+    }
+
+    #[test]
+    fn fresh_runs_clear_incomplete_catalog_builders() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        engine.catalog_builder = Some(CatalogBuilder::begin(1).expect("catalog builder"));
+        engine
+            .begin_counterfactual_run(FaultSchedule::new())
+            .expect("counterfactual run");
+        assert!(engine.catalog_builder.is_none());
+
+        engine.catalog_builder = Some(CatalogBuilder::begin(1).expect("catalog builder"));
+        engine.rebind_fresh_run_at(FaultSchedule::new(), 9);
+        assert!(engine.catalog_builder.is_none());
     }
 
     #[test]

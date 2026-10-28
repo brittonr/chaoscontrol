@@ -69,8 +69,7 @@ pub fn check_snapshot_descriptor_contracts(
     if write {
         write_json(&fixture_path, &expected)?;
     }
-    let fixture_bytes = std::fs::read(&fixture_path)?;
-    let fixture: snapshot_core::SnapshotDescriptor = serde_json::from_slice(&fixture_bytes)?;
+    let fixture: snapshot_core::SnapshotDescriptor = read_contract_json(&fixture_path)?;
     snapshot_core::validate_descriptor(&fixture)
         .map_err(|error| EvidenceError::new(error.to_string()))?;
     if fixture != expected {
@@ -85,7 +84,7 @@ pub fn check_snapshot_descriptor_contracts(
     if write {
         write_json(&freshness_path, &freshness)?;
     }
-    let committed: FreshnessManifest = serde_json::from_slice(&std::fs::read(&freshness_path)?)?;
+    let committed: FreshnessManifest = read_contract_json(&freshness_path)?;
     if committed != freshness {
         return Err(EvidenceError::new(
             "snapshot descriptor contract freshness manifest is stale",
@@ -94,8 +93,14 @@ pub fn check_snapshot_descriptor_contracts(
     Ok(())
 }
 
+fn read_contract_json<T: serde::de::DeserializeOwned>(path: &Path) -> EvidenceResult<T> {
+    let bytes =
+        crate::bounded_file::read_bounded_regular_bytes(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
 fn validate_schema_snapshot(path: &Path) -> EvidenceResult<()> {
-    let schema: Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    let schema: Value = read_contract_json(path)?;
     if schema.get("$id").and_then(Value::as_str) != Some(snapshot_core::DESCRIPTOR_SCHEMA) {
         return Err(EvidenceError::new("snapshot descriptor schema ID is stale"));
     }
@@ -231,4 +236,20 @@ pub fn contract_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
     .iter()
     .map(|path| root.join(path))
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contract_json_reads_reject_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("contract.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_contract_json::<Value>(&link).is_err());
+        assert!(read_contract_json::<Value>(&target).is_ok());
+    }
 }

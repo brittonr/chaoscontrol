@@ -803,6 +803,13 @@ pub fn receipt_for(
     } else if result.matched != rows_len {
         return Err(EventQueryError::InvalidResult);
     }
+    validate_source_positions(&result.rows)?;
+    let mut canonical_rows = result.rows.clone();
+    canonical_rows.sort_by_key(event_order);
+    canonical_rows.dedup_by_key(|event| (event.source_id, event.source_sequence));
+    if canonical_rows != result.rows {
+        return Err(EventQueryError::InvalidResult);
+    }
     let mut result_bytes = 0_usize;
     for row in &result.rows {
         admit_event(row)?;
@@ -1927,6 +1934,13 @@ mod tests {
         impossible.matched = impossible.scanned + 1;
         assert_eq!(
             receipt_for(&EventQuery::All, &events, &impossible, &narrow_rows).unwrap_err(),
+            EventQueryError::InvalidResult
+        );
+
+        let mut unsorted = result.clone();
+        unsorted.rows.swap(0, 1);
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &unsorted, &limits).unwrap_err(),
             EventQueryError::InvalidResult
         );
     }

@@ -210,6 +210,8 @@ mod tests {
         let link = root.join("manifest.json");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(read_manifest(&link).is_err());
+        assert!(read_bounded_regular(&link, MAX_FIXTURE_STATE_BYTES, "fixture state").is_err());
+        assert!(read_manifest(&root).is_err());
 
         let fifo = root.join("manifest.fifo");
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();

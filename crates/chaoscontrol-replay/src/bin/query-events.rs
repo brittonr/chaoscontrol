@@ -197,13 +197,19 @@ fn execute(cli: Cli) -> Result<(), String> {
                 TimelineFormat::Dot => render_timeline_dot(&facts),
             }
             .map_err(|error| error.to_string())?;
-            if let Some(receipt_path) = receipt {
-                let receipt = timeline_receipt(&facts, format.as_str(), &rendered)
-                    .map_err(|error| error.to_string())?;
-                write_json(&receipt_path, &receipt)?;
-            }
+            let receipt = match receipt {
+                Some(path) => Some((
+                    path,
+                    timeline_receipt(&facts, format.as_str(), &rendered)
+                        .map_err(|error| error.to_string())?,
+                )),
+                None => None,
+            };
             std::fs::write(&output, rendered)
                 .map_err(|error| format!("{}: {error}", output.display()))?;
+            if let Some((path, receipt)) = receipt {
+                write_json(&path, &receipt)?;
+            }
         }
     }
     Ok(())
@@ -419,6 +425,28 @@ mod tests {
             },
         })
         .is_err());
+    }
+
+    #[test]
+    fn timeline_does_not_write_a_receipt_when_the_output_fails() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let facts = temp.path().join("facts.json");
+        let receipt = temp.path().join("receipt.json");
+        std::fs::write(
+            &facts,
+            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
+        )
+        .unwrap();
+        assert!(execute(Cli {
+            command: Command::Timeline {
+                facts,
+                format: TimelineFormat::Markdown,
+                output: temp.path().to_path_buf(),
+                receipt: Some(receipt.clone()),
+            },
+        })
+        .is_err());
+        assert!(!receipt.exists());
     }
 
     #[test]

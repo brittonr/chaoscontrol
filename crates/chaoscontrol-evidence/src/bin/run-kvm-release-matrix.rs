@@ -478,9 +478,26 @@ fn executed_argv(program: &str, args: &[String]) -> Vec<String> {
 }
 
 fn expand_argument(argument: &str, root: &Path, row_output: &Path) -> String {
-    argument
-        .replace("%ROOT%", &root.to_string_lossy())
-        .replace("%ROW_OUT%", &row_output.to_string_lossy())
+    let root = root.to_string_lossy();
+    let row_output = row_output.to_string_lossy();
+    let mut expanded = String::with_capacity(argument.len());
+    let mut rest = argument;
+    while let Some(index) = rest.find('%') {
+        expanded.push_str(&rest[..index]);
+        let tail = &rest[index..];
+        if let Some(stripped) = tail.strip_prefix("%ROOT%") {
+            expanded.push_str(&root);
+            rest = stripped;
+        } else if let Some(stripped) = tail.strip_prefix("%ROW_OUT%") {
+            expanded.push_str(&row_output);
+            rest = stripped;
+        } else {
+            expanded.push('%');
+            rest = &tail[1..];
+        }
+    }
+    expanded.push_str(rest);
+    expanded
 }
 
 fn collect_artifacts(
@@ -777,6 +794,20 @@ mod publication_tests {
             },
             retained_artifacts: vec!["stdout.log".to_string()],
         }
+    }
+
+    #[test]
+    fn argument_expansion_is_single_pass() {
+        let root = Path::new("/tmp/%ROW_OUT%/root");
+        let row_output = Path::new("/tmp/row");
+        assert_eq!(
+            expand_argument("%ROOT%/%ROW_OUT%", root, row_output),
+            "/tmp/%ROW_OUT%/root//tmp/row"
+        );
+        assert_eq!(
+            expand_argument("plain-%value%", root, row_output),
+            "plain-%value%"
+        );
     }
 
     #[test]

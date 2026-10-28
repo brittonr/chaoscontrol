@@ -385,6 +385,12 @@ impl DlogWriter {
     pub fn create(path: &Path) -> io::Result<Self> {
         use std::os::unix::fs::OpenOptionsExt;
 
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent)?;
+        }
         let file = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -786,6 +792,21 @@ mod tests {
 
         assert!(DlogReader::open(&link).is_err());
         assert_eq!(std::fs::read(&target).unwrap(), b"original");
+    }
+
+    #[test]
+    fn writer_creates_parent_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/run.dlog");
+        {
+            let mut writer = DlogWriter::create(&path).unwrap();
+            writer
+                .emit(DlogRecord::new(0, 1, 2, 3, DlogTag::IoIn, 0))
+                .unwrap();
+            writer.sync_all().unwrap();
+        }
+        let mut reader = DlogReader::open(&path).unwrap();
+        assert_eq!(reader.next_record().unwrap().unwrap().seq, 0);
     }
 
     #[test]

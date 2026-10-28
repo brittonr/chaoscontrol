@@ -572,6 +572,7 @@ pub enum EventQueryError {
     ResultBound,
     OperationBound,
     InvalidEvent,
+    InvalidResult,
     DuplicateSourcePosition,
     InvalidPredicate,
     InvalidText,
@@ -600,6 +601,7 @@ impl core::fmt::Display for EventQueryError {
             Self::ResultBound => "event query result bytes exceed the bound",
             Self::OperationBound => "event query operations exceed the bound",
             Self::InvalidEvent => "event envelope schema or identity is invalid",
+            Self::InvalidResult => "event query result is malformed or inconsistent",
             Self::DuplicateSourcePosition => {
                 "two events claim one source position with different content"
             }
@@ -775,6 +777,35 @@ pub fn receipt_for(
         admit_event(event)?;
     }
     validate_source_positions(events)?;
+    if result.schema != EVENT_QUERY_RESULT_SCHEMA
+        || result.scanned
+            != u64::try_from(events.len()).map_err(|_| EventQueryError::CounterOverflow)?
+    {
+        return Err(EventQueryError::InvalidResult);
+    }
+    if result.rows.len() > limits.max_result_rows {
+        return Err(EventQueryError::RowBound);
+    }
+    let rows_len =
+        u64::try_from(result.rows.len()).map_err(|_| EventQueryError::CounterOverflow)?;
+    if result.truncated {
+        if result.rows.len() != limits.max_result_rows || result.matched <= rows_len {
+            return Err(EventQueryError::InvalidResult);
+        }
+    } else if result.matched != rows_len {
+        return Err(EventQueryError::InvalidResult);
+    }
+    let mut result_bytes = 0_usize;
+    for row in &result.rows {
+        admit_event(row)?;
+        let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
+        result_bytes = result_bytes
+            .checked_add(bytes.len())
+            .ok_or(EventQueryError::CounterOverflow)?;
+        if result_bytes > limits.max_result_bytes {
+            return Err(EventQueryError::ResultBound);
+        }
+    }
     let rows = serde_json::to_vec(&result.rows).map_err(|_| EventQueryError::Digest)?;
     let rows_digest = *blake3::hash(&rows).as_bytes();
     let mut source_ids: Vec<[u8; 32]> = events.iter().map(|event| event.source_id).collect();
@@ -1830,6 +1861,43 @@ mod tests {
         assert_eq!(
             receipt_for(&EventQuery::All, &invalid, &result, &limits).unwrap_err(),
             EventQueryError::InvalidEvent
+        );
+    }
+
+    #[test]
+    fn receipt_construction_rejects_inconsistent_results() {
+        let events = events();
+        let limits = EventQueryLimits::default();
+        let result = evaluate(&EventQuery::All, &events, &limits).unwrap();
+
+        let mut bad_schema = result.clone();
+        bad_schema.schema = String::from("other");
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &bad_schema, &limits).unwrap_err(),
+            EventQueryError::InvalidResult
+        );
+
+        let mut bad_scan = result.clone();
+        bad_scan.scanned += 1;
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &bad_scan, &limits).unwrap_err(),
+            EventQueryError::InvalidResult
+        );
+
+        let narrow_rows = EventQueryLimits {
+            max_result_rows: 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &result, &narrow_rows).unwrap_err(),
+            EventQueryError::RowBound
+        );
+
+        let mut inconsistent = result.clone();
+        inconsistent.matched += 1;
+        assert_eq!(
+            receipt_for(&EventQuery::All, &events, &inconsistent, &limits).unwrap_err(),
+            EventQueryError::InvalidResult
         );
     }
 

@@ -349,6 +349,7 @@ pub fn admit_output_directory(gate: ReleaseGate, directory: &Path) -> EvidenceRe
 
 fn load_json(path: &Path) -> EvidenceResult<Value> {
     let text = crate::bounded_file::read_bounded_regular_file(path, MAX_OUTPUT_FILE_BYTES)?;
+    crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&text)
         .map_err(|error| EvidenceError::new(format!("{}: invalid JSON: {error}", path.display())))
 }
@@ -495,6 +496,19 @@ mod tests {
     #[test]
     fn output_directory_rejects_an_empty_path() {
         assert!(admit_output_directory(ReleaseGate::DogfoodReceipt, Path::new("")).is_err());
+    }
+
+    #[test]
+    fn output_directory_rejects_excessively_nested_json() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(CHECKPOINT_FILE),
+            format!("{}{}", "[".repeat(512), "]".repeat(512)),
+        )
+        .unwrap();
+        let error =
+            admit_output_directory(ReleaseGate::DogfoodReceipt, directory.path()).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
     }
 
     #[test]

@@ -103,21 +103,14 @@ fn copy_directory(source: &Path, destination: &Path, count: &mut usize) -> Resul
         if file_type.is_dir() {
             copy_directory(&entry.path(), &target, count)?;
         } else if file_type.is_file() {
-            let source_metadata = fs::metadata(entry.path())
-                .map_err(|error| format!("{}: {error}", entry.path().display()))?;
-            validate_byte_length(
-                &format!("template file {}", entry.path().display()),
-                source_metadata.len(),
-                MAX_TEMPLATE_FILE_BYTES,
-            )?;
-            fs::copy(entry.path(), &target)
-                .map_err(|error| format!("{}: {error}", target.display()))?;
-            let mut permissions = fs::metadata(&target)
-                .map_err(|error| format!("{}: {error}", target.display()))?
-                .permissions();
-            permissions.set_mode(permissions.mode() | OWNER_WRITE_MODE);
-            fs::set_permissions(&target, permissions)
-                .map_err(|error| format!("{}: {error}", target.display()))?;
+            let (bytes, source_mode) =
+                read_bounded_with_mode(&entry.path(), MAX_TEMPLATE_FILE_BYTES)?;
+            fs::write(&target, bytes).map_err(|error| format!("{}: {error}", target.display()))?;
+            fs::set_permissions(
+                &target,
+                fs::Permissions::from_mode(source_mode | OWNER_WRITE_MODE),
+            )
+            .map_err(|error| format!("{}: {error}", target.display()))?;
         } else {
             return Err(format!(
                 "template contains unsupported entry: {}",
@@ -170,6 +163,35 @@ fn has_text_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
         .is_some_and(|value| TEXT_EXTENSIONS.contains(&value))
+}
+
+fn read_bounded_with_mode(path: &Path, limit: u64) -> Result<(Vec<u8>, u32), String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    validate_byte_length(
+        &format!("template file {}", path.display()),
+        metadata.len(),
+        limit,
+    )?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() as u64 > limit {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok((bytes, metadata.permissions().mode()))
 }
 
 fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
@@ -237,6 +259,21 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn template_byte_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.bin");
+        fs::write(&target, b"source").unwrap();
+        let link = root.path().join("module.bin");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded_with_mode(&link, MAX_TEMPLATE_FILE_BYTES).is_err());
+
+        let fifo = root.path().join("module.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded_with_mode(&fifo, MAX_TEMPLATE_FILE_BYTES).is_err());
     }
 
     #[test]

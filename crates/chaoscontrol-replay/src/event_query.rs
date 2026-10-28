@@ -582,6 +582,7 @@ pub enum EventQueryError {
     DuplicateSourcePosition,
     InvalidPredicate,
     InvalidText,
+    InvalidWindow,
     InvalidField,
     InvalidPointer,
     ReceiptDrift,
@@ -614,6 +615,7 @@ impl core::fmt::Display for EventQueryError {
             }
             Self::InvalidPredicate => "event predicate is malformed or unsupported",
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
+            Self::InvalidWindow => "event query window is reversed",
             Self::InvalidField => "event query field is not supported",
             Self::InvalidPointer => "event query JSON pointer is not confined",
             Self::ReceiptDrift => "event query receipt does not match the admitted query facts",
@@ -1125,7 +1127,7 @@ fn evaluate_rows(
             end_tick,
         } => {
             if start_tick > end_tick {
-                return Err(EventQueryError::InvalidText);
+                return Err(EventQueryError::InvalidWindow);
             }
             let rows = evaluate_rows(input, events, operations, max_operations)?;
             charge_operations(operations, rows.len(), max_operations)?;
@@ -1223,7 +1225,7 @@ fn validate_query_inner(
             end_tick,
         } => {
             if start_tick > end_tick {
-                return Err(EventQueryError::InvalidText);
+                return Err(EventQueryError::InvalidWindow);
             }
             validate_query_inner(input, limits, depth + 1, nodes)
         }
@@ -2157,8 +2159,12 @@ mod tests {
             end_tick: 5,
         };
         assert_eq!(
+            evaluate(&reversed, &events, &limits).unwrap_err(),
+            EventQueryError::InvalidWindow
+        );
+        assert_eq!(
             receipt_for(&reversed, &events, &result, &limits).unwrap_err(),
-            EventQueryError::InvalidText
+            EventQueryError::InvalidWindow
         );
         let invalid_field = EventQuery::Contains {
             input: Box::new(EventQuery::All),

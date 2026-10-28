@@ -174,9 +174,25 @@ pub fn admit_cutover(facts: &CutoverFacts) -> Result<(), String> {
     Ok(())
 }
 
+fn read_policy_source(path: &Path, label: &str) -> Result<String, String> {
+    crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
+        .map_err(|error| format!("{label}: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn policy_source_reads_reject_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.toml");
+        std::fs::write(&target, b"[package]\nname = \"x\"").unwrap();
+        let link = root.path().join("Cargo.toml");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_policy_source(&link, "manifest").is_err());
+        assert!(read_policy_source(&target, "manifest").is_ok());
+    }
 
     // r[verify chaoscontrol.campaign_policy.baseline]
     #[test]
@@ -333,13 +349,14 @@ pub fn admit_cutover_receipt(
     receipt: &CutoverReceipt,
     current_revision: &str,
 ) -> Result<(), String> {
-    let manifest = std::fs::read_to_string(root.join("crates/chaoscontrol-explore/Cargo.toml"))
-        .map_err(|error| format!("campaign manifest: {error}"))?;
-    let lock = std::fs::read_to_string(root.join("Cargo.lock"))
-        .map_err(|error| format!("Cargo.lock: {error}"))?;
+    let manifest = read_policy_source(
+        &root.join("crates/chaoscontrol-explore/Cargo.toml"),
+        "campaign manifest",
+    )?;
+    let lock = read_policy_source(&root.join("Cargo.lock"), "Cargo.lock")?;
     // Packaged Nix sources intentionally omit flake.nix; the committed
     // receipt and Cargo lock are the authority there.
-    let flake = std::fs::read_to_string(root.join("flake.nix")).unwrap_or_default();
+    let flake = read_policy_source(&root.join("flake.nix"), "flake.nix").unwrap_or_default();
     admit_source_pins(&manifest, &lock, &flake)?;
     admit_baseline(Some(&receipt.baseline), current_revision)?;
     admit_kvm_parity(Some(&receipt.kvm_parity), current_revision)?;

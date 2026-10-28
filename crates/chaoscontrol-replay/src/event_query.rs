@@ -209,15 +209,12 @@ pub fn envelopes_from_dlog_bytes(
     if !bytes.len().is_multiple_of(RECORD_SIZE) {
         return Err(EventQueryError::InvalidEvent);
     }
-    if max_records == 0 {
+    if max_records == 0 || bytes.len() / RECORD_SIZE > max_records {
         return Err(EventQueryError::ScanBound);
     }
     let source_id = *blake3::hash(bytes).as_bytes();
     let mut envelopes = Vec::new();
     for sequence in 0..bytes.len() / RECORD_SIZE {
-        if envelopes.len() >= max_records {
-            break;
-        }
         let start = sequence * RECORD_SIZE;
         let mut record = [0_u8; RECORD_SIZE];
         record.copy_from_slice(&bytes[start..start + RECORD_SIZE]);
@@ -365,6 +362,8 @@ pub struct EventQueryReceipt {
     pub scanned: u64,
     pub matched: u64,
     pub rows: u64,
+    #[serde(default)]
+    pub truncated: bool,
     pub rows_digest: [u8; 32],
 }
 
@@ -551,6 +550,7 @@ pub fn receipt_for(
         scanned: result.scanned,
         matched: result.matched,
         rows: u64::try_from(result.rows.len()).map_err(|_| EventQueryError::CounterOverflow)?,
+        truncated: result.truncated,
         rows_digest,
     })
 }
@@ -1107,6 +1107,14 @@ mod tests {
             envelopes_from_dlog_bytes(&bytes[..RECORD_SIZE - 1], 10).unwrap_err(),
             EventQueryError::InvalidEvent
         );
+
+        let mut two_records = bytes.to_vec();
+        two_records.extend_from_slice(&bytes);
+        assert_eq!(
+            envelopes_from_dlog_bytes(&two_records, 1).unwrap_err(),
+            EventQueryError::ScanBound
+        );
+        assert_eq!(envelopes_from_dlog_bytes(&two_records, 2).unwrap().len(), 2);
     }
 
     #[test]
@@ -1123,5 +1131,20 @@ mod tests {
         assert_eq!(receipt.rows, 2);
         let bytes = serde_json::to_vec(&result.rows).unwrap();
         assert_eq!(receipt.rows_digest, *blake3::hash(&bytes).as_bytes());
+        assert!(!receipt.truncated);
+
+        let limited = EventQueryLimits {
+            max_result_rows: 1,
+            ..limits
+        };
+        let truncated_result = evaluate(&query, &events, &limited).unwrap();
+        assert!(truncated_result.truncated);
+        assert_eq!(truncated_result.rows.len(), 1);
+        assert_eq!(truncated_result.matched, 2);
+        let truncated_receipt =
+            receipt_for(&query, &[[1; 32]], &truncated_result, &limited).unwrap();
+        assert!(truncated_receipt.truncated);
+        assert_eq!(truncated_receipt.rows, 1);
+        assert_eq!(truncated_receipt.matched, 2);
     }
 }

@@ -924,6 +924,35 @@ mod tests {
     }
 
     #[test]
+    fn limits_enforce_each_named_bound() {
+        SymbolCoverageLimits::default().validate().unwrap();
+        let over = [
+            SymbolCoverageLimits {
+                max_modules: MAX_SYMBOL_MODULES + 1,
+                ..SymbolCoverageLimits::default()
+            },
+            SymbolCoverageLimits {
+                max_locations_per_module: MAX_SYMBOL_LOCATIONS_PER_MODULE + 1,
+                ..SymbolCoverageLimits::default()
+            },
+            SymbolCoverageLimits {
+                max_observations: MAX_SYMBOL_OBSERVATIONS + 1,
+                ..SymbolCoverageLimits::default()
+            },
+            SymbolCoverageLimits {
+                max_report_rows: MAX_SYMBOL_REPORT_ROWS + 1,
+                ..SymbolCoverageLimits::default()
+            },
+        ];
+        for limits in over {
+            assert_eq!(
+                limits.validate().unwrap_err(),
+                SymbolCoverageError::InvalidLimits
+            );
+        }
+    }
+
+    #[test]
     fn limits_fail_closed() {
         let catalog = catalog(
             1,

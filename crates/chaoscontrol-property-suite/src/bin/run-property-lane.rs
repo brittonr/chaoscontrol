@@ -136,6 +136,17 @@ mod tests {
     }
 
     #[test]
+    fn report_writer_rejects_fifo_targets() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().expect("temporary directory");
+        let fifo = root.path().join("fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(write_report(&fifo, b"receipt").is_err());
+    }
+
+    #[test]
     fn report_writer_rejects_symlink_targets() {
         let root = tempfile::tempdir().expect("temporary directory");
         let target = root.path().join("target.json");

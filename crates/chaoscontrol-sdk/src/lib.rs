@@ -85,6 +85,8 @@ pub use serde_json;
 #[cfg(feature = "full")]
 mod internal;
 #[cfg(feature = "full")]
+pub use internal::{ANTITHESIS_LOCAL_OUTPUT, LOCAL_OUTPUT};
+#[cfg(feature = "full")]
 mod local_json_security;
 
 #[cfg(feature = "full")]

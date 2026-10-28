@@ -32,6 +32,7 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |
 | Named event | `lifecycle::send_event(name, &Value)` | `lifecycle::send_event(name, &Value)` with `full`; trims and maps empty names to `anonymous` | equivalent |
 | Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` (primary) or `ANTITHESIS_SDK_LOCAL_OUTPUT` (fallback) | equivalent |
+| Local output constant | `LOCAL_OUTPUT` | `LOCAL_OUTPUT` and `ANTITHESIS_LOCAL_OUTPUT` at crate root | superset |
 | Convenience imports | `prelude` | `prelude` plus `compat` module with unprefixed Antithesis names | superset |
 
 ## Assertion macros
@@ -43,7 +44,8 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Sometimes | `assert_sometimes!` | `cc_assert_sometimes!` | equivalent |
 | Reachable | `assert_reachable!` | `cc_assert_reachable!` | equivalent |
 | Unreachable | `assert_unreachable!` | `cc_assert_unreachable!` | equivalent |
-| Raw / third-party | `assert::assert_raw(13 args)` | `cc_assert_raw!(kind, cond, msg[, details])` | divergent |
+| Raw / third-party | `assert::assert_raw(13 args)` | `cc_assert_raw!(kind, cond, msg[, details])`; no runtime raw binding | divergent |
+| Assertion type enum | `assert::AssertType` | `assert::AssertType` with `to_kind` / `From<AssertionKind>` | equivalent |
 | Implication | (none) | `cc_assert_implies!` | absent |
 | Result ok | (none) | `cc_assert_{always,sometimes}_ok!` | absent |
 | Result err | (none) | `cc_assert_{always,sometimes}_err!` | absent |
@@ -81,7 +83,7 @@ See the guidance decision below.
 | Choice from slice | `random_choice(&[T]) -> Option<&T>` | `random_choice(&[T]) -> Option<&T>` | equivalent |
 | Choice index (extension) | (none) | `random_choice_index(n) -> usize` | absent |
 | Fill bytes | `fill_bytes` (internal) | `random::fill_bytes(&mut [u8])` (public) | divergent |
-| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` (rand 0.8 `RngCore` + `CryptoRng` with `full`; rand_core 0.9/0.10 via `rand_v0_9`/`rand_v0_10`) | equivalent |
+| rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` with an `AntithesisRng` alias (rand 0.8 `RngCore` + `CryptoRng` with `full`; rand_core 0.9/0.10 via `rand_v0_9`/`rand_v0_10`) | equivalent |
 
 ## Transport and runtime modes
 

@@ -21,7 +21,7 @@ pub use crate::{chaoscontrol_init, is_in_vm, is_local_output};
 pub use crate::runtime::guest_init;
 
 // ── Assertion functions ──────────────────────────────────────────────
-pub use crate::assert::AssertionKind;
+pub use crate::assert::{AssertType, AssertionKind};
 #[cfg(feature = "full")]
 pub use crate::cc_branch_marker;
 

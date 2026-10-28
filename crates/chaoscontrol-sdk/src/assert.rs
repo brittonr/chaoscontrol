@@ -94,6 +94,45 @@ impl AssertionKind {
     }
 }
 
+/// Antithesis-compatible assertion classification.
+///
+/// Unlike [`AssertionKind`], reachability is a single variant. Use
+/// [`AssertType::to_kind`] with the observed condition to distinguish a
+/// reachable site from an unreachable one.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AssertType {
+    /// `always` or `always_or_unreachable`.
+    Always,
+    /// `sometimes`.
+    Sometimes,
+    /// `reachable` or `unreachable`.
+    Reachability,
+}
+
+impl AssertType {
+    /// Resolve a reachability classification to the concrete assertion kind.
+    ///
+    /// `condition` is the recorded condition value: reachable assertions
+    /// record `true`, unreachable assertions record `false`.
+    pub const fn to_kind(self, condition: bool) -> AssertionKind {
+        match self {
+            AssertType::Always => AssertionKind::Always,
+            AssertType::Sometimes => AssertionKind::Sometimes,
+            AssertType::Reachability if condition => AssertionKind::Reachable,
+            AssertType::Reachability => AssertionKind::Unreachable,
+        }
+    }
+}
+
+impl From<AssertionKind> for AssertType {
+    fn from(kind: AssertionKind) -> Self {
+        match kind {
+            AssertionKind::Always => AssertType::Always,
+            AssertionKind::Sometimes => AssertType::Sometimes,
+            AssertionKind::Reachable | AssertionKind::Unreachable => AssertType::Reachability,
+        }
+    }
+}
 /// A registered assertion site, created at link time by assertion macros.
 ///
 /// Every `cc_assert_*!` macro emits a static `CatalogEntry` into the
@@ -2586,6 +2625,36 @@ mod tests {
         cc_assert_always_some!({first: true, second: false}, "bundle any");
         cc_assert_always_some!({ Some(1) }, "block option expression");
         cc_assert_always_some!(Some(2), "plain option expression");
+    }
+
+    #[test]
+    fn antithesis_assert_type_maps_to_assertion_kinds() {
+        assert_eq!(AssertType::Always.to_kind(false), AssertionKind::Always);
+        assert_eq!(
+            AssertType::Sometimes.to_kind(true),
+            AssertionKind::Sometimes
+        );
+        assert_eq!(
+            AssertType::Reachability.to_kind(true),
+            AssertionKind::Reachable
+        );
+        assert_eq!(
+            AssertType::Reachability.to_kind(false),
+            AssertionKind::Unreachable
+        );
+        assert_eq!(AssertType::from(AssertionKind::Always), AssertType::Always);
+        assert_eq!(
+            AssertType::from(AssertionKind::Sometimes),
+            AssertType::Sometimes
+        );
+        assert_eq!(
+            AssertType::from(AssertionKind::Reachable),
+            AssertType::Reachability
+        );
+        assert_eq!(
+            AssertType::from(AssertionKind::Unreachable),
+            AssertType::Reachability
+        );
     }
 
     #[test]

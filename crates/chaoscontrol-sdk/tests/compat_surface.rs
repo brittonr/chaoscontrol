@@ -1,4 +1,5 @@
 use chaoscontrol_sdk::compat::*;
+use chaoscontrol_sdk::prelude::AssertionKind;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
@@ -11,8 +12,22 @@ fn compat_module_exposes_the_antithesis_assertion_names() {
     let _ = std::fs::remove_file(&output);
     std::env::set_var("CHAOSCONTROL_SDK_LOCAL_OUTPUT", &output);
 
+    assert_eq!(
+        chaoscontrol_sdk::LOCAL_OUTPUT,
+        "CHAOSCONTROL_SDK_LOCAL_OUTPUT"
+    );
+    assert_eq!(
+        chaoscontrol_sdk::ANTITHESIS_LOCAL_OUTPUT,
+        "ANTITHESIS_SDK_LOCAL_OUTPUT"
+    );
+    let _: AntithesisRng = AntithesisRng::new();
+    let _: AssertType = AssertionKind::Always.into();
+    assert_eq!(
+        AssertType::Reachability.to_kind(false),
+        AssertionKind::Unreachable
+    );
+
     antithesis_init();
-    let _: AntithesisRng = AntithesisRng;
 
     assert_always!(true, "compat always");
     assert_always_or_unreachable!(true, "compat aou");

@@ -125,6 +125,9 @@ impl ChaosControlRng {
     }
 }
 
+/// Antithesis-compatible name for [`ChaosControlRng`].
+pub type AntithesisRng = ChaosControlRng;
+
 #[cfg(feature = "full")]
 impl rand::RngCore for ChaosControlRng {
     fn next_u32(&mut self) -> u32 {

@@ -5,8 +5,9 @@
 //! admission requires a compiled descriptor, so an arbitrary raw assertion
 //! cannot be bound safely.
 
+pub use crate::assert::AssertType;
 pub use crate::chaoscontrol_init as antithesis_init;
-pub use crate::random::ChaosControlRng as AntithesisRng;
+pub use crate::random::AntithesisRng;
 pub use crate::{
     cc_assert_always as assert_always, cc_assert_always_greater_than as assert_always_greater_than,
     cc_assert_always_greater_than_or_equal_to as assert_always_greater_than_or_equal_to,

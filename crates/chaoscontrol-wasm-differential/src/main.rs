@@ -361,7 +361,14 @@ fn execute_corpus(
             .ok_or_else(|| Error::Invalid("retention count overflow".into()))?,
     )
     .map_err(|class| Error::Invalid(format!("{class:?}: corpus retention exceeds profile")))?;
-    let base_report = run_spacewasm(profile, bundle, &fixture_root)?;
+    let expected_runner_digest = manifest
+        .members
+        .iter()
+        .find(|member| member.path == HOST_RUNNER_PATH)
+        .ok_or_else(|| Error::Invalid(String::from("host runner is not in bundle manifest")))?
+        .digest_blake3
+        .as_str();
+    let base_report = run_spacewasm(profile, bundle, &fixture_root, expected_runner_digest)?;
     if base_report.source_revision != profile.spacewasm_revision {
         return Err(Error::Invalid(String::from(
             "SpaceWasm runner source revision drift",
@@ -394,21 +401,6 @@ fn execute_corpus(
         comparisons.push(comparison);
     }
 
-    let runner_path = bundle.join(HOST_RUNNER_PATH);
-    let expected_runner_digest = manifest
-        .members
-        .iter()
-        .find(|member| member.path == HOST_RUNNER_PATH)
-        .ok_or_else(|| Error::Invalid(String::from("host runner is not in bundle manifest")))?
-        .digest_blake3
-        .as_str();
-    let actual_runner_digest = hash_file(&runner_path, profile.bounds.maximum_bundle_member_bytes)?;
-    if actual_runner_digest != expected_runner_digest {
-        return Err(Error::Invalid(String::from(
-            "host runner changed after bundle admission",
-        )));
-    }
-
     for index in 0..profile.generated_valid_cases {
         let (case_manifest, module) =
             CaseManifest::generate(profile, index, CaseKind::Execute).map_err(Error::Invalid)?;
@@ -431,12 +423,20 @@ fn execute_corpus(
             module: &module,
             artifacts,
         };
-        let comparison = run_generated_case(profile, bundle, wasmtime, &fixture_root, &case)?;
+        let comparison = run_generated_case(
+            profile,
+            bundle,
+            wasmtime,
+            &fixture_root,
+            expected_runner_digest,
+            &case,
+        )?;
         comparisons.push(minimize_generated_mismatch(
             profile,
             bundle,
             wasmtime,
             &fixture_root,
+            expected_runner_digest,
             &case,
             comparison,
         )?);
@@ -463,12 +463,20 @@ fn execute_corpus(
             module: &module,
             artifacts,
         };
-        let comparison = run_generated_case(profile, bundle, wasmtime, &fixture_root, &case)?;
+        let comparison = run_generated_case(
+            profile,
+            bundle,
+            wasmtime,
+            &fixture_root,
+            expected_runner_digest,
+            &case,
+        )?;
         comparisons.push(minimize_generated_mismatch(
             profile,
             bundle,
             wasmtime,
             &fixture_root,
+            expected_runner_digest,
             &case,
             comparison,
         )?);
@@ -501,6 +509,7 @@ fn run_generated_case(
     bundle: &Path,
     wasmtime: &Path,
     fixture_root: &Path,
+    expected_runner_digest: &str,
     case: &GeneratedCase<'_>,
 ) -> Result<CaseComparison, Error> {
     admit_case_bytes(profile, case.module, case.kind)?;
@@ -519,7 +528,7 @@ fn run_generated_case(
     )?;
     let module_path = temporary.path().join(case.fixture_file_name);
     fs::write(&module_path, case.module).map_err(|source| io_error(&module_path, source))?;
-    let report = run_spacewasm(profile, bundle, temporary.path())?;
+    let report = run_spacewasm(profile, bundle, temporary.path(), expected_runner_digest)?;
     let spacewasm = normalize_spacewasm(case.fixture_id, &report).map_err(Error::Invalid)?;
     let raw = run_wasmtime(
         profile,
@@ -573,6 +582,7 @@ fn minimize_generated_mismatch(
     bundle: &Path,
     wasmtime: &Path,
     fixture_root: &Path,
+    expected_runner_digest: &str,
     original_case: &GeneratedCase<'_>,
     original_comparison: CaseComparison,
 ) -> Result<CaseComparison, Error> {
@@ -608,10 +618,22 @@ fn minimize_generated_mismatch(
             module: &candidate_module,
             artifacts: original_case.artifacts,
         };
-        let candidate_comparison =
-            run_generated_case(profile, bundle, wasmtime, fixture_root, &candidate_case)?;
-        let replayed =
-            run_generated_case(profile, bundle, wasmtime, fixture_root, &candidate_case)?;
+        let candidate_comparison = run_generated_case(
+            profile,
+            bundle,
+            wasmtime,
+            fixture_root,
+            expected_runner_digest,
+            &candidate_case,
+        )?;
+        let replayed = run_generated_case(
+            profile,
+            bundle,
+            wasmtime,
+            fixture_root,
+            expected_runner_digest,
+            &candidate_case,
+        )?;
         if candidate_module.len() < minimized_module.len()
             && same_mismatch_predicate(&minimized_comparison, &candidate_comparison)
             && same_mismatch_predicate(&candidate_comparison, &replayed)
@@ -671,21 +693,40 @@ fn copy_fixture_set(source: &Path, destination: &Path, maximum_bytes: u64) -> Re
     Ok(())
 }
 
+fn stage_bundled_runner(
+    bundle: &Path,
+    runner_path: &Path,
+    expected_runner_digest: &str,
+    maximum_bytes: u64,
+) -> Result<(), Error> {
+    let bytes = read_bounded(&bundle.join(HOST_RUNNER_PATH), maximum_bytes)?;
+    let actual_digest = blake3::hash(&bytes).to_hex().to_string();
+    if actual_digest != expected_runner_digest {
+        return Err(Error::Invalid(String::from(
+            "host runner changed after bundle admission",
+        )));
+    }
+    std::fs::write(runner_path, &bytes).map_err(|source| io_error(runner_path, source))?;
+    let permissions = fs::Permissions::from_mode(STAGED_RUNNER_MODE);
+    fs::set_permissions(runner_path, permissions).map_err(|source| io_error(runner_path, source))
+}
+
 fn run_spacewasm(
     profile: &DifferentialProfile,
     bundle: &Path,
     fixture_root: &Path,
+    expected_runner_digest: &str,
 ) -> Result<MantleRunnerReport, Error> {
     let temporary = TempDir::new()
         .map_err(|source| io_error(Path::new("temporary runner directory"), source))?;
     let report_path = temporary.path().join(SPACEWASM_REPORT_FILE);
-    let bundled_runner_path = bundle.join(HOST_RUNNER_PATH);
     let runner_path = temporary.path().join(STAGED_RUNNER_FILE);
-    fs::copy(&bundled_runner_path, &runner_path)
-        .map_err(|source| io_error(&runner_path, source))?;
-    let permissions = fs::Permissions::from_mode(STAGED_RUNNER_MODE);
-    fs::set_permissions(&runner_path, permissions)
-        .map_err(|source| io_error(&runner_path, source))?;
+    stage_bundled_runner(
+        bundle,
+        &runner_path,
+        expected_runner_digest,
+        profile.bounds.maximum_bundle_member_bytes,
+    )?;
     let result = run_command(
         &runner_path,
         &[fixture_root.as_os_str(), report_path.as_os_str()],
@@ -1047,6 +1088,30 @@ mod tests {
                 ["status"],
             "passed"
         );
+    }
+
+    #[test]
+    fn staged_runner_requires_matching_regular_bundle_member() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = root.path().join("bundle");
+        std::fs::create_dir(&bundle).unwrap();
+        let runner = bundle.join(HOST_RUNNER_PATH);
+        std::fs::create_dir_all(runner.parent().unwrap()).unwrap();
+        std::fs::write(&runner, b"runner").unwrap();
+        let expected = blake3::hash(b"runner").to_hex().to_string();
+        let staged = root.path().join("staged-runner");
+        stage_bundled_runner(&bundle, &staged, &expected, 1024).unwrap();
+        assert_eq!(std::fs::read(&staged).unwrap(), b"runner");
+
+        let target = root.path().join("target");
+        std::fs::write(&target, b"runner").unwrap();
+        std::fs::remove_file(&runner).unwrap();
+        std::os::unix::fs::symlink(&target, &runner).unwrap();
+        assert!(stage_bundled_runner(&bundle, &staged, &expected, 1024).is_err());
+
+        std::fs::remove_file(&runner).unwrap();
+        std::fs::write(&runner, b"different").unwrap();
+        assert!(stage_bundled_runner(&bundle, &staged, &expected, 1024).is_err());
     }
 
     #[test]

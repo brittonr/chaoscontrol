@@ -43,6 +43,9 @@ impl TriageEngine {
                 {
                     if *tick <= bug_tick && !passed {
                         let record = assertion_record(recording, *assertion_id);
+                        let details = record
+                            .and_then(|record| record.last_failure_details.as_deref())
+                            .and_then(|bytes| serde_json::from_slice(bytes).ok());
                         return Some((
                             *tick,
                             AssertionInfo {
@@ -53,7 +56,7 @@ impl TriageEngine {
                                     || description.clone(),
                                     |record| record.message.clone(),
                                 ),
-                                details: None,
+                                details,
                             },
                         ));
                     }
@@ -487,7 +490,7 @@ mod tests {
                 runs_hit: 1,
                 runs_satisfied: 0,
                 first_failure_run: Some(0),
-                last_failure_details: None,
+                last_failure_details: Some(br#"{"value":7}"#.to_vec()),
                 guest: String::from("guest"),
                 category: String::from("fixture"),
                 identity: None,
@@ -503,6 +506,10 @@ mod tests {
         let report = TriageEngine::triage(&recording, 1).unwrap();
         assert_eq!(report.assertion.kind, "sometimes");
         assert_eq!(report.assertion.description, "liveness");
+        assert_eq!(
+            report.assertion.details,
+            Some(serde_json::json!({"value": 7}))
+        );
         assert_eq!(report.severity, Severity::Medium);
     }
 

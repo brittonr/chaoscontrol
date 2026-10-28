@@ -256,11 +256,14 @@ fn read_bytes(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
         .unwrap_or(usize::MAX)
         .min(usize::try_from(limit).unwrap_or(usize::MAX));
     let mut bytes = Vec::with_capacity(capacity);
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok(bytes)
 }
@@ -825,6 +828,11 @@ mod publication_tests {
             },
             retained_artifacts: vec!["stdout.log".to_string()],
         }
+    }
+
+    #[test]
+    fn input_reads_reject_length_changes() {
+        assert!(read_bytes(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

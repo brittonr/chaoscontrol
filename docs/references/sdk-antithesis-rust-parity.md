@@ -69,7 +69,8 @@ Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
 | Sometimes variants | `assert_sometimes_<rel>` | `cc_assert_sometimes_<rel>` (long and short names) | equivalent |
 
 Assertion details accept any `serde::Serialize` value, matching the 0.3.0
-surface; `serde_json::Value` remains supported. Antithesis numeric macros
+surface; `serde_json::Value` remains supported. Assertion messages must be
+const-evaluable, as in 0.3.0. Antithesis numeric macros
 attach **guidance** (maximize/minimize watermarks).
 ChaosControl numeric macros merge `left`/`right` into the assertion details
 on every call, keeping caller-supplied keys and replacing only `left`/`right`.

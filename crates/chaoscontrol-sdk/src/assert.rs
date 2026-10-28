@@ -461,6 +461,14 @@ macro_rules! __cc_empty_json {
 /// cc_assert_always!(leader_id < 3, "valid leader");
 /// cc_assert_always!(leader_id < 3, "valid leader", &json!({"id": leader_id}));
 /// ```
+///
+/// A message computed at runtime is rejected at compile time:
+///
+/// ```compile_fail
+/// use chaoscontrol_sdk::prelude::*;
+/// let message = String::from("runtime message");
+/// cc_assert_always!(true, message);
+/// ```
 #[macro_export]
 macro_rules! cc_assert_always {
     ($cond:expr, $msg:expr $(,)?) => {{
@@ -747,6 +755,7 @@ macro_rules! cc_assert_raw {
 #[macro_export]
 macro_rules! __cc_register_catalog {
     ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        const _: &str = $msg;
         fn __cc_assertion_function_name() -> &'static str {
             fn __cc_assertion_probe() {}
             let name = ::core::any::type_name_of_val(&__cc_assertion_probe);
@@ -795,6 +804,7 @@ macro_rules! __cc_register_catalog {
 #[macro_export]
 macro_rules! __cc_register_stable_catalog {
     ($namespace:expr, $key:expr, $id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        const _: &str = $msg;
         fn __cc_assertion_function_name() -> &'static str {
             fn __cc_assertion_probe() {}
             let name = ::core::any::type_name_of_val(&__cc_assertion_probe);
@@ -824,15 +834,21 @@ macro_rules! __cc_register_stable_catalog {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_register_catalog {
-    ($id:expr, $msg:expr, $kind:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {};
-    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {};
+    ($id:expr, $msg:expr, $kind:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        const _: &str = $msg;
+    };
+    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        const _: &str = $msg;
+    };
 }
 
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_register_stable_catalog {
-    ($namespace:expr, $key:expr, $id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {};
+    ($namespace:expr, $key:expr, $id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr, $file:expr, $line:expr, $column:expr, $class:expr) => {
+        const _: &str = $msg;
+    };
 }
 
 #[doc(hidden)]

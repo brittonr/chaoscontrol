@@ -123,7 +123,10 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let cli = Cli::parse();
+    execute(Cli::parse())
+}
+
+fn execute(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Query {
             events,
@@ -315,6 +318,78 @@ mod tests {
             | Command::Validate { .. }
             | Command::ValidateTimeline { .. } => panic!("expected query command"),
         }
+    }
+
+    #[test]
+    fn query_and_validate_receipt_round_trip() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let events = temp.path().join("events.json");
+        let query = temp.path().join("query.json");
+        let result = temp.path().join("result.json");
+        let receipt = temp.path().join("receipt.json");
+        std::fs::write(
+            &events,
+            r#"[{"schema":"chaoscontrol.event-envelope.v1","source_id":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"source_kind":"recording","source_sequence":0,"tick":10,"kind":"assert","text":"one","payload_digest":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}]"#,
+        )
+        .unwrap();
+        std::fs::write(&query, r#""All""#).unwrap();
+        execute(Cli {
+            command: Command::Query {
+                events: Some(events.clone()),
+                recording: None,
+                dlog: None,
+                markers: None,
+                query: query.clone(),
+                output: result.clone(),
+                receipt: Some(receipt.clone()),
+                limits: None,
+            },
+        })
+        .unwrap();
+        execute(Cli {
+            command: Command::Validate {
+                events: Some(events),
+                recording: None,
+                dlog: None,
+                markers: None,
+                query,
+                result,
+                receipt,
+                limits: None,
+            },
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn timeline_and_validate_timeline_round_trip() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let facts = temp.path().join("facts.json");
+        let rendered = temp.path().join("out.md");
+        let receipt = temp.path().join("receipt.json");
+        std::fs::write(
+            &facts,
+            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
+        )
+        .unwrap();
+        execute(Cli {
+            command: Command::Timeline {
+                facts: facts.clone(),
+                format: TimelineFormat::Markdown,
+                output: rendered.clone(),
+                receipt: Some(receipt.clone()),
+            },
+        })
+        .unwrap();
+        execute(Cli {
+            command: Command::ValidateTimeline {
+                facts,
+                format: TimelineFormat::Markdown,
+                rendered,
+                receipt,
+            },
+        })
+        .unwrap();
     }
 
     #[test]

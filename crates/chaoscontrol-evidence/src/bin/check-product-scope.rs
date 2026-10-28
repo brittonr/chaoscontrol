@@ -27,7 +27,15 @@ fn parse_args() -> Result<(PathBuf, bool), String> {
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
+    admit_root(&root)?;
     Ok((root, write))
+}
+
+fn admit_root(root: &std::path::Path) -> Result<(), String> {
+    if root.as_os_str().is_empty() {
+        return Err(String::from("--root must not be empty"));
+    }
+    Ok(())
 }
 
 fn main() {
@@ -44,5 +52,15 @@ fn main() {
             eprintln!("product scope failed: {error}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_root_is_rejected() {
+        assert!(admit_root(std::path::Path::new("")).is_err());
     }
 }

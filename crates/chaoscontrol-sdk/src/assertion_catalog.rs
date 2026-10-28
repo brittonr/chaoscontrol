@@ -14,7 +14,8 @@ use chaoscontrol_protocol::{
     PAYLOAD_MAX,
 };
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 /// Source metadata for one catalog entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +41,46 @@ struct SdkCatalog {
 }
 
 static SDK_CATALOG: OnceLock<SdkCatalog> = OnceLock::new();
+
+/// Raw assertion descriptors registered before catalog emission.
+struct RawRegistration {
+    descriptor: AssertionDescriptor,
+    location: CatalogLocation,
+}
+
+static RAW_REGISTRATIONS: Mutex<Vec<RawRegistration>> = Mutex::new(Vec::new());
+static RAW_CLOSED: AtomicBool = AtomicBool::new(false);
+
+/// Register one runtime raw assertion before the catalog is emitted.
+pub(crate) fn register_raw(descriptor: AssertionDescriptor, class: &str, function: &str) -> bool {
+    if descriptor.validate().is_err() {
+        return false;
+    }
+    let Ok(mut registrations) = RAW_REGISTRATIONS.lock() else {
+        return false;
+    };
+    if registrations
+        .iter()
+        .any(|raw| raw.descriptor.compatibility_id == descriptor.compatibility_id)
+    {
+        return true;
+    }
+    if RAW_CLOSED.load(Ordering::SeqCst) {
+        return false;
+    }
+    let location = CatalogLocation {
+        class: Box::leak(class.to_string().into_boxed_str()),
+        function: Box::leak(function.to_string().into_boxed_str()),
+        file: Box::leak(descriptor.source_file.clone().into_boxed_str()),
+        line: descriptor.source_line,
+        column: descriptor.source_column,
+    };
+    registrations.push(RawRegistration {
+        descriptor,
+        location,
+    });
+    true
+}
 
 pub(crate) fn emit_catalog() {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
@@ -118,17 +159,36 @@ pub(crate) fn location_for_compatibility(
     let mut matches = ASSERTION_CATALOG
         .iter()
         .filter(|entry| entry.id == id && entry.kind == catalog_kind && entry.message == message);
+    match (matches.next(), matches.next()) {
+        (Some(first), None) => Some(CatalogLocation {
+            class: first.class,
+            function: (first.function)(),
+            file: first.file,
+            line: first.line,
+            column: first.column,
+        }),
+        (None, _) => raw_location_for_compatibility(id, kind, message),
+        (Some(_), Some(_)) => None,
+    }
+}
+
+fn raw_location_for_compatibility(
+    id: u32,
+    kind: AssertionKind,
+    message: &str,
+) -> Option<CatalogLocation> {
+    let kind = protocol_kind(kind);
+    let registrations = RAW_REGISTRATIONS.lock().ok()?;
+    let mut matches = registrations.iter().filter(|raw| {
+        raw.descriptor.compatibility_id == Some(id)
+            && raw.descriptor.kind == kind
+            && raw.descriptor.message == message
+    });
     let first = matches.next()?;
     if matches.next().is_some() {
         return None;
     }
-    Some(CatalogLocation {
-        class: first.class,
-        function: (first.function)(),
-        file: first.file,
-        line: first.line,
-        column: first.column,
-    })
+    Some(first.location)
 }
 
 pub(crate) fn resolve_stable(
@@ -160,13 +220,33 @@ pub(crate) fn resolve_stable(
 }
 
 fn build_catalog() -> SdkCatalog {
+    RAW_CLOSED.store(true, Ordering::SeqCst);
     if ASSERTION_CATALOG.len() > MAX_ASSERTION_CATALOG_ENTRIES {
         return SdkCatalog {
             descriptors: Vec::new(),
             accepted: Err(CatalogConflict::CardinalityOverflow),
         };
     }
-    let mut descriptors = Vec::with_capacity(ASSERTION_CATALOG.len());
+    let raw_registrations = RAW_REGISTRATIONS
+        .lock()
+        .map(|registrations| {
+            registrations
+                .iter()
+                .map(|raw| raw.descriptor.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if ASSERTION_CATALOG
+        .len()
+        .saturating_add(raw_registrations.len())
+        > MAX_ASSERTION_CATALOG_ENTRIES
+    {
+        return SdkCatalog {
+            descriptors: Vec::new(),
+            accepted: Err(CatalogConflict::CardinalityOverflow),
+        };
+    }
+    let mut descriptors = Vec::with_capacity(ASSERTION_CATALOG.len() + raw_registrations.len());
     for entry in ASSERTION_CATALOG.iter() {
         match descriptor_from_entry(entry) {
             Ok(descriptor) => descriptors.push(descriptor),
@@ -178,6 +258,7 @@ fn build_catalog() -> SdkCatalog {
             }
         }
     }
+    descriptors.extend(raw_registrations);
     let accepted = if descriptors.is_empty() {
         Ok(None)
     } else {

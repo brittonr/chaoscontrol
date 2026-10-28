@@ -1,10 +1,11 @@
 //! Exact-name compatibility surface for code ported from `antithesis_sdk`.
 //!
 //! The renamed items keep the Antithesis spelling where the signature and
-//! semantics match. `assert_raw` is intentionally absent: runtime catalog
-//! admission requires a compiled descriptor, so an arbitrary raw assertion
-//! cannot be bound safely.
+//! semantics match. Raw assertions must be declared before the catalog is
+//! emitted; new raw sites after initialization are rejected.
 
+#[cfg(feature = "full")]
+pub use crate::assert::assert_raw;
 pub use crate::assert::AssertType;
 pub use crate::chaoscontrol_init as antithesis_init;
 pub use crate::random::AntithesisRng;

@@ -290,6 +290,72 @@ pub fn assert_raw_with_key(
     transport::hypercall_bound_assertion(kind.to_command(), flags, message, &json_bytes, identity);
 }
 
+/// Antithesis-compatible raw assertion entry point.
+///
+/// The descriptor must be declared before the catalog is emitted. After
+/// that point new raw sites are rejected; existing sites can still emit
+/// hits. `display_type` is ignored because the fallback writer derives it
+/// from the assertion kind and `must_hit`.
+#[cfg(feature = "full")]
+#[allow(clippy::too_many_arguments)]
+pub fn assert_raw(
+    condition: bool,
+    message: String,
+    details: &serde_json::Value,
+    class: String,
+    function: String,
+    file: String,
+    begin_line: u32,
+    begin_column: u32,
+    hit: bool,
+    must_hit: bool,
+    assert_type: AssertType,
+    _display_type: String,
+    id: String,
+) {
+    use chaoscontrol_protocol::identity::{
+        AssertionDescriptor, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
+    };
+
+    let kind = assert_type.to_kind(condition);
+    let compatibility_id = location_id(&id);
+    let descriptor = AssertionDescriptor {
+        identity_version: ASSERTION_IDENTITY_VERSION,
+        namespace: "raw".to_string(),
+        logical_key: AssertionLogicalKey::Stable { key: id },
+        compatibility_id: Some(compatibility_id),
+        kind: match kind {
+            AssertionKind::Always => chaoscontrol_protocol::identity::AssertionKind::Always,
+            AssertionKind::Sometimes => chaoscontrol_protocol::identity::AssertionKind::Sometimes,
+            AssertionKind::Reachable => chaoscontrol_protocol::identity::AssertionKind::Reachable,
+            AssertionKind::Unreachable => {
+                chaoscontrol_protocol::identity::AssertionKind::Unreachable
+            }
+        },
+        message: message.clone(),
+        source_file: file,
+        source_line: begin_line,
+        source_column: begin_column,
+        guest: "raw".to_string(),
+        category: "raw".to_string(),
+    };
+    if !crate::assertion_catalog::register_raw(descriptor, &class, &function) {
+        return;
+    }
+    if !hit {
+        return;
+    }
+    crate::internal::init();
+    if crate::assertion_catalog::resolve_compatibility(compatibility_id, kind, &message).is_none() {
+        return;
+    }
+    if kind == AssertionKind::Always && !must_hit {
+        emit_registered_always_or_unreachable(condition, compatibility_id, &message, details);
+    } else {
+        emit_registered_assertion(kind, condition, compatibility_id, &message, details);
+    }
+}
+
 #[cfg(feature = "full")]
 fn emit_registered_assertion_core(
     kind: AssertionKind,

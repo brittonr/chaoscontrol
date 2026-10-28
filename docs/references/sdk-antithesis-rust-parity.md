@@ -44,7 +44,7 @@ the versioned upstream crate and `crates/chaoscontrol-sdk/src/lib.rs`.
 | Sometimes | `assert_sometimes!` | `cc_assert_sometimes!` | equivalent |
 | Reachable | `assert_reachable!` | `cc_assert_reachable!` | equivalent |
 | Unreachable | `assert_unreachable!` | `cc_assert_unreachable!` | equivalent |
-| Raw / third-party | `assert::assert_raw(13 args)` | `cc_assert_raw!(kind, cond, msg[, details])`; no runtime raw binding | divergent |
+| Raw / third-party | `assert::assert_raw(13 args)` | `assert::assert_raw(13 args)` for sites declared before catalog emission; `cc_assert_raw!` for compiled sites | equivalent |
 | Assertion type enum | `assert::AssertType` | `assert::AssertType` with lowercase serialization, `to_kind`, and `From<AssertionKind>` | equivalent |
 | Implication | (none) | `cc_assert_implies!` | absent |
 | Result ok | (none) | `cc_assert_{always,sometimes}_ok!` | absent |
@@ -183,9 +183,11 @@ change the assertion oracle or prove exploration quality.
 
 - `chaoscontrol_sdk::compat` exposes the Antithesis assertion names
   (`assert_always!`, `assert_sometimes_all!`, numeric names,
-  `antithesis_init`, `lifecycle`, `random`, `AntithesisRng`). `assert_raw`
-  remains absent because arbitrary runtime assertions cannot be bound to a
-  compiled catalog descriptor.
+  `antithesis_init`, `lifecycle`, `random`, `AntithesisRng`, `assert_raw`).
+- `assert_raw` registers runtime descriptors before catalog emission. A new
+  raw site after initialization is rejected; hits for declared sites still
+  emit. `display_type` is derived from kind/must-hit, and `must_hit`
+  distinguishes `Always` from `AlwaysOrUnreachable`.
 - `cc_assert_always_some!` accepts both the Antithesis brace-bundle shape
   (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
   single-expression `Option::is_some` shape. `cc_assert_always_any!` is the

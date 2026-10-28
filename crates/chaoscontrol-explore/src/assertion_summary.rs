@@ -175,3 +175,52 @@ impl<'de> Deserialize<'de> for AssertionSummaryV2 {
         .map_err(serde::de::Error::custom)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn detail(id: u32) -> AssertionDetail {
+        AssertionDetail {
+            process_instances: Default::default(),
+            id,
+            identity: None,
+            message: format!("assertion_{id}"),
+            kind: "always".to_string(),
+            guest: "uncategorized".to_string(),
+            category: "uncategorized".to_string(),
+            verdict: "passed".to_string(),
+            hit_count: 1,
+            true_count: 1,
+            false_count: 0,
+            last_failure_details: None,
+        }
+    }
+
+    #[test]
+    fn legacy_summary_round_trips_and_validates() {
+        let summary = AssertionSummaryV2::new(
+            CatalogValidationStatus::LegacyAmbiguous,
+            false,
+            &[],
+            &[detail(1)],
+        )
+        .expect("legacy summary");
+        assert_eq!(
+            summary.catalog_status(),
+            CatalogValidationStatus::LegacyAmbiguous
+        );
+        summary.validate().expect("summary validates");
+    }
+
+    #[test]
+    fn duplicate_legacy_ids_are_rejected() {
+        assert!(AssertionSummaryV2::new(
+            CatalogValidationStatus::LegacyAmbiguous,
+            false,
+            &[],
+            &[detail(1), detail(1)],
+        )
+        .is_err());
+    }
+}

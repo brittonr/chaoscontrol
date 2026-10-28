@@ -177,11 +177,12 @@ pub fn verify_materialized_bundle(
 }
 
 fn read_bundle_record<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, IntakeShellError> {
-    let metadata = std::fs::symlink_metadata(path)?;
-    if !metadata.file_type().is_file() || metadata.len() > MAX_BUNDLE_RECORD_BYTES {
+    let file =
+        crate::bounded_file::open_regular_file(path).map_err(|_| IntakeShellError::UnsafePath)?;
+    let metadata = file.metadata()?;
+    if metadata.len() > MAX_BUNDLE_RECORD_BYTES {
         return Err(IntakeShellError::UnsafePath);
     }
-    let file = File::open(path)?;
     let mut bytes = Vec::new();
     file.take(MAX_BUNDLE_RECORD_BYTES + 1)
         .read_to_end(&mut bytes)?;
@@ -469,6 +470,23 @@ fn sync_tree_root(path: &Path) -> Result<(), IntakeShellError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundle_records_reject_symlinks_and_fifos() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("record.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bundle_record::<serde_json::Value>(&link).is_err());
+
+        let fifo = root.path().join("record.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bundle_record::<serde_json::Value>(&fifo).is_err());
+    }
 
     #[test]
     fn bundle_records_reject_excessive_nesting() {

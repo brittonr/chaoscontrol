@@ -182,6 +182,12 @@ fn read_bounded_regular(path: &Path, limit: u64, label: &str) -> Result<Vec<u8>,
 fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
 
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
+    }
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
@@ -202,6 +208,19 @@ fn write_data_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn data_writes_create_parent_directories() {
+        let root = std::env::temp_dir().join(format!(
+            "chaoscontrol-supervisor-data-parent-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let path = root.join("nested/shared");
+        write_data_file(&path, b"value").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"value");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn data_writes_reject_non_regular_targets() {

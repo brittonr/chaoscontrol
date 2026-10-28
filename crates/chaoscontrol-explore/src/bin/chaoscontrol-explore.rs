@@ -3035,7 +3035,11 @@ fn admit_committed_campaign_cutover() {
     let receipt_path = std::env::var_os("CHAOSCONTROL_CUTOVER_RECEIPT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| root.join("contracts/campaign-cutover/receipt.json"));
-    let bytes = std::fs::read(&receipt_path).unwrap_or_else(|error| {
+    let text = chaoscontrol_explore::bounded_json::read_bounded_json(
+        &receipt_path,
+        chaoscontrol_explore::bounded_json::MAX_CHECKPOINT_BYTES,
+    )
+    .unwrap_or_else(|error| {
         eprintln!(
             "Error: Campaign cutover receipt is missing at {}: {error}",
             receipt_path.display()
@@ -3043,7 +3047,7 @@ fn admit_committed_campaign_cutover() {
         std::process::exit(1);
     });
     let receipt: chaoscontrol_evidence::campaign_policy_readiness::CutoverReceipt =
-        serde_json::from_slice(&bytes).unwrap_or_else(|error| {
+        serde_json::from_str(&text).unwrap_or_else(|error| {
             eprintln!("Error: invalid Campaign cutover receipt: {error}");
             std::process::exit(1);
         });

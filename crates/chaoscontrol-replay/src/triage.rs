@@ -1,6 +1,7 @@
 //! Automatic bug triage and report generation.
 
 use crate::recording::{RecordedEvent, Recording};
+use crate::text::{prefix_at_char_boundary, suffix_at_char_boundary};
 use serde::{Deserialize, Serialize};
 
 /// Automatically generates triage reports for bugs.
@@ -296,22 +297,6 @@ fn get_serial_tail(recording: &Recording, vm_index: usize, _tick: u64) -> String
             }
         })
         .unwrap_or_default()
-}
-
-fn prefix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
-    let mut end = max_bytes.min(value.len());
-    while end > 0 && !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    &value[..end]
-}
-
-fn suffix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
-    let mut start = value.len().saturating_sub(max_bytes);
-    while start < value.len() && !value.is_char_boundary(start) {
-        start += 1;
-    }
-    &value[start..]
 }
 
 #[cfg(test)]

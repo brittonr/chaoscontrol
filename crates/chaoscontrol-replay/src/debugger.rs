@@ -293,7 +293,7 @@ impl<R: SimulationRunner> Debugger<R> {
             .map(|i| {
                 let full = self.serial_output(i);
                 if full.len() > 200 {
-                    format!("...{}", &full[full.len() - 200..])
+                    format!("...{}", crate::text::suffix_at_char_boundary(&full, 200))
                 } else {
                     full
                 }

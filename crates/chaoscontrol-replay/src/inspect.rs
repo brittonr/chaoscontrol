@@ -477,7 +477,7 @@ fn cmd_whatif<R: SimulationRunner>(
     for (i, output) in result.serial_output.iter().enumerate() {
         if !output.is_empty() {
             let tail = if output.len() > 300 {
-                &output[output.len() - 300..]
+                crate::text::suffix_at_char_boundary(output, 300)
             } else {
                 output.as_str()
             };

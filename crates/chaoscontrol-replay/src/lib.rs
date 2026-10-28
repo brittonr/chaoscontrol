@@ -161,6 +161,7 @@ pub mod inspect;
 pub mod recording;
 pub mod replay;
 pub mod serialize;
+pub mod text;
 pub mod triage;
 
 // Re-export main types for convenience

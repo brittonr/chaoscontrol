@@ -258,7 +258,7 @@ fn cmd_replay(
         if !output.is_empty() {
             println!("--- VM{} ---", i);
             let tail = if output.len() > 500 {
-                &output[output.len() - 500..]
+                chaoscontrol_replay::text::suffix_at_char_boundary(output, 500)
             } else {
                 output
             };
@@ -448,7 +448,10 @@ fn cmd_debug(recording_path: PathBuf, tick: u64) -> Result<(), CliError> {
         for (i, output) in cp.serial_output.iter().enumerate() {
             if !output.is_empty() {
                 let tail = if output.len() > 200 {
-                    format!("...{}", &output[output.len() - 200..])
+                    format!(
+                        "...{}",
+                        chaoscontrol_replay::text::suffix_at_char_boundary(output, 200)
+                    )
                 } else {
                     output.clone()
                 };
@@ -501,7 +504,10 @@ fn format_event(event: &RecordedEvent) -> String {
         } => format!("🔄 VM{} status: {} → {}", vm_index, old_status, new_status),
         RecordedEvent::SerialOutput { vm_index, data, .. } => {
             let preview = if data.len() > 50 {
-                format!("{}...", &data[..50])
+                format!(
+                    "{}...",
+                    chaoscontrol_replay::text::prefix_at_char_boundary(data, 50)
+                )
             } else {
                 data.clone()
             };

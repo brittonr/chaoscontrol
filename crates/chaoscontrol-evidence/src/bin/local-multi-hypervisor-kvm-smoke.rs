@@ -361,11 +361,14 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
         return Err(format!("{} is not a bounded regular file", path.display()));
     }
     let mut bytes = Vec::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok(bytes)
 }
@@ -452,6 +455,11 @@ mod publication_tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(prepare_output(&link).is_err());
         assert!(prepare_output(std::path::Path::new("")).is_err());
+    }
+
+    #[test]
+    fn receipt_reads_reject_length_changes() {
+        assert!(read_bounded(Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

@@ -31,7 +31,11 @@ fn antithesis_local_output_env_var_is_accepted() {
 
     let assertion = records
         .iter()
-        .find_map(|record| record.get("antithesis_assert"))
+        .find_map(|record| {
+            record
+                .get("antithesis_assert")
+                .filter(|assertion| assertion["hit"] == true)
+        })
         .expect("assertion record");
     assert_eq!(assertion["message"], "env fallback assertion");
     assert_eq!(assertion["details"]["source"], "antithesis");

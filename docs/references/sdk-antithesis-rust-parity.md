@@ -154,6 +154,7 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 |---|---|---|---|
 | Fallback JSONL schema | assertion/setup/named-event records | those records plus catalog/random/identity extensions | superset |
 | SDK metadata record | `antithesis_sdk` language/sdk/protocol versions at init | same record shape in local output; a named `antithesis_sdk` event in VM traces; `protocol_version` names the ChaosControl wire version | equivalent |
+| Catalog declarations | `antithesis_assert` records with `hit = false` at init | same records after catalog completion, with identity extensions | superset |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
 | Assertion location | `location` with class, function, file, line, column | same object, from the call-site catalog entry | equivalent |
 | Guidance records | `antithesis_guidance` watermarks, JSON guidance, and initialization catalog | same record shape, typed `GuidanceType`, per-site watermarks, `hit = false` catalog records, and `cc_guidance_json!` for stable sites | equivalent |

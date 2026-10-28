@@ -131,6 +131,13 @@ pub(crate) fn emit_catalog() {
             &payload[..length],
         );
     }
+    if crate::internal::is_local_output() {
+        if let Ok(Some(accepted)) = catalog.accepted.as_ref() {
+            for descriptor in &catalog.descriptors {
+                crate::transport::local_emit_declaration(descriptor, accepted.token);
+            }
+        }
+    }
     for entry in crate::guidance::GUIDANCE_CATALOG.iter() {
         crate::guidance::emit_catalog_record(entry);
     }

@@ -35,7 +35,12 @@ fn assertion_details_accept_arbitrary_serialize_types() {
     let assertion = content
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
-        .find_map(|record| record.get("antithesis_assert").cloned())
+        .find_map(|record| {
+            record
+                .get("antithesis_assert")
+                .filter(|assertion| assertion["hit"] == true)
+                .cloned()
+        })
         .expect("assertion record");
 
     assert_eq!(assertion["message"], "serialize details");

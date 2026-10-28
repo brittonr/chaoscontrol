@@ -83,9 +83,24 @@ fn stable_macros_bind_all_assertion_kinds_to_catalog() {
     assert_eq!(descriptors["reachable message"].0, "reachable");
     assert_eq!(descriptors["unreachable message"].0, "unreachable");
 
+    let declarations = records
+        .iter()
+        .filter_map(|value| value.get("antithesis_assert"))
+        .filter(|assertion| assertion["hit"] == false)
+        .filter(|assertion| descriptors.contains_key(assertion["message"].as_str().unwrap_or("")))
+        .collect::<Vec<_>>();
+    assert_eq!(declarations.len(), EXPECTED_ASSERTIONS);
+    for declaration in declarations {
+        assert_eq!(declaration["condition"], false);
+        assert_eq!(declaration["details"], serde_json::json!({}));
+        assert_eq!(declaration["catalog_status"], "accepted");
+        assert!(declaration["catalog_token"].as_str().is_some());
+    }
+
     let bound_events = records
         .iter()
         .filter_map(|value| value.get("antithesis_assert"))
+        .filter(|assertion| assertion["hit"] == true)
         .filter(|assertion| descriptors.contains_key(assertion["message"].as_str().unwrap_or("")))
         .collect::<Vec<_>>();
     assert_eq!(bound_events.len(), EXPECTED_ASSERTIONS);

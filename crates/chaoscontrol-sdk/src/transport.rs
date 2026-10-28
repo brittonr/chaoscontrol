@@ -443,6 +443,89 @@ fn dispatch_local_bound(
 }
 
 #[cfg(feature = "full")]
+pub(crate) fn local_emit_declaration(
+    descriptor: &chaoscontrol_protocol::identity::AssertionDescriptor,
+    token: chaoscontrol_protocol::identity::AssertionFingerprint,
+) {
+    use chaoscontrol_protocol::identity::AssertionKind as ProtocolKind;
+
+    let (assert_type, derived_display_type, derived_must_hit) = match descriptor.kind {
+        ProtocolKind::Always => ("always", "Always", true),
+        ProtocolKind::Sometimes => ("sometimes", "Sometimes", true),
+        ProtocolKind::Reachable => ("reachability", "Reachable", true),
+        ProtocolKind::Unreachable => ("reachability", "Unreachable", false),
+    };
+    let kind = match descriptor.kind {
+        ProtocolKind::Always => crate::assert::AssertionKind::Always,
+        ProtocolKind::Sometimes => crate::assert::AssertionKind::Sometimes,
+        ProtocolKind::Reachable => crate::assert::AssertionKind::Reachable,
+        ProtocolKind::Unreachable => crate::assert::AssertionKind::Unreachable,
+    };
+    let location = descriptor.compatibility_id.and_then(|id| {
+        crate::assertion_catalog::location_for_compatibility(id, kind, &descriptor.message)
+    });
+    let display_type = location
+        .as_ref()
+        .and_then(|location| location.display_type)
+        .unwrap_or(derived_display_type);
+    let must_hit = location
+        .as_ref()
+        .and_then(|location| location.must_hit)
+        .unwrap_or(derived_must_hit);
+    let (class, function, file, line, column) = location.map_or(
+        (
+            "",
+            "",
+            descriptor.source_file.as_str(),
+            descriptor.source_line,
+            descriptor.source_column,
+        ),
+        |location| {
+            (
+                location.class,
+                location.function,
+                location.file,
+                location.line,
+                location.column,
+            )
+        },
+    );
+    let Ok(fingerprint) = descriptor.fingerprint() else {
+        return;
+    };
+    let identity = crate::assertion_catalog::BoundIdentity {
+        catalog_token: token,
+        fingerprint,
+        compatibility_id: descriptor.compatibility_id,
+    };
+    let (_, report_id) = bound_event_ids(&identity);
+    let value = serde_json::json!({
+        "antithesis_assert": {
+            "assert_type": assert_type,
+            "condition": false,
+            "hit": false,
+            "must_hit": must_hit,
+            "id": report_id,
+            "message": descriptor.message,
+            "display_type": display_type,
+            "location": {
+                "class": class,
+                "function": function,
+                "file": file,
+                "begin_line": line,
+                "begin_column": column,
+            },
+            "details": {},
+            "identity_version": chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION,
+            "catalog_token": token,
+            "assertion_fingerprint": fingerprint,
+            "catalog_status": "accepted"
+        }
+    });
+    crate::internal::local_emit_value(&value);
+}
+
+#[cfg(feature = "full")]
 fn encode_hex(input: &[u8]) -> String {
     chaoscontrol_protocol::identity::encode_lower_hex(input)
 }

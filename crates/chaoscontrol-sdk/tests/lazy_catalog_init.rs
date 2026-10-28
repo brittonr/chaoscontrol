@@ -31,7 +31,11 @@ fn first_assertion_registers_the_catalog_without_explicit_init() {
 
     let assertion = records
         .iter()
-        .find_map(|record| record.get("antithesis_assert"))
+        .find_map(|record| {
+            record
+                .get("antithesis_assert")
+                .filter(|assertion| assertion["hit"] == true)
+        })
         .expect("assertion record");
     assert_eq!(assertion["message"], "lazy assertion");
     assert_eq!(assertion["catalog_status"], "accepted");

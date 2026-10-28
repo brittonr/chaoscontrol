@@ -18,9 +18,7 @@ pub fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> 
     if metadata.len() > maximum_bytes {
         return Err(invalid_data("JSON input exceeds the byte limit"));
     }
-    let read_limit = maximum_bytes
-        .checked_add(1)
-        .ok_or_else(|| invalid_data("JSON input read limit overflow"))?;
+    let read_limit = maximum_bytes.saturating_add(1);
     let capacity = usize::try_from(metadata.len())
         .unwrap_or(usize::MAX)
         .min(usize::try_from(maximum_bytes).unwrap_or(usize::MAX));
@@ -28,6 +26,9 @@ pub fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> 
     file.by_ref().take(read_limit).read_to_string(&mut input)?;
     if input.len() as u64 > maximum_bytes {
         return Err(invalid_data("JSON input exceeds the byte limit"));
+    }
+    if input.len() as u64 != metadata.len() {
+        return Err(invalid_data("JSON input changed while reading"));
     }
     preflight_json(&input)?;
     Ok(input)
@@ -130,6 +131,20 @@ mod tests {
             read_checkpoint(&path).expect("fixture reads"),
             r#"{"bugs":[]}"#
         );
+    }
+
+    #[test]
+    fn accepts_maximum_bound_and_rejects_length_changes() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        std::fs::write(&path, "{}").expect("fixture writes");
+        assert_eq!(
+            read_bounded_json(&path, u64::MAX).expect("maximum bound"),
+            "{}"
+        );
+
+        let special = Path::new("/proc/self/cmdline");
+        assert!(read_bounded_json(special, u64::MAX).is_err());
     }
 
     #[test]

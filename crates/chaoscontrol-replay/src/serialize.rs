@@ -232,8 +232,14 @@ pub fn format_triage_markdown(report: &TriageReport) -> String {
 
 /// Save a triage report as JSON (for programmatic consumption).
 pub fn save_triage_json(report: &TriageReport, path: &Path) -> Result<(), SerializeError> {
-    let file = File::create(path)?;
-    serde_json::to_writer_pretty(file, report)?;
+    let bytes = serde_json::to_vec_pretty(report)?;
+    if bytes.len() as u64 > MAX_EVIDENCE_JSON_BYTES {
+        return Err(SerializeError::EvidenceTooLarge {
+            limit: MAX_EVIDENCE_JSON_BYTES,
+        });
+    }
+    let mut file = File::create(path)?;
+    file.write_all(&bytes)?;
     Ok(())
 }
 
@@ -372,6 +378,20 @@ mod tests {
             load_recording(&path),
             Err(SerializeError::RecordingTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn save_triage_json_rejects_oversized_serialization() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("oversized-triage.json");
+        let mut report = test_triage_report();
+        report.timeline[0].event = "x".repeat(usize::try_from(MAX_EVIDENCE_JSON_BYTES).unwrap());
+
+        assert!(matches!(
+            save_triage_json(&report, &path),
+            Err(SerializeError::EvidenceTooLarge { .. })
+        ));
+        assert!(!path.exists());
     }
 
     #[test]

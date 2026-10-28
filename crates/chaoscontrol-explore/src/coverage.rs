@@ -325,6 +325,19 @@ mod tests {
     }
 
     #[test]
+    fn test_bitmap_from_slice_truncates_to_map_size() {
+        let mut data = vec![1; MAP_SIZE];
+        data.push(255);
+        let bitmap = CoverageBitmap::from_slice(&data);
+        assert_eq!(bitmap.as_slice().len(), MAP_SIZE);
+        assert_eq!(bitmap.count_bits(), MAP_SIZE);
+
+        let short = CoverageBitmap::from_slice(&[1, 2, 3]);
+        assert_eq!(short.as_slice().len(), MAP_SIZE);
+        assert_eq!(short.count_bits(), 3);
+    }
+
+    #[test]
     fn test_collector_blind_mode() {
         use vm_memory::GuestMemoryMmap;
 

@@ -97,5 +97,22 @@ fn write_bounded(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if path.exists() {
         return Err(format!("{} already exists", path.display()));
     }
-    fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
+    chaoscontrol_evidence::bounded_file::write_new_bytes(path, bytes)
+        .map_err(|error| error.message().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn campaign_output_is_atomic_and_no_replace() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/campaign.json");
+        write_bounded(&path, b"{}\n").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"{}\n");
+        assert!(write_bounded(&path, b"replacement").is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"{}\n");
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+    }
 }

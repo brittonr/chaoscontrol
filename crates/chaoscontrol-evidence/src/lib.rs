@@ -2178,10 +2178,10 @@ fn validate_workload_replay_artifacts(
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<ReplayArtifactReview> {
     proof.validate_shape()?;
-    let evidence_dir = root.join(&proof.evidence_dir);
+    let evidence_dir = std::fs::canonicalize(root.join(&proof.evidence_dir))?;
     let canonical_root = std::fs::canonicalize(root)?;
     ensure(
-        std::fs::canonicalize(&evidence_dir)?.starts_with(&canonical_root),
+        evidence_dir.starts_with(&canonical_root),
         format!(
             "{}: proof evidence_dir escapes the repository root",
             proof.workload
@@ -2308,7 +2308,8 @@ fn validate_fresh_proof_receipt(
             proof.workload
         ))
     })?;
-    let receipt_path = root.join(&proof.evidence_dir).join(receipt_name);
+    let evidence_dir = std::fs::canonicalize(root.join(&proof.evidence_dir))?;
+    let receipt_path = evidence_dir.join(receipt_name);
     let receipt: serde_json::Value = load_json(root, &receipt_path)?;
     let cohort: serde_json::Value = load_json(
         root,

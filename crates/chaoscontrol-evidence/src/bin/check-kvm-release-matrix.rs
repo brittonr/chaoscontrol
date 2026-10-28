@@ -20,6 +20,7 @@ const USAGE_EXIT_CODE: i32 = 2;
 const DEFAULT_MATRIX_SOURCE: &str = "contracts/kvm-release/matrix.ncl";
 const DEFAULT_MATRIX_PROJECTION: &str = "contracts/kvm-release/matrix.json";
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_EXPECTED_REVISION_BYTES: usize = 256;
 const INVALID_NICKEL_FIXTURES: [&str; 2] = [
     "contracts/kvm-release/fixtures/invalid/missing-timeout.invalid.ncl",
     "contracts/kvm-release/fixtures/invalid/legacy-diagnostic-row.invalid.ncl",
@@ -189,8 +190,12 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     {
         return Err("--receipt and --curated-out must not be empty".to_string());
     }
-    if expected_revision.as_deref().is_some_and(str::is_empty) {
-        return Err("--expected-revision must not be empty".to_string());
+    if expected_revision.as_deref().is_some_and(|revision| {
+        revision.is_empty()
+            || revision.len() > MAX_EXPECTED_REVISION_BYTES
+            || revision.chars().any(char::is_control)
+    }) {
+        return Err("--expected-revision is empty, oversized, or malformed".to_string());
     }
     if receipt.is_some() != expected_revision.is_some() {
         return Err("--receipt and --expected-revision must be supplied together".to_string());
@@ -647,6 +652,20 @@ mod tests {
             OsString::from("receipt.json"),
             OsString::from("--expected-revision"),
             OsString::from(""),
+        ])
+        .is_err());
+        assert!(parse_args(vec![
+            OsString::from("--receipt"),
+            OsString::from("receipt.json"),
+            OsString::from("--expected-revision"),
+            OsString::from("x".repeat(MAX_EXPECTED_REVISION_BYTES + 1)),
+        ])
+        .is_err());
+        assert!(parse_args(vec![
+            OsString::from("--receipt"),
+            OsString::from("receipt.json"),
+            OsString::from("--expected-revision"),
+            OsString::from("bad\nrev"),
         ])
         .is_err());
     }

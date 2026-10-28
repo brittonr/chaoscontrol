@@ -23,6 +23,7 @@ const USAGE_EXIT_CODE: i32 = 2;
 const WAIT_POLL_MILLISECONDS: u64 = 100;
 const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_EXPECTED_REVISION_BYTES: usize = 256;
 const MAX_ARTIFACT_SCAN_DEPTH: usize = 64;
 const KVM_CAPABILITY: &str = "kvm";
 const X86_64_LINUX_CAPABILITY: &str = "x86_64-linux";
@@ -133,12 +134,12 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     {
         return Err("--out must not be empty".to_string());
     }
-    if config
-        .expected_revision
-        .as_deref()
-        .is_some_and(str::is_empty)
-    {
-        return Err("--expected-revision must not be empty".to_string());
+    if config.expected_revision.as_deref().is_some_and(|revision| {
+        revision.is_empty()
+            || revision.len() > MAX_EXPECTED_REVISION_BYTES
+            || revision.chars().any(char::is_control)
+    }) {
+        return Err("--expected-revision is empty, oversized, or malformed".to_string());
     }
     if !config.dry_run && (config.output.is_none() || config.expected_revision.is_none()) {
         return Err("--out and --expected-revision are required without --dry-run".to_string());
@@ -884,8 +885,15 @@ mod publication_tests {
             .iter()
             .position(|argument| argument == "--expected-revision")
             .unwrap();
+        let empty = args.clone();
         args[revision + 1] = OsString::new();
         assert!(parse_args(args).is_err());
+        let mut too_long = empty.clone();
+        too_long[revision + 1] = OsString::from("x".repeat(MAX_EXPECTED_REVISION_BYTES + 1));
+        assert!(parse_args(too_long).is_err());
+        let mut control = empty;
+        control[revision + 1] = OsString::from("bad\nrev");
+        assert!(parse_args(control).is_err());
     }
 
     #[test]

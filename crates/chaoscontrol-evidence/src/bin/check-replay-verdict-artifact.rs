@@ -23,7 +23,16 @@ fn parse_args() -> Result<(PathBuf, PathBuf), String> {
     }
     let verdict = verdict.ok_or_else(|| format!("--verdict is required\n{}", usage()))?;
     let bug = bug.ok_or_else(|| format!("--bug is required\n{}", usage()))?;
+    admit_path("--verdict", &verdict)?;
+    admit_path("--bug", &bug)?;
     Ok((verdict, bug))
+}
+
+fn admit_path(label: &str, path: &std::path::Path) -> Result<(), String> {
+    if path.as_os_str().is_empty() {
+        return Err(format!("{label} must not be empty\n{}", usage()));
+    }
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -50,5 +59,16 @@ fn main() -> ExitCode {
             eprintln!("replay verdict artifact failed: {error}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_paths_are_rejected() {
+        assert!(admit_path("--verdict", std::path::Path::new("")).is_err());
+        assert!(admit_path("--bug", std::path::Path::new("bug.json")).is_ok());
     }
 }

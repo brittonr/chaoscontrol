@@ -145,7 +145,8 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 | Aspect | Antithesis | ChaosControl | Status |
 |---|---|---|---|
 | Fallback JSONL schema | assertion/setup/named-event records | those records plus catalog/random/identity extensions | superset |
-| Guidance records | `antithesis_guidance` watermarks | comparison failure details and `coverage::record_state`, not matching guidance watermarks | divergent |
+| Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
+| Guidance records | `antithesis_guidance` watermarks | comparison details and `coverage::record_state`, not matching guidance watermarks | divergent |
 
 ## Guidance decision
 

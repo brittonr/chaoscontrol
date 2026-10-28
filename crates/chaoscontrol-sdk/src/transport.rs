@@ -216,13 +216,20 @@ pub(crate) fn hypercall_response(command: u8) -> (u64, u8, Vec<u8>) {
 fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: &[u8]) {
     use chaoscontrol_protocol::*;
 
-    let condition = flags & 0x01 != 0;
+    let condition = flags & chaoscontrol_protocol::CONDITION_FLAG_MASK != 0;
+    let always_or_unreachable = flags & chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK != 0;
     use crate::internal::LocalAssert;
 
     match command {
         CMD_ASSERT_ALWAYS => {
             crate::internal::local_emit_assert(&LocalAssert {
                 assert_type: "always",
+                display_type: if always_or_unreachable {
+                    "AlwaysOrUnreachable"
+                } else {
+                    "Always"
+                },
+                must_hit: !always_or_unreachable,
                 hit: true,
                 condition,
                 message,
@@ -233,6 +240,8 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
         CMD_ASSERT_SOMETIMES => {
             crate::internal::local_emit_assert(&LocalAssert {
                 assert_type: "sometimes",
+                display_type: "Sometimes",
+                must_hit: true,
                 hit: true,
                 condition,
                 message,
@@ -243,6 +252,8 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
         CMD_ASSERT_REACHABLE => {
             crate::internal::local_emit_assert(&LocalAssert {
                 assert_type: "reachability",
+                display_type: "Reachable",
+                must_hit: true,
                 hit: true,
                 condition: true,
                 message,
@@ -253,6 +264,8 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
         CMD_ASSERT_UNREACHABLE => {
             crate::internal::local_emit_assert(&LocalAssert {
                 assert_type: "reachability",
+                display_type: "Unreachable",
+                must_hit: false,
                 hit: true,
                 condition: false,
                 message,
@@ -350,11 +363,22 @@ fn dispatch_local_bound(
     identity: crate::assertion_catalog::BoundIdentity,
 ) {
     use chaoscontrol_protocol::*;
-    let (assert_type, condition) = match command {
-        CMD_ASSERT_ALWAYS => ("always", flags & 1 != 0),
-        CMD_ASSERT_SOMETIMES => ("sometimes", flags & 1 != 0),
-        CMD_ASSERT_REACHABLE => ("reachability", true),
-        CMD_ASSERT_UNREACHABLE => ("reachability", false),
+    let always_or_unreachable = flags & chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK != 0;
+    let condition_flag = flags & chaoscontrol_protocol::CONDITION_FLAG_MASK != 0;
+    let (assert_type, display_type, must_hit, condition) = match command {
+        CMD_ASSERT_ALWAYS => (
+            "always",
+            if always_or_unreachable {
+                "AlwaysOrUnreachable"
+            } else {
+                "Always"
+            },
+            !always_or_unreachable,
+            condition_flag,
+        ),
+        CMD_ASSERT_SOMETIMES => ("sometimes", "Sometimes", true, condition_flag),
+        CMD_ASSERT_REACHABLE => ("reachability", "Reachable", true, true),
+        CMD_ASSERT_UNREACHABLE => ("reachability", "Unreachable", false, false),
         _ => return,
     };
     let (_, report_id) = bound_event_ids(&identity);
@@ -363,10 +387,10 @@ fn dispatch_local_bound(
             "assert_type": assert_type,
             "condition": condition,
             "hit": true,
-            "must_hit": matches!(assert_type, "sometimes" | "reachability"),
+            "must_hit": must_hit,
             "id": report_id,
             "message": message,
-            "display_type": assert_type,
+            "display_type": display_type,
             "details": details,
             "identity_version": chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION,
             "catalog_token": identity.catalog_token,

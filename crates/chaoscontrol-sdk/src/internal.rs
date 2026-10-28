@@ -287,6 +287,8 @@ pub(crate) unsafe fn vm_trigger() {
 /// Parameters for a local assertion record.
 pub(crate) struct LocalAssert<'a> {
     pub assert_type: &'a str,
+    pub display_type: &'a str,
+    pub must_hit: bool,
     pub hit: bool,
     pub condition: bool,
     pub message: &'a str,
@@ -307,7 +309,6 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
     // json_details is already valid JSON — embed it directly
     let details_str = std::str::from_utf8(params.json_details).unwrap_or("{}");
 
-    let must_hit = matches!(params.assert_type, "sometimes" | "reachability");
     let record = format!(
         concat!(
             "{{\"antithesis_assert\": {{",
@@ -324,10 +325,10 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
         assert_type = params.assert_type,
         condition = params.condition,
         hit = params.hit,
-        must_hit = must_hit,
+        must_hit = params.must_hit,
         id = params.id,
         message = escape_json(params.message),
-        display_type = params.assert_type,
+        display_type = params.display_type,
         details = details_str,
     );
 

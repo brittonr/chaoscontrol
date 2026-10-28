@@ -198,7 +198,27 @@ pub fn emit_registered_assertion(
     message: &str,
     details: &serde_json::Value,
 ) {
-    emit_registered_assertion_core(kind, cond, id, message, details);
+    emit_registered_assertion_core(kind, cond, 0, id, message, details);
+}
+
+/// Emit an `always` assertion whose corresponding property tolerates never
+/// being reached (`AlwaysOrUnreachable` in the fallback schema).
+#[cfg(feature = "full")]
+#[doc(hidden)]
+pub fn emit_registered_always_or_unreachable(
+    cond: bool,
+    id: u32,
+    message: &str,
+    details: &serde_json::Value,
+) {
+    emit_registered_assertion_core(
+        AssertionKind::Always,
+        cond,
+        chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK,
+        id,
+        message,
+        details,
+    );
 }
 
 #[cfg(feature = "full")]
@@ -228,11 +248,12 @@ pub fn assert_raw_with_key(
 fn emit_registered_assertion_core(
     kind: AssertionKind,
     cond: bool,
+    extra_flags: u8,
     id: u32,
     message: &str,
     details: &serde_json::Value,
 ) {
-    let flags = assertion_flags(kind, cond);
+    let flags = assertion_flags(kind, cond) | extra_flags;
     let Some(json_bytes) = to_json_bytes(details) else {
         transport::hypercall_raw(kind.to_command(), flags, id, &[]);
         return;
@@ -266,6 +287,10 @@ pub fn emit_registered_assertion(
     _message: &str,
     _details: &(),
 ) {
+}
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+pub fn emit_registered_always_or_unreachable(_cond: bool, _id: u32, _message: &str, _details: &()) {
 }
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]
@@ -437,8 +462,7 @@ macro_rules! cc_assert_always_or_unreachable {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::emit_registered_assertion(
-            $crate::assert::AssertionKind::Always,
+        $crate::assert::emit_registered_always_or_unreachable(
             $cond,
             _ID,
             $msg,
@@ -449,13 +473,7 @@ macro_rules! cc_assert_always_or_unreachable {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::emit_registered_assertion(
-            $crate::assert::AssertionKind::Always,
-            $cond,
-            _ID,
-            $msg,
-            $details,
-        );
+        $crate::assert::emit_registered_always_or_unreachable($cond, _ID, $msg, $details);
     }};
 }
 

@@ -67,10 +67,11 @@ fn catalog_jsonl(descriptor: &AssertionDescriptor) -> String {
 fn event_line(descriptor: &AssertionDescriptor, condition: bool) -> String {
     let fingerprint = descriptor.fingerprint().expect("fingerprint");
     let token = token_for_descriptors(std::slice::from_ref(descriptor)).expect("token");
-    let (assert_type, must_hit) = match descriptor.kind {
-        AssertionKind::Always => ("always", false),
-        AssertionKind::Sometimes => ("sometimes", true),
-        AssertionKind::Reachable | AssertionKind::Unreachable => ("reachability", true),
+    let (assert_type, display_type, must_hit) = match descriptor.kind {
+        AssertionKind::Always => ("always", "Always", true),
+        AssertionKind::Sometimes => ("sometimes", "Sometimes", true),
+        AssertionKind::Reachable => ("reachability", "Reachable", true),
+        AssertionKind::Unreachable => ("reachability", "Unreachable", false),
     };
     render(&[json!({"antithesis_assert": {
         "assert_type": assert_type, "condition": condition, "hit": true,
@@ -78,7 +79,7 @@ fn event_line(descriptor: &AssertionDescriptor, condition: bool) -> String {
         "id": descriptor.compatibility_id
             .map(|value| format!("{value:08x}"))
             .unwrap_or_else(|| fingerprint.to_hex()),
-        "message": descriptor.message, "display_type": assert_type,
+        "message": descriptor.message, "display_type": display_type,
         "details": {"guest": descriptor.guest, "category": descriptor.category},
         "identity_version": ASSERTION_IDENTITY_VERSION, "catalog_token": token,
         "assertion_fingerprint": fingerprint, "catalog_status": "accepted"
@@ -166,6 +167,42 @@ fn strict_event_requires_redundant_display_type_and_must_hit() {
         let mut content = catalog_jsonl(&descriptor);
         content.push_str(&render(&[event]));
         assert!(summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).is_err());
+    }
+}
+
+#[test]
+fn strict_event_accepts_always_or_unreachable_display() {
+    let descriptor = descriptor("stable:aou", AssertionKind::Always, "acceptable gap");
+    let mut content = catalog_jsonl(&descriptor);
+    let mut event: Value =
+        serde_json::from_str(event_line(&descriptor, true).trim()).expect("event JSON");
+    event["antithesis_assert"]["display_type"] = json!("AlwaysOrUnreachable");
+    event["antithesis_assert"]["must_hit"] = json!(false);
+    content.push_str(&render(&[event]));
+    summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).expect("AOU event is admitted");
+}
+
+#[test]
+fn strict_event_rejects_display_and_must_hit_mismatches() {
+    let descriptor = descriptor("stable:display", AssertionKind::Always, "strict display");
+    let base_event: Value =
+        serde_json::from_str(event_line(&descriptor, true).trim()).expect("event JSON");
+
+    for (display_type, must_hit) in [
+        ("Always", false),
+        ("AlwaysOrUnreachable", true),
+        ("Sometimes", true),
+        ("Unreachable", false),
+    ] {
+        let mut event = base_event.clone();
+        event["antithesis_assert"]["display_type"] = json!(display_type);
+        event["antithesis_assert"]["must_hit"] = json!(must_hit);
+        let mut content = catalog_jsonl(&descriptor);
+        content.push_str(&render(&[event]));
+        assert!(
+            summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).is_err(),
+            "{display_type}/{must_hit} must be rejected for an always descriptor"
+        );
     }
 }
 

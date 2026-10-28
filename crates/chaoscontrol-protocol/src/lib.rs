@@ -45,6 +45,7 @@ pub mod process;
 pub mod transport;
 
 pub use memory::HypercallPage;
+pub use memory::{ALWAYS_OR_UNREACHABLE_FLAG_MASK, CONDITION_FLAG_MASK};
 pub use message::encode_payload;
 #[cfg(feature = "std")]
 pub use message::{decode_payload, DecodedPayload};

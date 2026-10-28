@@ -1,7 +1,12 @@
 const RESERVED_ZERO_BYTES: usize = 2;
 const RESERVED_ONE_BYTES: usize = 6;
 const RESERVED_TWO_BYTES: usize = 7;
-const CONDITION_FLAG_MASK: u8 = 0x01;
+/// Flag bit 0: the assertion condition value.
+pub const CONDITION_FLAG_MASK: u8 = 0x01;
+/// Flag bit 1: an `always` assertion that tolerates never being reached
+/// (`assert_always_or_unreachable`). The fallback schema reports these as
+/// `AlwaysOrUnreachable` with `must_hit = false`.
+pub const ALWAYS_OR_UNREACHABLE_FLAG_MASK: u8 = 0x02;
 
 /// Fixed-layout hypercall page shared between guest SDK and host VMM.
 ///

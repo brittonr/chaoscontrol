@@ -78,10 +78,11 @@ fn event_line_with_condition(
     condition: bool,
 ) -> String {
     let token = token_for_descriptors(core::slice::from_ref(descriptor)).expect("catalog token");
-    let (assert_type, must_hit) = match descriptor.kind {
-        AssertionKind::Always => ("always", false),
-        AssertionKind::Sometimes => ("sometimes", true),
-        AssertionKind::Reachable | AssertionKind::Unreachable => ("reachability", true),
+    let (assert_type, display_type, must_hit) = match descriptor.kind {
+        AssertionKind::Always => ("always", "Always", true),
+        AssertionKind::Sometimes => ("sometimes", "Sometimes", true),
+        AssertionKind::Reachable => ("reachability", "Reachable", true),
+        AssertionKind::Unreachable => ("reachability", "Unreachable", false),
     };
     let value = json!({
         "antithesis_assert": {
@@ -93,7 +94,7 @@ fn event_line_with_condition(
                 .map(|value| format!("{value:08x}"))
                 .unwrap_or_else(|| descriptor.fingerprint().expect("fingerprint").to_hex()),
             "message": message,
-            "display_type": assert_type,
+            "display_type": display_type,
             "details": {"guest": descriptor.guest, "category": descriptor.category},
             "identity_version": ASSERTION_IDENTITY_VERSION,
             "catalog_token": token_override.unwrap_or_else(|| json!(token)),

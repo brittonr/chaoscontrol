@@ -202,13 +202,17 @@ fn resolve_assertion(
             "event message conflicts with the catalog descriptor",
         );
     }
-    if !assertion.hit || assertion.display_type.as_deref() != Some(assertion.assert_type.as_str()) {
+    if !assertion.hit {
         return line_error(line_index, "assertion event shape is invalid");
     }
-    let expected_must_hit = matches!(
-        kind,
-        AssertionKind::Sometimes | AssertionKind::Reachable | AssertionKind::Unreachable
-    );
+    let expected_must_hit = match (kind, assertion.display_type.as_deref()) {
+        (AssertionKind::Always, Some("Always")) => true,
+        (AssertionKind::Always, Some("AlwaysOrUnreachable")) => false,
+        (AssertionKind::Sometimes, Some("Sometimes")) => true,
+        (AssertionKind::Reachable, Some("Reachable")) => true,
+        (AssertionKind::Unreachable, Some("Unreachable")) => false,
+        _ => return line_error(line_index, "assertion display_type conflicts with its kind"),
+    };
     if assertion.must_hit != Some(expected_must_hit) {
         return line_error(line_index, "assertion must_hit conflicts with its kind");
     }

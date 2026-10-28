@@ -619,8 +619,8 @@ fn strict_quality_fixture_jsonl() -> EvidenceResult<String> {
         serde_json::json!({"antithesis_setup": {"status": "complete", "details": {}}}),
         serde_json::json!({"antithesis_assert": {
             "assert_type": "always", "condition": true, "hit": true,
-            "must_hit": false, "id": format!("{COMPATIBILITY_ID:08x}"),
-            "message": "quality invariant", "display_type": "always",
+            "must_hit": true, "id": format!("{COMPATIBILITY_ID:08x}"),
+            "message": "quality invariant", "display_type": "Always",
             "details": {"guest": "quality-guest", "category": "service-invariant"},
             "identity_version": ASSERTION_IDENTITY_VERSION,
             "catalog_token": token, "assertion_fingerprint": fingerprint,

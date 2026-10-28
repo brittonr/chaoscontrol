@@ -200,6 +200,7 @@ impl FrontierPolicyReceipt {
     /// Durably replace `output_dir/frontier-policy.json` with this receipt.
     pub fn write(&self, output_dir: &Path) -> std::io::Result<()> {
         let bytes = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
+        std::fs::create_dir_all(output_dir)?;
         let mut temporary = tempfile::NamedTempFile::new_in(output_dir)?;
         temporary.write_all(&bytes)?;
         temporary.as_file().sync_all()?;
@@ -319,6 +320,21 @@ mod tests {
     }
 
     // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn diagnostic_receipt_creates_nested_output_directory() {
+        let config = ExplorerConfig {
+            frontier_policy: FrontierPolicy::LegacyDiagnostic,
+            seed: 7,
+            ..ExplorerConfig::default()
+        };
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("nested/output");
+        FrontierPolicyReceipt::for_config(&config)
+            .write(&output)
+            .unwrap();
+        assert!(output.join(FRONTIER_POLICY_RECEIPT_FILE).is_file());
+    }
+
     #[test]
     fn diagnostic_receipt_is_release_ineligible_and_round_trips() {
         let config = ExplorerConfig {

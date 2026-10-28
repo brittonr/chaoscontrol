@@ -168,6 +168,22 @@ mod tests {
     }
 
     #[test]
+    fn replacement_publication_replaces_symlinks_not_targets() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.txt");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("report.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        write_bytes_replace(&link, b"replacement").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
+        assert_eq!(std::fs::read(&link).unwrap(), b"replacement");
+        assert!(!std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[test]
     fn no_replace_publication_rejects_symlinks() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("target.txt");

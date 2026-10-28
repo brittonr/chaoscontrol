@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::snapshot_descriptor::fixture::example_descriptor;
-use crate::{EvidenceError, EvidenceResult};
+use crate::{ensure, EvidenceError, EvidenceResult};
 
 const CONTRACT_DIR: &str = "contracts/evidence";
 const CONTRACT_FILE: &str = "snapshot-descriptor.ncl";
@@ -63,6 +63,10 @@ pub fn check_snapshot_descriptor_contracts(
     write: bool,
 ) -> EvidenceResult<()> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "snapshot contract root must not be empty",
+    )?;
     let contract_root = root.join(CONTRACT_DIR);
     let fixture_path = contract_root.join(VALID_FIXTURE_FILE);
     let expected = example_descriptor()?;
@@ -242,6 +246,11 @@ pub fn contract_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_snapshot_contract_root_is_rejected() {
+        assert!(check_snapshot_descriptor_contracts("", false).is_err());
+    }
 
     #[test]
     fn contract_json_rejects_excessive_nesting() {

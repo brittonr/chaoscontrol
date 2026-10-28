@@ -77,6 +77,10 @@ pub(crate) const RUN_CONFIG_RANDOM_FAULTS_KEY: &str = "random_faults";
 
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
+    ensure(
+        !root.as_os_str().is_empty(),
+        "evidence-contract root must not be empty",
+    )?;
     run_nickel_examples(root)?;
     crate::profile_projection::check_profile_projections(root, false)?;
     crate::product_scope::check_product_scope(root, false)?;
@@ -1658,6 +1662,11 @@ fn sorted<const N: usize>(values: [&'static str; N]) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_evidence_contract_root_is_rejected() {
+        assert!(check_evidence_contracts("").is_err());
+    }
 
     #[test]
     fn projection_json_rejects_excessive_nesting() {

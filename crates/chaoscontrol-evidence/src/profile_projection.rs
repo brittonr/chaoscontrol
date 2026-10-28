@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 
 use crate::profile_projection_spec::{validate_receipt_against_spec, ProjectionSpec, SPECS};
-use crate::{EvidenceError, EvidenceResult};
+use crate::{ensure, EvidenceError, EvidenceResult};
 
 pub(crate) const MAX_PROFILE_BYTES: u64 = 1024 * 1024;
 pub(crate) const RECEIPT_SCHEMA: &str = "chaoscontrol.profile-projection-receipt.v1";
@@ -42,6 +42,10 @@ pub struct BoundIdentity {
 }
 
 pub fn check_profile_projections(root: &Path, write: bool) -> EvidenceResult<()> {
+    ensure(
+        !root.as_os_str().is_empty(),
+        "profile projection root must not be empty",
+    )?;
     let command = nickel_command()?;
     admit_nickel_evaluator()?;
     for spec in SPECS {

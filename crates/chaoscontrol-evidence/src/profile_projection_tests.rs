@@ -25,6 +25,11 @@ fn canonical_json_ignores_input_field_order() {
 }
 
 #[test]
+fn empty_projection_root_is_rejected() {
+    assert!(check_profile_projections(Path::new(""), false).is_err());
+}
+
+#[test]
 fn malformed_projection_is_rejected() {
     assert!(canonical_pretty_json(b"not-json").is_err());
 }

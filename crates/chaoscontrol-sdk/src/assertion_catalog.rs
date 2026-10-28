@@ -141,7 +141,7 @@ pub(crate) fn emit_catalog() {
                 "fingerprint": fingerprint.to_hex(),
                 "must_hit": must_hit,
             });
-            crate::lifecycle::send_event("chaoscontrol_must_hit", &details);
+            crate::lifecycle::send_event(chaoscontrol_protocol::MUST_HIT_METADATA_EVENT, &details);
         }
     }
     if crate::internal::is_local_output() {

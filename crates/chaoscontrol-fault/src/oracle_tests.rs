@@ -320,11 +320,15 @@ fn must_hit_metadata_changes_unexercised_verdicts() {
     oracle.begin_run();
     oracle
         .record_event(
-            "chaoscontrol_must_hit",
+            chaoscontrol_protocol::MUST_HIT_METADATA_EVENT,
             json!({"fingerprint": fingerprint.to_hex(), "must_hit": true}),
         )
         .expect("metadata recorded");
     let report = oracle.report();
+    assert!(report
+        .events
+        .iter()
+        .all(|event| event.name != chaoscontrol_protocol::MUST_HIT_METADATA_EVENT));
     let assertion = record(&report, &fingerprint);
     assert_eq!(assertion.verdict(), Verdict::Failed);
 
@@ -332,7 +336,7 @@ fn must_hit_metadata_changes_unexercised_verdicts() {
     oracle.begin_run();
     oracle
         .record_event(
-            "chaoscontrol_must_hit",
+            chaoscontrol_protocol::MUST_HIT_METADATA_EVENT,
             json!({"fingerprint": fingerprint.to_hex(), "must_hit": false}),
         )
         .expect("metadata recorded");

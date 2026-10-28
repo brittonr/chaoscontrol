@@ -44,6 +44,9 @@ pub mod process;
 #[cfg(feature = "std")]
 pub mod transport;
 
+/// Structured lifecycle event carrying per-descriptor must-hit metadata.
+pub const MUST_HIT_METADATA_EVENT: &str = "chaoscontrol_must_hit";
+
 pub use memory::HypercallPage;
 pub use memory::{ALWAYS_OR_UNREACHABLE_FLAG_MASK, CONDITION_FLAG_MASK};
 pub use message::encode_payload;

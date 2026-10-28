@@ -852,7 +852,7 @@ impl PropertyOracle {
         name: &str,
         details: serde_json::Value,
     ) -> Result<(), CatalogConflict> {
-        if name == "chaoscontrol_must_hit" {
+        if name == chaoscontrol_protocol::MUST_HIT_METADATA_EVENT {
             if let Some(fingerprint) = details
                 .get("fingerprint")
                 .and_then(serde_json::Value::as_str)

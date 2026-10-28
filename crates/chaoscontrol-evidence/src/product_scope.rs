@@ -553,19 +553,25 @@ fn load_and_check_registry_projection(root: &Path) -> EvidenceResult<ProductScop
         &generated_path,
         MAX_PRODUCT_SCOPE_FILE_BYTES,
     )?;
-    let generated_value: serde_json::Value = serde_json::from_str(&generated).map_err(|error| {
-        EvidenceError::new(format!("invalid generated product-scope JSON: {error}"))
-    })?;
+    let generated_value =
+        parse_projection_json(generated.as_bytes(), "generated product-scope JSON")?;
     let exported = export_nickel(root, PRODUCT_SCOPE_REGISTRY_SOURCE)?;
-    let exported_value: serde_json::Value = serde_json::from_slice(&exported).map_err(|error| {
-        EvidenceError::new(format!("invalid Nickel product-scope export: {error}"))
-    })?;
+    let exported_value = parse_projection_json(&exported, "Nickel product-scope export")?;
     ensure(
         generated_value == exported_value,
         "product-scope projection drift; export contracts/product-scope/registry.ncl",
     )?;
     check_invalid_nickel_fixtures(root)?;
     parse_product_scope_registry(&generated)
+}
+
+fn parse_projection_json(bytes: &[u8], label: &str) -> EvidenceResult<serde_json::Value> {
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
+    serde_json::from_slice(bytes)
+        .map_err(|error| EvidenceError::new(format!("invalid {label}: {error}")))
 }
 
 fn export_nickel(root: &Path, relative_path: &str) -> EvidenceResult<Vec<u8>> {
@@ -780,6 +786,13 @@ pub fn product_scope_paths(root: impl AsRef<Path>) -> (PathBuf, PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projection_json_rejects_excessive_nesting() {
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        let error = parse_projection_json(nested.as_bytes(), "projection").unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn product_scope_json_rejects_excessive_nesting() {

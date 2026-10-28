@@ -192,6 +192,8 @@ change the assertion oracle or prove exploration quality.
 - `chaoscontrol_sdk::compat` exposes the Antithesis assertion names
   (`assert_always!`, `assert_sometimes_all!`, numeric names,
   `antithesis_init`, `lifecycle`, `random`, `AntithesisRng`, `assert_raw`).
+  `compat::assert` mirrors the upstream `assert::{AssertType, assert_raw,
+  guidance}` paths.
 - `assert_raw` registers runtime descriptors before catalog emission. A new
   raw site after initialization is rejected; hits for declared sites still
   emit. Caller-supplied `display_type` and `must_hit` are preserved in local

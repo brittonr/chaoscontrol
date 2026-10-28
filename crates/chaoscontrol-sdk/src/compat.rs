@@ -7,6 +7,16 @@
 #[cfg(feature = "full")]
 pub use crate::assert::assert_raw;
 pub use crate::assert::AssertType;
+
+/// Antithesis-compatible `assert` submodule paths.
+pub mod assert {
+    #[cfg(feature = "full")]
+    pub use crate::assert::assert_raw;
+    pub use crate::assert::{AssertType, AssertionKind};
+    #[cfg(feature = "full")]
+    pub use crate::guidance;
+}
+
 pub use crate::chaoscontrol_init as antithesis_init;
 pub use crate::random::AntithesisRng;
 pub use crate::{

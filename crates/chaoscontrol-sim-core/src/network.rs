@@ -1371,6 +1371,9 @@ impl NetworkFabric {
         {
             return false;
         }
+        if self.directional.len() >= chaoscontrol_fault::mechanisms::MAX_ACTIVE_NETWORK_FAULTS {
+            return false;
+        }
         fault.attempt_id = attempt_id;
         self.directional.push(fault);
         true
@@ -1782,6 +1785,22 @@ mod directional_tests {
             NetworkDisruption::Stopped,
             0,
         )));
+    }
+
+    #[test]
+    fn active_directional_faults_are_bounded() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        let stopped = fault(
+            0,
+            1,
+            NetworkDirection::Outbound,
+            NetworkDisruption::Stopped,
+            0,
+        );
+        for _ in 0..chaoscontrol_fault::mechanisms::MAX_ACTIVE_NETWORK_FAULTS {
+            assert!(fabric.arm_directional(stopped.clone()));
+        }
+        assert!(!fabric.arm_directional(stopped));
     }
 
     #[test]

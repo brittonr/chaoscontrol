@@ -7,21 +7,7 @@ use std::path::Path;
 use crate::EvidenceResult;
 
 pub(crate) fn write_bytes(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> EvidenceResult<()> {
-    use std::io::Write;
-
-    let path = path.as_ref();
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
-    let directory = std::fs::File::open(parent)?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-    temporary.write_all(bytes.as_ref())?;
-    temporary.as_file().sync_all()?;
-    temporary.persist(path).map_err(|error| error.error)?;
-    directory.sync_all()?;
-    Ok(())
+    crate::bounded_file::write_bytes_replace(path.as_ref(), bytes.as_ref())
 }
 
 #[cfg(test)]

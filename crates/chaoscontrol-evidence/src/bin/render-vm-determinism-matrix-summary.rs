@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -73,16 +73,14 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
 }
 
 fn write_summary(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
-    file.write_all(bytes)
+    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "summary target is a symlink",
+        ));
+    }
+    chaoscontrol_evidence::bounded_file::write_bytes_replace(path, bytes)
+        .map_err(|error| std::io::Error::other(error.message()))
 }
 
 #[cfg(test)]
@@ -109,6 +107,16 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded(&fifo, MAX_MATRIX_RECEIPT_BYTES).is_err());
+    }
+
+    #[test]
+    fn summary_writer_replaces_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("summary.md");
+        write_summary(&path, b"first").unwrap();
+        write_summary(&path, b"second").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     }
 
     #[test]

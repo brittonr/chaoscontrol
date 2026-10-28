@@ -25,6 +25,18 @@ pub fn write_new_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
     Ok(())
 }
 
+pub fn write_bytes_replace(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
+    let parent = output_parent(path);
+    std::fs::create_dir_all(parent)?;
+    let directory = File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    std::io::Write::write_all(&mut temporary, bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()?;
+    Ok(())
+}
+
 pub(crate) fn read_bounded_regular_file(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
     let bytes = read_bounded_regular_bytes(path, maximum_bytes)?;
     String::from_utf8(bytes)
@@ -95,6 +107,19 @@ mod tests {
         assert_eq!(
             output_parent(Path::new("out/report.json")),
             Path::new("out")
+        );
+    }
+
+    #[test]
+    fn replacement_publication_is_atomic() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/report.txt");
+        write_bytes_replace(&path, b"first").unwrap();
+        write_bytes_replace(&path, b"second").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        assert_eq!(
+            std::fs::read_dir(path.parent().unwrap()).unwrap().count(),
+            1
         );
     }
 

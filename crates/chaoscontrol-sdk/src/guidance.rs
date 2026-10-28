@@ -8,6 +8,45 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value;
 
+/// One guidance site collected at compile time.
+pub struct GuidanceCatalogEntry {
+    pub id: u32,
+    pub kind: crate::assert::AssertionKind,
+    pub message: &'static str,
+    pub guidance_type: &'static str,
+    pub maximize: bool,
+    pub class: &'static str,
+    pub file: &'static str,
+    pub line: u32,
+    pub column: u32,
+}
+
+/// Every guidance site in the linked guest.
+#[linkme::distributed_slice]
+pub static GUIDANCE_CATALOG: [GuidanceCatalogEntry];
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_guidance {
+    ($id:expr, $kind:expr, $msg:expr, $guidance_type:expr, $maximize:expr, $class:expr, $file:expr, $line:expr, $column:expr) => {
+        const _: () = {
+            #[linkme::distributed_slice($crate::guidance::GUIDANCE_CATALOG)]
+            static _GUIDANCE_ENTRY: $crate::guidance::GuidanceCatalogEntry =
+                $crate::guidance::GuidanceCatalogEntry {
+                    id: $id,
+                    kind: $kind,
+                    message: $msg,
+                    guidance_type: $guidance_type,
+                    maximize: $maximize,
+                    class: $class,
+                    file: $file,
+                    line: $line,
+                    column: $column,
+                };
+        };
+    };
+}
+
 /// Difference between two operands, used for numeric guidance watermarks.
 pub trait GuidanceDiff {
     /// Signed distance from `other` to `self`.
@@ -138,6 +177,7 @@ pub fn emit_numeric(
         begin_column,
         maximize,
         guidance_data,
+        true,
     );
 }
 
@@ -165,6 +205,24 @@ pub fn emit_boolean(
         begin_column,
         maximize,
         guidance_data,
+        true,
+    );
+}
+
+/// Emit the initialization-time record for one guidance site.
+pub fn emit_catalog_record(entry: &GuidanceCatalogEntry) {
+    emit(
+        entry.id,
+        entry.kind,
+        entry.guidance_type,
+        entry.message,
+        entry.class,
+        entry.file,
+        entry.line,
+        entry.column,
+        entry.maximize,
+        Value::Null,
+        false,
     );
 }
 
@@ -180,6 +238,7 @@ fn emit(
     begin_column: u32,
     maximize: bool,
     guidance_data: Value,
+    hit: bool,
 ) {
     let Some(identity) = crate::assertion_catalog::resolve_compatibility(id, kind, message) else {
         return;
@@ -197,7 +256,7 @@ fn emit(
         },
         "maximize": maximize,
         "guidance_data": guidance_data,
-        "hit": true,
+        "hit": hit,
         "identity_version": chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION,
         "catalog_token": identity.catalog_token,
         "assertion_fingerprint": identity.fingerprint,

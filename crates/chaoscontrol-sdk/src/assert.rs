@@ -973,6 +973,13 @@ macro_rules! __cc_boolean_guidance {
     };
 }
 
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_guidance {
+    ($id:expr, $kind:expr, $msg:expr, $guidance_type:expr, $maximize:expr, $class:expr, $file:expr, $line:expr, $column:expr) => {};
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Numeric comparison macros
 // ═══════════════════════════════════════════════════════════════════════
@@ -984,6 +991,17 @@ macro_rules! cc_assert_always_lt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left < __cc_right;
@@ -1013,6 +1031,17 @@ macro_rules! cc_assert_always_lt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left < __cc_right;
@@ -1046,6 +1075,17 @@ macro_rules! cc_assert_always_le {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left <= __cc_right;
@@ -1075,6 +1115,17 @@ macro_rules! cc_assert_always_le {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left <= __cc_right;
@@ -1108,6 +1159,17 @@ macro_rules! cc_assert_always_gt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left > __cc_right;
@@ -1137,6 +1199,17 @@ macro_rules! cc_assert_always_gt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left > __cc_right;
@@ -1170,6 +1243,17 @@ macro_rules! cc_assert_always_ge {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left >= __cc_right;
@@ -1199,6 +1283,17 @@ macro_rules! cc_assert_always_ge {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left >= __cc_right;
@@ -1308,6 +1403,17 @@ macro_rules! cc_assert_sometimes_lt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left < __cc_right;
@@ -1337,6 +1443,17 @@ macro_rules! cc_assert_sometimes_lt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left < __cc_right;
@@ -1370,6 +1487,17 @@ macro_rules! cc_assert_sometimes_le {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left <= __cc_right;
@@ -1399,6 +1527,17 @@ macro_rules! cc_assert_sometimes_le {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left <= __cc_right;
@@ -1432,6 +1571,17 @@ macro_rules! cc_assert_sometimes_gt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left > __cc_right;
@@ -1461,6 +1611,17 @@ macro_rules! cc_assert_sometimes_gt {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left > __cc_right;
@@ -1494,6 +1655,17 @@ macro_rules! cc_assert_sometimes_ge {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left >= __cc_right;
@@ -1523,6 +1695,17 @@ macro_rules! cc_assert_sometimes_ge {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "numeric",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         let __cc_left = $left;
         let __cc_right = $right;
         let __cc_cond = __cc_left >= __cc_right;
@@ -1711,6 +1894,17 @@ macro_rules! cc_assert_always_some {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "boolean",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         $(let $name = $cond;)*
         let __cc_cond = false $(|| $name)*;
         let __cc_det = $crate::__cc_bundle_details!(
@@ -1740,6 +1934,17 @@ macro_rules! cc_assert_always_some {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "boolean",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         $(let $name = $cond;)*
         let __cc_cond = false $(|| $name)*;
         let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
@@ -1847,6 +2052,17 @@ macro_rules! cc_assert_always_any {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "boolean",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         $(let $name = $cond;)*
         let __cc_cond = false $(|| $name)*;
         let __cc_det = $crate::__cc_bundle_details!(
@@ -1876,6 +2092,17 @@ macro_rules! cc_assert_always_any {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Always,
+            $msg,
+            "boolean",
+            false,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         $(let $name = $cond;)*
         let __cc_cond = false $(|| $name)*;
         let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
@@ -1917,6 +2144,17 @@ macro_rules! cc_assert_sometimes_all {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "boolean",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         $(let $name = $cond;)*
         let __cc_cond = true $(&& $name)*;
         let __cc_det = $crate::__cc_bundle_details!(
@@ -1946,6 +2184,17 @@ macro_rules! cc_assert_sometimes_all {
         const _ID: u32 =
             $crate::assert::location_id(concat!(file!(), ":", line!(), ":", column!()));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::__cc_register_guidance!(
+            _ID,
+            $crate::assert::AssertionKind::Sometimes,
+            $msg,
+            "boolean",
+            true,
+            module_path!(),
+            file!(),
+            line!(),
+            column!()
+        );
         $(let $name = $cond;)*
         let __cc_cond = true $(&& $name)*;
         let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);

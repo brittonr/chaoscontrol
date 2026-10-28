@@ -29,6 +29,20 @@ fn guidance_records_match_the_antithesis_shape_and_watermark() {
         .filter_map(|record| record.get("antithesis_guidance").cloned())
         .collect::<Vec<_>>();
 
+    let catalog = guidance
+        .iter()
+        .filter(|record| record["hit"] == false)
+        .collect::<Vec<_>>();
+    assert_eq!(catalog.len(), 3, "one catalog record per guidance site");
+    for record in &catalog {
+        assert!(record["guidance_data"].is_null());
+    }
+
+    let guidance = guidance
+        .iter()
+        .filter(|record| record["hit"] == true)
+        .cloned()
+        .collect::<Vec<_>>();
     assert_eq!(guidance.len(), 4);
 
     let all = guidance

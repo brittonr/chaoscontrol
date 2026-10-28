@@ -70,6 +70,9 @@ pub(crate) fn emit_catalog() {
             &payload[..length],
         );
     }
+    for entry in crate::guidance::GUIDANCE_CATALOG.iter() {
+        crate::guidance::emit_catalog_record(entry);
+    }
 }
 
 pub(crate) fn resolve_compatibility(

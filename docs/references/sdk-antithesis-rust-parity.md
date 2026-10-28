@@ -146,7 +146,7 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 |---|---|---|---|
 | Fallback JSONL schema | assertion/setup/named-event records | those records plus catalog/random/identity extensions | superset |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
-| Guidance records | `antithesis_guidance` watermarks | `antithesis_guidance` records for numeric and boolean macros with per-site watermarks; no guidance catalog at init | subset |
+| Guidance records | `antithesis_guidance` watermarks and initialization catalog | same record shape, per-site watermarks, and `hit = false` catalog records at init | equivalent |
 
 ## Guidance decision
 
@@ -156,18 +156,19 @@ records. A numeric guidance uses an atomic watermark guard
 per site. The `maximize` flag says whether the SDK maximizes or minimizes
 the reported difference.
 
-ChaosControl now emits the same record shape for its numeric (`gt`/`ge`/
-`lt`/`le`) and boolean bundle macros, with an atomic per-site watermark and
-the Antithesis maximize mapping. Records travel through the structured
-event path, so local output is the exact `{"antithesis_guidance": ...}`
-shape while the VMM records a named event. Each record also carries the
-accepted catalog token and assertion fingerprint, keeping guidance
-catalog-bound rather than reintroducing the removed unbound command.
+ChaosControl emits the same record shape for its numeric (`gt`/`ge`/`lt`/
+`le`) and boolean bundle macros, with an atomic per-site watermark and the
+Antithesis maximize mapping. Initialization emits one `hit = false` record
+with `guidance_data = null` per linked guidance site, like Antithesis.
+Records travel through the structured event path, so local output is the
+exact `{"antithesis_guidance": ...}` shape while the VMM records a named
+event. Each record also carries the accepted catalog token and assertion
+fingerprint, keeping guidance catalog-bound rather than reintroducing the
+removed unbound command.
 
 Still absent:
 
-- guidance catalog records emitted at initialization (`hit = false`),
-- `json` guidance,
+- `json` guidance (Antithesis exposes no public macro for it),
 - a first-class VMM guidance consumer; the explorer does not yet use these
   records for frontier selection.
 

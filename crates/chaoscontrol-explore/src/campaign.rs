@@ -1075,6 +1075,13 @@ mod tests {
         assert!(generate_seeds(u64::MAX, MAX_CAMPAIGN_SEEDS, None).is_err());
     }
 
+    #[test]
+    fn seed_generation_enforces_the_count_boundary() {
+        let seeds = generate_seeds(0, MAX_CAMPAIGN_SEEDS, None).expect("maximum seeds");
+        assert_eq!(seeds.len(), MAX_CAMPAIGN_SEEDS);
+        assert!(generate_seeds(0, MAX_CAMPAIGN_SEEDS + 1, None).is_err());
+    }
+
     // ── 6.2: bug dedup across seeds ─────────────────────────────────
 
     fn make_bug(id: u64, assertion_id: u64, location: &str, dedup_key: u64) -> BugReport {

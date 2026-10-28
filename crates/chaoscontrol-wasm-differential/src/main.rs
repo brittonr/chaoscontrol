@@ -274,15 +274,15 @@ fn create_artifact_directory(path: &Path) -> Result<(), Error> {
 
 fn write_generated_module(directory: &Path, case_id: &str, module: &[u8]) -> Result<(), Error> {
     let path = directory.join(format!("{case_id}.wasm"));
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|source| io_error(&path, source))?;
-    output
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(directory).map_err(|source| io_error(&path, source))?;
+    temporary
         .write_all(module)
-        .and_then(|()| output.sync_all())
+        .and_then(|()| temporary.as_file().sync_all())
         .map_err(|source| io_error(&path, source))?;
+    temporary
+        .persist_noclobber(&path)
+        .map_err(|error| io_error(&path, error.error))?;
     sync_parent(&path)
 }
 
@@ -974,6 +974,17 @@ fn io_error(path: &Path, source: std::io::Error) -> Error {
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn generated_module_publication_is_atomic_and_never_overwrites() {
+        let root = tempfile::tempdir().unwrap();
+        write_generated_module(root.path(), "case", b"wasm").unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join("case.wasm")).unwrap(),
+            b"wasm"
+        );
+        assert!(write_generated_module(root.path(), "case", b"other").is_err());
+    }
 
     #[test]
     fn raw_retention_is_atomic_and_idempotent() {

@@ -756,6 +756,16 @@ mod publication_tests {
     }
 
     #[test]
+    fn input_reads_enforce_the_exact_byte_bound() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("input.json");
+        fs::write(&path, b"abcd").unwrap();
+
+        assert_eq!(read_bytes(&path, 4).unwrap(), b"abcd");
+        assert!(read_bytes(&path, 3).is_err());
+    }
+
+    #[test]
     fn input_reads_reject_symlinks_and_fifos() {
         let root = tempfile::tempdir().unwrap();
         let target = root.path().join("target.json");

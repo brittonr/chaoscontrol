@@ -612,6 +612,16 @@ fn admit_fixture_entry(fixture: &std::fs::DirEntry) -> EvidenceResult<()> {
 
 fn check_invalid_nickel_fixtures(root: &Path) -> EvidenceResult<()> {
     let directory = root.join(INVALID_FIXTURES_DIRECTORY);
+    let metadata = std::fs::symlink_metadata(&directory).map_err(|error| {
+        EvidenceError::new(format!("failed to inspect invalid fixtures: {error}"))
+    })?;
+    ensure(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        format!(
+            "invalid fixture path is not a real directory: {}",
+            directory.display()
+        ),
+    )?;
     let mut fixtures = Vec::new();
     for entry in std::fs::read_dir(&directory)
         .map_err(|error| EvidenceError::new(format!("failed to read invalid fixtures: {error}")))?
@@ -990,6 +1000,17 @@ mod fixture_admission_tests {
 #[cfg(test)]
 mod active_change_bound_tests {
     use super::*;
+
+    #[test]
+    fn invalid_fixture_symlink_directory_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("fixture.ncl"), b"{}").unwrap();
+        let directory = root.path().join(INVALID_FIXTURES_DIRECTORY);
+        std::fs::create_dir_all(directory.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(outside.path(), &directory).unwrap();
+        assert!(check_invalid_nickel_fixtures(root.path()).is_err());
+    }
 
     #[test]
     fn active_change_symlink_directory_is_rejected() {

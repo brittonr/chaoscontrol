@@ -24,6 +24,14 @@ fn same_path(left: &Path, right: &Path) -> bool {
     }
 }
 
+fn load_optional_json(path: &Path) -> EvidenceResult<Option<Value>> {
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+        Ok(_) => load_json(path).map(Some),
+    }
+}
+
 pub fn summarize_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
     summarize_receipt(&load_json(path.as_ref())?)
 }
@@ -694,11 +702,7 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
         .and_then(Value::as_str)
         .map(PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("state.json"));
-    let previous_state = if state_path.exists() {
-        Some(load_json(&state_path)?)
-    } else {
-        None
-    };
+    let previous_state = load_optional_json(&state_path)?;
     let completed_before_start = previous_state
         .as_ref()
         .and_then(|state| state.get("completed_runs"))
@@ -2824,11 +2828,7 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         .get("follow_up_policy")
         .cloned()
         .unwrap_or_else(|| json!({"enabled": false, "reproduce": false, "minimize": false}));
-    let previous_state = if state_path.exists() {
-        Some(load_json(&state_path)?)
-    } else {
-        None
-    };
+    let previous_state = load_optional_json(&state_path)?;
     let completed_before_start = previous_state
         .as_ref()
         .and_then(|state| state.get("completed_runs"))
@@ -4477,6 +4477,16 @@ mod output_overlap_tests {
         let before = std::fs::read(&path).unwrap();
         assert!(write_dashboard_path(&path, &path).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn optional_state_distinguishes_absence_from_broken_links() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing.json");
+        assert!(load_optional_json(&missing).unwrap().is_none());
+        let link = root.path().join("broken.json");
+        std::os::unix::fs::symlink(root.path().join("absent.json"), &link).unwrap();
+        assert!(load_optional_json(&link).is_err());
     }
 
     #[test]

@@ -46,22 +46,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
 }
 
 fn write_report(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "receipt output is not a regular file",
+            ))
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
-    std::fs::File::open(parent)?.sync_all()
+    let directory = std::fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    directory.sync_all()
 }
 
 fn parse_options(args: &[String]) -> Result<Options, String> {
@@ -108,6 +113,15 @@ mod tests {
         .expect("complete options must parse");
         assert_eq!(options.lane, Lane::Fast);
         assert_eq!(options.output, PathBuf::from("receipt.json"));
+    }
+
+    #[test]
+    fn report_writer_replaces_an_existing_regular_file() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let path = root.path().join("receipt.json");
+        std::fs::write(&path, b"old").unwrap();
+        write_report(&path, b"new").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
     }
 
     #[test]

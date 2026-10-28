@@ -483,9 +483,14 @@ mod tests {
     #[test]
     fn snapshot_directory_scan_is_bounded() {
         let root = tempfile::tempdir().unwrap();
-        for index in 0..=MAX_SNAPSHOT_DIRECTORY_ENTRIES {
+        for index in 0..MAX_SNAPSHOT_DIRECTORY_ENTRIES {
             std::fs::write(root.path().join(format!("entry-{index}")), b"").unwrap();
         }
+        assert_eq!(
+            list_snapshot_entries(root.path()).unwrap().len(),
+            MAX_SNAPSHOT_DIRECTORY_ENTRIES
+        );
+        std::fs::write(root.path().join("one-too-many"), b"").unwrap();
         assert!(list_snapshot_entries(root.path()).is_err());
     }
 

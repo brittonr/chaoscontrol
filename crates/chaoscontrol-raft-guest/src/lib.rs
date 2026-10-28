@@ -113,6 +113,8 @@ impl BugMode {
 //  Types
 // ═══════════════════════════════════════════════════════════════════════
 
+pub mod persistence_bridge;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     Follower,
@@ -230,6 +232,17 @@ impl Node {
 
     pub fn last_log_index(&self) -> usize {
         self.log.len()
+    }
+
+    /// Applied prefix retained across restart, excluding volatile commit knowledge.
+    pub(crate) fn retained_applied_index_value(&self) -> usize {
+        self.retained_applied_index
+    }
+
+    /// Set the applied prefix when restoring durable state.
+    pub(crate) fn retain_applied_prefix(&mut self, applied: usize) {
+        self.retained_applied_index = applied.min(self.log.len());
+        self.commit_index = 0;
     }
 
     pub fn last_log_term(&self) -> u64 {

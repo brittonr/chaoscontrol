@@ -97,8 +97,9 @@ nix develop -c cargo fmt --check
 nix develop -c cargo clippy -p chaoscontrol-smr --all-targets -- -D warnings
 ```
 
-Results: 28 passed (14 pre-existing + 6 persistence + 8 recovery), 0 failed;
-formatting and strict Clippy clean.
+Results: 33 passed (14 pre-existing + 6 persistence + 8 recovery + 5 schedule
+and receipt), 0 failed; formatting and strict Clippy clean. The Raft guest adds
+`persistence_bridge` with three cases; the full guest suite is 112 passed.
 
 Positive coverage: full member round trip, crash-before-flush retaining only
 published state, independent cohort disks, consistent durable state passing the

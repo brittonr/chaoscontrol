@@ -25,7 +25,7 @@
 ## Persistent consensus workload
 
 - [x] [serial] Add one persistent deterministic block device per Raft node and bind term, vote, log, snapshot, and application state. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
-  - Evidence: `chaoscontrol-smr` `persistence`; six cases cover round trip, crash-before-flush, write/capacity denial, corruption/truncation, inconsistent logs, and independent cohort disks.
+  - Evidence: `chaoscontrol-smr` `persistence`; six cases cover round trip, crash-before-flush, write/capacity denial, corruption/truncation, inconsistent logs, and independent cohort disks. `chaoscontrol-raft-guest` `persistence_bridge` binds an actual `Node`'s term, vote, log, and applied prefix to its own disk and restores them after restart.
 - [x] [serial] Add restart, lagging-replica, unavailable-peer, corruption, and local-repair schedules. r[chaoscontrol.smr_storage_recovery.persistent_nodes]
   - Evidence: `chaoscontrol-smr` `storage_schedule`; five cases cover applied effects, intact local repair, empty/out-of-range/over-bound denial, receipt cohort binding, and receipt identity/participant denials.
 - [x] [depends:protocol-observation-cohorts] Add oracles for acknowledged-data loss, committed truncation, unsafe voting, conflicting history, and unknown-commitment progress. r[chaoscontrol.smr_storage_recovery.protocol_oracles]

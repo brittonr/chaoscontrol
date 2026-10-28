@@ -502,6 +502,7 @@ pub fn receipt_for(
     observation_source: [u8; 32],
     limits: &SymbolCoverageLimits,
 ) -> Result<SymbolizedCoverageReceipt, SymbolCoverageError> {
+    limits.validate()?;
     let report_bytes =
         serde_json::to_vec(coverage).map_err(|_| SymbolCoverageError::ReportDigest)?;
     let report_digest = *blake3::hash(&report_bytes).as_bytes();
@@ -829,6 +830,18 @@ mod tests {
         assert_eq!(receipt.catalog_ids[0], module(1, "src/a.rs"));
         assert_eq!(receipt.load_ids[0].load_ordinal, 0);
         assert_eq!(receipt.mapped_observations, 1);
+    }
+
+    #[test]
+    fn receipt_rejects_invalid_limits() {
+        let limits = SymbolCoverageLimits {
+            max_report_rows: MAX_SYMBOL_REPORT_ROWS + 1,
+            ..SymbolCoverageLimits::default()
+        };
+        assert_eq!(
+            receipt_for(&coverage_with(&[]), &[], &[], [4; 32], &limits).unwrap_err(),
+            SymbolCoverageError::InvalidLimits
+        );
     }
 
     #[test]

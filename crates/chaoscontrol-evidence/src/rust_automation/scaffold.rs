@@ -14,8 +14,11 @@ pub struct ScaffoldPlan {
     pub manifest: Value,
 }
 
+const MAX_SCAFFOLD_WORKLOAD_NAME_BYTES: usize = 128;
+
 pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
     if workload.is_empty()
+        || workload.len() > MAX_SCAFFOLD_WORKLOAD_NAME_BYTES
         || !workload
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
@@ -64,7 +67,7 @@ pub fn transform_text(text: &str, replacements: &[(String, String)]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{plan, transform_text};
+    use super::{plan, transform_text, MAX_SCAFFOLD_WORKLOAD_NAME_BYTES};
 
     #[test]
     fn projection_preserves_public_manifest_and_replacements() {
@@ -86,6 +89,7 @@ mod tests {
         assert!(plan("", "/source").is_err());
         assert!(plan("bad\nname", "/source").is_err());
         assert!(plan("../escape", "/source").is_err());
+        assert!(plan(&"x".repeat(MAX_SCAFFOLD_WORKLOAD_NAME_BYTES + 1), "/source").is_err());
         assert!(plan("nested/name", "/source").is_err());
         assert!(plan("valid", "").is_err());
     }

@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use chaoscontrol_evidence::architecture_boundaries::{
@@ -12,6 +13,7 @@ const CORE_PATHS: &[&str] = &[
 ];
 const VMM_SOURCE_PATH: &str = "crates/chaoscontrol-vmm/src";
 const UNSAFE_OWNER_FILE: &str = "unsafe_owner.rs";
+const MAX_SOURCE_BYTES: u64 = 16 * 1024 * 1024;
 
 fn repository_root() -> PathBuf {
     std::env::args_os()
@@ -22,7 +24,31 @@ fn repository_root() -> PathBuf {
 
 fn load_source(root: &Path, relative_path: &str) -> Result<String, String> {
     let path = root.join(relative_path);
-    std::fs::read_to_string(&path).map_err(|error| format!("read {}: {error}", path.display()))
+    read_bounded_text(&path)
+}
+
+fn read_bounded_text(path: &Path) -> Result<String, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    if !metadata.is_file() || metadata.len() > MAX_SOURCE_BYTES {
+        return Err(format!("{} is not a bounded regular file", path.display()));
+    }
+    let mut text = String::new();
+    file.take(MAX_SOURCE_BYTES + 1)
+        .read_to_string(&mut text)
+        .map_err(|error| format!("read {}: {error}", path.display()))?;
+    if text.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    Ok(text)
 }
 
 fn collect_violations(root: &Path) -> Result<Vec<BoundaryViolation>, String> {
@@ -45,8 +71,7 @@ fn collect_violations(root: &Path) -> Result<Vec<BoundaryViolation>, String> {
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| format!("non-UTF-8 module path: {}", path.display()))?;
-        let source = std::fs::read_to_string(&path)
-            .map_err(|error| format!("read {}: {error}", path.display()))?;
+        let source = read_bounded_text(&path)?;
         if let Some(violation) = validate_unsafe_owner(module, &source, UNSAFE_OWNER_FILE) {
             violations.push(violation);
         }
@@ -80,5 +105,26 @@ fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn source_reads_reject_symlinks_and_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.rs");
+        std::fs::write(&target, b"source").unwrap();
+        let link = root.path().join("module.rs");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_bounded_text(&link).is_err());
+
+        let fifo = root.path().join("module.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_bounded_text(&fifo).is_err());
     }
 }

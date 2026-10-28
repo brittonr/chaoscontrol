@@ -856,18 +856,22 @@ mod publication_tests {
     }
 
     #[test]
-    fn empty_output_path_is_rejected() {
-        let args = vec![
-            OsString::from("--root"),
-            OsString::from("."),
-            OsString::from("--matrix"),
-            OsString::from("matrix.json"),
-            OsString::from("--out"),
-            OsString::from(""),
-            OsString::from("--expected-revision"),
-            OsString::from("rev"),
-        ];
-        assert!(parse_args(args).is_err());
+    fn empty_paths_are_rejected() {
+        let base = |root: &str, matrix: &str, out: &str| {
+            vec![
+                OsString::from("--root"),
+                OsString::from(root),
+                OsString::from("--matrix"),
+                OsString::from(matrix),
+                OsString::from("--out"),
+                OsString::from(out),
+                OsString::from("--expected-revision"),
+                OsString::from("rev"),
+            ]
+        };
+        assert!(parse_args(base("", "matrix.json", "out")).is_err());
+        assert!(parse_args(base(".", "", "out")).is_err());
+        assert!(parse_args(base(".", "matrix.json", "")).is_err());
     }
 
     #[test]

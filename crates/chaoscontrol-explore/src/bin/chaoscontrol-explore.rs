@@ -2982,12 +2982,23 @@ fn write_new_or_exact_bug(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let directory = fs::File::open(parent).map_err(|error| error.to_string())?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(bytes)
+        .and_then(|()| temporary.as_file().sync_all())
         .map_err(|error| error.to_string())?;
-    commit_reserved_file(file, path, bytes)
+    temporary
+        .persist_noclobber(path)
+        .map_err(|error| error.error.to_string())?;
+    directory.sync_all().map_err(|error| error.to_string())
 }
 
 fn commit_reserved_file(mut file: std::fs::File, path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -3118,6 +3129,17 @@ mod tests {
     const LEGACY_DIAGNOSTIC: &str = "legacy-diagnostic";
     const UNKNOWN_POLICIES: [&str; 3] = ["bogus", "campaign_candidate", "Legacy"];
     const RETIRED_POLICIES: [&str; 2] = ["legacy", "campaign-candidate"];
+
+    #[test]
+    fn new_file_publication_is_atomic_and_never_overwrites() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let path = root.path().join("minimized.json");
+        write_new_synced(&path, b"first").expect("publish first");
+        assert_eq!(fs::read(&path).unwrap(), b"first");
+
+        assert!(write_new_synced(&path, b"second").is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"first");
+    }
 
     #[test]
     fn atomic_replacement_does_not_follow_symlinks() {

@@ -755,9 +755,7 @@ pub fn evaluate(
     if truncated {
         rows.truncate(limits.max_result_rows);
     }
-    if serialized_rows_bytes(&rows)? > limits.max_result_bytes {
-        return Err(EventQueryError::ResultBound);
-    }
+    serialized_rows_bytes(&rows, limits.max_result_bytes)?;
     Ok(EventQueryResult {
         schema: EVENT_QUERY_RESULT_SCHEMA.to_string(),
         rows,
@@ -767,8 +765,11 @@ pub fn evaluate(
     })
 }
 
-fn serialized_rows_bytes(rows: &[EventEnvelope]) -> Result<usize, EventQueryError> {
+fn serialized_rows_bytes(rows: &[EventEnvelope], limit: usize) -> Result<usize, EventQueryError> {
     let mut total = 2_usize;
+    if total > limit {
+        return Err(EventQueryError::ResultBound);
+    }
     for (index, row) in rows.iter().enumerate() {
         let bytes = serde_json::to_vec(row).map_err(|_| EventQueryError::Digest)?;
         total = total
@@ -781,6 +782,9 @@ fn serialized_rows_bytes(rows: &[EventEnvelope]) -> Result<usize, EventQueryErro
                 }
             })
             .ok_or(EventQueryError::CounterOverflow)?;
+        if total > limit {
+            return Err(EventQueryError::ResultBound);
+        }
     }
     Ok(total)
 }
@@ -832,9 +836,7 @@ pub fn receipt_for(
     for row in &result.rows {
         admit_event(row)?;
     }
-    if serialized_rows_bytes(&result.rows)? > limits.max_result_bytes {
-        return Err(EventQueryError::ResultBound);
-    }
+    serialized_rows_bytes(&result.rows, limits.max_result_bytes)?;
     let rows = serde_json::to_vec(&result.rows).map_err(|_| EventQueryError::Digest)?;
     let rows_digest = *blake3::hash(&rows).as_bytes();
     let mut source_ids: Vec<[u8; 32]> = events.iter().map(|event| event.source_id).collect();
@@ -2105,8 +2107,12 @@ mod tests {
     fn serialized_rows_bytes_matches_the_json_array() {
         let rows = events();
         let expected = serde_json::to_vec(&rows).unwrap().len();
-        assert_eq!(serialized_rows_bytes(&rows).unwrap(), expected);
-        assert_eq!(serialized_rows_bytes(&[]).unwrap(), 2);
+        assert_eq!(serialized_rows_bytes(&rows, usize::MAX).unwrap(), expected);
+        assert_eq!(serialized_rows_bytes(&[], usize::MAX).unwrap(), 2);
+        assert_eq!(
+            serialized_rows_bytes(&rows, expected - 1).unwrap_err(),
+            EventQueryError::ResultBound
+        );
     }
 
     #[test]

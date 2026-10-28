@@ -1960,6 +1960,28 @@ mod tests {
     }
 
     #[test]
+    fn operation_budget_admits_the_exact_scan() {
+        let events = events();
+        let exact = EventQueryLimits {
+            max_operations: events.len(),
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events, &exact).unwrap().matched,
+            events.len() as u64
+        );
+
+        let tight = EventQueryLimits {
+            max_operations: events.len() - 1,
+            ..EventQueryLimits::default()
+        };
+        assert_eq!(
+            evaluate(&EventQuery::All, &events, &tight).unwrap_err(),
+            EventQueryError::OperationBound
+        );
+    }
+
+    #[test]
     fn derived_bytes_enforce_the_byte_boundary() {
         let mut event = events()[0].clone();
         event.derived.clear();

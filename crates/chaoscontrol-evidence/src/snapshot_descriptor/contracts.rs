@@ -96,6 +96,10 @@ pub fn check_snapshot_descriptor_contracts(
 fn read_contract_json<T: serde::de::DeserializeOwned>(path: &Path) -> EvidenceResult<T> {
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -238,6 +242,19 @@ pub fn contract_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contract_json_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("contract.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_contract_json::<Value>(&path).unwrap_err();
+        assert!(
+            error.message().contains("JSON nesting depth exceeded"),
+            "{}",
+            error.message()
+        );
+    }
 
     #[test]
     fn freshness_rejects_symlinked_inputs() {

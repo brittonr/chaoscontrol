@@ -54,6 +54,10 @@ pub fn chunked_closure_from_manifest(
         manifest_path,
         crate::MAX_EVIDENCE_JSON_BYTES,
     )?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&manifest_bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let manifest: SnapshotChunkManifest = serde_json::from_slice(&manifest_bytes)?;
     manifest.validate_shape()?;
     if manifest.original_size == 0 || manifest.original_size > maximum_bytes {
@@ -177,6 +181,19 @@ fn hex_lower(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chunk_manifests_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("manifest.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = chunked_closure_from_manifest(&path, root.path(), 1024).unwrap_err();
+        assert!(
+            error.message().contains("JSON nesting depth exceeded"),
+            "{}",
+            error.message()
+        );
+    }
 
     #[test]
     fn chunk_paths_cannot_escape_the_artifact_root() {

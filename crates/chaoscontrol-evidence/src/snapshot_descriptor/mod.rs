@@ -127,6 +127,10 @@ pub fn read_envelope(
         path.as_ref(),
         crate::MAX_EVIDENCE_JSON_BYTES,
     )?;
+    crate::json_preflight::preflight_json(
+        &String::from_utf8_lossy(&bytes),
+        crate::json_preflight::QUALITY_REPORT_LIMITS,
+    )?;
     let envelope: snapshot_core::SnapshotDescriptorEnvelope = serde_json::from_slice(&bytes)?;
     let expected = snapshot_core::descriptor_identity(&envelope.descriptor)
         .map_err(|error| EvidenceError::new(error.to_string()))?;
@@ -239,6 +243,15 @@ fn backend_for_device(device_id: u32) -> EvidenceResult<snapshot_core::DeviceBac
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_envelope_rejects_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("envelope.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_envelope(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn read_envelope_rejects_symlinks() {

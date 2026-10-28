@@ -1229,6 +1229,12 @@ pub fn read_trace_with_limit(path: &str, limit: u64) -> std::io::Result<String> 
             "trace JSON exceeds the byte limit",
         ));
     }
+    if json.len() as u64 != metadata.len() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "trace JSON changed while reading",
+        ));
+    }
     Ok(json)
 }
 
@@ -1326,6 +1332,7 @@ mod tests {
             read_trace_with_limit(path.to_str().unwrap(), u64::MAX).unwrap(),
             "abc"
         );
+        assert!(read_trace_with_limit("/proc/self/cmdline", u64::MAX).is_err());
 
         let link = dir.path().join("link.json");
         std::os::unix::fs::symlink(&path, &link).unwrap();

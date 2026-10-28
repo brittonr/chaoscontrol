@@ -478,13 +478,13 @@ cc_assert_sometimes_gt!(x, 0, "x eventually positive", &details);
 
 ```rust
 // Get a random choice from [0, n)
-let choice = random::random_choice(3);
+let choice = random::random_choice_index(3);
 
 // Get random bytes (seeded, deterministic)
 let val: u64 = random::get_random();
 
 // Choose from a slice
-let node = random::random_choice_from(&nodes);
+let node = random::random_choice(&nodes);
 
 // Full rand integration
 use rand::Rng;

@@ -242,7 +242,7 @@ impl Client {
             }
             ClientState::GotPong => {
                 // Random cooldown before next ping (deterministic via SDK)
-                let cooldown = random::random_choice(5) + 1; // 1-5 ticks
+                let cooldown = random::random_choice_index(5) + 1; // 1-5 ticks
                 coverage::record_edge(0x2000 + cooldown);
                 self.state = ClientState::Cooldown {
                     remaining: cooldown,

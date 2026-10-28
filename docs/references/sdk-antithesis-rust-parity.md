@@ -78,8 +78,8 @@ See the guidance decision below.
 | Function | Antithesis | ChaosControl | Status |
 |---|---|---|---|
 | u64 | `random::get_random()` | `random::get_random()` | equivalent |
-| Choice | `random_choice(&[T]) -> Option<&T>` | `random_choice(n) -> usize` | divergent |
-| Choice from slice | (same as above) | `random_choice_from(&[T]) -> Option<&T>` | equivalent |
+| Choice from slice | `random_choice(&[T]) -> Option<&T>` | `random_choice(&[T]) -> Option<&T>` | equivalent |
+| Choice index (extension) | (none) | `random_choice_index(n) -> usize` | absent |
 | Fill bytes | `fill_bytes` (internal) | `random::fill_bytes(&mut [u8])` (public) | divergent |
 | rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` (rand 0.8 `RngCore` + `CryptoRng` with `full`; rand_core 0.9/0.10 via `rand_v0_9`/`rand_v0_10`) | equivalent |
 
@@ -182,10 +182,8 @@ reopened with a new change.
   short-circuiting) and merge each named boolean into the assertion details,
   matching the Antithesis bundle behavior. An empty bundle is admitted: the
   any-bundle is `false` and the all-bundle is `true`.
-- `random_choice` has the same name in both SDKs but a different signature:
-  Antithesis takes a slice and returns `Option<&T>`, ChaosControl takes a
-  bound `n` and returns a `usize` index. Use `random_choice_from` for slice
-  parity.
+- `random_choice` now has the Antithesis slice signature. Use the
+  `random_choice_index(n)` extension when an index bound is more natural.
 - ChaosControl's no-op lifecycle functions accept a generic detail
   reference, so `setup_complete(&details)` and `send_event(name, &details)`
   keep the same call shape with `default-features = false`.

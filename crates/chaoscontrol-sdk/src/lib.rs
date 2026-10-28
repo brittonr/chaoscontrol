@@ -27,7 +27,7 @@
 //! cc_assert_sometimes!(write_ok, "write succeeded");
 //!
 //! // Guided random: VMM controls this for exploration
-//! let action = random_choice(3); // 0, 1, or 2
+//! let action = random_choice_index(3); // 0, 1, or 2
 //! ```
 //!
 //! # Modes of operation

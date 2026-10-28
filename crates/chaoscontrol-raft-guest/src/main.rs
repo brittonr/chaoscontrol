@@ -7,7 +7,7 @@
 //!
 //! Fault injection is done at the application level: per-node crashes,
 //! per-link partitions, message reordering, and message duplication.
-//! Every fault decision uses `random_choice()` so the input-tree explorer
+//! Every fault decision uses `random_choice_index()` so the input-tree explorer
 //! can systematically enumerate fault combinations.
 //!
 //! Safety invariants checked every tick:
@@ -355,7 +355,7 @@ fn main() {
         for i in 0..num_nodes {
             if faults.crashed[i] {
                 // Restart decision: ~2% per tick
-                if random::random_choice(50) == 0 {
+                if random::random_choice_index(50) == 0 {
                     nodes[i].restart();
                     faults.crashed[i] = false;
 
@@ -369,7 +369,7 @@ fn main() {
                 }
             } else {
                 // Crash decision: ~0.5% per tick
-                if random::random_choice(200) == 0 {
+                if random::random_choice_index(200) == 0 {
                     faults.crashed[i] = true;
                     nodes[i].inbox.clear();
 
@@ -385,9 +385,9 @@ fn main() {
 
         // ── Fault injection: partitions ─────────────────────
         // Create new partitions
-        if random::random_choice(300) == 0 {
-            let src = random::random_choice(num_nodes);
-            let dst = random::random_choice(num_nodes);
+        if random::random_choice_index(300) == 0 {
+            let src = random::random_choice_index(num_nodes);
+            let dst = random::random_choice_index(num_nodes);
             if src != dst && !faults.partitioned[src][dst] {
                 faults.partitioned[src][dst] = true;
                 cc_assert_reachable_category!(
@@ -402,7 +402,7 @@ fn main() {
         // Heal existing partitions
         for src in 0..num_nodes {
             for dst in 0..num_nodes {
-                if faults.partitioned[src][dst] && random::random_choice(30) == 0 {
+                if faults.partitioned[src][dst] && random::random_choice_index(30) == 0 {
                     faults.partitioned[src][dst] = false;
                     cc_assert_reachable_category!(
                         "raft",
@@ -428,7 +428,7 @@ fn main() {
         faults.delay_queue = still_delayed;
 
         // ── Pick which node to activate this tick ────────────
-        let active = random::random_choice(num_nodes);
+        let active = random::random_choice_index(num_nodes);
         coverage::record_edge(6000 + tick * 7 + active * 3);
 
         // Skip crashed nodes
@@ -454,7 +454,7 @@ fn main() {
         }
 
         // ── Get jitter for this tick ─────────────────────────
-        let jitter = random::random_choice(ELECTION_TIMEOUT_JITTER + 1);
+        let jitter = random::random_choice_index(ELECTION_TIMEOUT_JITTER + 1);
 
         // ── Tick timers on active node ───────────────────────
         let mut outbox: Vec<(usize, usize, Message)> = Vec::new(); // (from, to, msg)
@@ -770,7 +770,7 @@ fn main() {
                     }
 
                     // Leader proposes a value sometimes
-                    let proposed = random::random_choice(4) == 0;
+                    let proposed = random::random_choice_index(4) == 0;
                     if proposed {
                         values_proposed += 1;
                         let entry = LogEntry {
@@ -833,7 +833,7 @@ fn main() {
             }
 
             // Random drop (5% base rate)
-            if random::random_choice(100) >= 95 {
+            if random::random_choice_index(100) >= 95 {
                 cc_assert_sometimes_category!(
                     "raft",
                     "branch",
@@ -849,8 +849,8 @@ fn main() {
             }
 
             // Message reordering: ~5% chance
-            if random::random_choice(20) == 0 {
-                let delay = 1 + random::random_choice(5);
+            if random::random_choice_index(20) == 0 {
+                let delay = 1 + random::random_choice_index(5);
                 faults
                     .delay_queue
                     .push((from, to, msg.clone(), tick + delay));
@@ -865,7 +865,7 @@ fn main() {
             }
 
             // Message duplication: ~2% chance
-            if random::random_choice(50) == 0 {
+            if random::random_choice_index(50) == 0 {
                 nodes[to].inbox.push((from, msg.clone()));
                 nodes[to].inbox.push((from, msg));
                 cc_assert_reachable_category!(

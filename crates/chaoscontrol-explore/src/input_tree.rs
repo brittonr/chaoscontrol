@@ -2,7 +2,7 @@
 //!
 //! Instead of mutating fault schedules at fixed tick intervals, this module
 //! explores the tree of possible random choices made by the guest program.
-//! Each `random_choice(n)` call is a decision point with `n` possible
+//! Each `random_choice_index(n)` call is a decision point with `n` possible
 //! branches.
 //!
 //! # Strategy
@@ -14,8 +14,8 @@
 //!
 //! # Choice Selection Heuristics
 //!
-//! - **Small-n priority**: `random_choice(3)` explored before
-//!   `random_choice(100)` — fewer options means higher probability each
+//! - **Small-n priority**: `random_choice_index(3)` explored before
+//!   `random_choice_index(100)` — fewer options means higher probability each
 //!   alternative leads to meaningfully different behavior
 //! - **Depth weighting**: Earlier choices affect more of the execution
 //! - **Budget capping**: Never generate more alternatives than the budget
@@ -71,7 +71,7 @@ pub fn select_alternatives(
     for &(vm_id, ref choices) in histories {
         for choice in choices {
             if choice.n_options < 2 {
-                continue; // Skip get_random and degenerate random_choice(0/1)
+                continue; // Skip get_random and degenerate random_choice_index(0/1)
             }
             // Score: prefer small n (more impactful) and early choices (deeper effect)
             let n_score = 1.0 / choice.n_options as f64;

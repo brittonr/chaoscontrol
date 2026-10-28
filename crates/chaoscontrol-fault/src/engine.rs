@@ -70,7 +70,7 @@ pub struct ChoiceRecord {
     /// Monotonic sequence number within this engine instance.
     /// Resets when the engine is restored from a snapshot.
     pub sequence_id: u64,
-    /// Number of options: `random_choice(n)` → `n`, `get_random()` → `0`.
+    /// Number of options: `random_choice_index(n)` → `n`, `get_random()` → `0`.
     /// Zero indicates an unbounded random value (u64).
     pub n_options: u32,
     /// The value that was actually returned to the guest.
@@ -1667,7 +1667,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_random_choice() {
+    fn handle_random_choice_index() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
@@ -2571,7 +2571,7 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
-        // random_choice(5)
+        // random_choice_index(5)
         let page = make_page(CMD_RANDOM_CHOICE, 0, 5);
         let (val, _) = engine.handle_hypercall(&page);
 

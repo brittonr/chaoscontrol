@@ -168,7 +168,7 @@ enum Commands {
         /// Exploration mode: "fault-schedule", "input-tree", or "hybrid".
         ///
         /// fault-schedule: mutate fault schedules (original mode).
-        /// input-tree:     branch at random_choice() decision points.
+        /// input-tree:     branch at random_choice_index() decision points.
         /// hybrid:         alternate between both strategies.
         #[arg(long, default_value = "fault-schedule")]
         mode: String,

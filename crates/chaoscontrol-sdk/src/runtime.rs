@@ -15,7 +15,7 @@
 //!     setup_complete(&serde_json::json!({"program": "my-guest"}));
 //!
 //!     loop {
-//!         let action = random_choice(3);
+//!         let action = random_choice_index(3);
 //!         cc_assert_always!(action < 3, "bounded", &serde_json::json!({}));
 //!     }
 //! }

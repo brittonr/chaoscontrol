@@ -3297,7 +3297,7 @@ impl SimulationController {
     /// Set random choice overrides for a specific VM's fault engine.
     ///
     /// These overrides force specific return values at specific choice
-    /// sequence positions when the guest calls `random_choice()` or
+    /// sequence positions when the guest calls `random_choice_index()` or
     /// `get_random()`.  Used by the input tree explorer to try
     /// alternative execution paths.
     pub fn set_choice_overrides(

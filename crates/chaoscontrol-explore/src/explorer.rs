@@ -138,7 +138,7 @@ pub enum ExplorationMode {
     FaultSchedule,
 
     /// Branch at random choice points — the Antithesis input tree model.
-    /// Records what `random_choice()` / `get_random()` calls the guest
+    /// Records what `random_choice_index()` / `get_random()` calls the guest
     /// makes, then re-runs from the same snapshot with different values
     /// at selected decision points.
     InputTree,

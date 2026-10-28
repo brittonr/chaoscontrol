@@ -250,7 +250,7 @@ impl Node {
     }
 
     /// Reset the election timer with the given jitter value.
-    /// In production, `jitter` comes from `random::random_choice(ELECTION_TIMEOUT_JITTER + 1)`.
+    /// In production, `jitter` comes from `random::random_choice_index(ELECTION_TIMEOUT_JITTER + 1)`.
     pub fn reset_election_timer_with(&mut self, jitter: usize) {
         self.election_timer = ELECTION_TIMEOUT_BASE + jitter;
     }

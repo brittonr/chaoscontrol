@@ -5,7 +5,7 @@
 //!
 //! - **Lifecycle**: `setup_complete()` to ungate fault injection.
 //! - **Assertions**: `always`, `sometimes`, `reachable` properties.
-//! - **Randomness**: `random_choice()` for VMM-guided decisions.
+//! - **Randomness**: `random_choice_index()` for VMM-guided decisions.
 //! - **Coverage**: `record_edge()` for AFL-style coverage feedback.
 //!
 //! The explore loop reads coverage from the guest bitmap and collects
@@ -51,7 +51,7 @@ fn main() {
 
     for i in 0..ITERATIONS {
         // VMM-guided random decision
-        let choice = random::random_choice(NUM_CHOICES);
+        let choice = random::random_choice_index(NUM_CHOICES);
         choice_counts[choice] += 1;
 
         // AFL-style edge: hash of (iteration, choice)

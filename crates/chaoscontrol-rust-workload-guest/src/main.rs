@@ -61,7 +61,7 @@ fn main() {
 
     for iteration in 0..ITERATIONS {
         workload.scenario("writes survive failover", || {
-            let action = random_choice(3);
+            let action = random_choice_index(3);
             cc_assert_always_category!(
                 WORKLOAD,
                 "invariant",
@@ -114,7 +114,7 @@ fn main() {
         let mut probe_iter = ITERATIONS;
         loop {
             probe_iter += 1;
-            let jitter = random_choice(4);
+            let jitter = random_choice_index(4);
             cc_assert_always_stable!(
                 "org.onixresearch.chaoscontrol.rust-workload",
                 "snapshot-replay-probe",

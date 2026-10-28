@@ -41,6 +41,14 @@ fn comparison_macros_accept_the_same_shape_without_details() {
 
 #[cfg(not(feature = "full"))]
 #[test]
+fn random_choice_slice_is_available_without_full() {
+    let empty: &[u8] = &[];
+    assert_eq!(random_choice(empty), None);
+    assert_eq!(random_choice(&[7]), Some(&7));
+}
+
+#[cfg(not(feature = "full"))]
+#[test]
 fn lifecycle_noop_keeps_the_detail_call_shape() {
     setup_complete(&());
     setup_complete(&String::from("details"));

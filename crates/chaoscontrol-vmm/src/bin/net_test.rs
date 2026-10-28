@@ -468,7 +468,7 @@ fn main() {
 
         // With different seeds, the random cooldowns in the guest
         // should produce different ping counts (the guest uses
-        // random_choice(5) for cooldown between pings)
+        // random_choice_index(5) for cooldown between pings)
         // Note: may be the same by chance, but unlikely at 2000 ticks
         let _different_pattern = pings_a != pings_b || stats_a.packets_sent != stats_b.packets_sent;
 

@@ -147,7 +147,7 @@ fn random_choice_always_in_range() {
             assert_eq!(status, STATUS_OK);
             assert!(
                 val < n as u64,
-                "case {case}, call {i}: random_choice({n}) returned {val}"
+                "case {case}, call {i}: random_choice_index({n}) returned {val}"
             );
         }
     }
@@ -169,7 +169,7 @@ fn random_choice_of_1_always_zero() {
         let page = make_random_choice_page(1);
         for _ in 0..n_calls {
             let (val, _) = engine.handle_hypercall(&page);
-            assert_eq!(val, 0, "case {case}: random_choice(1) must return 0");
+            assert_eq!(val, 0, "case {case}: random_choice_index(1) must return 0");
         }
     }
 }

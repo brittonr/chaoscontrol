@@ -58,17 +58,18 @@ pub fn get_random() -> u64 {
 /// Choose an index from `0..n` using guided randomness.
 ///
 /// The VMM controls the choice for systematic exploration.
-/// Returns a value in `0..n`.  Panics if `n == 0`.
+/// Returns a value in `0..n`. `n == 0` is rejected by a debug assertion;
+/// `n <= 1` returns `0` without a hypercall.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// let actions = ["read", "write", "delete"];
-/// let idx = chaoscontrol_sdk::random::random_choice(actions.len());
+/// let idx = chaoscontrol_sdk::random::random_choice_index(actions.len());
 /// execute(actions[idx]);
 /// ```
-pub fn random_choice(n: usize) -> usize {
-    debug_assert!(n > 0, "random_choice: n must be > 0");
+pub fn random_choice_index(n: usize) -> usize {
+    debug_assert!(n > 0, "random_choice_index: n must be > 0");
     if n <= 1 {
         return 0;
     }
@@ -184,30 +185,28 @@ impl rand_core_v0_10::TryRng for ChaosControlRng {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Slice-based random choice (requires `full` feature)
+//  Slice-based random choice
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Choose a random element from a slice using guided randomness.
 ///
-/// Returns `Some(&T)` for a uniformly random element, or `None` if
-/// the slice is empty.  This matches Antithesis's `random_choice`
-/// signature.
+/// Returns `Some(&T)` for a random element, or `None` if the slice is
+/// empty. This matches Antithesis's `random_choice` signature.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// let actions = ["read", "write", "delete"];
-/// if let Some(&action) = chaoscontrol_sdk::random::random_choice_from(&actions) {
+/// if let Some(&action) = chaoscontrol_sdk::random::random_choice(&actions) {
 ///     execute(action);
 /// }
 /// ```
-#[cfg(feature = "full")]
-pub fn random_choice_from<T>(choices: &[T]) -> Option<&T> {
+pub fn random_choice<T>(choices: &[T]) -> Option<&T> {
     match choices {
         [] => None,
         [x] => Some(x),
         _ => {
-            let idx = random_choice(choices.len());
+            let idx = random_choice_index(choices.len());
             Some(&choices[idx])
         }
     }

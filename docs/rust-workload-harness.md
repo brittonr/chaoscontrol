@@ -15,7 +15,7 @@ fn main() {
     workload.setup_complete(json!({ "nodes": 3 }));
 
     workload.scenario("writes survive failover", || {
-        let action = random_choice(3);
+        let action = random_choice_index(3);
         cc_assert_always_category!("my-service", "invariant", action < 3, "choice in range");
         cc_assert_sometimes_category!("my-service", "operation", action == 0, "write succeeds");
     });
@@ -42,7 +42,7 @@ Parse the output with `LocalDryRunReport::from_path` to inspect:
 - uncategorized assertions;
 - `sometimes` assertions that did not observe success;
 - reachable assertions that were not hit;
-- local `random_choice` observations;
+- local `random_choice_index` observations;
 - `adoption_tracks` / `instrumentation_sources`, so external harness observations and opt-in in-process service assertions are not conflated.
 
 This dry-run is only an instrumentation check. It does not prove deterministic replay or snapshot-backed reproduction; VM campaign reports must keep those evidence classes separate.

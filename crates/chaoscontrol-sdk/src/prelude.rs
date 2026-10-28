@@ -10,7 +10,7 @@
 //! cc_assert_always!(leader_id < 3, "valid leader");
 //! cc_assert_sometimes!(write_ok, "write succeeded");
 //!
-//! let choice = random_choice(10);
+//! let choice = random_choice_index(10);
 //! ```
 
 // ── Init ─────────────────────────────────────────────────────────────
@@ -83,10 +83,9 @@ pub use crate::marker::branch_marker;
 pub use crate::resources::memory_ceiling_bytes;
 
 // ── Random ───────────────────────────────────────────────────────────
-pub use crate::random::{fill_bytes, get_random, random_choice, ChaosControlRng};
-
-#[cfg(feature = "full")]
-pub use crate::random::random_choice_from;
+pub use crate::random::{
+    fill_bytes, get_random, random_choice, random_choice_index, ChaosControlRng,
+};
 
 // ── Workload harness ─────────────────────────────────────────────────
 #[cfg(feature = "full")]

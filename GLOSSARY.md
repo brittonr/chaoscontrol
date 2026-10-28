@@ -166,13 +166,14 @@ section.
 |------|-----------|
 | **always** | SDK assertion macro: property must hold on every call across every run. Tracked by PropertyOracle. |
 | **chaoscontrol-protocol** | Wire-format crate (`no_std`, zero deps). Defines HypercallPage layout, command IDs, and payload encoding. |
-| **chaoscontrol-sdk** | Guest SDK crate. Provides `assert::{always, sometimes, reachable, unreachable}`, `lifecycle::{setup_complete, send_event}`, `random::{get_random, random_choice}`, and coverage instrumentation. |
+| **chaoscontrol-sdk** | Guest SDK crate. Provides `assert::{always, sometimes, reachable, unreachable}`, `lifecycle::{setup_complete, send_event}`, `random::{get_random, random_choice, random_choice_index}`, and coverage instrumentation. |
 | **FNV-1a** | Fowler–Noll–Vo hash — fast non-cryptographic hash. Used to compute assertion IDs from source location strings. |
 | **get_random** | SDK call returning a deterministic pseudo-random u64 from the VMM's entropy source. |
 | **hypercall** | Guest→VMM communication via shared memory page + port I/O trigger. Not a real x86 hypercall — uses `outb(0x0510)`. |
 | **location_id** | Compile-time FNV-1a hash of a source location string (e.g., `"src/main.rs:42"`). Used as assertion identity. |
 | **PropertyOracle** | Tracks assertion outcomes across multiple runs. Reports violations (an `always` that was `false`), unreached assertions, and coverage. (`oracle.rs`) |
-| **random_choice** | SDK call returning a deterministic random index in `[0, n)`. Used for controlled non-determinism in guest programs. |
+| **random_choice** | SDK call returning `Option<&T>` for a random element of a slice. Matches the Antithesis signature. |
+| **random_choice_index** | SDK call returning a deterministic random index in `[0, n)`. Used for controlled non-determinism in guest programs. |
 | **reachable** | SDK assertion: this code path must be reached at least once across all runs. |
 | **send_event** | SDK lifecycle call: sends a named event to the VMM for recording. |
 | **sometimes** | SDK assertion: property must hold on at least one call across all runs. |

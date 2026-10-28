@@ -185,7 +185,7 @@ fn do_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
     cc_assert_reachable_category!("redb", "operation", "op: insert");
 
     let key = random::get_random() % MAX_KEY;
-    let size_choice = random::random_choice(8);
+    let size_choice = random::random_choice_index(8);
     let value = make_value(key, *seq, size_choice);
     *seq += 1;
 
@@ -225,11 +225,11 @@ fn do_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
 fn do_batch_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
     cc_assert_reachable_category!("redb", "operation", "op: batch insert");
 
-    let count = 10 + random::random_choice(11); // 10..20
+    let count = 10 + random::random_choice_index(11); // 10..20
     let mut pairs = Vec::with_capacity(count);
     for _ in 0..count {
         let key = random::get_random() % MAX_KEY;
-        let size_choice = random::random_choice(8);
+        let size_choice = random::random_choice_index(8);
         let value = make_value(key, *seq, size_choice);
         *seq += 1;
         pairs.push((key, value));
@@ -600,7 +600,7 @@ fn main() {
     }
 
     loop {
-        let op_idx = random::random_choice(Op::COUNT + 1); // +1 for batch insert
+        let op_idx = random::random_choice_index(Op::COUNT + 1); // +1 for batch insert
         let op = if op_idx < Op::COUNT {
             Op::from_index(op_idx)
         } else {

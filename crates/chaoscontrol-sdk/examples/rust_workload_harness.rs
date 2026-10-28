@@ -30,7 +30,7 @@ fn main() {
     }));
 
     workload.scenario("writes survive failover", || {
-        let action = random_choice(3);
+        let action = random_choice_index(3);
         cc_assert_always_category!(
             "sample-rust-service",
             "invariant",

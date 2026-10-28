@@ -198,7 +198,7 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
 - **Coverage-guided exploration**: AFL-style edge coverage bitmaps,
   fork-from-snapshot branching, frontier-based search
 - **Three exploration modes**: fault-schedule mutation, input-tree
-  branching at `random_choice()` points, or hybrid
+  branching at `random_choice_index()` points, or hybrid
 - **Deterministic schedule diversity**: SMP branches can carry explicit seeded scheduler variants. Bug and replay evidence binds the exact policy. See [`docs/schedule-diversity.md`](docs/schedule-diversity.md).
 - **SUT-declared event branching**: Guests can declare stable branch markers. The explorer prioritizes new and rare markers, binds them to replay parents, and reports unreached declarations. See [`docs/sut-declared-event-branching.md`](docs/sut-declared-event-branching.md).
 - **Fault schedule minimization**: Delta debugging (ddmin) to find
@@ -368,7 +368,7 @@ cargo run --release --bin chaoscontrol-explore -- run \
   --disk-image <path-to-ext4.img> \
   --vms 3 --rounds 200 --branches 16 --output results/
 
-# Input-tree mode (branch at random_choice() points)
+# Input-tree mode (branch at random_choice_index() points)
 cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
   --mode input-tree --output results/
@@ -863,7 +863,7 @@ cc_assert_reachable!("leader elected");
 cc_assert_unreachable!("split brain");
 
 // Guided random choice for exploration
-let action = random::random_choice(3);
+let action = random::random_choice_index(3);
 ```
 
 All assertion sites are registered at compile time via `linkme` and
@@ -996,7 +996,7 @@ Current baseline: replay artifacts for `raft`, `redb`, `net`, and `rust-workload
 - [x] Deterministic scheduling across VMs
 - [x] SMP — multi-vCPU with serialized execution
 - [x] Coverage-guided exploration (AFL-style edge bitmaps)
-- [x] Input tree exploration — branch at random_choice() decision points
+- [x] Input tree exploration — branch at random_choice_index() decision points
 - [x] Network simulation fidelity (jitter, bandwidth, duplication)
 - [x] Kernel coverage (KCOV) — kernel code path visibility
 - [x] Assertion catalog — compile-time registration via linkme

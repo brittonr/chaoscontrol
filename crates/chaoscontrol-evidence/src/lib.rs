@@ -615,6 +615,9 @@ fn write_materialized_snapshot(
 
 pub fn write_snapshot_chunk_fixture(root: impl AsRef<Path>) -> EvidenceResult<PathBuf> {
     let root = root.as_ref();
+    if root.as_os_str().is_empty() {
+        return Err(EvidenceError::new("fixture root must not be empty"));
+    }
     let snapshots = root.join("snapshots");
     std::fs::create_dir(&snapshots).map_err(|err| {
         EvidenceError::new(format!(

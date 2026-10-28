@@ -252,5 +252,6 @@ mod tests {
     #[test]
     fn empty_fixture_root_is_rejected() {
         assert!(write_fixture_bundle("").is_err());
+        assert!(crate::write_snapshot_chunk_fixture("").is_err());
     }
 }

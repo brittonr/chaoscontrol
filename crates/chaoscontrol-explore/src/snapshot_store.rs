@@ -219,6 +219,17 @@ impl FileSnapshotStore {
         reference: &ReplayParentSnapshotRef,
     ) -> Result<PathBuf, SnapshotStoreError> {
         validate_ref_shape(reference)?;
+        let snapshots_dir = self.snapshots_dir();
+        match fs::symlink_metadata(&snapshots_dir) {
+            Ok(metadata) if !metadata.file_type().is_dir() => {
+                return Err(SnapshotStoreError::NotDirectory {
+                    path: snapshots_dir.display().to_string(),
+                });
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(source) => return Err(SnapshotStoreError::Io { source }),
+        }
         let rel = Path::new(&reference.path);
         if rel.is_absolute()
             || rel
@@ -666,6 +677,26 @@ mod tests {
         assert!(matches!(
             store.get_snapshot_artifact(&reference),
             Err(SnapshotStoreError::Io { .. })
+        ));
+    }
+
+    #[test]
+    fn reads_reject_symlinked_snapshot_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join(SNAPSHOT_DIR)).unwrap();
+        let store = FileSnapshotStore::new(root.path());
+        let reference = ReplayParentSnapshotRef {
+            store: FILE_STORE_KIND.to_string(),
+            digest: "sha256:00".to_string(),
+            codec: SNAPSHOT_CODEC.to_string(),
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            path: format!("{SNAPSHOT_DIR}/00.snapshot.bin"),
+        };
+
+        assert!(matches!(
+            store.resolve_ref(&reference),
+            Err(SnapshotStoreError::NotDirectory { .. })
         ));
     }
 

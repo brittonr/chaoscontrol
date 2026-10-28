@@ -15,6 +15,7 @@ pub const EVENT_ENVELOPE_SCHEMA: &str = "chaoscontrol.event-envelope.v1";
 pub const EVENT_QUERY_RECEIPT_SCHEMA: &str = "chaoscontrol.event-query-receipt.v1";
 pub const EVENT_QUERY_RESULT_SCHEMA: &str = "chaoscontrol.event-query-result.v1";
 pub const TIMELINE_SCHEMA: &str = "chaoscontrol.event-timeline.v1";
+pub const TIMELINE_RECEIPT_SCHEMA: &str = "chaoscontrol.event-timeline-receipt.v1";
 
 pub const MAX_QUERY_NODES: usize = 256;
 pub const MAX_QUERY_DEPTH: usize = 64;
@@ -556,6 +557,7 @@ pub enum EventQueryError {
     ReceiptDrift,
     ResultDrift,
     SourceDrift,
+    TimelineReceiptDrift,
     TimelineBound,
     DuplicateTimelineId,
     MissingTimelineParent,
@@ -582,6 +584,9 @@ impl core::fmt::Display for EventQueryError {
             Self::ReceiptDrift => "event query receipt does not match the admitted query facts",
             Self::ResultDrift => "event query result does not match a fresh evaluation",
             Self::SourceDrift => "event query receipt source identities do not match the inputs",
+            Self::TimelineReceiptDrift => {
+                "event timeline receipt does not match the admitted facts and output"
+            }
             Self::TimelineBound => "timeline node count exceeds the bound",
             Self::DuplicateTimelineId => "timeline node identity is duplicated",
             Self::MissingTimelineParent => "timeline node parent is missing",
@@ -758,6 +763,60 @@ pub fn validate_receipt(
     }
     if receipt_for(query, &source_ids, &fresh, limits)? != *receipt {
         return Err(EventQueryError::ReceiptDrift);
+    }
+    Ok(())
+}
+
+/// Evidence receipt for one rendered timeline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TimelineReceipt {
+    pub schema: String,
+    pub format: String,
+    pub nodes: u64,
+    pub bytes: u64,
+    pub facts_digest: [u8; 32],
+    pub rendered_digest: [u8; 32],
+}
+
+/// Build a receipt by re-rendering the admitted facts in the declared format.
+///
+/// `format` is `markdown` or `dot`. The supplied output must equal the
+/// canonical rendering, so the receipt binds the exact artifact content.
+pub fn timeline_receipt(
+    facts: &[TimelineFact],
+    format: &str,
+    rendered: &str,
+) -> Result<TimelineReceipt, EventQueryError> {
+    let ordered = ordered_timeline(facts)?;
+    let expected = match format {
+        "markdown" => render_timeline_markdown(&ordered)?,
+        "dot" => render_timeline_dot(&ordered)?,
+        _ => return Err(EventQueryError::InvalidText),
+    };
+    if expected != rendered {
+        return Err(EventQueryError::TimelineReceiptDrift);
+    }
+    let facts_bytes = serde_json::to_vec(&ordered).map_err(|_| EventQueryError::InvalidEvent)?;
+    Ok(TimelineReceipt {
+        schema: TIMELINE_RECEIPT_SCHEMA.to_string(),
+        format: format.to_string(),
+        nodes: u64::try_from(ordered.len()).map_err(|_| EventQueryError::CounterOverflow)?,
+        bytes: u64::try_from(rendered.len()).map_err(|_| EventQueryError::CounterOverflow)?,
+        facts_digest: *blake3::hash(&facts_bytes).as_bytes(),
+        rendered_digest: *blake3::hash(rendered.as_bytes()).as_bytes(),
+    })
+}
+
+/// Validate a timeline receipt against its facts, format, and rendered output.
+pub fn validate_timeline_receipt(
+    receipt: &TimelineReceipt,
+    facts: &[TimelineFact],
+    format: &str,
+    rendered: &str,
+) -> Result<(), EventQueryError> {
+    if *receipt != timeline_receipt(facts, format, rendered)? {
+        return Err(EventQueryError::TimelineReceiptDrift);
     }
     Ok(())
 }
@@ -1401,6 +1460,54 @@ mod tests {
         assert_eq!(
             render_timeline_dot(&missing_parent).unwrap_err(),
             EventQueryError::MissingTimelineParent
+        );
+    }
+
+    #[test]
+    fn timeline_receipt_binds_canonical_facts_and_output() {
+        let facts = vec![
+            TimelineFact {
+                id: 1,
+                parent: None,
+                tick: 0,
+                kind: "root".to_string(),
+                label: "root".to_string(),
+            },
+            TimelineFact {
+                id: 2,
+                parent: Some(1),
+                tick: 5,
+                kind: "branch".to_string(),
+                label: "child".to_string(),
+            },
+        ];
+        let markdown = render_timeline_markdown(&facts).unwrap();
+        let receipt = timeline_receipt(&facts, "markdown", &markdown).unwrap();
+        assert_eq!(receipt.schema, TIMELINE_RECEIPT_SCHEMA);
+        assert_eq!(receipt.format, "markdown");
+        assert_eq!(receipt.nodes, 2);
+        assert_eq!(receipt.bytes, u64::try_from(markdown.len()).unwrap());
+        validate_timeline_receipt(&receipt, &facts, "markdown", &markdown).unwrap();
+
+        let mut reversed = facts.clone();
+        reversed.reverse();
+        assert_eq!(
+            timeline_receipt(&reversed, "markdown", &markdown).unwrap(),
+            receipt
+        );
+
+        let tampered = markdown.replace("root", "other");
+        assert_eq!(
+            validate_timeline_receipt(&receipt, &facts, "markdown", &tampered).unwrap_err(),
+            EventQueryError::TimelineReceiptDrift
+        );
+        assert_eq!(
+            timeline_receipt(&facts, "dot", &markdown).unwrap_err(),
+            EventQueryError::TimelineReceiptDrift
+        );
+        assert_eq!(
+            timeline_receipt(&facts, "yaml", &markdown).unwrap_err(),
+            EventQueryError::InvalidText
         );
     }
 

@@ -3,8 +3,8 @@
 use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use chaoscontrol_replay::event_query::{
     envelopes_from_dlog_bytes, envelopes_from_markers, envelopes_from_recording, evaluate,
-    receipt_for, render_timeline_dot, render_timeline_markdown, validate_receipt, EventEnvelope,
-    EventQuery, EventQueryLimits, EventQueryReceipt, EventQueryResult, TimelineFact,
+    receipt_for, render_timeline_dot, render_timeline_markdown, timeline_receipt, validate_receipt,
+    EventEnvelope, EventQuery, EventQueryLimits, EventQueryReceipt, EventQueryResult, TimelineFact,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -81,6 +81,9 @@ enum Command {
         format: TimelineFormat,
         /// Output file.
         output: PathBuf,
+        /// Optional receipt JSON file.
+        #[arg(long)]
+        receipt: Option<PathBuf>,
     },
 }
 
@@ -88,6 +91,15 @@ enum Command {
 enum TimelineFormat {
     Markdown,
     Dot,
+}
+
+impl TimelineFormat {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Markdown => "markdown",
+            Self::Dot => "dot",
+        }
+    }
 }
 
 fn main() {
@@ -150,6 +162,7 @@ fn run() -> Result<(), String> {
             facts,
             format,
             output,
+            receipt,
         } => {
             let facts: Vec<TimelineFact> = read_json(&facts)?;
             let rendered = match format {
@@ -157,6 +170,11 @@ fn run() -> Result<(), String> {
                 TimelineFormat::Dot => render_timeline_dot(&facts),
             }
             .map_err(|error| error.to_string())?;
+            if let Some(receipt_path) = receipt {
+                let receipt = timeline_receipt(&facts, format.as_str(), &rendered)
+                    .map_err(|error| error.to_string())?;
+                write_json(&receipt_path, &receipt)?;
+            }
             std::fs::write(&output, rendered)
                 .map_err(|error| format!("{}: {error}", output.display()))?;
         }
@@ -275,6 +293,37 @@ mod tests {
     fn query_requires_query_and_output() {
         assert!(Cli::try_parse_from(["query-events", "query"]).is_err());
         assert!(Cli::try_parse_from(["query-events", "query", "query.json"]).is_err());
+    }
+
+    #[test]
+    fn timeline_accepts_a_receipt() {
+        let cli = Cli::try_parse_from([
+            "query-events",
+            "timeline",
+            "--format",
+            "dot",
+            "--receipt",
+            "receipt.json",
+            "facts.json",
+            "out.dot",
+        ])
+        .expect("timeline arguments parse");
+        match cli.command {
+            Command::Timeline {
+                facts,
+                format,
+                output,
+                receipt,
+            } => {
+                assert_eq!(facts, PathBuf::from("facts.json"));
+                assert!(matches!(format, TimelineFormat::Dot));
+                assert_eq!(output, PathBuf::from("out.dot"));
+                assert_eq!(receipt, Some(PathBuf::from("receipt.json")));
+            }
+            Command::Query { .. } | Command::Validate { .. } => {
+                panic!("expected timeline command")
+            }
+        }
     }
 
     #[test]

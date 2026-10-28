@@ -565,6 +565,9 @@ fn refresh_existing_output(
     evidence_prefix: &str,
     workload: &str,
 ) -> Result<(), String> {
+    if output.as_os_str().is_empty() {
+        return Err(String::from("refresh output directory must not be empty"));
+    }
     let mut summary = load_json(&output.join("accepted-snapshot-verdict-summary.json"))?;
     let bug_name = basename(summary.get("accepted_bug"))?;
     let verdict_name = basename(summary.get("accepted_verdict"))?;
@@ -970,6 +973,11 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn empty_refresh_output_directory_is_rejected() {
+        assert!(refresh_existing_output(Path::new(""), "evidence", "workload").is_err());
     }
 
     #[test]

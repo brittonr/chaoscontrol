@@ -49,6 +49,7 @@ const RUNTIME_FAMILIES: [&str; 12] = [
 const SHARED_PRIMITIVES: &str = "contracts/evidence/profile-primitives.ncl";
 
 pub fn validate_contract_registry_json(text: &str) -> EvidenceResult<String> {
+    crate::json_preflight::preflight_json(text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     let registry: Value = serde_json::from_str(text)?;
     validate_contract_registry(&registry)
 }
@@ -271,4 +272,16 @@ fn py_list(values: impl IntoIterator<Item = impl AsRef<str>>) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_json_rejects_excessive_nesting() {
+        let nested = format!("{}{}", "[".repeat(512), "]".repeat(512));
+        let error = validate_contract_registry_json(&nested).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 }

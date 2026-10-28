@@ -132,6 +132,15 @@ fn complete_matrix_is_release_eligible_and_deterministic() {
 }
 
 #[test]
+fn repository_matrix_fixture_satisfies_validation() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/kvm-release/matrix.json");
+    let bytes = std::fs::read(&path).expect("repository matrix fixture");
+    let matrix: KvmReleaseMatrix = serde_json::from_slice(&bytes).expect("matrix JSON");
+    validate_matrix(&matrix).expect("repository matrix passes admission");
+}
+
+#[test]
 fn matrix_requires_base_rows_bounds_and_pmu_evidence() {
     let mut matrix = sample_matrix();
     matrix

@@ -281,7 +281,9 @@ fn write_generated_module(directory: &Path, case_id: &str, module: &[u8]) -> Res
         .map_err(|source| io_error(&path, source))?;
     output
         .write_all(module)
-        .map_err(|source| io_error(&path, source))
+        .and_then(|()| output.sync_all())
+        .map_err(|source| io_error(&path, source))?;
+    sync_parent(&path)
 }
 
 fn admit_bundle(profile: &DifferentialProfile, bundle: &Path) -> Result<BundleManifest, Error> {
@@ -549,9 +551,13 @@ fn retain_raw(directory: &Path, value: &impl serde::Serialize) -> Result<String,
     let digest = blake3::hash(&bytes).to_hex().to_string();
     let path = directory.join(format!("raw-{digest}.json"));
     match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => file
-            .write_all(&bytes)
-            .map_err(|source| io_error(&path, source))?,
+        Ok(mut file) => {
+            file.write_all(&bytes)
+                .and_then(|()| file.sync_all())
+                .map_err(|source| io_error(&path, source))?;
+            drop(file);
+            sync_parent(&path)?;
+        }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             if read_bounded(&path, bytes.len() as u64)? != bytes {
                 return Err(Error::Invalid("raw content-address collision".into()));
@@ -907,6 +913,16 @@ fn hash_file(path: &Path, maximum_bytes: u64) -> Result<String, Error> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+fn sync_parent(path: &Path) -> Result<(), Error> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|source| io_error(parent, source))
+}
+
 fn ensure_regular_file(path: &Path) -> Result<(), Error> {
     let metadata = fs::symlink_metadata(path).map_err(|source| io_error(path, source))?;
     if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
@@ -930,10 +946,10 @@ fn write_new_json(path: &Path, value: &impl serde::Serialize) -> Result<(), Erro
         .map_err(|source| io_error(path, source))?;
     output
         .write_all(&bytes)
+        .and_then(|()| output.write_all(b"\n"))
+        .and_then(|()| output.sync_all())
         .map_err(|source| io_error(path, source))?;
-    output
-        .write_all(b"\n")
-        .map_err(|source| io_error(path, source))
+    sync_parent(path)
 }
 
 fn io_error(path: &Path, source: std::io::Error) -> Error {

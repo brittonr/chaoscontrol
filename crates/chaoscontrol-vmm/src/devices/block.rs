@@ -1275,6 +1275,7 @@ mod tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_image_file(fifo.to_str().unwrap()).is_err());
+        assert!(read_image_file(root.path().to_str().unwrap()).is_err());
     }
 
     // ── basic read/write ─────────────────────────────────────────

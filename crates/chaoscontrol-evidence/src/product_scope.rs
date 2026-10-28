@@ -1058,9 +1058,14 @@ mod active_change_bound_tests {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join(ACTIVE_CHANGES_DIRECTORY);
         std::fs::create_dir_all(&directory).unwrap();
-        for index in 0..=MAX_ACTIVE_CHANGES {
+        for index in 0..MAX_ACTIVE_CHANGES {
             std::fs::create_dir(directory.join(format!("change-{index}"))).unwrap();
         }
+        assert_eq!(
+            discover_active_changes(root.path()).unwrap().len(),
+            MAX_ACTIVE_CHANGES
+        );
+        std::fs::create_dir(directory.join("one-too-many")).unwrap();
         assert!(discover_active_changes(root.path()).is_err());
     }
 }

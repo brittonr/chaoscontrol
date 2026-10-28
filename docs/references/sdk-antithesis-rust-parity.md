@@ -87,7 +87,7 @@ See the guidance decision below.
 | Function | Antithesis | ChaosControl | Status |
 |---|---|---|---|
 | u64 | `random::get_random()` | `random::get_random()` | equivalent |
-| Choice from slice | `random_choice(&[T]) -> Option<&T>` | `random_choice(&[T]) -> Option<&T>` | equivalent |
+| Choice from slice | `random_choice(&[T]) -> Option<&T>` with rejection sampling | `random_choice(&[T]) -> Option<&T>` with the same unbiased rejection sampling | equivalent |
 | Choice index (extension) | (none) | `random_choice_index(n) -> usize` | absent |
 | Fill bytes | `fill_bytes` (internal, native-endian chunks) | `random::fill_bytes(&mut [u8])` (public, same chunking and native endianness) | superset |
 | rand integration | `AntithesisRng` (rand_core 0.6/0.9/0.10 via `rand_v0_8/9/10` features) | `ChaosControlRng` with an `AntithesisRng` alias (rand 0.8 `RngCore` + `CryptoRng` via `rand_v0_8`; rand_core 0.9/0.10 via `rand_v0_9`/`rand_v0_10`) | equivalent |

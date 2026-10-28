@@ -213,10 +213,22 @@ pub fn random_choice<T>(choices: &[T]) -> Option<&T> {
         [] => None,
         [x] => Some(x),
         _ => {
-            let idx = random_choice_index(choices.len());
+            let idx = unbiased_index(choices.len(), get_random);
             Some(&choices[idx])
         }
     }
+}
+
+/// Map random values to `0..len` without modulo bias.
+fn unbiased_index(len: usize, mut next: impl FnMut() -> u64) -> usize {
+    debug_assert!(len > 1);
+    let len = len as u64;
+    let ceiling = (u64::MAX / len) * len;
+    let mut random = next();
+    while random >= ceiling {
+        random = next();
+    }
+    (random % len) as usize
 }
 
 #[cfg(test)]
@@ -239,5 +251,12 @@ mod tests {
         assert_eq!(&buffer[..8], &0x0102_0304_0506_0708_u64.to_ne_bytes());
         assert_eq!(&buffer[8..], &0x1112_1314_1516_1718_u64.to_ne_bytes()[..3]);
         assert_eq!(calls, 2);
+    }
+
+    #[test]
+    fn unbiased_index_rejects_the_biased_tail() {
+        let mut values = [u64::MAX, 0].into_iter();
+        assert_eq!(super::unbiased_index(3, || values.next().unwrap()), 0);
+        assert_eq!(super::unbiased_index(4, || 6), 2);
     }
 }

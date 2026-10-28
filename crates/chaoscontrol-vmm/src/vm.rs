@@ -867,6 +867,33 @@ pub struct DeterministicVm {
     incremental_base_needs_reconcile: bool,
 }
 
+fn read_boot_file(path: &std::path::Path, limit: u64) -> io::Result<Vec<u8>> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() || metadata.len() > limit {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "boot file is not a bounded regular file",
+        ));
+    }
+    let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    let mut bytes = Vec::with_capacity(capacity);
+    file.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "boot file exceeds the byte limit",
+        ));
+    }
+    Ok(bytes)
+}
+
 fn checked_guest_range_end(addr: u64, size: usize, memory_size: usize) -> Option<u64> {
     let memory_size = u64::try_from(memory_size).ok()?;
     let size = u64::try_from(size).ok()?;
@@ -1604,7 +1631,8 @@ impl DeterministicVm {
         // Load initrd if provided (place it after the kernel, page-aligned)
         let initrd_info = if let Some(initrd_path) = initrd_path {
             info!("Loading initrd from {}", initrd_path);
-            let initrd_data = std::fs::read(initrd_path)?;
+            let initrd_data =
+                read_boot_file(std::path::Path::new(initrd_path), self.memory_ceiling_bytes)?;
             let initrd_addr = (kernel_end + 4095) & !4095;
             self.memory
                 .inner()
@@ -5165,6 +5193,26 @@ mod runtime_readiness;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn boot_file_reads_reject_symlinks_fifos_and_oversize() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        std::fs::write(&target, b"boot").unwrap();
+        let link = root.path().join("initrd");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_boot_file(&link, 16).is_err());
+
+        let fifo = root.path().join("initrd.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_boot_file(&fifo, 16).is_err());
+
+        assert!(read_boot_file(&target, 3).is_err());
+        assert_eq!(read_boot_file(&target, 4).unwrap(), b"boot");
+    }
     use crate::devices::virtio_types::VirtioFailure;
     use crate::vm_core::MAX_SERIAL_CAPTURE_BYTES;
 

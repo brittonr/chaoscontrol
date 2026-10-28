@@ -185,6 +185,17 @@ fn matrix_accepts_claim_text_at_the_bound() {
 }
 
 #[test]
+fn matrix_rejects_malformed_commands() {
+    let mut matrix = sample_matrix();
+    matrix.rows[0].command.program = "bad\0program".to_string();
+    assert!(validate_matrix(&matrix).is_err());
+
+    let mut matrix = sample_matrix();
+    matrix.rows[0].command.args = vec!["x".repeat(MAX_COMMAND_BYTES + 1)];
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_rejects_malformed_claim_text() {
     let mut matrix = sample_matrix();
     matrix.bounded_claim = "x".repeat(MAX_MATRIX_CLAIM_BYTES + 1);

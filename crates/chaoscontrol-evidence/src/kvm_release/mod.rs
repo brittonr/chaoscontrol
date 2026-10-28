@@ -22,6 +22,7 @@ const MAX_MATRIX_ROWS: usize = 32;
 const MAX_MATRIX_ROW_ID_BYTES: usize = 128;
 const MAX_MATRIX_PROFILE_ID_BYTES: usize = 128;
 const MAX_MATRIX_CLAIM_BYTES: usize = 1024;
+const MAX_COMMAND_BYTES: usize = 4_096;
 const MAX_MATRIX_NON_CLAIMS: usize = 32;
 const MAX_RETAINED_ARTIFACT_PATH_BYTES: usize = 256;
 const MAX_MATRIX_CAPABILITIES: usize = 16;
@@ -353,9 +354,13 @@ fn validate_matrix_row(
     );
     push_unless(
         !row.command.program.is_empty()
+            && row.command.program.len() <= MAX_COMMAND_BYTES
+            && !row.command.program.contains('\0')
             && !row.command.args.is_empty()
             && row.command.args.len() <= MAX_COMMAND_ARGS
-            && row.command.args.iter().all(|arg| !arg.is_empty()),
+            && row.command.args.iter().all(|arg| {
+                !arg.is_empty() && arg.len() <= MAX_COMMAND_BYTES && !arg.contains('\0')
+            }),
         issues,
         format!("matrix row command is invalid: {}", row.id),
     );

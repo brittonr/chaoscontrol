@@ -591,6 +591,7 @@ fn write_materialized_snapshot(
             output.as_file_mut(),
             &mut aggregate,
             &mut chunk_hasher,
+            chunk.size,
         )?;
         ensure(
             copied == metadata.len(),
@@ -2483,6 +2484,7 @@ fn copy_open_chunk(
     writer: &mut impl Write,
     aggregate: &mut Sha256,
     chunk: &mut Sha256,
+    maximum_bytes: u64,
 ) -> EvidenceResult<u64> {
     let mut buffer = [0_u8; SNAPSHOT_COPY_BUFFER_BYTES];
     let mut copied = 0_u64;
@@ -2493,17 +2495,23 @@ fn copy_open_chunk(
         if count == 0 {
             break;
         }
-        writer
-            .write_all(&buffer[..count])
-            .map_err(|err| EvidenceError::new(format!("snapshot chunk write failed: {err}")))?;
-        aggregate.update(&buffer[..count]);
-        chunk.update(&buffer[..count]);
-        copied = copied
+        let next = copied
             .checked_add(
                 u64::try_from(count)
                     .map_err(|_| EvidenceError::new("snapshot chunk read length exceeds u64"))?,
             )
             .ok_or_else(|| EvidenceError::new("snapshot chunk read length overflowed"))?;
+        if next > maximum_bytes {
+            return Err(EvidenceError::new(
+                "snapshot chunk grew beyond its declared size",
+            ));
+        }
+        writer
+            .write_all(&buffer[..count])
+            .map_err(|err| EvidenceError::new(format!("snapshot chunk write failed: {err}")))?;
+        aggregate.update(&buffer[..count]);
+        chunk.update(&buffer[..count]);
+        copied = next;
     }
     Ok(copied)
 }
@@ -2982,5 +2990,23 @@ impl SnapshotChunk {
             format!("chunk {idx} sha256 invalid"),
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod chunk_copy_tests {
+    use super::*;
+
+    #[test]
+    fn chunk_copy_stops_at_declared_size() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("chunk");
+        std::fs::write(&path, b"abcd").unwrap();
+        let mut file = std::fs::File::open(&path).unwrap();
+        let mut output = Vec::new();
+        let mut aggregate = Sha256::new();
+        let mut chunk = Sha256::new();
+        assert!(copy_open_chunk(&mut file, &mut output, &mut aggregate, &mut chunk, 3).is_err());
+        assert!(output.len() <= 3);
     }
 }

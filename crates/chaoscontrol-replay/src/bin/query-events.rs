@@ -217,8 +217,21 @@ fn execute(cli: Cli) -> Result<(), String> {
     Ok(())
 }
 
+fn same_output_path(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (std::path::absolute(left), std::path::absolute(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
 fn ensure_distinct_outputs(output: &Path, receipt: &Option<PathBuf>) -> Result<(), String> {
-    if receipt.as_deref() == Some(output) {
+    if receipt
+        .as_deref()
+        .is_some_and(|receipt| same_output_path(output, receipt))
+    {
         return Err(String::from(
             "receipt path must differ from the rendered output path",
         ));
@@ -523,7 +536,7 @@ mod tests {
         .unwrap();
         assert!(execute(Cli {
             command: Command::Timeline {
-                facts,
+                facts: facts.clone(),
                 format: TimelineFormat::Markdown,
                 output: output.clone(),
                 receipt: Some(output.clone()),
@@ -531,6 +544,17 @@ mod tests {
         })
         .is_err());
         assert!(!output.exists());
+
+        let indirect = temp.path().join(".").join("out.md");
+        assert!(execute(Cli {
+            command: Command::Timeline {
+                facts,
+                format: TimelineFormat::Markdown,
+                output,
+                receipt: Some(indirect),
+            },
+        })
+        .is_err());
     }
 
     #[test]

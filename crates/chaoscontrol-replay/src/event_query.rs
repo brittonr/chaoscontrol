@@ -1897,6 +1897,19 @@ mod tests {
     }
 
     #[test]
+    fn event_text_enforces_the_byte_boundary() {
+        let mut event = events()[0].clone();
+        event.text = "a".repeat(MAX_EVENT_TEXT_BYTES);
+        admit_event(&event).unwrap();
+
+        event.text.push('a');
+        assert_eq!(
+            admit_event(&event).unwrap_err(),
+            EventQueryError::InvalidText
+        );
+    }
+
+    #[test]
     fn union_charges_only_new_rows() {
         let query = EventQuery::Union {
             inputs: vec![EventQuery::All; 2],

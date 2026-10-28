@@ -23,6 +23,7 @@ const MAX_MATRIX_ROW_ID_BYTES: usize = 128;
 const MAX_MATRIX_PROFILE_ID_BYTES: usize = 128;
 const MAX_MATRIX_CLAIM_BYTES: usize = 1024;
 const MAX_COMMAND_BYTES: usize = 4_096;
+const MAX_CAPABILITY_BYTES: usize = 64;
 const MAX_MATRIX_NON_CLAIMS: usize = 32;
 const MAX_RETAINED_ARTIFACT_PATH_BYTES: usize = 256;
 const MAX_MATRIX_CAPABILITIES: usize = 16;
@@ -239,7 +240,10 @@ pub fn validate_matrix(matrix: &KvmReleaseMatrix) -> Result<(), Vec<String>> {
                 .required_worker_capabilities
                 .iter()
                 .all(|capability| {
-                    !capability.is_empty() && worker_capabilities.insert(capability.as_str())
+                    !capability.is_empty()
+                        && capability.len() <= MAX_CAPABILITY_BYTES
+                        && !capability.chars().any(char::is_control)
+                        && worker_capabilities.insert(capability.as_str())
                 }),
         &mut issues,
         "matrix worker capability set is empty, duplicated, or exceeds its bound",
@@ -347,7 +351,10 @@ fn validate_matrix_row(
         !row.required_capabilities.is_empty()
             && row.required_capabilities.len() <= MAX_MATRIX_CAPABILITIES
             && row.required_capabilities.iter().all(|capability| {
-                !capability.is_empty() && row_capabilities.insert(capability.as_str())
+                !capability.is_empty()
+                    && capability.len() <= MAX_CAPABILITY_BYTES
+                    && !capability.chars().any(char::is_control)
+                    && row_capabilities.insert(capability.as_str())
             }),
         issues,
         format!("matrix row capabilities are invalid: {}", row.id),

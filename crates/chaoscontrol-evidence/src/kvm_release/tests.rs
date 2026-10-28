@@ -228,6 +228,17 @@ fn matrix_rejects_invalid_profile_ids() {
 }
 
 #[test]
+fn matrix_rejects_malformed_capabilities() {
+    let mut matrix = sample_matrix();
+    matrix.required_worker_capabilities = vec!["x".repeat(MAX_CAPABILITY_BYTES + 1)];
+    assert!(validate_matrix(&matrix).is_err());
+
+    let mut matrix = sample_matrix();
+    matrix.rows[0].required_capabilities = vec!["bad\ncap".to_string()];
+    assert!(validate_matrix(&matrix).is_err());
+}
+
+#[test]
 fn matrix_rejects_empty_or_duplicate_capabilities() {
     let mut matrix = sample_matrix();
     matrix.required_worker_capabilities.push("kvm".to_string());

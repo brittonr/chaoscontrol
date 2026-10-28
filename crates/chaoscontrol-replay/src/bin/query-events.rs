@@ -263,15 +263,21 @@ fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
 }
 
 fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
-    let metadata =
-        std::fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("{}: {error}", path.display()))?;
     if !metadata.is_file() {
         return Err(format!("{} is not a regular file", path.display()));
     }
     if metadata.len() > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
-    let file = std::fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let mut bytes = Vec::new();
     file.take(limit + 1)
         .read_to_end(&mut bytes)
@@ -460,6 +466,28 @@ mod tests {
         })
         .is_err());
         assert!(!receipt.exists());
+    }
+
+    #[test]
+    fn query_refuses_a_symlink_input_target() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("target.json");
+        let link = temp.path().join("events.json");
+        std::fs::write(&target, b"[]").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(execute(Cli {
+            command: Command::Query {
+                events: Some(link),
+                recording: None,
+                dlog: None,
+                markers: None,
+                query: temp.path().join("query.json"),
+                output: temp.path().join("out.json"),
+                receipt: None,
+                limits: None,
+            },
+        })
+        .is_err());
     }
 
     #[test]

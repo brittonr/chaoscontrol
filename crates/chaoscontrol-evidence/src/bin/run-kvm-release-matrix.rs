@@ -22,6 +22,7 @@ const USAGE_EXIT_CODE: i32 = 2;
 const WAIT_POLL_MILLISECONDS: u64 = 100;
 const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_ARTIFACT_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_ARTIFACT_SCAN_DEPTH: usize = 64;
 const KVM_CAPABILITY: &str = "kvm";
 const X86_64_LINUX_CAPABILITY: &str = "x86_64-linux";
@@ -589,11 +590,12 @@ fn normalized_artifact_path(path: &Path) -> String {
 }
 
 fn hash_file(path: &Path) -> Result<String, String> {
-    let file = File::open(path)
+    let file = open_artifact_input(path)
         .map_err(|error| format!("failed to open artifact {}: {error}", path.display()))?;
     let mut reader = BufReader::with_capacity(HASH_BUFFER_BYTES, file);
     let mut buffer = vec![0_u8; HASH_BUFFER_BYTES];
     let mut hasher = blake3::Hasher::new();
+    let mut total = 0_u64;
     loop {
         let read = reader
             .read(&mut buffer)
@@ -601,9 +603,29 @@ fn hash_file(path: &Path) -> Result<String, String> {
         if read == 0 {
             break;
         }
+        total = total
+            .checked_add(read as u64)
+            .ok_or_else(|| format!("hash byte count overflow for artifact {}", path.display()))?;
+        if total > MAX_ARTIFACT_BYTES {
+            return Err(format!("artifact exceeds hash bound: {}", path.display()));
+        }
         hasher.update(&buffer[..read]);
     }
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
+}
+
+fn open_artifact_input(path: &Path) -> std::io::Result<File> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "artifact is not a regular file",
+        ));
+    }
+    Ok(file)
 }
 
 fn open_row_log(path: &Path) -> std::io::Result<File> {
@@ -700,6 +722,17 @@ mod publication_tests {
         write_atomic(&link, b"replacement").unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"original");
         assert_eq!(fs::read(&link).unwrap(), b"replacement");
+    }
+
+    #[test]
+    fn artifact_hashes_reject_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.log");
+        fs::write(&target, b"log").unwrap();
+        let link = root.path().join("artifact.log");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(hash_file(&link).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"log");
     }
 
     #[test]

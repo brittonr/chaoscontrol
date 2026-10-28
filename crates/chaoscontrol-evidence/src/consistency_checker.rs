@@ -519,6 +519,7 @@ pub fn read_history_path(path: impl AsRef<Path>) -> EvidenceResult<OperationHist
     let path = path.as_ref();
     let text = crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&text).map_err(|err| {
         EvidenceError::new(format!("{}: invalid history JSON: {err}", path.display()))
     })
@@ -528,6 +529,7 @@ pub fn read_report_path(path: impl AsRef<Path>) -> EvidenceResult<ConsistencyChe
     let path = path.as_ref();
     let text = crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&text).map_err(|err| {
         EvidenceError::new(format!(
             "{}: invalid checker report JSON: {err}",
@@ -586,6 +588,15 @@ fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_reads_reject_excessive_nesting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("history.json");
+        std::fs::write(&path, format!("{}{}", "[".repeat(512), "]".repeat(512))).unwrap();
+        let error = read_history_path(&path).unwrap_err();
+        assert!(error.message().contains("JSON nesting depth exceeded"));
+    }
 
     #[test]
     fn history_reads_reject_symlinks_and_oversized_inputs() {

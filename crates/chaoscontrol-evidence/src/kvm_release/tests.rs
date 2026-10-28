@@ -185,6 +185,14 @@ fn matrix_accepts_claim_text_at_the_bound() {
 }
 
 #[test]
+fn matrix_accepts_command_values_at_the_bound() {
+    let mut matrix = sample_matrix();
+    matrix.rows[0].command.program = "p".repeat(MAX_COMMAND_BYTES);
+    matrix.rows[0].command.args = vec!["a".repeat(MAX_COMMAND_BYTES)];
+    validate_matrix(&matrix).expect("command values at the byte bound are admitted");
+}
+
+#[test]
 fn matrix_rejects_malformed_commands() {
     let mut matrix = sample_matrix();
     matrix.rows[0].command.program = "bad\0program".to_string();

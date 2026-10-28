@@ -179,9 +179,41 @@ fn read_policy_source(path: &Path, label: &str) -> Result<String, String> {
         .map_err(|error| format!("{label}: {error}"))
 }
 
+fn read_optional_policy_source(path: &Path, label: &str) -> Result<String, String> {
+    match read_policy_source(path, label) {
+        Ok(text) => Ok(text),
+        Err(error) => match std::fs::symlink_metadata(path) {
+            Err(metadata_error) if metadata_error.kind() == std::io::ErrorKind::NotFound => {
+                Ok(String::new())
+            }
+            _ => Err(error),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn optional_policy_source_distinguishes_absence_from_bad_input() {
+        let root = tempfile::tempdir().unwrap();
+        let missing = root.path().join("missing.nix");
+        assert_eq!(
+            read_optional_policy_source(&missing, "flake.nix").unwrap(),
+            ""
+        );
+
+        let target = root.path().join("target.nix");
+        std::fs::write(&target, b"{}").unwrap();
+        let link = root.path().join("flake.nix");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_optional_policy_source(&link, "flake.nix").is_err());
+        assert_eq!(
+            read_optional_policy_source(&target, "flake.nix").unwrap(),
+            "{}"
+        );
+    }
 
     #[test]
     fn policy_source_reads_reject_symlinks() {
@@ -355,8 +387,9 @@ pub fn admit_cutover_receipt(
     )?;
     let lock = read_policy_source(&root.join("Cargo.lock"), "Cargo.lock")?;
     // Packaged Nix sources intentionally omit flake.nix; the committed
-    // receipt and Cargo lock are the authority there.
-    let flake = read_policy_source(&root.join("flake.nix"), "flake.nix").unwrap_or_default();
+    // receipt and Cargo lock are the authority there. Any present but
+    // unreadable or non-regular flake is a hard error.
+    let flake = read_optional_policy_source(&root.join("flake.nix"), "flake.nix")?;
     admit_source_pins(&manifest, &lock, &flake)?;
     admit_baseline(Some(&receipt.baseline), current_revision)?;
     admit_kvm_parity(Some(&receipt.kvm_parity), current_revision)?;

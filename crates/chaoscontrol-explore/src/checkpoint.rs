@@ -1127,6 +1127,12 @@ fn write_bug_artifact(
     }
     let mut file = options.open(path)?;
     file.write_all(bytes)?;
+    file.sync_all()?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 

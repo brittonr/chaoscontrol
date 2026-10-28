@@ -61,11 +61,14 @@ fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
         return Err(format!("{} is not a regular file", path.display()));
     }
     let mut bytes = Vec::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok(bytes)
 }
@@ -78,6 +81,12 @@ mod tests {
     #[test]
     fn empty_receipt_path_is_rejected() {
         assert!(run(vec![String::new()]).is_err());
+    }
+
+    #[test]
+    fn receipt_reads_reject_length_changes() {
+        let error = run(vec!["/proc/self/cmdline".to_string()]).unwrap_err();
+        assert!(error.contains("changed while reading"));
     }
 
     #[test]

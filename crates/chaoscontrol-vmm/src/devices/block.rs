@@ -442,6 +442,34 @@ pub struct DeterministicBlock {
     observation_overflowed: u64,
 }
 
+fn read_image_file(path: &str) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "block image is not a regular file",
+        ));
+    }
+    let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    let mut bytes = Vec::with_capacity(capacity);
+    file.take(metadata.len().saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() as u64 != metadata.len() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "block image changed while reading",
+        ));
+    }
+    Ok(bytes)
+}
+
 impl DeterministicBlock {
     /// Create an empty (zero-filled) block device of `size_bytes`.
     pub fn new(size_bytes: usize) -> Self {
@@ -494,7 +522,7 @@ impl DeterministicBlock {
     /// Reads the entire file into memory as the base image. The file is
     /// only read once; subsequent snapshots share the data via `Arc`.
     pub fn from_image_file(path: &str) -> Result<Self, BlockError> {
-        let data = std::fs::read(path).map_err(|e| BlockError::ImageRead {
+        let data = read_image_file(path).map_err(|e| BlockError::ImageRead {
             path: path.to_string(),
             reason: e.to_string(),
         })?;
@@ -1230,6 +1258,23 @@ impl DeterministicBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_reads_reject_symlinks_and_fifos() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target.img");
+        std::fs::write(&target, b"image").unwrap();
+        let link = root.path().join("image.img");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_image_file(link.to_str().unwrap()).is_err());
+
+        let fifo = root.path().join("image.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        assert!(read_image_file(fifo.to_str().unwrap()).is_err());
+    }
 
     // ── basic read/write ─────────────────────────────────────────
 

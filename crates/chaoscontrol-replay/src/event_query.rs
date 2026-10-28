@@ -1116,10 +1116,15 @@ fn evaluate_rows(
         }
         EventQuery::Union { inputs } => {
             let mut rows = Vec::new();
+            let mut seen = BTreeSet::new();
             for input in inputs {
                 let branch = evaluate_rows(input, events, operations, max_operations)?;
                 charge_operations(operations, branch.len(), max_operations)?;
-                rows.extend(branch);
+                for row in branch {
+                    if seen.insert((row.source_id, row.source_sequence)) {
+                        rows.push(row);
+                    }
+                }
             }
             Ok(rows)
         }
@@ -1817,10 +1822,9 @@ mod tests {
             max_nodes: MAX_QUERY_NODES,
             ..EventQueryLimits::default()
         };
-        assert_eq!(
-            evaluate(&exact, &events(), &limits).unwrap().matched,
-            events().len() as u64
-        );
+        let result = evaluate(&exact, &events(), &limits).unwrap();
+        assert_eq!(result.matched, events().len() as u64);
+        assert_eq!(result.rows.len(), events().len());
 
         let over = EventQuery::Union {
             inputs: vec![EventQuery::All; MAX_QUERY_NODES],
@@ -2050,6 +2054,38 @@ mod tests {
             admit_event(&event).unwrap_err(),
             EventQueryError::InvalidText
         );
+    }
+
+    #[test]
+    fn union_keeps_the_first_projected_duplicate() {
+        let event = event(
+            1,
+            0,
+            10,
+            "assert",
+            "leader elected",
+            Some(serde_json::json!({"value": 7})),
+        );
+        let map = |field: &str| EventQuery::Map {
+            input: Box::new(EventQuery::All),
+            field: field.to_string(),
+            pointer: "/value".to_string(),
+        };
+        let query = EventQuery::Union {
+            inputs: vec![map("first"), map("second")],
+        };
+        let result = evaluate(
+            &query,
+            std::slice::from_ref(&event),
+            &EventQueryLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(
+            result.rows[0].derived.get("first").map(String::as_str),
+            Some("7")
+        );
+        assert!(!result.rows[0].derived.contains_key("second"));
     }
 
     #[test]

@@ -228,6 +228,17 @@ fn matrix_rejects_invalid_profile_ids() {
 }
 
 #[test]
+fn matrix_accepts_capability_names_at_the_bound() {
+    let capability = "x".repeat(MAX_CAPABILITY_BYTES);
+    let mut matrix = sample_matrix();
+    matrix.required_worker_capabilities = vec![capability.clone()];
+    for row in &mut matrix.rows {
+        row.required_capabilities = vec![capability.clone()];
+    }
+    validate_matrix(&matrix).expect("capability at the byte bound is admitted");
+}
+
+#[test]
 fn matrix_rejects_malformed_capabilities() {
     let mut matrix = sample_matrix();
     matrix.required_worker_capabilities = vec!["x".repeat(MAX_CAPABILITY_BYTES + 1)];

@@ -12,6 +12,25 @@ pub fn output_parent(path: &Path) -> &Path {
         .unwrap_or_else(|| Path::new("."))
 }
 
+pub fn open_regular_write(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    if !file.metadata()?.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "output target is not a regular file",
+        ));
+    }
+    Ok(file)
+}
+
 pub fn write_new_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
     let parent = output_parent(path);
     std::fs::create_dir_all(parent)?;
@@ -107,6 +126,23 @@ mod tests {
         assert_eq!(
             output_parent(Path::new("out/report.json")),
             Path::new("out")
+        );
+    }
+
+    #[test]
+    fn regular_write_opens_reject_fifos() {
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("output.fifo");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let _reader = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&fifo)
+            .unwrap();
+        assert_eq!(
+            open_regular_write(&fifo).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
         );
     }
 

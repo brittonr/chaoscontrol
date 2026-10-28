@@ -729,13 +729,7 @@ fn open_artifact_input(path: &Path) -> std::io::Result<File> {
 }
 
 fn open_row_log(path: &Path) -> std::io::Result<File> {
-    fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
+    chaoscontrol_evidence::bounded_file::open_regular_write(path)
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

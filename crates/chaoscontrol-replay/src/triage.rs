@@ -116,12 +116,12 @@ impl TriageEngine {
             _ => Severity::Low,
         };
 
-        // Build reproduction info
-        let schedule_json = format!(
-            "{{\"total_faults\": {}, \"remaining\": {}}}",
-            recording.schedule.total(),
-            recording.schedule.remaining()
-        );
+        // Build reproduction info with the exact schedule snapshot.
+        let schedule_json = serde_json::json!({
+            "schedule_id": recording.schedule.identity().to_string(),
+            "snapshot": recording.schedule.snapshot(),
+        })
+        .to_string();
 
         let ticks_to_bug = if let Some(cp_id) = checkpoint_id {
             recording
@@ -635,6 +635,8 @@ mod tests {
         assert_eq!(report.reproduction.seed, 42);
         assert_eq!(report.reproduction.start_checkpoint_id, Some(0));
         assert!(report.reproduction.schedule_json.contains("{")); // Valid JSON
+        assert!(report.reproduction.schedule_json.contains("schedule_id"));
+        assert!(report.reproduction.schedule_json.contains("snapshot"));
     }
 
     #[test]

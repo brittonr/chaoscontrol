@@ -897,9 +897,10 @@ fn read_boot_file(path: &std::path::Path, limit: u64) -> io::Result<Vec<u8>> {
         .metadata()
         .ok()
         .and_then(|metadata| usize::try_from(metadata.len()).ok())
-        .unwrap_or(0);
+        .unwrap_or(0)
+        .min(usize::try_from(limit).unwrap_or(usize::MAX));
     let mut bytes = Vec::with_capacity(capacity);
-    file.take(limit + 1).read_to_end(&mut bytes)?;
+    file.take(limit.saturating_add(1)).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > limit {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -5233,6 +5234,7 @@ mod tests {
         assert!(open_boot_file(&target, 4).is_ok());
         assert!(open_boot_file(root.path(), 4).is_err());
         assert_eq!(read_boot_file(&target, 4).unwrap(), b"boot");
+        assert_eq!(read_boot_file(&target, u64::MAX).unwrap(), b"boot");
     }
     use crate::devices::virtio_types::VirtioFailure;
     use crate::vm_core::MAX_SERIAL_CAPTURE_BYTES;

@@ -340,7 +340,9 @@ pub fn envelopes_from_dlog_bytes(
         let mut record = [0_u8; RECORD_SIZE];
         record.copy_from_slice(&bytes[start..start + RECORD_SIZE]);
         let record = DlogRecord::from_bytes(record);
-        envelopes.push(envelope_from_dlog(source_id, sequence as u64, &record));
+        let envelope = envelope_from_dlog(source_id, sequence as u64, &record);
+        admit_event(&envelope)?;
+        envelopes.push(envelope);
     }
     Ok(envelopes)
 }
@@ -2124,6 +2126,7 @@ mod tests {
         assert_eq!(envelopes.len(), 1);
         assert_eq!(envelopes[0].source_kind, EventSourceKind::Dlog);
         assert_eq!(envelopes[0].tick, 100);
+        admit_event(&envelopes[0]).unwrap();
         assert_eq!(envelopes[0].kind, format!("dlog_{}", record.tag));
         assert_ne!(envelopes[0].payload_digest, [0; 32]);
         assert_eq!(

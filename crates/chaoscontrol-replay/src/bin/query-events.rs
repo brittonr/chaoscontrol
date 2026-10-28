@@ -5,7 +5,7 @@ use chaoscontrol_replay::event_query::{
     envelopes_from_dlog_bytes, envelopes_from_markers, envelopes_from_recording, evaluate,
     receipt_for, render_timeline_dot, render_timeline_markdown, timeline_receipt, validate_receipt,
     validate_timeline_receipt, EventEnvelope, EventQuery, EventQueryLimits, EventQueryReceipt,
-    EventQueryResult, TimelineFact, TimelineReceipt,
+    EventQueryResult, TimelineFact, TimelineReceipt, MAX_TIMELINE_BYTES,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
@@ -172,8 +172,11 @@ fn run() -> Result<(), String> {
             receipt,
         } => {
             let facts: Vec<TimelineFact> = read_json(&facts)?;
-            let rendered = String::from_utf8(read_bytes(&rendered)?)
-                .map_err(|_| "rendered timeline is not UTF-8".to_string())?;
+            let rendered = String::from_utf8(read_bytes_with_limit(
+                &rendered,
+                u64::try_from(MAX_TIMELINE_BYTES).map_err(|_| "timeline bound overflow")?,
+            )?)
+            .map_err(|_| "rendered timeline is not UTF-8".to_string())?;
             let receipt: TimelineReceipt = read_json(&receipt)?;
             validate_timeline_receipt(&receipt, &facts, format.as_str(), &rendered)
                 .map_err(|error| error.to_string())?;
@@ -248,20 +251,24 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
 }
 
 fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    read_bytes_with_limit(path, MAX_INPUT_BYTES)
+}
+
+fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     let metadata =
         std::fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
     if !metadata.is_file() {
         return Err(format!("{} is not a regular file", path.display()));
     }
-    if metadata.len() > MAX_INPUT_BYTES {
+    if metadata.len() > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
     let file = std::fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let mut bytes = Vec::new();
-    file.take(MAX_INPUT_BYTES + 1)
+    file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("{}: {error}", path.display()))?;
-    if bytes.len() as u64 > MAX_INPUT_BYTES {
+    if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
     }
     Ok(bytes)
@@ -308,6 +315,15 @@ mod tests {
             | Command::Validate { .. }
             | Command::ValidateTimeline { .. } => panic!("expected query command"),
         }
+    }
+
+    #[test]
+    fn bounded_reads_accept_the_limit_and_reject_one_more_byte() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("input");
+        std::fs::write(&path, b"abc").expect("write");
+        assert_eq!(read_bytes_with_limit(&path, 3).unwrap(), b"abc");
+        assert!(read_bytes_with_limit(&path, 2).is_err());
     }
 
     #[test]

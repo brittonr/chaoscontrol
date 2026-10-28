@@ -201,11 +201,14 @@ fn read_bounded_with_mode(path: &Path, limit: u64) -> Result<(Vec<u8>, u32), Str
         return Err(format!("{} is not a regular file", path.display()));
     }
     let mut bytes = Vec::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     if bytes.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    if bytes.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok((bytes, metadata.permissions().mode()))
 }
@@ -225,11 +228,14 @@ fn read_bounded_text(path: &Path, limit: u64) -> Result<String, String> {
         return Err(format!("{} is not a bounded regular file", path.display()));
     }
     let mut text = String::new();
-    file.take(limit + 1)
+    file.take(limit.saturating_add(1))
         .read_to_string(&mut text)
         .map_err(|error| format!("{}: {error}", path.display()))?;
     if text.len() as u64 > limit {
         return Err(format!("{} exceeds the input byte bound", path.display()));
+    }
+    if text.len() as u64 != metadata.len() {
+        return Err(format!("{} changed while reading", path.display()));
     }
     Ok(text)
 }
@@ -334,6 +340,9 @@ mod publication_tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded_with_mode(&fifo, MAX_TEMPLATE_FILE_BYTES).is_err());
+        assert!(
+            read_bounded_with_mode(std::path::Path::new("/proc/self/cmdline"), u64::MAX).is_err()
+        );
     }
 
     #[test]
@@ -349,6 +358,7 @@ mod publication_tests {
         let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
         assert!(read_bounded_text(&fifo, MAX_TEMPLATE_FILE_BYTES).is_err());
+        assert!(read_bounded_text(std::path::Path::new("/proc/self/cmdline"), u64::MAX).is_err());
     }
 
     #[test]

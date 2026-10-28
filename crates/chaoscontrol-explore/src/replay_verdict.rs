@@ -226,23 +226,19 @@ pub fn write_verdict(
     let mut bytes = serde_json::to_vec_pretty(verdict)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     bytes.push(b'\n');
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)?;
-    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
-        drop(file);
-        if let Err(cleanup_error) = fs::remove_file(path) {
-            return Err(std::io::Error::new(
-                error.kind(),
-                format!("{error}; failed to remove partial verdict: {cleanup_error}"),
-            ));
-        }
-        return Err(error);
-    }
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let directory = fs::File::open(parent)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(&bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .persist_noclobber(path)
+        .map_err(|error| error.error)?;
+    directory.sync_all()?;
     Ok(())
 }
 
@@ -453,6 +449,28 @@ mod tests {
             ),
             ReplayClass::InvalidSnapshotDigest
         );
+    }
+
+    #[test]
+    fn verdict_writer_is_atomic_and_never_overwrites_or_follows_links() {
+        let root = tempfile::tempdir().unwrap();
+        let verdict = ReplayVerdict::no_bug_found(
+            TEST_RUN_ID.to_string(),
+            "chaoscontrol-explore reproduce".to_string(),
+            "none",
+        );
+        let path = root.path().join("verdict.json");
+        write_verdict(&path, &verdict).unwrap();
+        let first = std::fs::read(&path).unwrap();
+        assert!(write_verdict(&path, &verdict).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), first);
+
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"original").unwrap();
+        let link = root.path().join("linked.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(write_verdict(&link, &verdict).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original");
     }
 
     #[test]

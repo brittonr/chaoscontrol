@@ -1034,6 +1034,16 @@ mod active_change_bound_tests {
     }
 
     #[test]
+    fn active_change_symlink_entry_is_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let changes = root.path().join(".cairn/changes");
+        std::fs::create_dir_all(&changes).unwrap();
+        std::os::unix::fs::symlink(outside.path(), changes.join("change")).unwrap();
+        assert!(discover_active_changes(root.path()).is_err());
+    }
+
+    #[test]
     fn active_change_symlink_directory_is_rejected() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();

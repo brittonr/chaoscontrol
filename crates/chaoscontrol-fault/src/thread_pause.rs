@@ -229,6 +229,40 @@ mod tests {
     }
 
     #[test]
+    fn plan_enforces_the_pause_duration_boundary() {
+        let limits = ThreadPauseLimits {
+            max_pause_ticks: 10,
+            ..ThreadPauseLimits::default()
+        };
+        admit_thread_pause(
+            thread(1),
+            ThreadPauseWindow {
+                start_tick: 10,
+                end_tick: 20,
+            },
+            &abi(),
+            &limits,
+            &ThreadPauseFacts::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            admit_thread_pause(
+                thread(1),
+                ThreadPauseWindow {
+                    start_tick: 10,
+                    end_tick: 21,
+                },
+                &abi(),
+                &limits,
+                &ThreadPauseFacts::default(),
+            )
+            .unwrap_err(),
+            ThreadPauseError::PauseTooLong
+        );
+    }
+
+    #[test]
     fn abi_enforces_the_safe_point_boundary() {
         let mut abi = abi();
         abi.max_safe_points = MAX_SAFE_POINTS;

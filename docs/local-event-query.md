@@ -526,12 +526,66 @@ This is not arbitrary reducer execution, JavaScript coercion, exact arithmetic,
 complete capture, hosted search, CPU/RSS/deadline bounds, VM execution or replay
 proof.
 
+## Tracking numeric prefix extrema per key
+
+`RunningMinBy` and `RunningMaxBy` maintain independent low-watermarks and peaks
+for an explicit string key, extending the bounded local typed
+[fold](https://antithesis.com/docs/reference/event-set-reference/#fold) subset.
+For example, track peak latency separately for each process:
+
+```json
+{
+  "RunningMaxBy": {
+    "input": "All",
+    "predicate": {"Kind": "metric"},
+    "field": "peak_latency",
+    "value_field": "latency",
+    "key_field": "process"
+  }
+}
+```
+
+Use RunningMinBy with the same shape for per-process minimum remaining capacity.
+For interleaved A:2, B:8, A:4 measurements, maxima are `2.0`, `8.0`, `4.0`;
+minima are `2.0`, `8.0`, `2.0`. Each group starts without an extremum, not at
+zero or infinity. Before its first matching row, remove stale destination output;
+later nonmatching rows retain that key's extremum. Negative-only values work
+without a zero seed. Strict finite binary64 comparisons keep the first equal
+value, including signed zero, using RunningMin/RunningMax's rounding rules.
+
+Key lookup follows RunningCountBy/RunningSumBy: canonical kind/text/process/
+source_kind precedence, otherwise a derived string. Project service keys with
+Map/MapText. Equality is exact and case-sensitive, without Unicode normalization.
+Empty derived keys form a group; missing keys retain the row but remove output.
+Every unique row still evaluates the predicate and parses matching operands,
+including missing-key rows, so absent keys cannot hide malformed JSON or invalid
+numbers. Nonmatching operands remain unread; predicate short circuiting applies.
+
+Canonical order and first-position duplicate priority apply before grouping.
+Original key, operand and predicate values define membership before any aliased
+destination changes. Other projections and canonical evidence remain unchanged.
+FieldNumber/Filter/Narrow can select extrema downstream without recomputing them.
+All names, predicate and child validate on empty input. Shared structure/scan/
+work/derived/result-byte/prefix/moment bounds apply, with child rows admitted and
+charged before deduplication and generated rows admitted before downstream
+filtering/narrowing. Receipts bind operator, key/value/output names, complete
+query, sources and results; evaluation failures publish neither result nor
+receipt. The shared extrema engine groups in place without a key map, copied
+keys, prefix copies or another event collection. New forms require upgraded
+readers; existing queries/schemas remain unchanged.
+
+Choose coherent inputs and keys: equal process/service names do not establish
+VM/history identity or causality. This adds no automatic resets/windows, composite
+keys, exact arithmetic, arbitrary reducers, multiverse lineage, complete capture,
+hosted search, CPU/RSS/deadline guarantee, VM execution or replay proof.
+
 ## Numeric thresholds on projected fields
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
 lets downstream queries numerically select fields produced by `Map`, `MapText`, `MapTick`,
-`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningCountBy`, `RunningSum`, `RunningSumBy`, `RunningMin` or
-`RunningMax`, rather than
+`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningCountBy`,
+`RunningSum`, `RunningSumBy`, `RunningMin`, `RunningMax`, `RunningMinBy` or
+`RunningMaxBy`, rather than
 enumerating exact strings or comparing them lexically. For example, retain
 observations after at least two matching events:
 

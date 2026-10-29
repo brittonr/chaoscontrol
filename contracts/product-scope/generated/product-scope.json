@@ -375,6 +375,15 @@
       "target_state": "experimental"
     },
     {
+      "change": "track-keyed-event-extrema",
+      "evidence_prerequisite": "RunningMinBy/RunningMaxBy must preserve unique canonical evidence while independently selecting finite matching prefix extrema per exact string key without a zero seed. Preserve original membership under aliases, first-projection priority, earliest equal-value signed zero and missing/empty-key distinction without hiding predicate or matching operand errors. Verify interleaving/permutations/ties/tick boundaries, negative-only/no-match prefixes, numeric rounding/underflow, canonical selectors, JSON/downstream composition, all names/predicate/child admission, hidden generated/intermediate capacity, shared limits/moments and actual CLI operator/key/value/output/predicate/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Keyed extrema are not exact arithmetic, implicit VM/source/history identity, automatic resets/windows, composite keys, arbitrary reducers, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "annotate-retained-numeric-extrema",
       "evidence_prerequisite": "RunningMin/RunningMax must annotate finite canonical unique-event prefix extrema, remove stale output before the first match, retain first-position projections/equal-value signed zeros and reject invalid matching operands without parsing skipped values. Verify negative-only/empty/no-match prefixes, ties/extreme ticks/permutations, binary64 boundaries, aliases/canonical precedence, projection/filter composition, both names/full predicate admission, hidden intermediate/generated capacity, shared limits, moments and actual CLI operator/query/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

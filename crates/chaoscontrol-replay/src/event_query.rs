@@ -601,6 +601,22 @@ pub enum EventQuery {
         field: String,
         value_field: String,
     },
+    /// Annotate unique canonical prefixes with independent exact-key numeric minima.
+    RunningMinBy {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        value_field: String,
+        key_field: String,
+    },
+    /// Annotate unique canonical prefixes with independent exact-key numeric maxima.
+    RunningMaxBy {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        value_field: String,
+        key_field: String,
+    },
     Map {
         input: Box<EventQuery>,
         field: String,
@@ -1465,45 +1481,50 @@ fn evaluate_rows(
             value_field,
         } => {
             let minimum = matches!(query, EventQuery::RunningMin { .. });
-            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
-            charge_operations(operations, rows.len(), max_operations)?;
-            for row in &rows {
-                admit_event(row)?;
-            }
-            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
-                rows.sort_by_key(event_order);
-            }
-            rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
-            let mut extremum: Option<f64> = None;
-            for row in &mut rows {
-                if predicate.matches(row, operations, max_operations, regexes)? {
-                    let operand = finite_field_number(row, value_field)
-                        .ok_or(EventQueryError::InvalidNumber)?;
-                    if extremum.is_none_or(|current| {
-                        if minimum {
-                            operand < current
-                        } else {
-                            operand > current
-                        }
-                    }) {
-                        extremum = Some(operand);
-                    }
-                }
-                if let Some(extremum) = extremum {
-                    let number = serde_json::Number::from_f64(extremum)
-                        .expect("selected numeric extrema are finite");
-                    if let Some(value) = row.derived.get_mut(field) {
-                        value.clear();
-                        write!(value, "{number}").expect("writing to a String cannot fail");
-                    } else {
-                        row.derived.insert(field.clone(), number.to_string());
-                    }
-                } else {
-                    row.derived.remove(field);
-                }
-                admit_event(row)?;
-            }
-            Ok(rows)
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            extrema_rows(
+                rows,
+                predicate,
+                ExtremaSelection {
+                    field,
+                    value_field,
+                    key_field: None,
+                    minimum,
+                },
+                operations,
+                max_operations,
+                regexes,
+            )
+        }
+        EventQuery::RunningMinBy {
+            input,
+            predicate,
+            field,
+            value_field,
+            key_field,
+        }
+        | EventQuery::RunningMaxBy {
+            input,
+            predicate,
+            field,
+            value_field,
+            key_field,
+        } => {
+            let minimum = matches!(query, EventQuery::RunningMinBy { .. });
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            extrema_rows(
+                rows,
+                predicate,
+                ExtremaSelection {
+                    field,
+                    value_field,
+                    key_field: Some(key_field),
+                    minimum,
+                },
+                operations,
+                max_operations,
+                regexes,
+            )
         }
         EventQuery::Map {
             input,
@@ -1907,6 +1928,100 @@ fn sum_rows(
     Ok(rows)
 }
 
+struct ExtremaSelection<'a> {
+    field: &'a str,
+    value_field: &'a str,
+    key_field: Option<&'a str>,
+    minimum: bool,
+}
+
+// r[impl chaoscontrol.keyed_running_extrema.prefixes]
+fn extrema_rows(
+    mut rows: Vec<EventEnvelope>,
+    predicate: &EventPredicate,
+    selection: ExtremaSelection<'_>,
+    operations: &mut usize,
+    max_operations: usize,
+    regexes: &RegexCache<'_>,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    let ExtremaSelection {
+        field,
+        value_field,
+        key_field,
+        minimum,
+    } = selection;
+    charge_operations(operations, rows.len(), max_operations)?;
+    for row in &rows {
+        admit_event(row)?;
+    }
+    if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+        rows.sort_by_key(event_order);
+    }
+    rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
+    if let Some(key_field) = key_field {
+        let order = |left: &EventEnvelope, right: &EventEnvelope| {
+            field_value(left, key_field)
+                .cmp(&field_value(right, key_field))
+                .then_with(|| event_order(left).cmp(&event_order(right)))
+        };
+        if !rows.is_sorted_by(|left, right| order(left, right).is_le()) {
+            rows.sort_unstable_by(order);
+        }
+    }
+    let mut remaining = rows.as_mut_slice();
+    while !remaining.is_empty() {
+        // Resolve boundaries before output aliases can change key membership.
+        let (present, end) = if let Some(key_field) = key_field {
+            let key = field_value(&remaining[0], key_field);
+            (
+                key.is_some(),
+                remaining.partition_point(|row| field_value(row, key_field) == key),
+            )
+        } else {
+            (true, remaining.len())
+        };
+        let (group, rest) = remaining.split_at_mut(end);
+        let mut extremum: Option<f64> = None;
+        for row in group {
+            if predicate.matches(row, operations, max_operations, regexes)? {
+                let operand =
+                    finite_field_number(row, value_field).ok_or(EventQueryError::InvalidNumber)?;
+                if present
+                    && extremum.is_none_or(|current| {
+                        if minimum {
+                            operand < current
+                        } else {
+                            operand > current
+                        }
+                    })
+                {
+                    extremum = Some(operand);
+                }
+            }
+            if let Some(extremum) = extremum {
+                let number = serde_json::Number::from_f64(extremum)
+                    .expect("selected numeric extrema are finite");
+                if let Some(value) = row.derived.get_mut(field) {
+                    value.clear();
+                    write!(value, "{number}").expect("writing to a String cannot fail");
+                } else {
+                    row.derived.insert(field.to_string(), number.to_string());
+                }
+            } else {
+                row.derived.remove(field);
+            }
+            admit_event(row)?;
+        }
+        remaining = rest;
+    }
+    if key_field.is_some()
+        && !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right))
+    {
+        rows.sort_unstable_by_key(event_order);
+    }
+    Ok(rows)
+}
+
 struct LastWitnessSelection<'a> {
     field: &'a str,
     witness_field: &'a str,
@@ -2206,6 +2321,20 @@ fn validate_query_inner<'a>(
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
         EventQuery::RunningSumBy {
+            input,
+            predicate,
+            field,
+            value_field,
+            key_field,
+        }
+        | EventQuery::RunningMinBy {
+            input,
+            predicate,
+            field,
+            value_field,
+            key_field,
+        }
+        | EventQuery::RunningMaxBy {
             input,
             predicate,
             field,
@@ -2546,6 +2675,8 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::RunningSumBy { input, .. }
         | EventQuery::RunningMin { input, .. }
         | EventQuery::RunningMax { input, .. }
+        | EventQuery::RunningMinBy { input, .. }
+        | EventQuery::RunningMaxBy { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
         | EventQuery::MapTick { input, .. }

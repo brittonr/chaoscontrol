@@ -301,6 +301,13 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["Retained numeric differences are not arbitrary map/fold execution, JavaScript coercion, exact integer/decimal arithmetic, automatic counter-wrap detection, implicit source partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
     },
     {
+      change = "track-keyed-event-extrema",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "RunningMinBy/RunningMaxBy must preserve unique canonical evidence while independently selecting finite matching prefix extrema per exact string key without a zero seed. Preserve original membership under aliases, first-projection priority, earliest equal-value signed zero and missing/empty-key distinction without hiding predicate or matching operand errors. Verify interleaving/permutations/ties/tick boundaries, negative-only/no-match prefixes, numeric rounding/underflow, canonical selectors, JSON/downstream composition, all names/predicate/child admission, hidden generated/intermediate capacity, shared limits/moments and actual CLI operator/key/value/output/predicate/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Keyed extrema are not exact arithmetic, implicit VM/source/history identity, automatic resets/windows, composite keys, arbitrary reducers, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "annotate-retained-numeric-extrema",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

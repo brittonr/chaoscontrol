@@ -13,16 +13,26 @@ fn json_guidance_binds_to_a_stable_assertion_site() {
     chaoscontrol_init();
 
     cc_assert_sometimes_stable!(
-        "org.example.json",
-        "guidance",
+        "org.example.sparse-a",
+        "e3870d15ed661eaa",
         "guest",
         "invariant",
         true,
         "json guidance site"
     );
+    // This undeclared pair shares the accepted site's compact alias. It must
+    // not be attributed to that site merely because kind/message also match.
     cc_guidance_json!(
-        "org.example.json",
-        "guidance",
+        "org.example.sparse-b",
+        "05d3992156bd4061",
+        AssertionKind::Sometimes,
+        "json guidance site",
+        true,
+        json!({"score": 999, "unit": "ms"})
+    );
+    cc_guidance_json!(
+        "org.example.sparse-a",
+        "e3870d15ed661eaa",
         AssertionKind::Sometimes,
         "json guidance site",
         true,
@@ -30,12 +40,18 @@ fn json_guidance_binds_to_a_stable_assertion_site() {
     );
 
     let content = std::fs::read_to_string(&output).expect("local output");
-    let guidance = content
+    let observations: Vec<_> = content
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
         .filter_map(|record| record.get("antithesis_guidance").cloned())
-        .find(|record| record["guidance_type"] == "json")
-        .expect("json guidance record");
+        .filter(|record| record["guidance_type"] == "json")
+        .collect();
+    assert_eq!(
+        observations.len(),
+        1,
+        "undeclared alias collisions are rejected"
+    );
+    let guidance = &observations[0];
 
     assert_eq!(guidance["hit"], true);
     assert_eq!(guidance["maximize"], true);

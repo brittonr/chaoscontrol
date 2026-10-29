@@ -185,8 +185,12 @@ event. Each record also carries the accepted catalog token, assertion
 fingerprint, and caller function path, keeping guidance catalog-bound
 rather than reintroducing the removed unbound command.
 
-JSON guidance is available through `guidance::emit_json` and the
-`cc_guidance_json!` macro; both bind to an existing stable assertion site.
+JSON guidance is available through `guidance::emit_json` for compatibility
+aliases and `guidance::emit_json_with_key` / `cc_guidance_json!` for stable
+sites. The stable APIs resolve the accepted namespace, logical key, kind and
+message directly: colliding compact aliases neither drop valid observations
+nor bind an undeclared site to another assertion. Unknown or mismatched
+stable sites emit no guidance; the JSON record shape is unchanged.
 
 Guidance events feed the existing protocol-event coverage enrichment:
 their name and detail values hash into assertion-region edges, so novel

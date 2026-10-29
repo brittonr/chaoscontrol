@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "bind-stable-json-guidance",
+      "evidence_prerequisite": "Stable JSON guidance must retain distinct accepted fingerprints across compact alias collisions, reject unknown or mismatched namespace/key/kind/message, and preserve guidance records and compatibility APIs.",
+      "non_claims": [
+        "Local guidance instrumentation does not prove exploration effectiveness, guest execution, replay, hosted platform parity, or release readiness."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "isolate-sparse-assertion-sampling",
       "evidence_prerequisite": "Distinct accepted fingerprints with colliding compact aliases must retain independent first pass/fail outcomes across stable and compatibility calls, with declarations and default per-hit behavior preserved.",
       "non_claims": [

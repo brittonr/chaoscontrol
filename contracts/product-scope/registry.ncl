@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "bind-stable-json-guidance",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Stable JSON guidance must retain distinct accepted fingerprints across compact alias collisions, reject unknown or mismatched namespace/key/kind/message, and preserve guidance records and compatibility APIs.",
+      non_claims = ["Local guidance instrumentation does not prove exploration effectiveness, guest execution, replay, hosted platform parity, or release readiness."],
+    },
+    {
       change = "isolate-sparse-assertion-sampling",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

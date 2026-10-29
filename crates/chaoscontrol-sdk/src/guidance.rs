@@ -2,8 +2,8 @@
 //!
 //! Guidance reports the values behind a property so an explorer can prefer
 //! extreme violations. ChaosControl records the same `antithesis_guidance`
-//! JSON shape as a structured event; it does not yet emit the guidance
-//! catalog at initialization.
+//! JSON shape as a structured event and emits linked guidance declarations
+//! at initialization.
 
 use core::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value;
@@ -259,6 +259,46 @@ pub fn emit_json(
     );
 }
 
+/// Emit JSON guidance bound to a stable namespace/key assertion identity.
+///
+/// The namespace, key, kind and message must match an accepted assertion.
+/// Compact alias collisions do not affect this lookup; unresolved sites emit
+/// no observation.
+// r[impl chaoscontrol.stable_json_guidance.binding]
+// r[impl chaoscontrol.stable_json_guidance.rejection]
+#[allow(clippy::too_many_arguments)]
+pub fn emit_json_with_key(
+    namespace: &str,
+    key: &str,
+    kind: crate::assert::AssertionKind,
+    message: &str,
+    class: &str,
+    function: &str,
+    file: &str,
+    begin_line: u32,
+    begin_column: u32,
+    maximize: bool,
+    guidance_data: Value,
+) {
+    let Some(identity) = crate::assertion_catalog::resolve_stable(namespace, key, kind, message)
+    else {
+        return;
+    };
+    emit_bound(
+        identity,
+        GuidanceType::Json,
+        message,
+        class,
+        function,
+        file,
+        begin_line,
+        begin_column,
+        maximize,
+        guidance_data,
+        true,
+    );
+}
+
 /// Emit JSON guidance for an existing stable assertion site.
 ///
 /// The `namespace`/`key` pair must match a compiled stable assertion with
@@ -273,9 +313,9 @@ macro_rules! cc_guidance_json {
             &name[..name.len()
                 - "::__cc_json_guidance_function_name::__cc_json_guidance_probe".len()]
         }
-        let __cc_id = $crate::assert::location_id(&::std::format!("{}:{}", $namespace, $key));
-        $crate::guidance::emit_json(
-            __cc_id,
+        $crate::guidance::emit_json_with_key(
+            $namespace,
+            $key,
             $kind,
             $message,
             module_path!(),
@@ -325,6 +365,35 @@ fn emit(
     let Some(identity) = crate::assertion_catalog::resolve_compatibility(id, kind, message) else {
         return;
     };
+    emit_bound(
+        identity,
+        guidance_type,
+        message,
+        class,
+        function,
+        file,
+        begin_line,
+        begin_column,
+        maximize,
+        guidance_data,
+        hit,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_bound(
+    identity: crate::assertion_catalog::BoundIdentity,
+    guidance_type: GuidanceType,
+    message: &str,
+    class: &str,
+    function: &str,
+    file: &str,
+    begin_line: u32,
+    begin_column: u32,
+    maximize: bool,
+    guidance_data: Value,
+    hit: bool,
+) {
     let record = serde_json::json!({
         "guidance_type": guidance_type,
         "message": message,

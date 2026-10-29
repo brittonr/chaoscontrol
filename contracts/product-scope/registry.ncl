@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "project-json-event-text",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "MapText must project scalars from bounded JSON event text into derived strings without altering canonical fields, preserving Map and existing limits/moments/receipts. Actual query/validate CLI scenarios must retain full rows and reject invalid/trailing/deep JSON without partial artifacts, insufficient operations and query/source/result drift.",
+      non_claims = ["Supplied retained-input JSON log projection does not add numeric comparison over derived strings, arbitrary transforms, capture completeness, reactive branches, full Notebook compatibility, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "compose-text-event-predicates",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

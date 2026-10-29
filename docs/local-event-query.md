@@ -45,6 +45,54 @@ query-events validate-timeline --format markdown facts.json timeline.md \
   timeline-receipt.json
 ```
 
+## Projecting JSON log text
+
+`Map` projects scalar fields from canonical `details`. Use `MapText` when the
+retained event's `text` is JSON instead, as in the
+[Antithesis JSON log example](https://antithesis.com/docs/product/debugging/advanced_multiverse_debugging/event_sets/).
+For example, select `storage` records from JSON log lines:
+
+```json
+{
+  "Matches": {
+    "input": {
+      "MapText": {
+        "input": "All",
+        "field": "component",
+        "pointer": "/component"
+      }
+    },
+    "field": "component",
+    "text": "storage"
+  }
+}
+```
+
+An example event text is `{"component":"storage","used":80}`. The selected
+scalar is added to `derived.component`; original text, details, source identity
+and payload digest stay unchanged. The field is usable by existing text query
+operators and predicates. Canonical field names still take precedence over
+same-named derived values.
+
+Strings, numbers and booleans become derived strings, matching `Map`. This is
+not a typed numeric projection: `JsonNumber` still reads canonical details, not
+derived strings. Missing pointers, null, objects and arrays in valid JSON leave
+the derived map unchanged, including any existing value at the target field.
+Pointers use the existing confined, nonempty JSON-pointer rules and `~0`/`~1`
+escaping; field and pointer names are each at most 256 UTF-8 bytes.
+
+Every candidate row must contain valid JSON text. Malformed JSON, trailing
+garbage and excessive parser nesting fail with `InvalidJsonText`; no row is
+silently dropped and the CLI publishes no partial result/receipt on evaluation
+failure. Filter mixed logs to a JSON-producing process/source **before** MapText.
+Parsing uses the existing 8192-byte canonical text cap and the JSON parser's
+default recursion bound, with one logical projection operation per candidate row
+in addition to input work. Existing derived-field, result-byte, node/depth,
+moment and receipt bounds remain effective. `Map` is unchanged; new readers are
+required to consume the `MapText` variant. No arbitrary transformations, live
+branching or full Notebook compatibility are implied.
+
+
 ## Numeric JSON filters
 
 `Filter` accepts a `JsonNumber` predicate over a JSON pointer into the original

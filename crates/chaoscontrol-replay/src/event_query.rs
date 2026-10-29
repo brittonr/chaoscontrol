@@ -496,6 +496,12 @@ pub enum EventQuery {
         field: String,
         pointer: String,
     },
+    /// Project a JSON scalar from canonical text, preserving original source fields.
+    MapText {
+        input: Box<EventQuery>,
+        field: String,
+        pointer: String,
+    },
     Contains {
         input: Box<EventQuery>,
         field: String,
@@ -618,6 +624,7 @@ pub enum EventQueryError {
     DuplicateSourcePosition,
     InvalidPredicate,
     InvalidText,
+    InvalidJsonText,
     InvalidWindow,
     InvalidFormat,
     InvalidField,
@@ -652,6 +659,7 @@ impl core::fmt::Display for EventQueryError {
             }
             Self::InvalidPredicate => "event predicate is malformed or unsupported",
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
+            Self::InvalidJsonText => "event text is not valid JSON within parser bounds",
             Self::InvalidWindow => "event query window is reversed",
             Self::InvalidFormat => "event timeline format is not markdown or dot",
             Self::InvalidField => "event query field is not supported",
@@ -1143,6 +1151,29 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.json_text_projection.mapping]
+        EventQuery::MapText {
+            input,
+            field,
+            pointer,
+        } => {
+            validate_field(field)?;
+            validate_pointer(pointer)?;
+            let mut rows = evaluate_rows(input, events, operations, max_operations)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for event in &mut rows {
+                let mut parsed: serde_json::Value = serde_json::from_str(&event.text)
+                    .map_err(|_| EventQueryError::InvalidJsonText)?;
+                let value = parsed.pointer_mut(pointer).and_then(|value| match value {
+                    serde_json::Value::String(value) => Some(std::mem::take(value)),
+                    value => json_scalar(value),
+                });
+                if let Some(value) = value {
+                    event.derived.insert(field.clone(), value);
+                }
+            }
+            Ok(rows)
+        }
         EventQuery::Contains { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
@@ -1316,6 +1347,11 @@ fn validate_query_inner(
             input,
             field,
             pointer,
+        }
+        | EventQuery::MapText {
+            input,
+            field,
+            pointer,
         } => {
             validate_field(field)?;
             validate_pointer(pointer)?;
@@ -1464,6 +1500,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         EventQuery::UpTo { moment_tick, .. } => Ok(Some(*moment_tick)),
         EventQuery::Filter { input, .. }
         | EventQuery::Map { input, .. }
+        | EventQuery::MapText { input, .. }
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }
         | EventQuery::Window { input, .. } => moment_of(input),

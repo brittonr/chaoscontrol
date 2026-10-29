@@ -349,6 +349,66 @@ unchanged; upgraded readers are required. No general arithmetic engine, ratio
 projection, complete capture, hosted search, CPU/RSS/deadline guarantee, VM
 execution or replay-proof claim is added.
 
+## Retaining computed utilization
+
+`MapRatio` adds the finite quotient as a derived JSON-number string so the
+utilization can be displayed, narrowed or reused by downstream predicates. This
+supplies the annotation step from the
+[Antithesis map/add_fields example](https://antithesis.com/docs/reference/event-set-reference/#map)
+without a JavaScript interpreter. Given `derived.used = "20"` and
+`derived.total = "100"` (for example, from the preceding Map/MapText projections):
+
+```json
+{
+  "Filter": {
+    "input": {
+      "MapRatio": {
+        "input": "All",
+        "field": "utilization",
+        "numerator": "used",
+        "denominator": "total"
+      }
+    },
+    "predicate": {
+      "FieldNumber": {
+        "field": "utilization",
+        "comparison": "GreaterThan",
+        "value": 0.1
+      }
+    }
+  }
+}
+```
+
+This retains `derived.utilization = "0.2"` alongside the original canonical
+evidence and other projections. Wrap the operand-producing query in place of
+`All`; `RunningCount` projections can also be operands. `Narrow` can then keep
+only utilization while preserving canonical evidence.
+
+Arithmetic and operand lookup are shared with `FieldRatio`: complete finite
+JSON-number text, denominator-first binary64 division, canonical-name precedence,
+signed-zero/underflow and wide-integer rounding. Both operands are read before
+the destination is changed, so output names may alias either input. Finite
+results replace the destination using JSON-number text (`1.0`, `-0.0`, etc.).
+For missing/nonnumeric/nonfinite operands, either zero denominator or an
+overflowing quotient, the row remains but the destination projection is removed.
+This deliberately differs from missing-pointer Map/MapText extraction: a stale
+ratio must not survive recomputation and pass a later numeric filter. Canonical
+fields are never overwritten; projecting a name such as `kind` changes only
+`derived.kind`, and canonical lookup still wins.
+
+All three names require existing nonempty/control-free/256-byte UTF-8 admission,
+even with empty input. Each candidate costs one operation in addition to its
+input work. Intermediate and generated envelopes must remain within existing
+field-count/derived-byte capacity before downstream narrowing; replacing an
+existing field does not consume a new field slot. Existing structural, scan,
+serialized-result, canonical-prefix, deduplication, moment and complete-query/
+source/result receipt rules apply. Evaluation failures emit neither result nor
+receipt. Old variants/schemas are unchanged; new queries require upgraded readers.
+This is one bounded arithmetic projection, not a general map/fold engine,
+JavaScript coercion, exact rational arithmetic, complete capture, hosted search,
+CPU/RSS/deadline guarantee, VM execution or replay proof.
+
 ## Numeric JSON filters
 
 `Filter` accepts a `JsonNumber` predicate over a JSON pointer into the original

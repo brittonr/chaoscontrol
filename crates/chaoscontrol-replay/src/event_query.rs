@@ -576,6 +576,13 @@ pub enum EventQuery {
         field: String,
         pointer: String,
     },
+    /// Annotate finite field quotients, removing stale output for undefined ratios.
+    MapRatio {
+        input: Box<EventQuery>,
+        field: String,
+        numerator: String,
+        denominator: String,
+    },
     /// Retain selected derived fields without discarding canonical source evidence.
     Narrow {
         input: Box<EventQuery>,
@@ -1315,6 +1322,31 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.map_ratio.projection]
+        EventQuery::MapRatio {
+            input,
+            field,
+            numerator,
+            denominator,
+        } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for event in &mut rows {
+                admit_event(event)?;
+                if let Some(number) = finite_field_ratio(event, numerator, denominator) {
+                    if let Some(value) = event.derived.get_mut(field) {
+                        value.clear();
+                        write!(value, "{number}").expect("writing to a String cannot fail");
+                    } else {
+                        event.derived.insert(field.clone(), number.to_string());
+                    }
+                } else {
+                    event.derived.remove(field);
+                }
+                admit_event(event)?;
+            }
+            Ok(rows)
+        }
         // r[impl chaoscontrol.narrow_query.projections]
         EventQuery::Narrow { input, fields } => {
             let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
@@ -1575,19 +1607,7 @@ impl EventPredicate {
                 comparison,
                 value,
             } => {
-                let number = |field: &str| {
-                    field_value(event, field)
-                        .and_then(|text| serde_json::from_str::<serde_json::Number>(text).ok())
-                        .and_then(|number| number.as_f64())
-                        .filter(|number| number.is_finite())
-                };
-                let actual = number(denominator)
-                    .filter(|denominator| *denominator != 0.0)
-                    .and_then(|denominator| {
-                        number(numerator).and_then(|numerator| {
-                            serde_json::Number::from_f64(numerator / denominator)
-                        })
-                    })
+                let actual = finite_field_ratio(event, numerator, denominator)
                     .map(serde_json::Value::Number);
                 comparison.matches(actual.as_ref(), value)
             }
@@ -1683,6 +1703,17 @@ fn validate_query_inner<'a>(
         } => {
             validate_field(field)?;
             validate_pointer(pointer)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
+        EventQuery::MapRatio {
+            input,
+            field,
+            numerator,
+            denominator,
+        } => {
+            validate_field(field)?;
+            validate_field(numerator)?;
+            validate_field(denominator)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
         EventQuery::Narrow { input, fields } => {
@@ -1865,6 +1896,21 @@ fn validate_text(value: &str) -> Result<(), EventQueryError> {
     Ok(())
 }
 
+fn finite_field_ratio(
+    event: &EventEnvelope,
+    numerator: &str,
+    denominator: &str,
+) -> Option<serde_json::Number> {
+    let number = |field: &str| {
+        field_value(event, field)
+            .and_then(|text| serde_json::from_str::<serde_json::Number>(text).ok())
+            .and_then(|number| number.as_f64())
+            .filter(|number| number.is_finite())
+    };
+    let denominator = number(denominator).filter(|denominator| *denominator != 0.0)?;
+    serde_json::Number::from_f64(number(numerator)? / denominator)
+}
+
 fn field_value<'a>(event: &'a EventEnvelope, field: &str) -> Option<&'a str> {
     match field {
         "kind" => Some(event.kind.as_str()),
@@ -1895,6 +1941,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::RunningCount { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
+        | EventQuery::MapRatio { input, .. }
         | EventQuery::Narrow { input, .. }
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }

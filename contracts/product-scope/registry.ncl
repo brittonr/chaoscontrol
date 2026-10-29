@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "project-retained-field-ratios",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "MapRatio must annotate finite binary64 quotients using shared FieldRatio arithmetic, compute before overwriting aliases and remove stale output for undefined ratios. Verify canonical evidence/lookup, signed-zero/underflow/rounding, Map/MapText/count/filter/narrow composition, all three names, exact intermediate/generated capacity and unhideable overflow, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Retained ratio projection is not a general arithmetic interpreter or map/fold engine, JavaScript coercion, exact rational comparison, complete capture, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "compare-retained-field-ratios",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

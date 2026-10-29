@@ -572,6 +572,20 @@ pub enum EventQuery {
         field: String,
         value_field: String,
     },
+    /// Annotate unique canonical prefixes with inclusive finite numeric minima.
+    RunningMin {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        value_field: String,
+    },
+    /// Annotate unique canonical prefixes with inclusive finite numeric maxima.
+    RunningMax {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        value_field: String,
+    },
     Map {
         input: Box<EventQuery>,
         field: String,
@@ -1329,6 +1343,60 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.running_extrema.prefixes]
+        EventQuery::RunningMin {
+            input,
+            predicate,
+            field,
+            value_field,
+        }
+        | EventQuery::RunningMax {
+            input,
+            predicate,
+            field,
+            value_field,
+        } => {
+            let minimum = matches!(query, EventQuery::RunningMin { .. });
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for row in &rows {
+                admit_event(row)?;
+            }
+            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+                rows.sort_by_key(event_order);
+            }
+            rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
+            let mut extremum: Option<f64> = None;
+            for row in &mut rows {
+                if predicate.matches(row, operations, max_operations, regexes)? {
+                    let operand = finite_field_number(row, value_field)
+                        .ok_or(EventQueryError::InvalidNumber)?;
+                    if extremum.is_none_or(|current| {
+                        if minimum {
+                            operand < current
+                        } else {
+                            operand > current
+                        }
+                    }) {
+                        extremum = Some(operand);
+                    }
+                }
+                if let Some(extremum) = extremum {
+                    let number = serde_json::Number::from_f64(extremum)
+                        .expect("selected numeric extrema are finite");
+                    if let Some(value) = row.derived.get_mut(field) {
+                        value.clear();
+                        write!(value, "{number}").expect("writing to a String cannot fail");
+                    } else {
+                        row.derived.insert(field.clone(), number.to_string());
+                    }
+                } else {
+                    row.derived.remove(field);
+                }
+                admit_event(row)?;
+            }
+            Ok(rows)
+        }
         EventQuery::Map {
             input,
             field,
@@ -1808,6 +1876,18 @@ fn validate_query_inner<'a>(
             predicate,
             field,
             value_field,
+        }
+        | EventQuery::RunningMin {
+            input,
+            predicate,
+            field,
+            value_field,
+        }
+        | EventQuery::RunningMax {
+            input,
+            predicate,
+            field,
+            value_field,
         } => {
             validate_field(field)?;
             validate_field(value_field)?;
@@ -2077,6 +2157,8 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         EventQuery::Filter { input, .. }
         | EventQuery::RunningCount { input, .. }
         | EventQuery::RunningSum { input, .. }
+        | EventQuery::RunningMin { input, .. }
+        | EventQuery::RunningMax { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
         | EventQuery::MapRatio { input, .. }

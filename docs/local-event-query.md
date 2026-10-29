@@ -281,12 +281,67 @@ generic fold interpreter, JavaScript coercion, exact arithmetic, causal or branc
 lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline bounds,
 VM execution or replay proof.
 
+## Tracking numeric prefix minima and maxima
+
+`RunningMin` and `RunningMax` add low-watermark and peak-value annotations to
+the local typed [fold](https://antithesis.com/docs/reference/event-set-reference/#fold)
+subset. With projected finite `latency` values, track peak latency:
+
+```json
+{
+  "RunningMax": {
+    "input": "All",
+    "predicate": {"Kind": "metric"},
+    "field": "peak_latency",
+    "value_field": "latency"
+  }
+}
+```
+
+Use `RunningMin` with the same shape for a minimum, such as remaining capacity.
+Each unique canonical row is retained and annotated with the inclusive extremum
+of matching values so far. Before the first match, the destination projection is
+removed, including stale values; there is no zero or infinite seed. An empty
+input returns no rows, and `{"Any":[]}` removes the destination projection from
+every row without parsing any operands. Canonical fields are never removed.
+
+Ordering and deduplication follow RunningSum: stable `(tick, source_id,
+source_sequence)` order with first-position projection priority. Only matching
+operands are parsed using finite JSON-number grammar and canonical-name lookup
+precedence. Missing/malformed/nonfinite matching values fail `InvalidNumber`;
+invalid skipped operands do not fail. Predicate and operand lookup precede
+destination overwrite, so aliases are supported. Visited malformed JSON
+predicates fail; short-circuited JSON predicates need not parse their text.
+
+Comparison uses binary64, not decimal strings. Wide integers may round and tiny
+values may underflow. Strict comparisons keep the first numerically equal value,
+including signed zero: `-0` followed by `0` keeps `-0.0` for either operator;
+the reverse order keeps `0.0`. Other projections and canonical evidence remain
+unchanged. Map/MapText can supply operands; downstream FieldNumber/Filter/Narrow
+operators can select and retain extrema without recomputing earlier prefixes.
+
+Both nonempty/control-free/256-byte names and the entire predicate are admitted
+even on empty input. RunningCount's shared work, predicate, structural/scan,
+intermediate/generated capacity, result-byte/prefix and moment rules apply.
+Every materialized child row costs one operation beyond child work, including
+duplicates; visited compound predicate children add their normal charges. All
+child rows and each generated row are admitted, so downstream narrowing cannot
+hide overflow. Receipts bind the operator choice, input/predicate, both names,
+all canonical source facts and output projections. Evaluation errors publish
+neither result nor receipt. New variants require upgraded readers; existing
+schemas/queries remain unchanged. Supply one coherent retained history: extrema
+do not infer source/VM/process partitions, causality or multiverse lineage.
+This is not arbitrary reducer execution, JavaScript coercion, exact arithmetic,
+complete capture, hosted search, CPU/RSS/deadline bounds, VM execution or replay
+proof.
+
 ## Numeric thresholds on projected fields
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
 lets downstream queries numerically select fields produced by `Map`, `MapText`,
-`RunningCount` or `RunningSum`, rather than enumerating exact strings or comparing
-them lexically. For example, retain observations after at least two matching events:
+`RunningCount`, `RunningSum`, `RunningMin` or `RunningMax`, rather than
+enumerating exact strings or comparing them lexically. For example, retain
+observations after at least two matching events:
 
 ```json
 {

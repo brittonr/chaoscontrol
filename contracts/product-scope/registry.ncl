@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "annotate-retained-numeric-extrema",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "RunningMin/RunningMax must annotate finite canonical unique-event prefix extrema, remove stale output before the first match, retain first-position projections/equal-value signed zeros and reject invalid matching operands without parsing skipped values. Verify negative-only/empty/no-match prefixes, ties/extreme ticks/permutations, binary64 boundaries, aliases/canonical precedence, projection/filter composition, both names/full predicate admission, hidden intermediate/generated capacity, shared limits, moments and actual CLI operator/query/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Retained numeric extrema are not arbitrary fold execution, JavaScript coercion, exact arithmetic, implicit source/VM/process partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "sum-retained-numeric-prefixes",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "annotate-retained-numeric-extrema",
+      "evidence_prerequisite": "RunningMin/RunningMax must annotate finite canonical unique-event prefix extrema, remove stale output before the first match, retain first-position projections/equal-value signed zeros and reject invalid matching operands without parsing skipped values. Verify negative-only/empty/no-match prefixes, ties/extreme ticks/permutations, binary64 boundaries, aliases/canonical precedence, projection/filter composition, both names/full predicate admission, hidden intermediate/generated capacity, shared limits, moments and actual CLI operator/query/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Retained numeric extrema are not arbitrary fold execution, JavaScript coercion, exact arithmetic, implicit source/VM/process partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "sum-retained-numeric-prefixes",
       "evidence_prerequisite": "RunningSum must annotate inclusive canonical unique-event prefixes using finite binary64 matching operands, preserve first-position projections and reject invalid operands/nonfinite totals without parsing skipped operands. Verify permutations/ties/extreme ticks, negative/fractional/zero/rounding values, output aliasing, canonical precedence, projection/filter composition, both names/predicate admission, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial artifacts.",
       "non_claims": [

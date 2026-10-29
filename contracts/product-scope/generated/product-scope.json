@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "accept-json-assertion-details",
+      "evidence_prerequisite": "Unscoped SDK assertion output and strict local reports must preserve every bounded JSON details shape and retain catalog identity, outcomes and metadata checks. Scalar/sequence SDK-to-report quality scenarios, malformed/resource negatives and process-scoping rejection must pass.",
+      "non_claims": [
+        "Local instrumentation admission does not prove KVM execution, replay, process-scoped non-object support, hosted-platform parity or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "preserve-first-setup-completion",
       "evidence_prerequisite": "Strict evidence and SDK diagnostic readers must retain only the first validated setup completion and its metadata, continue processing assertions/events, and reject malformed or over-limit repeats. Actual repeated SDK output must pass local report quality checks for every JSON details shape.",
       "non_claims": [

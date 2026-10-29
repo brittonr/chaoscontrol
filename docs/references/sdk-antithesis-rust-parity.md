@@ -92,8 +92,15 @@ behavior or a claim about cross-process global ordering.
 | `!=` | (none) | `cc_assert_always_ne` / `sometimes_ne` | absent |
 | Sometimes variants | `assert_sometimes_<rel>` | `cc_assert_sometimes_<rel>` (long and short names) | equivalent |
 
-Assertion details accept any `serde::Serialize` value, matching the 0.3.0
-surface; `serde_json::Value` remains supported. Assertion messages must be
+Assertion details accept any `serde::Serialize` value, matching the
+[0.3.0 surface](https://docs.rs/antithesis_sdk/0.3.0/src/antithesis_sdk/assert/macros.rs.html#106-129);
+`serde_json::Value` remains supported. Unscoped bound transport and strict
+local reports preserve explicit null, booleans, numbers, strings, arrays and
+objects without suppressing observations. Only top-level object fields carry
+metadata overrides; non-object details use the accepted descriptor's guest
+and category. Legacy records still cannot establish collision-safe evidence.
+Required details, object metadata consistency, identity and JSON/resource
+bounds remain enforced. Assertion messages must be
 const-evaluable, as in 0.3.0. Antithesis 0.3.0 emits only a site's first
 pass and first fail; ChaosControl emits every hit by default so the oracle
 and explorer retain exact counts. The `sparse_emission` feature matches the
@@ -284,6 +291,10 @@ change the assertion oracle or prove exploration quality.
   An empty bundle is admitted: any is `false` and all is `true`.
 - Numeric macros merge `left`/`right` into details and, with `full`, require
   `guidance::GuidanceDiff` (primitive numeric types) to emit watermarks.
+- Process-scoped assertions (`CHAOSCONTROL_PROCESS_ID`) still require object
+  details and a valid process token, because process ownership is carried in
+  object metadata. Non-object scoped details remain rejected; this change
+  does not invent a wrapper or erase process ownership to admit them.
 - `random_choice` now has the Antithesis slice signature. Use the
   `random_choice_index(n)` extension when an index bound is more natural.
 - ChaosControl's no-op lifecycle and assertion functions accept a generic

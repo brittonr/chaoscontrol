@@ -107,21 +107,24 @@ pub(crate) fn hypercall_bound_assertion(
         chaoscontrol_protocol::CMD_ASSERT_UNREACHABLE => AssertionKind::Unreachable,
         _ => return (0, chaoscontrol_protocol::STATUS_ERROR),
     };
+    // r[impl chaoscontrol.assertion_json_details.shapes]
     let mut details = match serde_json::from_slice::<serde_json::Value>(json_details) {
-        Ok(details) if details.is_object() => details,
-        Ok(_) | Err(_) => return (0, chaoscontrol_protocol::STATUS_ERROR),
+        Ok(details) => details,
+        Err(_) => return (0, chaoscontrol_protocol::STATUS_ERROR),
     };
     if let Ok(process_identity) = std::env::var("CHAOSCONTROL_PROCESS_ID") {
         if !chaoscontrol_protocol::process::validate_process_token(&process_identity) {
             return (0, chaoscontrol_protocol::STATUS_ERROR);
         }
-        details
-            .as_object_mut()
-            .expect("assertion details were validated as an object")
-            .insert(
-                "chaoscontrol_process_identity".to_string(),
-                serde_json::Value::String(process_identity),
-            );
+        // r[impl chaoscontrol.assertion_json_details.bounds]
+        // Process ownership is object metadata; never emit a scoped hit without it.
+        let Some(details) = details.as_object_mut() else {
+            return (0, chaoscontrol_protocol::STATUS_ERROR);
+        };
+        details.insert(
+            "chaoscontrol_process_identity".to_string(),
+            serde_json::Value::String(process_identity),
+        );
     }
     let Ok(scoped_details) = serde_json::to_vec(&details) else {
         return (0, chaoscontrol_protocol::STATUS_ERROR);

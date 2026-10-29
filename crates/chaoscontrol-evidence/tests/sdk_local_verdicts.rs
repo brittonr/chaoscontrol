@@ -1,7 +1,8 @@
 use chaoscontrol_evidence::{check_sdk_assertion_quality_report, summarize_sdk_local_jsonl};
 use chaoscontrol_protocol::admission::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
 use chaoscontrol_protocol::identity::{
-    AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
+    AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_FINGERPRINT_BYTES,
+    ASSERTION_IDENTITY_VERSION,
 };
 use serde_json::{json, Value};
 
@@ -325,4 +326,98 @@ fn legacy_fingerprint_alias_does_not_mutate_the_strict_site() {
         .find(|entry| entry["identity"].is_object())
         .expect("strict site");
     assert_eq!(strict["observed_hits"], 0);
+}
+
+// r[verify chaoscontrol.assertion_json_details.shapes]
+#[test]
+fn json_assertion_details_preserve_catalog_identity_and_verdicts() {
+    let descriptor = descriptor("stable:json-details", AssertionKind::Always, "JSON details");
+    let catalog = catalog_jsonl(&descriptor);
+    for details in [
+        Value::Null,
+        json!(false),
+        json!(true),
+        json!(u64::MAX),
+        json!(-1),
+        json!(0.5),
+        json!("category: invented λ"),
+        json!([{"guest": "invented", "category": "invented", "adoption_track": "nested"}]),
+        json!({"guest": "raft", "category": "invariant"}),
+    ] {
+        for condition in [true, false] {
+            let mut event: Value =
+                serde_json::from_str(event_line(&descriptor, condition).trim()).unwrap();
+            event["antithesis_assert"]["details"] = details.clone();
+            let report = summarize_sdk_local_jsonl(
+                &format!("{catalog}{}", render(&[event])),
+                EVIDENCE_CLASS,
+                None,
+            )
+            .expect("bounded JSON assertion details");
+            assert_eq!(report["observed_assertions"], 1);
+            assert_eq!(report["failed_assertions"], u64::from(!condition));
+            assert_eq!(report["assertion_coverage"][0]["observed_hits"], 1);
+            assert_eq!(report["assertion_coverage"][0]["category"], "invariant");
+            assert_eq!(
+                report["assertion_coverage"][0]["identity"]["fingerprint"],
+                json!(descriptor.fingerprint().unwrap())
+            );
+            assert_eq!(report["adoption_tracks"], json!({}));
+            assert_eq!(
+                check_sdk_assertion_quality_report(&report).unwrap().passed,
+                condition
+            );
+        }
+    }
+}
+
+#[test]
+fn legacy_json_details_remain_diagnostic_only() {
+    for details in [
+        Value::Null,
+        json!(true),
+        json!(7),
+        json!("ready"),
+        json!([{"category": "invented"}]),
+    ] {
+        let content = render(&[json!({"antithesis_assert": {
+            "assert_type": "always", "condition": true, "hit": true,
+            "id": "1", "message": "legacy JSON details", "details": details
+        }})]);
+        let report = summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).unwrap();
+        assert_eq!(report["catalog_status"], "legacy-ambiguous");
+        assert_eq!(report["observed_assertions"], 1);
+        assert_eq!(report["assertion_coverage"][0]["category"], "uncategorized");
+        assert!(!check_sdk_assertion_quality_report(&report).unwrap().passed);
+    }
+}
+
+// r[verify chaoscontrol.assertion_json_details.bounds]
+#[test]
+fn flexible_assertion_details_keep_required_fields_and_metadata_checks() {
+    let descriptor = descriptor("stable:json-bounds", AssertionKind::Always, "JSON bounds");
+    let catalog = catalog_jsonl(&descriptor);
+    let base: Value = serde_json::from_str(event_line(&descriptor, true).trim()).unwrap();
+    let mut missing = base.clone();
+    missing["antithesis_assert"]
+        .as_object_mut()
+        .unwrap()
+        .remove("details");
+    let mut wrong_guest = base.clone();
+    wrong_guest["antithesis_assert"]["details"] = json!({"guest": "spoof"});
+    let mut wrong_category = base.clone();
+    wrong_category["antithesis_assert"]["details"] = json!({"category": false});
+    let mut spoofed = base;
+    spoofed["antithesis_assert"]["details"] = Value::Null;
+    spoofed["antithesis_assert"]["catalog_token"] = json!("00".repeat(ASSERTION_FINGERPRINT_BYTES));
+    for event in [missing, wrong_guest, wrong_category, spoofed] {
+        assert!(summarize_sdk_local_jsonl(
+            &format!("{catalog}{}", render(&[event])),
+            EVIDENCE_CLASS,
+            None
+        )
+        .is_err());
+    }
+    let missing_legacy = "{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"id\":\"1\",\"message\":\"legacy\"}}\n";
+    assert!(summarize_sdk_local_jsonl(missing_legacy, EVIDENCE_CLASS, None).is_err());
 }

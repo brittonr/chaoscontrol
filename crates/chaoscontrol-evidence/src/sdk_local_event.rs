@@ -132,12 +132,8 @@ impl LocalEventState {
         if assertion.message.is_empty() || assertion.message.len() > MAX_ASSERTION_MESSAGE_BYTES {
             return line_error(line_index, "legacy assertion message is out of bounds");
         }
-        let details = assertion.details.as_object().ok_or_else(|| {
-            EvidenceError::new(format!(
-                "line {}: assertion details must be an object",
-                line_index + 1
-            ))
-        })?;
+        // r[impl chaoscontrol.assertion_json_details.shapes]
+        let details = assertion.details.as_object();
         let guest = legacy_detail_string(
             details,
             "guest",
@@ -260,7 +256,8 @@ fn validate_event_metadata(
     line_index: usize,
 ) -> EvidenceResult<()> {
     let Some(details) = assertion.details.as_object() else {
-        return line_error(line_index, "assertion details must be an object");
+        // Non-object diagnostics have no metadata overrides; catalog identity wins.
+        return Ok(());
     };
     for (field, expected) in [
         ("guest", descriptor.guest.as_str()),
@@ -279,13 +276,13 @@ fn validate_event_metadata(
 }
 
 fn legacy_detail_string(
-    details: &Map<String, Value>,
+    details: Option<&Map<String, Value>>,
     field: &str,
     default: &str,
     maximum_bytes: usize,
     line_index: usize,
 ) -> EvidenceResult<String> {
-    let value = match details.get(field) {
+    let value = match details.and_then(|details| details.get(field)) {
         Some(value) => value.as_str().ok_or_else(|| {
             EvidenceError::new(format!("line {}: {field} must be a string", line_index + 1))
         })?,

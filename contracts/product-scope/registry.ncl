@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "accept-json-assertion-details",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Unscoped SDK assertion output and strict local reports must preserve every bounded JSON details shape and retain catalog identity, outcomes and metadata checks. Scalar/sequence SDK-to-report quality scenarios, malformed/resource negatives and process-scoping rejection must pass.",
+      non_claims = ["Local instrumentation admission does not prove KVM execution, replay, process-scoped non-object support, hosted-platform parity or release eligibility."],
+    },
+    {
       change = "preserve-first-setup-completion",
       owner = "chaoscontrol-evidence",
       target_state = "experimental",

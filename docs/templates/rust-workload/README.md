@@ -16,7 +16,7 @@ nix run .#scaffold-rust-workload -- ./chaos-workload my-service
 
 Set the `chaoscontrol-sdk` dependency in `Cargo.toml`.
 
-Assertion catalog macros also require `linkme` in the downstream crate. The registration attribute expands at the call site.
+Assertion and guidance catalog macros use the SDK-owned registration dependency. Downstream crates do not need a direct `linkme` dependency, including when the SDK dependency is renamed.
 
 This repository uses a path dependency. Downstream projects must use an accepted pinned revision or registry version.
 

@@ -909,7 +909,8 @@ macro_rules! __cc_register_catalog_with_must_hit {
             &name[..name.len() - "::__cc_assertion_function_name::__cc_assertion_probe".len()]
         }
         const _: () = {
-            #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            #[$crate::linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            #[linkme(crate = $crate::linkme)]
             static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
                 id: $id,
                 namespace: concat!(
@@ -946,7 +947,8 @@ macro_rules! __cc_register_stable_catalog {
             &name[..name.len() - "::__cc_assertion_function_name::__cc_assertion_probe".len()]
         }
         const _: () = {
-            #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            #[$crate::linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            #[linkme(crate = $crate::linkme)]
             static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
                 id: $id,
                 namespace: $namespace,

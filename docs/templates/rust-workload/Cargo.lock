@@ -133,7 +133,6 @@ name = "my-service-chaos-workload"
 version = "0.1.0"
 dependencies = [
  "chaoscontrol-sdk",
- "linkme",
  "serde_json",
 ]
 

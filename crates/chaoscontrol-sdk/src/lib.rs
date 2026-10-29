@@ -82,6 +82,12 @@ pub mod workload;
 #[doc(hidden)]
 pub use serde_json;
 
+/// SDK-owned registration dependency for exported macros.
+// r[impl chaoscontrol.sdk_catalog_dependency.encapsulation]
+#[cfg(feature = "full")]
+#[doc(hidden)]
+pub use linkme;
+
 /// Primary environment variable for local JSONL output.
 pub const LOCAL_OUTPUT: &str = "CHAOSCONTROL_SDK_LOCAL_OUTPUT";
 /// Antithesis-compatible fallback environment variable for local output.

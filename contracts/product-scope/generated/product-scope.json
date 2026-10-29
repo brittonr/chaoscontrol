@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "encapsulate-sdk-catalog-dependency",
+      "evidence_prerequisite": "Automatic/stable assertions and numeric/boolean guidance must register in SDK-only and renamed consumers without direct linkme. Local output must retain declarations, accepted hit identity and guidance values; no-full evaluation, const-message rejection, migrated guest builds and the actual template report must remain valid.",
+      "non_claims": [
+        "Macro dependency encapsulation and local instrumentation evidence do not prove VM execution, replay, hosted-platform parity or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "preserve-noop-optional-assertion-details",
       "evidence_prerequisite": "Optional always assertions must preserve borrowed sized/unsized detail calls and exactly-once condition-before-details evaluation without full; identical downstream callsites must run in both modes, with no disabled-mode output and unchanged enabled optional-property metadata.",
       "non_claims": [

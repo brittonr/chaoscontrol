@@ -28,7 +28,6 @@ fn main() {
         let read_ok = service.read_after_restart();
 
         let driver_details = json!({
-            "category": "workload-driver",
             "adoption_track": "external-harness",
         });
 

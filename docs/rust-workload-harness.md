@@ -24,6 +24,12 @@ fn main() {
 
 The harness does not replace `chaoscontrol_sdk::assert`, `lifecycle`, `guidance`, or `random`; it gives those primitives a repeatable workload/scenario shape. This is the default non-invasive path: drive the service externally, tag local observations as `external-harness`, and inspect coverage before touching service internals.
 
+Assertion and guidance macros register through the SDK-owned `linkme` dependency;
+downstream crates do not need to declare it, even when renaming `chaoscontrol-sdk`
+in their manifest. Disabling `full` still requires no catalog registration dependency.
+Use the category argument to category-specific macros as the source of assertion
+category; shared detail objects must not repeat a conflicting `category` field.
+
 ## Local dry-run
 
 Set `CHAOSCONTROL_SDK_LOCAL_OUTPUT` before first SDK use, then run the workload normally:

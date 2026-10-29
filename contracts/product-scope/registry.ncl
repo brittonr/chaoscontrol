@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "encapsulate-sdk-catalog-dependency",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Automatic/stable assertions and numeric/boolean guidance must register in SDK-only and renamed consumers without direct linkme. Local output must retain declarations, accepted hit identity and guidance values; no-full evaluation, const-message rejection, migrated guest builds and the actual template report must remain valid.",
+      non_claims = ["Macro dependency encapsulation and local instrumentation evidence do not prove VM execution, replay, hosted-platform parity or release eligibility."],
+    },
+    {
       change = "preserve-noop-optional-assertion-details",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

@@ -259,6 +259,9 @@ change the assertion oracle or prove exploration quality.
   `antithesis_init`, `lifecycle`, `random`, `AntithesisRng`, `assert_raw`).
   `compat::assert` mirrors the upstream `assert::{AssertType, assert_raw,
   guidance}` paths.
+- Assertion and guidance catalog macros resolve `linkme` through the SDK, as in
+  Antithesis 0.3.0. Downstream crates need no direct `linkme` dependency; renamed
+  SDK dependencies preserve registration, assertion identity and guidance output.
 - Local evidence applies `must_hit` from declarations; the SDK sends one
   `chaoscontrol_must_hit` metadata event per descriptor in VM mode, and the
   VMM oracle applies the same unexercised verdicts. Exploration, dashboard,

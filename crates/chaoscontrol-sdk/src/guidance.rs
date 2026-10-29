@@ -45,7 +45,8 @@ macro_rules! __cc_register_guidance {
             &name[..name.len() - "::__cc_guidance_function_name::__cc_guidance_probe".len()]
         }
         const _: () = {
-            #[linkme::distributed_slice($crate::guidance::GUIDANCE_CATALOG)]
+            #[$crate::linkme::distributed_slice($crate::guidance::GUIDANCE_CATALOG)]
+            #[linkme(crate = $crate::linkme)]
             static _GUIDANCE_ENTRY: $crate::guidance::GuidanceCatalogEntry =
                 $crate::guidance::GuidanceCatalogEntry {
                     id: $id,

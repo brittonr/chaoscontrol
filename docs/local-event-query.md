@@ -1223,6 +1223,69 @@ complete capture, hosted search, CPU/RSS/deadline bounds, VM execution, replay
 proof or full upstream compatibility. Old variants/schemas remain unchanged;
 WithLastValue queries require upgraded readers.
 
+## Keyed nearest earlier witness values
+
+`WithLastValueBy` adds explicit same-key correlation to `WithLastValue`.
+For example, annotate each error with the last restart from the same process,
+even when several processes' observations are interleaved:
+
+```json
+{
+  "WithLastValueBy": {
+    "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
+    "witness": {"Filter": {"input": "All", "predicate": {"Kind": "restart"}}},
+    "field": "last_restart",
+    "witness_field": "text",
+    "key_field": "process",
+    "within_ticks": 5
+  }
+}
+```
+
+Run the usual `query` and `validate` commands. If process A restarts at tick 1,
+process B at tick 2, and A reports an error at tick 3, A receives its own tick-1
+restart, not B's globally nearer tick-2 restart. The closest eligible witness
+has the greatest `(tick, source_id, source_sequence)` among equal-key events
+with `0 < candidate.tick - witness.tick <= within_ticks`. Zero windows and
+same-tick witnesses never match; tick subtraction is safe across `u64`.
+
+`key_field` is read independently on both branches using existing canonical
+`kind`/`text`/`process`/`source_kind` precedence, otherwise a derived string.
+Keys compare exact strings: no numeric coercion, case folding or Unicode
+normalization. Missing keys never match, including missing-to-missing;
+present empty keys do match. Project service identifiers with Map/MapText on
+**both** branches when grouping by a JSON value. A key projection on only one
+branch does not establish a match. Destination/key aliases use the original key.
+
+Candidate rows are retained. Missing keys, no in-window same-key witness or
+a missing selected value on the nearest same-key witness clear stale destination
+output without falling back to an older witness. Present empty selected values
+are copied. Other projections and canonical evidence remain unchanged. Witness
+duplicates retain first-projection priority **before** grouping by key; a later
+projection of the same source position cannot create an additional key group.
+
+All three field names and both child expressions validate even for empty input
+or zero windows. Invalid intermediate and generated envelopes are rejected
+before narrowing/deduplication can hide them; Union now also admits every branch
+row before discarding source-position duplicates, as DistinctByTick already did.
+Normal child work plus one operation per materialized candidate and witness
+is charged before annotation deduplication. Canonical/key sorting and binary
+search reuse the witness vector: no Cartesian product, key map, copied key
+strings or candidate-vector clone. Existing shared structural/scan/work/derived/
+result-byte/prefix bounds and moment reconciliation apply. Receipts bind the key,
+both expressions, output/value names, window and complete source/result facts;
+evaluation errors publish no result or receipt. New queries require upgraded
+readers; valid legacy query results and schemas remain unchanged.
+
+This extends the local scalar analogue of
+[Antithesis with_last](https://antithesis.com/docs/reference/event-set-reference/#with_last)
+with explicit caller-selected grouping. Equal keys do not imply the same VM,
+source, coherent tick domain or causal/multiverse history. Scope branches and
+choose keys accordingly; process names may repeat across VMs. This does not add
+nested events, composite keys, multiple named sets, future/timeout events,
+arbitrary joins, complete capture, hosted search, CPU/RSS/deadline bounds, VM
+execution or replay proof.
+
 ## Limits
 
 `EventQueryLimits` defaults and caps are:

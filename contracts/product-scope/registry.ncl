@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "correlate-keyed-last-witness",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "WithLastValueBy must retain candidate evidence while copying only the closest strictly earlier same-key scalar within the tick window. Verify interleaved/missing/empty/Unicode/canonical keys, permutations and ties, zero/max ticks and windows, no missing-value fallback, output aliases, duplicate projection priority before grouping, JSON composition, all names and both empty/zero-window children, hidden intermediate/generated capacity including Union duplicate admission, shared limits/moments and actual CLI query/key/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Explicit key equality is not inferred VM/process/source identity, coherent history or tick domain, causality or multiverse lineage, composite keys, nested witness events, future/timeout events, arbitrary joins/map execution, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "project-exact-elapsed-ticks",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

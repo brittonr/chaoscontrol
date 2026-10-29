@@ -597,6 +597,11 @@ pub enum EventQuery {
         field: String,
         pointer: String,
     },
+    /// Project the exact canonical u64 tick as unsigned decimal text.
+    MapTick {
+        input: Box<EventQuery>,
+        field: String,
+    },
     /// Annotate finite field quotients, removing stale output for undefined ratios.
     MapRatio {
         input: Box<EventQuery>,
@@ -1448,6 +1453,22 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.map_tick.projection]
+        EventQuery::MapTick { input, field } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for event in &mut rows {
+                admit_event(event)?;
+                if let Some(value) = event.derived.get_mut(field) {
+                    value.clear();
+                    write!(value, "{}", event.tick).expect("writing to a String cannot fail");
+                } else {
+                    event.derived.insert(field.clone(), event.tick.to_string());
+                }
+                admit_event(event)?;
+            }
+            Ok(rows)
+        }
         // r[impl chaoscontrol.map_ratio.projection]
         EventQuery::MapRatio {
             input,
@@ -1943,6 +1964,10 @@ fn validate_query_inner<'a>(
             validate_pointer(pointer)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::MapTick { input, field } => {
+            validate_field(field)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::MapRatio {
             input,
             field,
@@ -2207,6 +2232,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::RunningMax { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
+        | EventQuery::MapTick { input, .. }
         | EventQuery::MapRatio { input, .. }
         | EventQuery::MapDifference { input, .. }
         | EventQuery::Narrow { input, .. }

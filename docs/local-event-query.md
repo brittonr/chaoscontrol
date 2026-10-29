@@ -95,6 +95,80 @@ required to consume the `MapText` variant. No arbitrary transformations, live
 branching or full Notebook compatibility are implied.
 
 
+## Projecting canonical event ticks
+
+`MapTick` copies the canonical envelope's `tick` into a named derived field as
+exact unsigned decimal text. This supplies a bounded metadata projection for
+time-oriented queries, analogous to accessing `event.moment.vtime` in
+[Antithesis event expressions](https://antithesis.com/docs/reference/event-set-reference/#filter).
+It does not convert ChaosControl ticks to Antithesis virtual-time seconds.
+
+```json
+{"MapTick": {"input": "All", "field": "observed_tick"}}
+```
+
+Every row receives its actual canonical tick, including zero and
+`18446744073709551615` (`u64::MAX`). Existing destination strings are replaced.
+Same-named `details`, text and derived values cannot supply or override the
+source tick, and text need not be JSON. Other projections and all canonical
+evidence remain unchanged. A destination named `kind`, `text`, `process` or
+`source_kind` changes only its derived projection; canonical selector precedence
+does not change. Naming a projection `tick` does not overwrite the envelope tick.
+
+For elapsed-time triage, project both candidate and witness ticks, copy the
+nearest earlier witness's projection, and subtract:
+
+```json
+{
+  "MapDifference": {
+    "input": {
+      "WithLastValue": {
+        "input": {"MapTick": {
+          "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
+          "field": "observed_tick"
+        }},
+        "witness": {"MapTick": {
+          "input": {"Filter": {"input": "All", "predicate": {"Kind": "restart"}}},
+          "field": "restart_tick"
+        }},
+        "field": "previous_tick",
+        "witness_field": "restart_tick",
+        "within_ticks": 10
+      }
+    },
+    "field": "elapsed",
+    "minuend": "observed_tick",
+    "subtrahend": "previous_tick"
+  }
+}
+```
+
+A restart at tick 2 followed by an error at tick 8 yields `elapsed = "6.0"`.
+An error without a previous in-window restart retains its evidence without
+stale elapsed context. Downstream FieldNumber/Filter/Narrow can select and keep
+the result. Restrict both branches to the intended VM/process/history first.
+
+MapTick's text is exact across u64, but downstream numeric operators still use
+binary64: ticks above `2^53` may round, and subtracting `u64::MAX - 1` from
+`u64::MAX` through MapDifference yields `0.0`, not an exact one-tick duration.
+Use the retained canonical integers outside those operators when exact wide
+duration arithmetic is required. Tick-domain coherence, units and source
+partitioning are caller responsibilities; ordering is not inferred causality.
+
+The destination uses existing nonempty/control-free/256-byte UTF-8 admission,
+even on empty input. Child queries are fully validated. Each materialized child
+row costs one operation beyond child work. Admit original and generated
+envelopes before downstream narrowing/filtering/deduplication: even an invalid
+intermediate row that projection could shrink back into bounds is rejected.
+Existing shared node/depth/scan/work/derived/result-byte/prefix bounds and child
+moment reconciliation apply. Receipts bind the child, destination and complete
+canonical source/result facts; evaluation errors publish neither result nor
+receipt. New queries need upgraded readers; older query/schema/lookup contracts
+are unchanged. This is not a new clock, automatic time-unit conversion, arbitrary
+map execution, exact downstream arithmetic, multiverse lineage reconstruction,
+complete capture, hosted search, CPU/RSS/deadline bounds, VM execution or replay
+proof.
+
 ## Keeping selected projections
 
 `Narrow` removes unlisted query-local `derived` fields after projection. For
@@ -338,7 +412,7 @@ proof.
 ## Numeric thresholds on projected fields
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
-lets downstream queries numerically select fields produced by `Map`, `MapText`,
+lets downstream queries numerically select fields produced by `Map`, `MapText`, `MapTick`,
 `MapRatio`, `MapDifference`, `RunningCount`, `RunningSum`, `RunningMin` or
 `RunningMax`, rather than
 enumerating exact strings or comparing them lexically. For example, retain

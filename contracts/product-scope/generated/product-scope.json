@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "project-canonical-event-ticks",
+      "evidence_prerequisite": "MapTick must project exact unsigned canonical tick text through u64::MAX without trusting payload shadows or mutating evidence. Verify zero/ties/wide/max ticks, permutations/duplicates, replacement/canonical destinations, elapsed-time composition and binary64 limits, empty/name/child admission, exact/generated/intermediate capacity including otherwise repairable overflow, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Canonical tick projection is not a new clock, tick-to-seconds conversion, exact downstream binary64 arithmetic, implicit VM/process/source partitioning, causality or multiverse lineage, arbitrary map execution, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "project-retained-field-differences",
       "evidence_prerequisite": "MapDifference must preserve evidence while annotating finite binary64 minuend-minus-subtrahend values, compute before overwriting aliases and remove stale output for undefined arithmetic. Verify signed-zero/fractional/rounding/underflow/overflow/invalid/missing operands, canonical precedence, JSON/count/past-witness and downstream composition, all three names, hidden intermediate/generated capacity and duplicate overflow, shared limits, moments and actual CLI query/operand-order/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

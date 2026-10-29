@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "project-canonical-event-ticks",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "MapTick must project exact unsigned canonical tick text through u64::MAX without trusting payload shadows or mutating evidence. Verify zero/ties/wide/max ticks, permutations/duplicates, replacement/canonical destinations, elapsed-time composition and binary64 limits, empty/name/child admission, exact/generated/intermediate capacity including otherwise repairable overflow, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Canonical tick projection is not a new clock, tick-to-seconds conversion, exact downstream binary64 arithmetic, implicit VM/process/source partitioning, causality or multiverse lineage, arbitrary map execution, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "project-retained-field-differences",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

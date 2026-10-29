@@ -141,6 +141,82 @@ fn fingerprint_hex_is_the_exact_event_id_without_a_compatibility_alias() {
 }
 
 #[test]
+fn raw_namespace_ids_are_bound_to_the_catalog_key_in_reports() {
+    let mut value = descriptor("raw", AssertionKind::Always, "adapter invariant");
+    let raw_id = "42-1005/\"雪\"";
+    value.logical_key = AssertionLogicalKey::Stable {
+        key: raw_id.to_string(),
+    };
+    value.guest = "raw".to_string();
+    value.category = "raw".to_string();
+
+    let catalog = catalog_jsonl(&value);
+    let unobserved =
+        summarize_sdk_local_jsonl(&catalog, EVIDENCE_CLASS, None).expect("raw catalog report");
+    assert_eq!(unobserved["assertion_coverage"][0]["id"], raw_id);
+
+    let mut event: Value = serde_json::from_str(event_line(&value, true).trim()).expect("event");
+    event["antithesis_assert"]["id"] = json!(raw_id);
+    let mut declaration = event.clone();
+    declaration["antithesis_assert"]["hit"] = json!(false);
+    declaration["antithesis_assert"]["condition"] = json!(false);
+    let catalog = format!("{catalog}{}", render(&[declaration]));
+    let content = format!("{catalog}{}", render(&[event.clone()]));
+    let report = summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).expect("raw report");
+    assert_eq!(report["assertion_coverage"][0]["id"], raw_id);
+    assert_eq!(report["failed_assertions"], 0);
+    assert!(check_sdk_assertion_quality_report(&report).unwrap().passed);
+
+    for wrong_id in [
+        "different adapter ID".to_string(),
+        format!("{COMPATIBILITY_ID:08x}"),
+    ] {
+        event["antithesis_assert"]["id"] = json!(wrong_id);
+        assert!(summarize_sdk_local_jsonl(
+            &format!("{catalog}{}", render(&[event.clone()])),
+            EVIDENCE_CLASS,
+            None
+        )
+        .is_err());
+    }
+    let mut forged = report;
+    forged["assertion_coverage"][0]["id"] = json!("different adapter ID");
+    assert!(check_sdk_assertion_quality_report(&forged).is_err());
+}
+
+#[test]
+fn strict_declarations_are_validated_without_counting_them_as_hits() {
+    for (kind, expected_failures) in [
+        (AssertionKind::Always, 1),
+        (AssertionKind::Sometimes, 1),
+        (AssertionKind::Reachable, 1),
+        (AssertionKind::Unreachable, 0),
+    ] {
+        let value = descriptor("stable:declarations", kind, "unobserved declaration");
+        let catalog = catalog_jsonl(&value);
+        let mut declaration: Value =
+            serde_json::from_str(event_line(&value, false).trim()).expect("declaration");
+        declaration["antithesis_assert"]["hit"] = json!(false);
+        declaration["antithesis_assert"]["condition"] = json!(false);
+        let report = summarize_sdk_local_jsonl(
+            &format!("{catalog}{}", render(&[declaration.clone()])),
+            EVIDENCE_CLASS,
+            None,
+        )
+        .expect("bound declaration report");
+        assert_eq!(report["observed_assertions"], 0);
+        assert_eq!(report["failed_assertions"], expected_failures);
+        declaration["antithesis_assert"]["condition"] = json!(true);
+        assert!(summarize_sdk_local_jsonl(
+            &format!("{catalog}{}", render(&[declaration])),
+            EVIDENCE_CLASS,
+            None
+        )
+        .is_err());
+    }
+}
+
+#[test]
 fn strict_event_requires_redundant_display_type_and_must_hit() {
     let descriptor = descriptor("stable:required-shape", AssertionKind::Always, "strict");
     let base_event: Value =

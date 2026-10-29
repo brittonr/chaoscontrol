@@ -71,7 +71,8 @@ pub fn summarize_sdk_local_jsonl(
                     id: crate::sdk_local_identity_value::report_id(
                         descriptor,
                         resolved.fingerprint,
-                    ),
+                    )
+                    .into_owned(),
                     message: descriptor.message.clone(),
                     assert_type: descriptor_assert_type(descriptor.kind).to_string(),
                     category: descriptor.category.clone(),

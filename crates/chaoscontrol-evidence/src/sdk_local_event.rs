@@ -182,7 +182,24 @@ fn resolve_assertion(
             "assertion identity version or status is invalid",
         );
     }
-    let kind = assertion_kind(&assertion.assert_type, assertion.condition)?;
+    let (kind, expected_must_hit) = match (
+        assertion.assert_type.as_str(),
+        assertion.display_type.as_deref(),
+    ) {
+        ("always", Some("Always")) => (AssertionKind::Always, true),
+        ("always", Some("AlwaysOrUnreachable")) => (AssertionKind::Always, false),
+        ("sometimes", Some("Sometimes")) => (AssertionKind::Sometimes, true),
+        ("reachability", Some("Reachable")) => (AssertionKind::Reachable, true),
+        ("reachability", Some("Unreachable")) => (AssertionKind::Unreachable, false),
+        _ => return line_error(line_index, "assertion display_type conflicts with its kind"),
+    };
+    // r[impl chaoscontrol.raw_report_ids.preservation]
+    // Declarations carry false even for reachable sites; only hits encode reachability.
+    if (assertion.hit && assertion_kind(&assertion.assert_type, assertion.condition)? != kind)
+        || (!assertion.hit && assertion.condition)
+    {
+        return line_error(line_index, "assertion event shape is invalid");
+    }
     let catalog_token = assertion
         .catalog_token
         .ok_or_else(|| EvidenceError::new("assertion catalog token is missing"))?;
@@ -203,9 +220,6 @@ fn resolve_assertion(
             "event message conflicts with the catalog descriptor",
         );
     }
-    if !assertion.hit {
-        return line_error(line_index, "assertion event shape is invalid");
-    }
     if assertion
         .location
         .as_ref()
@@ -213,14 +227,6 @@ fn resolve_assertion(
     {
         return line_error(line_index, "assertion location must be an object");
     }
-    let expected_must_hit = match (kind, assertion.display_type.as_deref()) {
-        (AssertionKind::Always, Some("Always")) => true,
-        (AssertionKind::Always, Some("AlwaysOrUnreachable")) => false,
-        (AssertionKind::Sometimes, Some("Sometimes")) => true,
-        (AssertionKind::Reachable, Some("Reachable")) => true,
-        (AssertionKind::Unreachable, Some("Unreachable")) => false,
-        _ => return line_error(line_index, "assertion display_type conflicts with its kind"),
-    };
     if assertion.must_hit != Some(expected_must_hit) {
         return line_error(line_index, "assertion must_hit conflicts with its kind");
     }

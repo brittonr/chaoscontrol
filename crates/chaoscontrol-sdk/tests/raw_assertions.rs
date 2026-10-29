@@ -59,10 +59,19 @@ fn raw_assertions_declare_before_init_and_emit_afterward() {
         "raw::caller",
         false,
         true,
-        "raw-always",
+        "42-1005/\"雪\"",
     );
 
     chaoscontrol_init();
+    // Namespace semantics must not depend on runtime versus compiled registration.
+    cc_assert_always_stable!(
+        "raw",
+        "compiled-adapter-key",
+        "raw",
+        "raw",
+        true,
+        "compiled adapter invariant"
+    );
 
     raw(
         true,
@@ -80,7 +89,7 @@ fn raw_assertions_declare_before_init_and_emit_afterward() {
         "raw::caller",
         true,
         true,
-        "raw-always",
+        "42-1005/\"雪\"",
     );
     // A new site after catalog completion is rejected.
     raw(
@@ -98,6 +107,32 @@ fn raw_assertions_declare_before_init_and_emit_afterward() {
         .lines()
         .map(|line| serde_json::from_str::<Value>(line).expect("JSON line"))
         .collect::<Vec<_>>();
+
+    for (message, expected_id) in [
+        ("raw invariant", "raw-invariant"),
+        ("raw always", "42-1005/\"雪\""),
+        ("compiled adapter invariant", "compiled-adapter-key"),
+    ] {
+        let site_records = records
+            .iter()
+            .filter_map(|record| record.get("antithesis_assert"))
+            .filter(|assertion| assertion["message"] == message)
+            .collect::<Vec<_>>();
+        let declaration = site_records
+            .iter()
+            .find(|assertion| assertion["hit"] == false)
+            .expect("declared raw site");
+        let hit = site_records
+            .iter()
+            .find(|assertion| assertion["hit"] == true)
+            .expect("raw hit");
+        assert_eq!(declaration["id"], expected_id);
+        assert_eq!(hit["id"], expected_id);
+        assert_eq!(
+            declaration["assertion_fingerprint"],
+            hit["assertion_fingerprint"]
+        );
+    }
 
     let descriptors = records
         .iter()

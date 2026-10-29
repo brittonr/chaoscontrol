@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-raw-assertion-report-ids",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Accepted raw-namespace declarations and hits must retain exact caller IDs through JSONL and strict evidence reports; bound declarations must not count as hits, and inconsistent IDs and late raw sites remain rejected. Ordinary compiled IDs and VM aliases remain unchanged.",
+      non_claims = ["Local fallback and evidence-reader behavior does not prove VM execution, replay, hosted-platform parity or release eligibility."],
+    },
+    {
       change = "preserve-colliding-assertion-locations",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

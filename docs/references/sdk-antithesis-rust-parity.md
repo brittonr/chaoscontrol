@@ -172,6 +172,7 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 | Must-hit verdicts | unexercised must-hit properties fail | local evidence and the VMM oracle apply `must_hit` to unexercised verdicts | equivalent |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
 | Assertion location | `location` with class, function, file, line, column | same object, resolved through the accepted descriptor rather than an ambiguous compact alias | equivalent |
+| Raw assertion ID | caller-supplied string | original stable key in the `raw` namespace for declarations and hits; strict local reports use the same ID | equivalent |
 | Guidance records | `antithesis_guidance` watermarks, JSON guidance, and initialization catalog | same record shape, typed `GuidanceType`, per-site watermarks, `hit = false` catalog records, and `cc_guidance_json!` for stable sites | equivalent |
 
 Local assertion hits select source metadata through their accepted fingerprint;
@@ -179,6 +180,22 @@ declarations use the descriptor being declared. Distinct stable namespaces
 with colliding aliases and identical kind/message retain their own locations.
 This does not make unqualified ambiguous aliases resolvable or admit unknown
 sites. Raw source metadata, display type and must-hit overrides are preserved.
+
+Raw assertion IDs, including quoted and Unicode text, round-trip unchanged
+through local JSONL and strict evidence reports. This follows the upstream
+[`assert_raw` 0.3.0 example](https://docs.rs/antithesis_sdk/0.3.0/antithesis_sdk/assert/fn.assert_raw.html),
+additionally checked on 2026-10-28. Stable keys in the `raw` namespace have
+this report-ID meaning for both compiled and runtime registration. Compiled
+sites outside that namespace retain compact hexadecimal alias IDs (or full
+fingerprints without an alias). VM compatibility aliases, fingerprints and
+catalog tokens are unchanged. The reader validates `hit = false` declarations
+against the accepted catalog without counting them as observations, including
+reachable declarations whose condition is false.
+
+This is a clean raw-ID representation cutover: regenerate earlier raw-namespace
+JSONL and derived reports that used hashed aliases; the strict reader does not
+accept those aliases as alternate raw IDs. Ordinary compiled streams are
+unchanged. Local records and reports remain instrumentation evidence only.
 
 ## Guidance decision
 

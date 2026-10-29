@@ -126,7 +126,8 @@ pub(crate) fn hypercall_bound_assertion(
     let Ok(scoped_details) = serde_json::to_vec(&details) else {
         return (0, chaoscontrol_protocol::STATUS_ERROR);
     };
-    let (wire_id, _) = bound_event_ids(&identity);
+    // r[impl chaoscontrol.raw_report_ids.preservation]
+    let wire_id = identity.compatibility_id.unwrap_or(0);
     let frame = EventFrame {
         catalog_token: identity.catalog_token,
         fingerprint: identity.fingerprint,
@@ -353,13 +354,19 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
 }
 
 #[cfg(feature = "full")]
-fn bound_event_ids(identity: &crate::assertion_catalog::BoundIdentity) -> (u32, String) {
-    let wire_id = identity.compatibility_id.unwrap_or(0);
-    let report_id = identity
-        .compatibility_id
-        .map(|compatibility_id| format!("{compatibility_id:08x}"))
-        .unwrap_or_else(|| identity.fingerprint.to_hex());
-    (wire_id, report_id)
+fn local_report_id<'a>(
+    identity: &crate::assertion_catalog::BoundIdentity,
+    raw_id: Option<&'a str>,
+) -> std::borrow::Cow<'a, str> {
+    match raw_id {
+        Some(id) => std::borrow::Cow::Borrowed(id),
+        None => std::borrow::Cow::Owned(
+            identity
+                .compatibility_id
+                .map(|compatibility_id| format!("{compatibility_id:08x}"))
+                .unwrap_or_else(|| identity.fingerprint.to_hex()),
+        ),
+    }
 }
 
 #[cfg(feature = "full")]
@@ -389,7 +396,9 @@ fn dispatch_local_bound(
         CMD_ASSERT_UNREACHABLE => ("reachability", "Unreachable", false, false),
         _ => return,
     };
-    let location = crate::assertion_catalog::location_for_identity(identity);
+    let metadata = crate::assertion_catalog::metadata_for_identity(identity);
+    let report_id = local_report_id(&identity, metadata.as_ref().and_then(|entry| entry.raw_id));
+    let location = metadata.map(|entry| entry.location);
     let display_type = location
         .as_ref()
         .and_then(|location| location.display_type)
@@ -407,7 +416,6 @@ fn dispatch_local_bound(
             column: location.column,
         }
     });
-    let (_, report_id) = bound_event_ids(&identity);
     let value = serde_json::json!({
         "antithesis_assert": {
             "assert_type": assert_type,
@@ -447,7 +455,9 @@ pub(crate) fn local_emit_declaration(
         ProtocolKind::Reachable => ("reachability", true),
         ProtocolKind::Unreachable => ("reachability", false),
     };
-    let location = crate::assertion_catalog::location_for_descriptor(descriptor);
+    let metadata = crate::assertion_catalog::metadata_for_descriptor(descriptor);
+    let raw_id = metadata.as_ref().and_then(|entry| entry.raw_id);
+    let location = metadata.map(|entry| entry.location);
     let must_hit = location
         .as_ref()
         .and_then(|location| location.must_hit)
@@ -488,7 +498,7 @@ pub(crate) fn local_emit_declaration(
         fingerprint,
         compatibility_id: descriptor.compatibility_id,
     };
-    let (_, report_id) = bound_event_ids(&identity);
+    let report_id = local_report_id(&identity, raw_id);
     let value = serde_json::json!({
         "antithesis_assert": {
             "assert_type": assert_type,
@@ -552,7 +562,7 @@ mod tests {
 
     #[cfg(feature = "full")]
     #[test]
-    fn bound_event_ids_use_exact_alias_or_fingerprint_fallback() {
+    fn local_report_ids_keep_compiled_alias_and_fingerprint_fallbacks() {
         const PRESENT_ALIAS: u32 = 7;
         const FINGERPRINT_BYTE: u8 = 0xab;
         let fingerprint = chaoscontrol_protocol::identity::AssertionFingerprint(
@@ -568,11 +578,8 @@ mod tests {
             ..present
         };
 
-        assert_eq!(
-            super::bound_event_ids(&present),
-            (PRESENT_ALIAS, "00000007".to_string())
-        );
-        assert_eq!(super::bound_event_ids(&absent), (0, fingerprint.to_hex()));
+        assert_eq!(super::local_report_id(&present, None), "00000007");
+        assert_eq!(super::local_report_id(&absent, None), fingerprint.to_hex());
     }
 
     #[test]

@@ -29,6 +29,12 @@ pub(crate) struct CatalogLocation {
     pub must_hit: Option<bool>,
 }
 
+/// Borrowed report metadata; raw IDs are never copied into registration storage.
+pub(crate) struct CatalogMetadata<'a> {
+    pub location: CatalogLocation,
+    pub raw_id: Option<&'a str>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BoundIdentity {
     pub catalog_token: AssertionFingerprint,
@@ -184,16 +190,18 @@ pub(crate) fn resolve_compatibility(
 
 /// Resolve hit metadata from its accepted descriptor, not its compact alias.
 // r[impl chaoscontrol.assertion_locations.identity]
-pub(crate) fn location_for_identity(identity: BoundIdentity) -> Option<CatalogLocation> {
+pub(crate) fn metadata_for_identity(identity: BoundIdentity) -> Option<CatalogMetadata<'static>> {
     let catalog = SDK_CATALOG.get()?;
     let accepted = catalog.accepted.as_ref().ok()?.as_ref()?;
     let assertion = accepted.assertions.get(&identity.fingerprint)?;
-    location_for_descriptor(&assertion.descriptor)
+    metadata_for_descriptor(&assertion.descriptor)
 }
 
 /// Resolve declaration or hit source metadata without allocating candidate descriptors.
 // r[impl chaoscontrol.assertion_locations.preservation]
-pub(crate) fn location_for_descriptor(descriptor: &AssertionDescriptor) -> Option<CatalogLocation> {
+pub(crate) fn metadata_for_descriptor(
+    descriptor: &AssertionDescriptor,
+) -> Option<CatalogMetadata<'_>> {
     let mut matches = ASSERTION_CATALOG.iter().filter(|entry| {
         entry.namespace == descriptor.namespace
             && Some(entry.id) == descriptor.compatibility_id
@@ -212,21 +220,24 @@ pub(crate) fn location_for_descriptor(descriptor: &AssertionDescriptor) -> Optio
             }
     });
     match (matches.next(), matches.next()) {
-        (Some(first), None) => Some(CatalogLocation {
-            class: first.class,
-            function: (first.function)(),
-            file: first.file,
-            line: first.line,
-            column: first.column,
-            display_type: None,
-            must_hit: Some(first.must_hit),
+        (Some(first), None) => Some(CatalogMetadata {
+            location: CatalogLocation {
+                class: first.class,
+                function: (first.function)(),
+                file: first.file,
+                line: first.line,
+                column: first.column,
+                display_type: None,
+                must_hit: Some(first.must_hit),
+            },
+            raw_id: raw_report_id(descriptor),
         }),
-        (None, _) => raw_location_for_descriptor(descriptor),
+        (None, _) => raw_metadata_for_descriptor(descriptor),
         (Some(_), Some(_)) => None,
     }
 }
 
-fn raw_location_for_descriptor(descriptor: &AssertionDescriptor) -> Option<CatalogLocation> {
+fn raw_metadata_for_descriptor(descriptor: &AssertionDescriptor) -> Option<CatalogMetadata<'_>> {
     let registrations = RAW_REGISTRATIONS.lock().ok()?;
     let mut matches = registrations
         .iter()
@@ -235,7 +246,18 @@ fn raw_location_for_descriptor(descriptor: &AssertionDescriptor) -> Option<Catal
     if matches.next().is_some() {
         return None;
     }
-    Some(first.location)
+    // r[impl chaoscontrol.raw_report_ids.exact]
+    Some(CatalogMetadata {
+        location: first.location,
+        raw_id: raw_report_id(descriptor),
+    })
+}
+
+fn raw_report_id(descriptor: &AssertionDescriptor) -> Option<&str> {
+    match (descriptor.namespace.as_str(), &descriptor.logical_key) {
+        ("raw", AssertionLogicalKey::Stable { key }) => Some(key),
+        _ => None,
+    }
 }
 
 pub(crate) fn resolve_stable(

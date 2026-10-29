@@ -45,6 +45,52 @@ query-events validate-timeline --format markdown facts.json timeline.md \
   timeline-receipt.json
 ```
 
+## Numeric JSON filters
+
+`Filter` accepts a `JsonNumber` predicate over a JSON pointer into the original
+event `details`. For example, save this as `query.json` to select memory usage
+strictly greater than 50:
+
+```json
+{
+  "Filter": {
+    "input": "All",
+    "predicate": {
+      "JsonNumber": {
+        "pointer": "/memory/used",
+        "comparison": "GreaterThan",
+        "value": 50
+      }
+    }
+  }
+}
+```
+
+Run `query-events query --events events.json query.json result.json --receipt
+receipt.json`, then `query-events validate --events events.json query.json
+result.json receipt.json`. Each event in `events.json` must be a canonical
+envelope; an example matching details value is `{"memory":{"used":50.25}}`.
+
+Comparisons are `LessThan`, `LessThanOrEqual`, `Equal`, `GreaterThanOrEqual`
+and `GreaterThan`. Both operands use finite IEEE-754 binary64, like JavaScript
+Number: integers outside its exact range (beyond ±2^53) may round. This is not
+an exact arbitrary-width integer comparison. The threshold must be a JSON number,
+not a string or null. Missing paths and non-number values never match; no string,
+boolean or null coercion occurs. Pointers follow the existing nonempty `/`-prefixed,
+control-free, 256-byte bound and JSON-pointer `~0`/`~1` escaping.
+
+Filtering preserves original fields and canonical ordering. It uses the existing
+per-row filter operation charge, scan/row/byte limits and receipt binding; a
+threshold change invalidates a receipt even if it selects the same rows. Text
+operators retain their existing string semantics. Old queries and receipt schemas
+are unchanged; readers must upgrade before consuming the new predicate variant.
+
+This closes the bounded local threshold-filtering gap illustrated by the
+[Antithesis event-set memory example](https://antithesis.com/docs/product/debugging/advanced_multiverse_debugging/event_sets/).
+It does not add arbitrary JavaScript predicates, live branches, reactive sequences
+or hosted Notebook compatibility.
+
+
 ## Limits
 
 `EventQueryLimits` defaults and caps are:

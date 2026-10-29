@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "filter-json-numeric-events",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Typed JSON-number predicates must filter finite binary64 values with confined bounded pointers, all five comparisons and no non-number coercion. Actual query/validate CLI runs must retain canonical observations and reject malformed predicates, operation exhaustion and query/result receipt drift. Existing text filters and resource limits remain unchanged.",
+      non_claims = ["Local retained-input numeric querying does not prove exact arbitrary-width integer comparison, full Notebook compatibility, live branching, complete capture, VM execution, replay or release eligibility."],
+    },
+    {
       change = "bind-runtime-raw-string-identities",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

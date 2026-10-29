@@ -435,15 +435,35 @@ fn bounded_text(value: &str) -> String {
     crate::text::prefix_at_char_boundary(value, MAX_EVENT_TEXT_BYTES).to_string()
 }
 
+/// Comparison of finite IEEE-754 binary64 values (JavaScript Number semantics).
+/// Integers outside binary64's exact range may round before comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NumberComparison {
+    LessThan,
+    LessThanOrEqual,
+    Equal,
+    GreaterThanOrEqual,
+    GreaterThan,
+}
+
 /// A bounded predicate over one event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum EventPredicate {
-    TickRange { start_tick: u64, end_tick: u64 },
+    TickRange {
+        start_tick: u64,
+        end_tick: u64,
+    },
     Vm(u32),
     SourceKind(EventSourceKind),
     Kind(String),
     Process(String),
+    /// Compare a JSON number in `details`; missing/non-numeric values never match.
+    JsonNumber {
+        pointer: String,
+        comparison: NumberComparison,
+        value: serde_json::Number,
+    },
 }
 
 /// A typed, bounded query expression.
@@ -1187,6 +1207,25 @@ impl EventPredicate {
             Self::SourceKind(kind) => event.source_kind == *kind,
             Self::Kind(kind) => event.kind == *kind,
             Self::Process(process) => event.process.as_deref() == Some(process),
+            // r[impl chaoscontrol.numeric_event_query.comparison]
+            Self::JsonNumber {
+                pointer,
+                comparison,
+                value,
+            } => event
+                .details
+                .as_ref()
+                .and_then(|details| details.pointer(pointer))
+                .and_then(serde_json::Value::as_f64)
+                .filter(|actual| actual.is_finite())
+                .zip(value.as_f64())
+                .is_some_and(|(actual, expected)| match comparison {
+                    NumberComparison::LessThan => actual < expected,
+                    NumberComparison::LessThanOrEqual => actual <= expected,
+                    NumberComparison::Equal => actual == expected,
+                    NumberComparison::GreaterThanOrEqual => actual >= expected,
+                    NumberComparison::GreaterThan => actual > expected,
+                }),
         }
     }
 }
@@ -1268,6 +1307,13 @@ fn validate_predicate(predicate: &EventPredicate) -> Result<(), EventQueryError>
         }
         EventPredicate::Process(process) => {
             validate_text(process).map_err(|_| EventQueryError::InvalidPredicate)
+        }
+        EventPredicate::JsonNumber { pointer, value, .. } => {
+            validate_pointer(pointer)?;
+            if value.as_f64().is_none_or(|value| !value.is_finite()) {
+                return Err(EventQueryError::InvalidPredicate);
+            }
+            Ok(())
         }
         EventPredicate::TickRange { .. }
         | EventPredicate::Vm(_)

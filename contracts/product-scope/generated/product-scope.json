@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "filter-json-numeric-events",
+      "evidence_prerequisite": "Typed JSON-number predicates must filter finite binary64 values with confined bounded pointers, all five comparisons and no non-number coercion. Actual query/validate CLI runs must retain canonical observations and reject malformed predicates, operation exhaustion and query/result receipt drift. Existing text filters and resource limits remain unchanged.",
+      "non_claims": [
+        "Local retained-input numeric querying does not prove exact arbitrary-width integer comparison, full Notebook compatibility, live branching, complete capture, VM execution, replay or release eligibility."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "bind-runtime-raw-string-identities",
       "evidence_prerequisite": "Runtime raw descriptors must omit compact aliases and resolve by exact string key. Historically colliding IDs must both retain independent declarations, fingerprints, outcomes and sparse samples; actual default/sparse strict reports must accept passing properties and attribute left/right violations separately. Same-ID metadata conflicts and late unknown keys remain rejected; regenerate raw identity artifacts.",
       "non_claims": [

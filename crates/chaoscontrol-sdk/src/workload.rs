@@ -241,8 +241,6 @@ impl LocalDryRunReport {
         let mut report = LocalDryRunReport::default();
         let mut catalog = BTreeMap::<String, CatalogSite>::new();
         let mut exercised = BTreeSet::<String>::new();
-        let mut sometimes_success = BTreeSet::<String>::new();
-        let mut reachable_hit = BTreeSet::<String>::new();
 
         fn details_track(details: &Value) -> Option<String> {
             details
@@ -296,6 +294,10 @@ impl LocalDryRunReport {
                 }
                 let hit = required_bool(assertion, "hit", line_no)?;
                 let condition = required_bool(assertion, "condition", line_no)?;
+                let must_hit = assertion
+                    .get("must_hit")
+                    .map(|_| required_bool(assertion, "must_hit", line_no))
+                    .transpose()?;
                 let details = assertion.get("details").unwrap_or(&Value::Null);
                 let explicit_category = details
                     .get("category")
@@ -312,6 +314,18 @@ impl LocalDryRunReport {
                             "conflicting assertion metadata for ID {id} at line {}",
                             line_no + 1
                         )));
+                    }
+                    if let Some(must_hit) = must_hit {
+                        if existing
+                            .must_hit
+                            .is_some_and(|previous| previous != must_hit)
+                        {
+                            return Err(invalid_data(format!(
+                                "conflicting assertion must_hit for ID {id} at line {}",
+                                line_no + 1
+                            )));
+                        }
+                        existing.must_hit = Some(must_hit);
                     }
                     if let Some(explicit) = &explicit_category {
                         if existing.category_explicit && existing.category != *explicit {
@@ -333,6 +347,7 @@ impl LocalDryRunReport {
                             assert_type: assert_type.clone(),
                             category,
                             category_explicit: explicit_category.is_some(),
+                            must_hit,
                             observed_hits: 0,
                             success_count: 0,
                             failure_count: 0,
@@ -363,15 +378,6 @@ impl LocalDryRunReport {
                     if site.assert_type != "sometimes" {
                         report.failed_assertions += 1;
                     }
-                }
-                match assert_type.as_str() {
-                    "sometimes" if condition => {
-                        sometimes_success.insert(id);
-                    }
-                    "reachability" if condition => {
-                        reachable_hit.insert(id);
-                    }
-                    _ => {}
                 }
             } else if value.get("antithesis_setup").is_some() {
                 let setup = exact_setup_record(&value, line_no)?;
@@ -406,10 +412,17 @@ impl LocalDryRunReport {
             if !observed {
                 report.unobserved_assertions.push(site.message.clone());
             }
-            if site.assert_type == "sometimes" && !sometimes_success.contains(&id) {
+            // r[impl chaoscontrol.diagnostic_optional.progress]
+            if site.assert_type == "sometimes"
+                && site.success_count == 0
+                && (observed || site.must_hit != Some(false))
+            {
                 report.sometimes_without_success.push(site.message.clone());
             }
-            if site.assert_type == "reachability" && !reachable_hit.contains(&id) {
+            if site.assert_type == "reachability"
+                && site.must_hit != Some(false)
+                && site.success_count == 0
+            {
                 report.reachable_without_hit.push(site.message.clone());
             }
             report.assertion_coverage.push(AssertionCoverage {
@@ -513,6 +526,7 @@ struct CatalogSite {
     assert_type: String,
     category: String,
     category_explicit: bool,
+    must_hit: Option<bool>,
     observed_hits: usize,
     success_count: usize,
     failure_count: usize,
@@ -613,6 +627,107 @@ mod tests {
                 assert!(report.gaps().iter().any(|gap| gap.contains("sometimes")));
             } else {
                 assert!(report.sometimes_without_success.is_empty());
+            }
+        }
+    }
+
+    // r[verify chaoscontrol.diagnostic_optional.progress]
+    #[test]
+    fn quiet_progress_requires_hits_only_when_not_explicitly_optional() {
+        for assert_type in ["reachability", "sometimes"] {
+            for (must_hit, expected_gap) in [(None, true), (Some(true), true), (Some(false), false)]
+            {
+                let mut assertion = json!({
+                    "assert_type": assert_type, "condition": false, "hit": false,
+                    "id": "quiet", "message": "quiet property", "details": {"category": "branch"}
+                });
+                if let Some(must_hit) = must_hit {
+                    assertion["must_hit"] = json!(must_hit);
+                }
+                let content = format!(
+                    "{}\n{}",
+                    json!({"antithesis_setup": {"status": "complete", "details": {}}}),
+                    json!({"antithesis_assert": assertion})
+                );
+                let report = LocalDryRunReport::from_jsonl(&content).unwrap();
+                assert_eq!(
+                    !report.gaps().is_empty(),
+                    expected_gap,
+                    "{assert_type} {must_hit:?}"
+                );
+                assert_eq!(report.unobserved_assertions, ["quiet property"]);
+                let site = &report.assertion_coverage[0];
+                assert!(!site.observed);
+                assert_eq!(
+                    (site.observed_hits, site.success_count, site.failure_count),
+                    (0, 0, 0)
+                );
+                assert_eq!(report.failed_assertions, 0);
+            }
+        }
+    }
+
+    // r[verify chaoscontrol.diagnostic_optional.progress]
+    #[test]
+    fn optional_execution_retains_violations_and_unsuccessful_progress() {
+        for (assert_type, conditions, violations, progress_gap, counts) in [
+            ("reachability", &[false][..], 1, false, (1, 0, 1)),
+            ("always", &[false][..], 1, false, (1, 0, 1)),
+            ("sometimes", &[false, false][..], 0, true, (2, 0, 2)),
+            ("sometimes", &[false, true, false][..], 0, false, (3, 1, 2)),
+        ] {
+            let lines = conditions
+                .iter()
+                .map(|condition| {
+                    json!({"antithesis_assert": {
+                        "assert_type": assert_type, "condition": condition, "hit": true,
+                        "must_hit": false, "id": "optional", "message": "optional property",
+                        "details": {"category": "invariant"}
+                    }})
+                    .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let report = LocalDryRunReport::from_jsonl(&lines).unwrap();
+            assert_eq!(report.failed_assertions, violations, "{assert_type}");
+            assert_eq!(!report.sometimes_without_success.is_empty(), progress_gap);
+            assert!(report.reachable_without_hit.is_empty());
+            assert!(report.unobserved_assertions.is_empty());
+            let site = &report.assertion_coverage[0];
+            assert_eq!(
+                (site.observed_hits, site.success_count, site.failure_count),
+                counts
+            );
+        }
+    }
+
+    // r[verify chaoscontrol.diagnostic_optional.progress]
+    #[test]
+    fn diagnostic_must_hit_metadata_cannot_silently_change_obligations() {
+        let base = json!({"antithesis_assert": {
+            "assert_type": "reachability", "condition": false, "hit": false,
+            "id": "same", "message": "required path", "details": {"category": "branch"}
+        }});
+        for invalid in [Value::Null, json!("false"), json!(0), json!({})] {
+            let mut record = base.clone();
+            record["antithesis_assert"]["must_hit"] = invalid;
+            assert!(LocalDryRunReport::from_jsonl(&record.to_string()).is_err());
+        }
+        for first in [false, true] {
+            let mut declaration = base.clone();
+            declaration["antithesis_assert"]["must_hit"] = json!(first);
+            let mut conflicting = base.clone();
+            conflicting["antithesis_assert"]["must_hit"] = json!(!first);
+            assert!(
+                LocalDryRunReport::from_jsonl(&format!("{declaration}\n{conflicting}")).is_err()
+            );
+            for compatible in [&base, &declaration] {
+                let report = LocalDryRunReport::from_jsonl(&format!(
+                    "{compatible}\n{declaration}\n{compatible}"
+                ))
+                .unwrap();
+                assert_eq!(!report.reachable_without_hit.is_empty(), first);
+                assert_eq!(report.assertion_coverage[0].observed_hits, 0);
             }
         }
     }

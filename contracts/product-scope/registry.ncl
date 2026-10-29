@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "honor-optional-sdk-diagnostic-gaps",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "SDK diagnostics must honor explicit optionality for quiet progress sites while retaining unobserved coverage and executed violations. Regressions must preserve required/unknown gaps and reject malformed/conflicting must-hit metadata; actual SDK quiet-forbidden, missing-required and executed-forbidden scenarios must agree with strict CLI outcomes.",
+      non_claims = ["Diagnostic optional progress is local instrumentation evidence, not collision-safe promotion authority, VM execution, replay or release eligibility."],
+    },
+    {
       change = "honor-optional-local-quality-observations",
       owner = "chaoscontrol-evidence",
       target_state = "experimental",

@@ -131,10 +131,15 @@ The SDK diagnostic `LocalDryRunReport` retains false `sometimes` observations
 without counting them as observed safety violations in `failed_assertions`.
 This follows the [upstream existential sometimes contract](https://docs.rs/antithesis_sdk/0.3.0/antithesis_sdk/macro.assert_sometimes.html):
 false/true/false retains three hits and two false observations, but no progress
-gap or observed safety violation. Never-successful progress still produces a
-gap and fails the strict quality gate. The diagnostic violation-hit counter is
-not the strict report's distinct failed-property count; diagnostic reports remain
-non-collision-safe and do not authorize promotion.
+gap or observed safety violation. Required or already-executed never-successful
+progress still produces a gap and fails the strict quality gate. Explicit
+`must_hit=false` suppresses progress obligations only for unexecuted sometimes
+sites and prevents unreachable sites from becoming required reachable targets.
+All unobserved sites and raw counters are retained; actual optional safety
+violations still count. Missing metadata remains conservative, while malformed
+or contradictory explicit must-hit values are rejected. The diagnostic
+violation-hit counter is not the strict report's distinct failed-property count;
+diagnostic reports remain non-collision-safe and do not authorize promotion.
 
 ## Random
 

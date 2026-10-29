@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "honor-optional-sdk-diagnostic-gaps",
+      "evidence_prerequisite": "SDK diagnostics must honor explicit optionality for quiet progress sites while retaining unobserved coverage and executed violations. Regressions must preserve required/unknown gaps and reject malformed/conflicting must-hit metadata; actual SDK quiet-forbidden, missing-required and executed-forbidden scenarios must agree with strict CLI outcomes.",
+      "non_claims": [
+        "Diagnostic optional progress is local instrumentation evidence, not collision-safe promotion authority, VM execution, replay or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "honor-optional-local-quality-observations",
       "evidence_prerequisite": "Strict report observation/progress blockers and aggregate validation must follow admitted must-hit verdicts. Actual SDK optional no-hit reports must pass local quality without invented observations, while required/unknown no-hit sites, observed violations and inconsistent reports remain blocking or rejected.",
       "non_claims": [

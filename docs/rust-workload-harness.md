@@ -61,9 +61,16 @@ Parse the output with `LocalDryRunReport::from_path` to inspect:
 In the SDK diagnostic report, `failed_assertions` counts observed
 always/unreachable violation hits, not distinct failed properties or every false
 condition. False `sometimes` attempts stay in each site's `failure_count`; an
-eventual true observation clears the progress gap. A site that never succeeds
-still appears in `sometimes_without_success` and `gaps()`, even when the observed
-violation counter is zero. Inspect those gaps as well as the counter.
+eventual true observation clears the progress gap. Required or unknown-metadata
+sites without success still appear in `sometimes_without_success` and `gaps()`,
+even when the observed violation counter is zero. An explicitly optional
+(`must_hit=false`) sometimes site needs success only after execution. Quiet
+optional reachability sites (`Unreachable`) do not enter `reachable_without_hit`;
+executed forbidden paths still count as violations. All zero-hit sites remain
+in `unobserved_assertions` and coverage rows, including optional ones: that list
+is an observation inventory, not a failed-property verdict. Malformed or
+conflicting explicit `must_hit` metadata is rejected. Inspect progress gaps as
+well as the violation counter.
 
 The strict evidence report separately derives failed-property verdicts and can
 therefore report a failed never-successful property when the SDK diagnostic

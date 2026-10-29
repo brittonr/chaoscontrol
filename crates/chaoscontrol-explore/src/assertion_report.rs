@@ -51,6 +51,7 @@ pub fn strict_projection(
             }),
             message: record.message.clone(),
             kind: format!("{:?}", record.kind).to_lowercase(),
+            must_hit: record.must_hit,
             guest: record.guest.clone(),
             category: record.category.clone(),
             verdict: format!("{verdict:?}").to_lowercase(),

@@ -162,18 +162,24 @@ pub(crate) fn derive_detail_verdict(detail: &AssertionDetail) -> Result<&'static
     if hits != detail.hit_count {
         return Err("assertion counters disagree".to_string());
     }
+    // r[impl chaoscontrol.assertion_reports.must_hit_verdict]
+    let unexercised = match detail.must_hit {
+        Some(true) => "failed",
+        Some(false) => "passed",
+        None => "unexercised",
+    };
     match detail.kind.as_str() {
         "always" if detail.false_count > 0 => Ok("failed"),
         "always" if hits > 0 => Ok("passed"),
-        "always" => Ok("unexercised"),
+        "always" => Ok(unexercised),
         "sometimes" if detail.true_count > 0 => Ok("passed"),
         "sometimes" if hits > 0 => Ok("failed"),
-        "sometimes" => Ok("unexercised"),
+        "sometimes" => Ok(unexercised),
         "reachable" if detail.false_count > 0 => {
             Err("reachable false count is invalid".to_string())
         }
         "reachable" if detail.true_count > 0 => Ok("passed"),
-        "reachable" => Ok("unexercised"),
+        "reachable" => Ok(unexercised),
         "unreachable" if detail.true_count > 0 => {
             Err("unreachable true count is invalid".to_string())
         }

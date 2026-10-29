@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-assertion-must-hit-reports",
+      owner = "chaoscontrol-explore",
+      target_state = "experimental",
+      evidence_prerequisite = "Oracle-to-summary must-hit metadata, historical absence compatibility, Rust and Nickel verdict admission, and cross-seed conflict regressions must pass.",
+      non_claims = ["Reporting parity does not establish hosted platform parity, VM execution correctness, or release eligibility."],
+    },
+    {
       change = "add-native-process-record-replay-profile",
       owner = "chaoscontrol-protocol",
       target_state = "experimental",

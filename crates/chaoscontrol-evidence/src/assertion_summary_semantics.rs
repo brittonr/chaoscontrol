@@ -10,6 +10,7 @@ pub(crate) struct AssertionSemantics<'a> {
     pub guest: &'a str,
     pub category: &'a str,
     pub verdict: &'a str,
+    pub must_hit: Option<bool>,
     pub hit_count: u64,
     pub true_count: u64,
     pub false_count: u64,
@@ -69,16 +70,21 @@ pub(crate) fn validate_common(assertion: AssertionSemantics<'_>) -> EvidenceResu
     Ok(())
 }
 
+// r[impl chaoscontrol.assertion_reports.must_hit_verdict]
 fn expected_verdict(assertion: &AssertionSemantics<'_>) -> EvidenceResult<&'static str> {
     match assertion.kind {
-        "always" if assertion.hit_count == 0 => Ok("unexercised"),
+        "always" | "sometimes" | "reachable" if assertion.hit_count == 0 => {
+            Ok(match assertion.must_hit {
+                Some(true) => "failed",
+                Some(false) => "passed",
+                None => "unexercised",
+            })
+        }
         "always" if assertion.false_count == 0 => Ok("passed"),
         "always" => Ok("failed"),
-        "sometimes" if assertion.hit_count == 0 => Ok("unexercised"),
         "sometimes" if assertion.true_count > 0 => Ok("passed"),
         "sometimes" => Ok("failed"),
         "reachable" if assertion.false_count == 0 && assertion.hit_count > 0 => Ok("passed"),
-        "reachable" if assertion.false_count == 0 => Ok("unexercised"),
         "unreachable" if assertion.true_count == 0 && assertion.hit_count == 0 => Ok("passed"),
         "unreachable" if assertion.true_count == 0 => Ok("failed"),
         _ => Err(EvidenceError::new(

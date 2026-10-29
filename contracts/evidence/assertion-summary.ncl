@@ -164,21 +164,27 @@ let Identity = {
   canonical_descriptor | CanonicalHex,
   catalog_tokens | OneCatalogToken,
 } in
+# r[impl chaoscontrol.assertion_reports.must_hit_verdict]
+let UnhitVerdict = fun value =>
+  if std.record.has_field "must_hit" value then
+    if value.must_hit then "failed" else "passed"
+  else "unexercised"
+in
 let AssertionSemantics = std.contract.from_predicate (fun value =>
   let hits = value.true_count + value.false_count in
   hits == value.hit_count
   && (
     if value.kind == "always" then
-      if hits == 0 then value.verdict == "unexercised"
+      if hits == 0 then value.verdict == UnhitVerdict value
       else if value.false_count > 0 then value.verdict == "failed"
       else value.verdict == "passed"
     else if value.kind == "sometimes" then
-      if hits == 0 then value.verdict == "unexercised"
+      if hits == 0 then value.verdict == UnhitVerdict value
       else if value.true_count > 0 then value.verdict == "passed"
       else value.verdict == "failed"
     else if value.kind == "reachable" then
       value.false_count == 0
-      && (if value.true_count > 0 then value.verdict == "passed" else value.verdict == "unexercised")
+      && (if value.true_count > 0 then value.verdict == "passed" else value.verdict == UnhitVerdict value)
     else
       value.true_count == 0
       && (if value.false_count > 0 then value.verdict == "failed" else value.verdict == "passed")
@@ -190,6 +196,7 @@ let AssertionRecord = {
   process_instances | ProcessInstances | optional,
   message | BoundedString MaxMessageBytes,
   kind | AssertionKind,
+  must_hit | Bool | optional,
   guest | BoundedString MaxGuestBytes,
   category | Category,
   verdict | Verdict,

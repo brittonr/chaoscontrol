@@ -189,6 +189,7 @@ mod tests {
             identity: None,
             message: format!("assertion_{id}"),
             kind: "always".to_string(),
+            must_hit: None,
             guest: "uncategorized".to_string(),
             category: "uncategorized".to_string(),
             verdict: "passed".to_string(),

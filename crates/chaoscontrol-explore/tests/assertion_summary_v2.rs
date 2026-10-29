@@ -48,6 +48,7 @@ fn strict_detail() -> AssertionDetail {
         }),
         message: "summary remains valid".to_string(),
         kind: "always".to_string(),
+        must_hit: None,
         guest: "guest".to_string(),
         category: "invariant".to_string(),
         verdict: "passed".to_string(),
@@ -127,6 +128,105 @@ fn strict_campaign_summary_round_trips_through_promotion_validator() {
     let summary = AssertionSummaryV2::from_campaign(&report).expect("strict summary");
     let value = serde_json::to_value(&summary).expect("summary JSON");
     validate_assertion_summary_for_promotion(&value).expect("promotion validation");
+}
+
+// r[verify chaoscontrol.assertion_reports.must_hit]
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn zero_hit_must_hit_summaries_preserve_oracle_verdicts() {
+    use chaoscontrol_explore::assertion_report::strict_projection;
+    use chaoscontrol_fault::oracle::PropertyOracle;
+    use chaoscontrol_protocol::admission::CatalogBuilder;
+
+    for kind in [
+        AssertionKind::Always,
+        AssertionKind::Sometimes,
+        AssertionKind::Reachable,
+        AssertionKind::Unreachable,
+    ] {
+        for must_hit in [None, Some(true), Some(false)] {
+            let mut descriptor = strict_detail().identity.expect("identity").descriptor;
+            descriptor.kind = kind;
+            let fingerprint = descriptor.fingerprint().expect("fingerprint");
+            let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
+            let mut builder = CatalogBuilder::begin(1).expect("catalog begins");
+            builder.insert(descriptor).expect("descriptor inserts");
+            let mut oracle = PropertyOracle::new();
+            oracle
+                .activate_catalog(builder.complete(token).expect("catalog"))
+                .expect("activation");
+            if let Some(value) = must_hit {
+                oracle
+                    .record_event(
+                        chaoscontrol_protocol::MUST_HIT_METADATA_EVENT,
+                        serde_json::json!({"fingerprint": fingerprint.to_hex(), "must_hit": value}),
+                    )
+                    .expect("metadata");
+            }
+            let projection = strict_projection(&oracle.report()).expect("projection");
+            let report = campaign(
+                projection.details,
+                projection.catalog_status,
+                true,
+                Vec::new(),
+            );
+            let summary =
+                AssertionSummaryV2::from_campaign(&report).expect("oracle verdict accepted");
+            let mut value = serde_json::to_value(&summary).expect("summary JSON");
+            validate_assertion_summary_for_promotion(&value).expect("evidence verdict accepted");
+            let parsed: AssertionSummaryV2 =
+                serde_json::from_value(value.clone()).expect("read back");
+            let expected = if kind == AssertionKind::Unreachable || must_hit == Some(false) {
+                "passed"
+            } else if must_hit == Some(true) {
+                "failed"
+            } else {
+                "unexercised"
+            };
+            assert_eq!(parsed.assertions()[0].must_hit, must_hit);
+            assert_eq!(parsed.assertions()[0].verdict, expected);
+            if must_hit.is_none() {
+                assert!(value["assertions"][0].get("must_hit").is_none());
+            }
+            value["assertions"][0]["verdict"] = serde_json::json!(if expected == "passed" {
+                "failed"
+            } else {
+                "passed"
+            });
+            assert!(serde_json::from_value::<AssertionSummaryV2>(value.clone()).is_err());
+            assert!(validate_assertion_summary_for_promotion(&value).is_err());
+        }
+    }
+}
+
+#[test]
+fn must_hit_cannot_hide_observed_failure_or_accept_malformed_metadata() {
+    let mut detail = strict_detail();
+    detail.true_count = 0;
+    detail.false_count = 1;
+    detail.verdict = "failed".to_string();
+    for must_hit in [true, false] {
+        detail.must_hit = Some(must_hit);
+        let report = campaign(
+            vec![detail.clone()],
+            CatalogValidationStatus::Accepted,
+            true,
+            Vec::new(),
+        );
+        let summary = AssertionSummaryV2::from_campaign(&report).expect("failure summary");
+        let mut value = serde_json::to_value(summary).expect("JSON");
+        value["assertions"][0]["verdict"] = serde_json::json!("passed");
+        assert!(serde_json::from_value::<AssertionSummaryV2>(value.clone()).is_err());
+        for malformed in [
+            serde_json::Value::Null,
+            serde_json::json!("false"),
+            serde_json::json!(0),
+        ] {
+            value["assertions"][0]["must_hit"] = malformed;
+            value["assertions"][0]["verdict"] = serde_json::json!("failed");
+            assert!(serde_json::from_value::<AssertionSummaryV2>(value.clone()).is_err());
+        }
+    }
 }
 
 #[test]

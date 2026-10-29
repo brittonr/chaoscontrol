@@ -2765,6 +2765,7 @@ impl Explorer {
                 process_instances: record.process_instances.clone(),
                 message: record.message.clone(),
                 kind: format!("{:?}", record.kind).to_lowercase(),
+                must_hit: record.must_hit,
                 guest: record.guest.clone(),
                 category: record.category.clone(),
                 verdict: format!("{:?}", verdict).to_lowercase(),
@@ -3509,6 +3510,14 @@ pub struct AssertionDetail {
     pub message: String,
     /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
     pub kind: String,
+    /// Whether the property must execute to pass; absent in historical reports.
+    // r[impl chaoscontrol.assertion_reports.must_hit]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::non_null_option::deserialize"
+    )]
+    pub must_hit: Option<bool>,
     /// Guest name for assertion-density reporting.
     pub guest: String,
     /// Density category for grouped exercise reporting.

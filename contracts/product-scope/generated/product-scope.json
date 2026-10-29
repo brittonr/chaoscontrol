@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "preserve-assertion-must-hit-reports",
+      "evidence_prerequisite": "Oracle-to-summary must-hit metadata, historical absence compatibility, Rust and Nickel verdict admission, and cross-seed conflict regressions must pass.",
+      "non_claims": [
+        "Reporting parity does not establish hosted platform parity, VM execution correctness, or release eligibility."
+      ],
+      "owner": "chaoscontrol-explore",
+      "target_state": "experimental"
+    },
+    {
       "change": "add-native-process-record-replay-profile",
       "evidence_prerequisite": "The bounded profile and descriptor types, canonical identity, lifecycle record validation, non-claim and text guards, and the declared positive and negative protocol tests must pass.",
       "non_claims": [

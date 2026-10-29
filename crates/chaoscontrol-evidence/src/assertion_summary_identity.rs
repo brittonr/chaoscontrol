@@ -46,6 +46,8 @@ struct ReviewAssertion {
     guest: String,
     category: String,
     verdict: String,
+    #[serde(default, deserialize_with = "crate::non_null_option::deserialize")]
+    must_hit: Option<bool>,
     hit_count: u64,
     true_count: u64,
     false_count: u64,
@@ -273,6 +275,7 @@ fn validate_common(assertion: &ReviewAssertion) -> EvidenceResult<()> {
             guest: &assertion.guest,
             category: &assertion.category,
             verdict: &assertion.verdict,
+            must_hit: assertion.must_hit,
             hit_count: assertion.hit_count,
             true_count: assertion.true_count,
             false_count: assertion.false_count,

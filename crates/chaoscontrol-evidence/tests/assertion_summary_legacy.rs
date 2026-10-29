@@ -73,3 +73,25 @@ fn report_cardinality_overflow_is_rejected() {
     let error = validate_assertion_summary(&Value::Array(items)).expect_err("cardinality limit");
     assert!(error.message().contains("entry count exceeds"));
 }
+
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn legacy_zero_hit_summaries_without_must_hit_keep_historical_verdicts() {
+    for (kind, expected) in [
+        ("always", "unexercised"),
+        ("sometimes", "unexercised"),
+        ("reachable", "unexercised"),
+        ("unreachable", "passed"),
+    ] {
+        let mut assertion = legacy_assertion();
+        assertion["kind"] = json!(kind);
+        assertion["hit_count"] = json!(0);
+        assertion["true_count"] = json!(0);
+        assertion["verdict"] = json!(expected);
+        let mut summary = json!([assertion]);
+        validate_assertion_summary(&summary).expect("historical zero-hit verdict");
+        assert!(validate_assertion_summary_for_promotion(&summary).is_err());
+        summary[0]["verdict"] = json!("failed");
+        assert!(validate_assertion_summary(&summary).is_err());
+    }
+}

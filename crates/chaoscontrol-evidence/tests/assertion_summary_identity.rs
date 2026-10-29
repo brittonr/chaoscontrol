@@ -62,7 +62,12 @@ fn entry(descriptor: &AssertionDescriptor, token: &str) -> Value {
             "catalog_tokens": [token],
         },
         "message": descriptor.message,
-        "kind": "always",
+        "kind": match descriptor.kind {
+            AssertionKind::Always => "always",
+            AssertionKind::Sometimes => "sometimes",
+            AssertionKind::Reachable => "reachable",
+            AssertionKind::Unreachable => "unreachable",
+        },
         "guest": descriptor.guest,
         "category": descriptor.category,
         "verdict": "passed",
@@ -83,6 +88,27 @@ fn strict_summary(descriptors: &[AssertionDescriptor]) -> Value {
             .map(|descriptor| entry(descriptor, &token))
             .collect::<Vec<_>>()
     })
+}
+
+fn summary_with_observations(
+    kind: AssertionKind,
+    must_hit: Option<bool>,
+    true_count: u64,
+    false_count: u64,
+    verdict: &str,
+) -> Value {
+    let mut descriptor = descriptor("org.example.guest", "must-hit", COMPATIBILITY_ID);
+    descriptor.kind = kind;
+    let mut summary = strict_summary(&[descriptor]);
+    let assertion = &mut summary["assertions"][0];
+    assertion["hit_count"] = json!(true_count + false_count);
+    assertion["true_count"] = json!(true_count);
+    assertion["false_count"] = json!(false_count);
+    assertion["verdict"] = json!(verdict);
+    if let Some(must_hit) = must_hit {
+        assertion["must_hit"] = json!(must_hit);
+    }
+    summary
 }
 
 #[test]
@@ -268,4 +294,125 @@ fn rejects_spoofed_verdict_kind_counts_and_unbounded_details() {
     details["assertions"][0]["last_failure_details"] =
         json!("x".repeat(chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES + 1));
     assert!(validate_assertion_summary(&details).is_err());
+}
+
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn zero_hit_verdicts_follow_optional_must_hit_except_for_unreachable() {
+    for kind in [
+        AssertionKind::Always,
+        AssertionKind::Sometimes,
+        AssertionKind::Reachable,
+        AssertionKind::Unreachable,
+    ] {
+        for (must_hit, expected) in [
+            (None, "unexercised"),
+            (Some(true), "failed"),
+            (Some(false), "passed"),
+        ] {
+            let expected = if kind == AssertionKind::Unreachable {
+                "passed"
+            } else {
+                expected
+            };
+            let mut summary = summary_with_observations(kind, must_hit, 0, 0, expected);
+            validate_assertion_summary(&summary).expect("valid zero-hit verdict");
+            validate_assertion_summary_for_promotion(&summary)
+                .expect("valid must-hit metadata preserves promotion");
+            for contradictory in ["passed", "failed", "unexercised"] {
+                if contradictory == expected {
+                    continue;
+                }
+                summary["assertions"][0]["verdict"] = json!(contradictory);
+                assert!(
+                    validate_assertion_summary(&summary).is_err(),
+                    "{kind:?}/{must_hit:?} cannot report {contradictory} at zero hits"
+                );
+            }
+        }
+    }
+}
+
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn observed_verdicts_and_invalid_kind_counts_ignore_must_hit() {
+    for (kind, true_count, false_count, expected) in [
+        (AssertionKind::Always, 2, 0, Some("passed")),
+        (AssertionKind::Always, 0, 2, Some("failed")),
+        (AssertionKind::Always, 1, 1, Some("failed")),
+        (AssertionKind::Sometimes, 2, 0, Some("passed")),
+        (AssertionKind::Sometimes, 0, 2, Some("failed")),
+        (AssertionKind::Sometimes, 1, 1, Some("passed")),
+        (AssertionKind::Reachable, 2, 0, Some("passed")),
+        (AssertionKind::Reachable, 0, 2, None),
+        (AssertionKind::Reachable, 1, 1, None),
+        (AssertionKind::Unreachable, 2, 0, None),
+        (AssertionKind::Unreachable, 0, 2, Some("failed")),
+        (AssertionKind::Unreachable, 1, 1, None),
+    ] {
+        for must_hit in [None, Some(true), Some(false)] {
+            let mut summary =
+                summary_with_observations(kind, must_hit, true_count, false_count, "passed");
+            for verdict in ["passed", "failed", "unexercised"] {
+                summary["assertions"][0]["verdict"] = json!(verdict);
+                if expected == Some(verdict) {
+                    validate_assertion_summary(&summary).expect("valid observed verdict");
+                    validate_assertion_summary_for_promotion(&summary)
+                        .expect("valid observed verdict remains promotable");
+                } else {
+                    assert!(
+                        validate_assertion_summary(&summary).is_err(),
+                        "{kind:?}/{must_hit:?} with {true_count} true and {false_count} false hits cannot report {verdict}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn rejects_null_and_nonboolean_must_hit_metadata() {
+    for kind in [
+        AssertionKind::Always,
+        AssertionKind::Sometimes,
+        AssertionKind::Reachable,
+        AssertionKind::Unreachable,
+    ] {
+        let verdict = if kind == AssertionKind::Unreachable {
+            "passed"
+        } else {
+            "unexercised"
+        };
+        let base = summary_with_observations(kind, None, 0, 0, verdict);
+        for invalid in [Value::Null, json!("true"), json!(1), json!([]), json!({})] {
+            let mut summary = base.clone();
+            summary["assertions"][0]["must_hit"] = invalid;
+            assert!(
+                validate_assertion_summary(&summary).is_err(),
+                "{kind:?} must reject null or nonboolean metadata"
+            );
+        }
+    }
+}
+
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn must_hit_does_not_relax_counter_integrity() {
+    for must_hit in [None, Some(true), Some(false)] {
+        for (hits, true_count, false_count) in [(0, 1, 0), (2, 0, 1), (0, u64::MAX, 1)] {
+            let mut summary =
+                summary_with_observations(AssertionKind::Always, must_hit, 0, 0, "passed");
+            summary["assertions"][0]["hit_count"] = json!(hits);
+            summary["assertions"][0]["true_count"] = json!(true_count);
+            summary["assertions"][0]["false_count"] = json!(false_count);
+            let error = validate_assertion_summary(&summary).expect_err("invalid counters");
+            let expected_error = if true_count.checked_add(false_count).is_none() {
+                "counter overflow"
+            } else {
+                "true and false counts do not equal hit count"
+            };
+            assert!(error.message().contains(expected_error));
+        }
+    }
 }

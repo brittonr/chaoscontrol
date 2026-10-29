@@ -200,7 +200,16 @@ change the assertion oracle or prove exploration quality.
   guidance}` paths.
 - Local evidence applies `must_hit` from declarations; the SDK sends one
   `chaoscontrol_must_hit` metadata event per descriptor in VM mode, and the
-  VMM oracle applies the same unexercised verdicts.
+  VMM oracle applies the same unexercised verdicts. Exploration, dashboard,
+  and campaign assertion details retain this optional boolean. Rust and
+  Nickel `assertion-summary.v2` validators use it when recomputing zero-hit
+  verdicts: required properties fail, optional properties pass, and absent
+  metadata keeps the historical `unexercised` result. `unreachable` retains
+  its existing no-hit pass / observed-hit failure rule. Observed violations
+  cannot be overridden by `must_hit`, and conflicting metadata across seeds
+  is rejected rather than silently merged. Explicit null/nonboolean metadata
+  is invalid. Historical documents remain readable; older closed-record
+  consumers need an upgrade to read documents containing the new field.
 - `assert_raw` registers runtime descriptors before catalog emission. A new
   raw site after initialization is rejected; hits for declared sites still
   emit. Caller-supplied `display_type` and `must_hit` are preserved in local

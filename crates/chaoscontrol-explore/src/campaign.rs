@@ -944,6 +944,8 @@ fn merge_assertion_detail(
         || existing.id != candidate.id
         || existing.message != candidate.message
         || existing.kind != candidate.kind
+        // r[impl chaoscontrol.assertion_reports.must_hit_conflict]
+        || existing.must_hit != candidate.must_hit
         || existing.guest != candidate.guest
         || existing.category != candidate.category
     {
@@ -1295,6 +1297,7 @@ mod tests {
             identity: None,
             message: format!("assertion_{}", id),
             kind: "always".to_string(),
+            must_hit: None,
             guest: "uncategorized".to_string(),
             category: "uncategorized".to_string(),
             verdict: verdict.to_string(),
@@ -1343,6 +1346,7 @@ mod tests {
             }),
             message: "campaign assertion".to_string(),
             kind: format!("{kind:?}").to_lowercase(),
+            must_hit: None,
             guest: "guest".to_string(),
             category: "invariant".to_string(),
             verdict: verdict.to_string(),
@@ -1541,6 +1545,103 @@ mod tests {
                 campaign.assertion_catalog_status,
                 CatalogValidationStatus::Accepted
             );
+        }
+    }
+
+    // r[verify chaoscontrol.assertion_reports.must_hit_conflict]
+    #[test]
+    fn aggregate_rejects_conflicting_must_hit_metadata() {
+        for (left, right) in [
+            (None, Some(true)),
+            (None, Some(false)),
+            (Some(true), Some(false)),
+        ] {
+            let mut first = make_strict_detail(AssertionKind::Always, "passed", 1, 1, 0);
+            first.must_hit = left;
+            let mut second = first.clone();
+            second.must_hit = right;
+            let campaign = aggregate_reports(
+                vec![
+                    (
+                        FIRST_TEST_SEED,
+                        make_report(Vec::new(), vec![first]),
+                        SINGLE_REPORT_SECONDS,
+                    ),
+                    (
+                        SECOND_TEST_SEED,
+                        make_report(Vec::new(), vec![second]),
+                        SINGLE_REPORT_SECONDS,
+                    ),
+                ],
+                TWO_REPORT_SECONDS,
+            );
+            assert_eq!(
+                campaign.assertion_catalog_status,
+                CatalogValidationStatus::FatalConflict
+            );
+            assert!(!campaign.collision_safe_assertion_evidence);
+            assert!(campaign.assertion_details.is_empty());
+        }
+    }
+
+    // r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+    #[test]
+    fn aggregate_preserves_must_hit_and_recomputes_after_observation() {
+        for kind in [
+            AssertionKind::Always,
+            AssertionKind::Sometimes,
+            AssertionKind::Reachable,
+        ] {
+            for must_hit in [true, false] {
+                let mut first =
+                    make_strict_detail(kind, if must_hit { "failed" } else { "passed" }, 0, 0, 0);
+                first.must_hit = Some(must_hit);
+                let unhit = aggregate_reports(
+                    vec![
+                        (
+                            FIRST_TEST_SEED,
+                            make_report(Vec::new(), vec![first.clone()]),
+                            SINGLE_REPORT_SECONDS,
+                        ),
+                        (
+                            SECOND_TEST_SEED,
+                            make_report(Vec::new(), vec![first.clone()]),
+                            SINGLE_REPORT_SECONDS,
+                        ),
+                    ],
+                    TWO_REPORT_SECONDS,
+                );
+                assert_eq!(
+                    unhit.assertion_catalog_status,
+                    CatalogValidationStatus::Accepted
+                );
+                assert_eq!(unhit.assertion_details[0].verdict, first.verdict);
+                assert_eq!(unhit.assertion_details[0].must_hit, Some(must_hit));
+                let mut second = make_strict_detail(kind, "passed", 1, 1, 0);
+                second.must_hit = Some(must_hit);
+                let observed = aggregate_reports(
+                    vec![
+                        (
+                            FIRST_TEST_SEED,
+                            make_report(Vec::new(), vec![first]),
+                            SINGLE_REPORT_SECONDS,
+                        ),
+                        (
+                            SECOND_TEST_SEED,
+                            make_report(Vec::new(), vec![second]),
+                            SINGLE_REPORT_SECONDS,
+                        ),
+                    ],
+                    TWO_REPORT_SECONDS,
+                );
+                assert_eq!(
+                    observed.assertion_catalog_status,
+                    CatalogValidationStatus::Accepted
+                );
+                assert_eq!(observed.assertion_details[0].verdict, "passed");
+                assert_eq!(observed.assertion_details[0].must_hit, Some(must_hit));
+                assert_eq!(observed.assertion_details[0].hit_count, 1);
+            }
         }
     }
 

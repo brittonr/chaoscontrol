@@ -450,6 +450,12 @@ pub enum NumberComparison {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum EventPredicate {
+    /// Left-to-right conjunction; empty input matches every event.
+    All(Vec<EventPredicate>),
+    /// Left-to-right disjunction; empty input matches no events.
+    Any(Vec<EventPredicate>),
+    /// Negate the complete child result, including a missing-field non-match.
+    Not(Box<EventPredicate>),
     TickRange {
         start_tick: u64,
         end_tick: u64,
@@ -1096,10 +1102,15 @@ fn evaluate_rows(
         EventQuery::Filter { input, predicate } => {
             let rows = evaluate_rows(input, events, operations, max_operations)?;
             charge_operations(operations, rows.len(), max_operations)?;
-            Ok(rows
-                .into_iter()
-                .filter(|event| predicate.matches(event))
-                .collect())
+            rows.into_iter()
+                .filter_map(
+                    |event| match predicate.matches(&event, operations, max_operations) {
+                        Ok(true) => Some(Ok(event)),
+                        Ok(false) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                )
+                .collect()
         }
         EventQuery::Map {
             input,
@@ -1197,8 +1208,36 @@ fn charge_operations(
 }
 
 impl EventPredicate {
-    fn matches(&self, event: &EventEnvelope) -> bool {
-        match self {
+    // r[impl chaoscontrol.compound_event_query.composition]
+    fn matches(
+        &self,
+        event: &EventEnvelope,
+        operations: &mut usize,
+        max_operations: usize,
+    ) -> Result<bool, EventQueryError> {
+        Ok(match self {
+            Self::All(children) => {
+                for child in children {
+                    charge_operations(operations, 1, max_operations)?;
+                    if !child.matches(event, operations, max_operations)? {
+                        return Ok(false);
+                    }
+                }
+                true
+            }
+            Self::Any(children) => {
+                for child in children {
+                    charge_operations(operations, 1, max_operations)?;
+                    if child.matches(event, operations, max_operations)? {
+                        return Ok(true);
+                    }
+                }
+                false
+            }
+            Self::Not(child) => {
+                charge_operations(operations, 1, max_operations)?;
+                !child.matches(event, operations, max_operations)?
+            }
             Self::TickRange {
                 start_tick,
                 end_tick,
@@ -1226,7 +1265,7 @@ impl EventPredicate {
                     NumberComparison::GreaterThanOrEqual => actual >= expected,
                     NumberComparison::GreaterThan => actual > expected,
                 }),
-        }
+        })
     }
 }
 
@@ -1255,7 +1294,7 @@ fn validate_query_inner(
     match query {
         EventQuery::All => Ok(()),
         EventQuery::Filter { input, predicate } => {
-            validate_predicate(predicate)?;
+            validate_predicate(predicate, limits, depth, nodes)?;
             validate_query_inner(input, limits, depth + 1, nodes)
         }
         EventQuery::Map {
@@ -1296,8 +1335,24 @@ fn validate_query_inner(
     }
 }
 
-fn validate_predicate(predicate: &EventPredicate) -> Result<(), EventQueryError> {
+fn validate_predicate(
+    predicate: &EventPredicate,
+    limits: &EventQueryLimits,
+    depth: usize,
+    nodes: &mut usize,
+) -> Result<(), EventQueryError> {
+    // The enclosing Filter already accounts for the predicate root node.
+    if depth > limits.max_depth {
+        return Err(EventQueryError::QueryDepth);
+    }
     match predicate {
+        EventPredicate::All(children) | EventPredicate::Any(children) => {
+            for child in children {
+                validate_predicate_child(child, limits, depth + 1, nodes)?;
+            }
+            Ok(())
+        }
+        EventPredicate::Not(child) => validate_predicate_child(child, limits, depth + 1, nodes),
         EventPredicate::TickRange {
             start_tick,
             end_tick,
@@ -1319,6 +1374,21 @@ fn validate_predicate(predicate: &EventPredicate) -> Result<(), EventQueryError>
         | EventPredicate::Vm(_)
         | EventPredicate::SourceKind(_) => Ok(()),
     }
+}
+
+fn validate_predicate_child(
+    predicate: &EventPredicate,
+    limits: &EventQueryLimits,
+    depth: usize,
+    nodes: &mut usize,
+) -> Result<(), EventQueryError> {
+    *nodes = nodes
+        .checked_add(1)
+        .ok_or(EventQueryError::CounterOverflow)?;
+    if *nodes > limits.max_nodes {
+        return Err(EventQueryError::QueryBound);
+    }
+    validate_predicate(predicate, limits, depth, nodes)
 }
 
 fn validate_field(field: &str) -> Result<(), EventQueryError> {

@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "compose-event-query-predicates",
+      "evidence_prerequisite": "All/Any/Not predicates must compose existing filters with left-to-right short-circuiting, shared query node/depth bounds and charged visited children. Validate skipped descendants, preserve flat-query costs and canonical rows, and verify actual query/validate CLI selection, exact/exhausted budgets and expression/source receipt drift.",
+      "non_claims": [
+        "Bounded boolean filtering over supplied retained inputs does not establish arbitrary-code or full Notebook compatibility, reactive branches, complete capture, VM execution, replay or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "filter-json-numeric-events",
       "evidence_prerequisite": "Typed JSON-number predicates must filter finite binary64 values with confined bounded pointers, all five comparisons and no non-number coercion. Actual query/validate CLI runs must retain canonical observations and reject malformed predicates, operation exhaustion and query/result receipt drift. Existing text filters and resource limits remain unchanged.",
       "non_claims": [

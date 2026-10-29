@@ -90,6 +90,51 @@ This closes the bounded local threshold-filtering gap illustrated by the
 It does not add arbitrary JavaScript predicates, live branches, reactive sequences
 or hosted Notebook compatibility.
 
+## Compound predicates
+
+`Filter.predicate` supports `All`, `Any` and `Not` around any existing predicate.
+For example, select high-memory observations in VM 1 or 2, excluding maintenance
+processes:
+
+```json
+{
+  "Filter": {
+    "input": "All",
+    "predicate": {
+      "All": [
+        {"Any": [{"Vm": 1}, {"Vm": 2}]},
+        {"JsonNumber": {"pointer": "/used", "comparison": "GreaterThan", "value": 50}},
+        {"Not": {"Process": "maintenance"}}
+      ]
+    }
+  }
+}
+```
+
+Use the same `query` and `validate` commands above. Children evaluate in their
+declared order: `All` stops on false, `Any` stops on true, and `Not` inverts its
+child. Empty `All` matches every candidate event; empty `Any` matches none.
+Negation inverts the leaf's complete result: `Not(JsonNumber(...))` also matches
+missing or non-numeric values because the numeric predicate does not match them.
+It is not an implicit field-presence or numeric-type guard.
+
+Admission validates every descendant, even a branch that evaluation would skip
+or a query over an empty source. Predicate descendants share the existing
+`max_nodes` counter and `max_depth` with the query expression. A Filter accounts
+for its predicate root, preserving the historical cost of atomic predicates;
+each child adds one node and a depth step. The existing per-row Filter charge
+covers its root check, and each visited child costs one additional operation.
+Skipped children cost none. Budget exhaustion returns an error, never partial
+rows. No new limit fields are required.
+
+Canonical fields/order, atomic predicate semantics and receipt binding are
+unchanged. A different expression invalidates a receipt even when it selects
+the same rows. New variants require upgraded readers; existing flat queries
+retain their admission and operation costs. This is a bounded boolean subset
+of the upstream guide's arbitrary filter functions, not JavaScript execution
+or full Notebook compatibility.
+
+
 
 ## Limits
 

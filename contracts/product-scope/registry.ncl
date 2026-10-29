@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "compose-event-query-predicates",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "All/Any/Not predicates must compose existing filters with left-to-right short-circuiting, shared query node/depth bounds and charged visited children. Validate skipped descendants, preserve flat-query costs and canonical rows, and verify actual query/validate CLI selection, exact/exhausted budgets and expression/source receipt drift.",
+      non_claims = ["Bounded boolean filtering over supplied retained inputs does not establish arbitrary-code or full Notebook compatibility, reactive branches, complete capture, VM execution, replay or release readiness."],
+    },
+    {
       change = "filter-json-numeric-events",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

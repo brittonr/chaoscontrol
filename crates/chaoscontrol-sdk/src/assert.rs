@@ -1345,12 +1345,18 @@ macro_rules! __cc_option_details {
 /// Used by the multi-condition bundle macros. Every condition is already
 /// bound to its name in the caller, so each one is evaluated exactly once
 /// and no evaluation short-circuits.
+/// The owned arm merges an early caller snapshot without cloning it again.
+// r[impl chaoscontrol.bundle_details.order]
+// r[impl chaoscontrol.bundle_details.preservation]
 #[cfg(feature = "full")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_bundle_details {
     ($details:expr $(, $name:ident)*) => {{
-        let mut __cc_bundle = ($details).clone();
+        $crate::__cc_bundle_details!(@owned ($details).clone() $(, $name)*)
+    }};
+    (@owned $details:expr $(, $name:ident)*) => {{
+        let mut __cc_bundle = $details;
         $(
             __cc_bundle[::core::stringify!($name)] =
                 $crate::serde_json::json!($name);
@@ -1363,6 +1369,10 @@ macro_rules! __cc_bundle_details {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_bundle_details {
+    (@owned $details:expr $(, $name:ident)*) => {{
+        let _ = $details;
+        ()
+    }};
     ($details:expr $(, $name:ident)*) => {{
         let _ = &$details;
         ()
@@ -2551,9 +2561,10 @@ macro_rules! cc_assert_always_some {
             line!(),
             column!()
         );
+        let __cc_input_details = $crate::__cc_bundle_details!($details);
         $(let $name = $cond;)*
         let __cc_cond = false $(|| $name)*;
-        let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
+        let __cc_det = $crate::__cc_bundle_details!(@owned __cc_input_details $(, $name)*);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -2725,9 +2736,10 @@ macro_rules! cc_assert_always_any {
             line!(),
             column!()
         );
+        let __cc_input_details = $crate::__cc_bundle_details!($details);
         $(let $name = $cond;)*
         let __cc_cond = false $(|| $name)*;
-        let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
+        let __cc_det = $crate::__cc_bundle_details!(@owned __cc_input_details $(, $name)*);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Always,
             __cc_cond,
@@ -2817,9 +2829,10 @@ macro_rules! cc_assert_sometimes_all {
             line!(),
             column!()
         );
+        let __cc_input_details = $crate::__cc_bundle_details!($details);
         $(let $name = $cond;)*
         let __cc_cond = true $(&& $name)*;
-        let __cc_det = $crate::__cc_bundle_details!($details $(, $name)*);
+        let __cc_det = $crate::__cc_bundle_details!(@owned __cc_input_details $(, $name)*);
         $crate::assert::emit_registered_assertion(
             $crate::assert::AssertionKind::Sometimes,
             __cc_cond,

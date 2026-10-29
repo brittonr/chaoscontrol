@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "preserve-bundle-details-evaluation-order",
+      "evidence_prerequisite": "All explicit-details boolean bundles must capture caller data before named conditions, evaluate each expression once, preserve unrelated keys and borrowed data, avoid another deep clone, and retain no-full call shapes without JSON work.",
+      "non_claims": [
+        "Bundle evaluation parity is local instrumentation behavior, not VM execution, replay, hosted platform equivalence or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "initialize-sdk-on-first-use",
       "evidence_prerequisite": "Lifecycle, entropy-consuming random and direct guidance first use must emit metadata and the catalog once, preserve unexecuted properties, avoid initialization recursion, and retain entropy-free and no-full behavior.",
       "non_claims": [

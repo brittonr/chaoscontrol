@@ -235,10 +235,14 @@ change the assertion oracle or prove exploration quality.
   (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
   single-expression `Option::is_some` shape. `cc_assert_always_any!` is the
   unambiguous spelling for the bundle, and `cc_assert_sometimes_all!` is the
-  conjunction bundle. Both bundle macros evaluate every condition (no
-  short-circuiting) and merge each named boolean into the assertion details,
-  matching the Antithesis bundle behavior. An empty bundle is admitted: the
-  any-bundle is `false` and the all-bundle is `true`.
+  conjunction bundle. All bundle forms evaluate caller-supplied details once
+  before binding the named conditions, matching Antithesis's full-mode order.
+  Condition names cannot shadow variables used by the details expression.
+  Every condition is then evaluated once (no short-circuiting); its boolean
+  replaces any same-named detail key while other keys and the borrowed caller
+  value remain unchanged. The captured JSON value is merged without another
+  deep clone. No-full mode keeps this evaluation order without JSON work.
+  An empty bundle is admitted: any is `false` and all is `true`.
 - Numeric macros merge `left`/`right` into details and, with `full`, require
   `guidance::GuidanceDiff` (primitive numeric types) to emit watermarks.
 - `random_choice` now has the Antithesis slice signature. Use the

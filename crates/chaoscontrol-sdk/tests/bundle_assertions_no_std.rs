@@ -94,3 +94,29 @@ fn lifecycle_noop_keeps_the_detail_call_shape() {
     send_event("event", &());
     send_event("event", &String::from("details"));
 }
+
+// r[verify chaoscontrol.bundle_details.order]
+// r[verify chaoscontrol.bundle_details.preservation]
+#[cfg(not(feature = "full"))]
+#[test]
+fn bundle_details_precede_conditions_without_json_or_clone() {
+    struct NonJsonDetails;
+    macro_rules! exercise {
+        ($bundle:ident, $message:literal) => {{
+            let first = NonJsonDetails;
+            let stage = std::cell::Cell::new(0);
+            $bundle!(
+                {
+                    first: { assert_eq!(stage.get(), 1); stage.set(2); true },
+                    second: { assert_eq!(stage.get(), 2); stage.set(3); false }
+                },
+                $message,
+                { assert_eq!(stage.get(), 0); stage.set(1); &first }
+            );
+            assert_eq!(stage.get(), 3);
+        }};
+    }
+    exercise!(cc_assert_always_any, "no-full ordered any");
+    exercise!(cc_assert_always_some, "no-full ordered some");
+    exercise!(cc_assert_sometimes_all, "no-full ordered all");
+}

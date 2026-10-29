@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-bundle-details-evaluation-order",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "All explicit-details boolean bundles must capture caller data before named conditions, evaluate each expression once, preserve unrelated keys and borrowed data, avoid another deep clone, and retain no-full call shapes without JSON work.",
+      non_claims = ["Bundle evaluation parity is local instrumentation behavior, not VM execution, replay, hosted platform equivalence or release eligibility."],
+    },
+    {
       change = "initialize-sdk-on-first-use",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

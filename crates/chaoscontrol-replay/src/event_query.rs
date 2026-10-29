@@ -512,6 +512,13 @@ pub enum EventPredicate {
         comparison: NumberComparison,
         value: serde_json::Number,
     },
+    /// Compare a finite binary64 quotient of two selected numeric string fields.
+    FieldRatio {
+        numerator: String,
+        denominator: String,
+        comparison: NumberComparison,
+        value: serde_json::Number,
+    },
     /// Compare a JSON number in `details`; missing/non-numeric values never match.
     JsonNumber {
         pointer: String,
@@ -1561,6 +1568,29 @@ impl EventPredicate {
                     .map(serde_json::Value::Number);
                 comparison.matches(actual.as_ref(), value)
             }
+            // r[impl chaoscontrol.field_ratio.comparison]
+            Self::FieldRatio {
+                numerator,
+                denominator,
+                comparison,
+                value,
+            } => {
+                let number = |field: &str| {
+                    field_value(event, field)
+                        .and_then(|text| serde_json::from_str::<serde_json::Number>(text).ok())
+                        .and_then(|number| number.as_f64())
+                        .filter(|number| number.is_finite())
+                };
+                let actual = number(denominator)
+                    .filter(|denominator| *denominator != 0.0)
+                    .and_then(|denominator| {
+                        number(numerator).and_then(|numerator| {
+                            serde_json::Number::from_f64(numerator / denominator)
+                        })
+                    })
+                    .map(serde_json::Value::Number);
+                comparison.matches(actual.as_ref(), value)
+            }
             // r[impl chaoscontrol.numeric_event_query.comparison]
             Self::JsonNumber {
                 pointer,
@@ -1758,6 +1788,19 @@ fn validate_predicate<'a>(
         }
         EventPredicate::FieldNumber { field, value, .. } => {
             validate_field(field)?;
+            if value.as_f64().is_none_or(|value| !value.is_finite()) {
+                return Err(EventQueryError::InvalidPredicate);
+            }
+            Ok(())
+        }
+        EventPredicate::FieldRatio {
+            numerator,
+            denominator,
+            value,
+            ..
+        } => {
+            validate_field(numerator)?;
+            validate_field(denominator)?;
             if value.as_f64().is_none_or(|value| !value.is_finite()) {
                 return Err(EventQueryError::InvalidPredicate);
             }

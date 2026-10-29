@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "compare-retained-field-ratios",
+      "evidence_prerequisite": "FieldRatio must compare finite binary64 quotients of admitted selected fields and preserve undefined-value nonmatches. Verify six relations, missing/syntax/nonfinite operands, signed-zero denominators, quotient overflow/underflow/precision, Not versus NotEqual, canonical precedence, projection/count composition, both-name/threshold admission, shared bounds, moments and actual CLI expression/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Retained field ratios are not general arithmetic or JavaScript Number coercion, ratio projection, exact rational/arbitrary-width comparison, complete capture, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "compare-projected-numeric-fields",
       "evidence_prerequisite": "FieldNumber must compare complete finite JSON-number text from existing canonical/derived lookup without lexical ordering or broad coercion. Verify six relations, nonnumeric NotEqual versus Not, whitespace/zero/precision boundaries, canonical-name precedence, Map/MapText/RunningCount composition, field/threshold admission on empty/skipped paths, admitted byte capacity, shared limits and actual CLI expression/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

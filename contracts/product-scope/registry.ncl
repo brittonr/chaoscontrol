@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "compare-retained-field-ratios",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "FieldRatio must compare finite binary64 quotients of admitted selected fields and preserve undefined-value nonmatches. Verify six relations, missing/syntax/nonfinite operands, signed-zero denominators, quotient overflow/underflow/precision, Not versus NotEqual, canonical precedence, projection/count composition, both-name/threshold admission, shared bounds, moments and actual CLI expression/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Retained field ratios are not general arithmetic or JavaScript Number coercion, ratio projection, exact rational/arbitrary-width comparison, complete capture, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "compare-projected-numeric-fields",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

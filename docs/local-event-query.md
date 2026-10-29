@@ -286,6 +286,69 @@ upgraded readers are required for this new predicate. No exact arbitrary-width
 numeric comparison, complete capture, hosted search, VM execution or replay-proof
 claim is added.
 
+## Comparing utilization ratios
+
+`FieldRatio` compares a finite quotient of two selected numeric string fields.
+It implements bounded local filtering for the
+[Antithesis storage-utilization example](https://antithesis.com/docs/reference/event-set-reference/#map),
+without executing a general map expression. For JSON log text containing
+`{"used":"20","total":"100"}`, project the operands and select utilization
+above ten percent:
+
+```json
+{
+  "Filter": {
+    "input": {
+      "MapText": {
+        "input": {
+          "MapText": {
+            "input": "All",
+            "field": "used",
+            "pointer": "/used"
+          }
+        },
+        "field": "total",
+        "pointer": "/total"
+      }
+    },
+    "predicate": {
+      "FieldRatio": {
+        "numerator": "used",
+        "denominator": "total",
+        "comparison": "GreaterThan",
+        "value": 0.1
+      }
+    }
+  }
+}
+```
+
+Use `Map` instead for canonical details. Existing projections and running counts
+can also be operands. The predicate preserves complete rows; it does not emit a
+new ratio field. Both names follow `FieldNumber` lookup, canonical precedence,
+JSON-number grammar and nonempty/control-free/256-byte UTF-8 admission. The
+threshold is a finite JSON number. All names/thresholds are admitted even in
+skipped branches or empty input.
+
+Division uses finite binary64 operands and the existing six comparison relations.
+Negative operands and signed-zero quotients are valid; underflow may produce
+zero, and wide integers may round. Missing/nonnumeric/nonfinite operands,
+positive or negative zero denominators, and overflowing quotients never match,
+including `NotEqual`. `Not` around a ratio predicate still complements the
+nonmatch. This deliberately excludes JavaScript coercions and Infinity/NaN
+comparisons. The denominator is checked first so undefined division need not
+parse the numerator; malformed scalar text is a nonmatch, not a query error.
+No cross-multiplication or exact rational comparison is performed.
+
+Existing admitted text/derived-byte caps, row/compound-operation charges,
+node/depth/scan/result bounds, canonical-prefix truncation and moment handling
+apply. Receipts bind both operand names, relation and threshold even for
+equivalent results, plus all canonical source facts and result projections.
+Evaluation failures publish neither result nor receipt. Old queries/schemas are
+unchanged; upgraded readers are required. No general arithmetic engine, ratio
+projection, complete capture, hosted search, CPU/RSS/deadline guarantee, VM
+execution or replay-proof claim is added.
+
 ## Numeric JSON filters
 
 `Filter` accepts a `JsonNumber` predicate over a JSON pointer into the original

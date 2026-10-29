@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "combine-retained-event-sets",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Intersect/Difference must combine independently queried source-position sets while preserving left rows/projections and first-wins duplicates. Verify shuffled/multi-source/empty/overlapping operands, hidden right admission/parsing, both-child structural/work limits, canonical result caps, moments and actual CLI query/source/result receipt drift without partial failure artifacts; no Cartesian joins or extra key collections.",
+      non_claims = ["Retained source-position set algebra is not upstream full-field synthetic-event equality, arbitrary JavaScript, branch-lineage admission, capture completeness, hosted event-search service, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "compare-unequal-numeric-events",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

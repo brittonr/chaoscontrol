@@ -569,6 +569,16 @@ pub enum EventQuery {
     Union {
         inputs: Vec<EventQuery>,
     },
+    /// Keep left rows present in `other`, using source-position identity.
+    Intersect {
+        input: Box<EventQuery>,
+        other: Box<EventQuery>,
+    },
+    /// Keep left rows absent from `other`, using source-position identity.
+    Difference {
+        input: Box<EventQuery>,
+        other: Box<EventQuery>,
+    },
     /// Select candidates by nearby witnesses in the caller-supplied tick domain.
     Temporal {
         input: Box<EventQuery>,
@@ -1278,6 +1288,31 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.event_set_algebra.combination]
+        EventQuery::Intersect { input, other } | EventQuery::Difference { input, other } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            let mut other = evaluate_rows(other, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            charge_operations(operations, other.len(), max_operations)?;
+            for row in &other {
+                admit_event(row)?;
+            }
+            other.sort_unstable_by(|left, right| {
+                (&left.source_id, left.source_sequence)
+                    .cmp(&(&right.source_id, right.source_sequence))
+            });
+            let intersect = matches!(query, EventQuery::Intersect { .. });
+            rows.retain(|row| {
+                other
+                    .binary_search_by(|candidate| {
+                        (&candidate.source_id, candidate.source_sequence)
+                            .cmp(&(&row.source_id, row.source_sequence))
+                    })
+                    .is_ok()
+                    == intersect
+            });
+            Ok(rows)
+        }
         EventQuery::Temporal {
             input,
             witness,
@@ -1536,9 +1571,15 @@ fn validate_query_inner<'a>(
         EventQuery::UpTo { input, .. } => {
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
-        EventQuery::Temporal { input, witness, .. } => {
+        EventQuery::Temporal {
+            input,
+            witness: other,
+            ..
+        }
+        | EventQuery::Intersect { input, other }
+        | EventQuery::Difference { input, other } => {
             validate_query_inner(input, limits, depth + 1, nodes, regexes)?;
-            validate_query_inner(witness, limits, depth + 1, nodes, regexes)
+            validate_query_inner(other, limits, depth + 1, nodes, regexes)
         }
         EventQuery::Union { inputs } => {
             if inputs.is_empty() {
@@ -1707,13 +1748,19 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
             }
             Ok(moment)
         }
-        EventQuery::Temporal { input, witness, .. } => {
+        EventQuery::Temporal {
+            input,
+            witness: other,
+            ..
+        }
+        | EventQuery::Intersect { input, other }
+        | EventQuery::Difference { input, other } => {
             let input = moment_of(input)?;
-            let witness = moment_of(witness)?;
-            if matches!((input, witness), (Some(left), Some(right)) if left != right) {
+            let other = moment_of(other)?;
+            if matches!((input, other), (Some(left), Some(right)) if left != right) {
                 return Err(EventQueryError::AmbiguousMoment);
             }
-            Ok(input.or(witness))
+            Ok(input.or(other))
         }
         EventQuery::All => Ok(None),
     }

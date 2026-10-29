@@ -29,8 +29,8 @@ partially read.
 - Different source-visible content at one `(source_id, source_sequence)` is
   rejected. Repeated source positions collapse under existing deduplication,
   retaining the first candidate's query-local projections.
-- Directly combined `Union` or `Temporal` children must not span more than one
-  `UpTo` moment.
+- Directly combined `Union`, `Temporal`, `Intersect` or `Difference` children
+  must not span more than one `UpTo` moment.
 
 ## Commands
 
@@ -212,6 +212,60 @@ This supports the retained-history portion of the
 It does not implement arbitrary transforms, numeric coercion of derived strings,
 reactive branches, complete capture or full Notebook compatibility.
 
+
+## Intersection and difference
+
+`Intersect { input, other }` keeps input events whose source position is also
+selected by `other`. `Difference { input, other }` keeps input events absent
+from `other`. For example, retain VM 0 errors:
+
+```json
+{
+  "Intersect": {
+    "input": {"Filter": {"input": "All", "predicate": {"Vm": 0}}},
+    "other": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}}
+  }
+}
+```
+
+Replace `Intersect` with `Difference` to retain VM 0 observations excluding
+the error set. Use the `query`/`validate` commands above. Both operands can
+independently project fields, filter, combine temporal queries or other set
+operations. Nest `Intersect` for more than two operands; difference is ordered
+and means `input - other`.
+
+Identity is `(source_id, source_sequence)`, matching existing `Union`. Equal
+ticks or sequence numbers from different sources do not imply membership.
+Derived values do not affect membership: a right-hand projection may disagree
+with the left-hand value without changing the result. Only left-hand rows and
+projections survive; fields are not merged. Left order is preserved before
+existing canonical sorting and first-wins duplicate removal. An empty right
+set yields an empty intersection and leaves a difference unchanged; identical
+position sets yield the left intersection and an empty difference.
+
+Both children are admitted and evaluated even when the left side is empty.
+Invalid right-side projected envelopes, malformed visited JSON and invalid
+regexes remain errors rather than silently becoming an empty set. The owned
+right vector is sorted in place by source position and binary-searched for
+each left row, without extra key collections, Cartesian joins or copied left
+rows during combination. Beyond child evaluation, charge one logical operation
+per materialized left/right row. Existing node/depth/work/result limits apply:
+row caps retain a canonical prefix with `matched`/`truncated` facts; byte/work
+failures emit no partial CLI result or receipt. Logical counts are not CPU
+comparison counts, wall-clock deadlines or total RSS bounds.
+
+Differing direct child moments are ambiguous. An outer `UpTo` retains its
+existing expression scope; it does not retroactively cap the operands. Receipts
+bind both expressions, the operator and every supplied source event, including
+nonselected right-side observations. New variants need upgraded readers; existing
+queries and schemas are unchanged.
+
+These implement bounded local analogues of
+[Antithesis event-set intersection and difference](https://antithesis.com/docs/reference/event-set-reference/#set-operations).
+ChaosControl deliberately uses source-position identity, not upstream full-field
+synthetic-event equality. No arbitrary JavaScript, branch-lineage admission,
+capture completeness, hosted event-search service, VM execution or replay-proof
+claim is added.
 
 ## Compound predicates
 

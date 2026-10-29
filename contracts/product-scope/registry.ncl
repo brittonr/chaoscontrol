@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "project-exact-elapsed-ticks",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "MapElapsedTicks must preserve evidence while subtracting complete unsigned JSON u64 prior ticks from canonical ticks with checked integer arithmetic and stale removal for undefined/future values. Verify zero/equal/adjacent-wide/maximal spans, integer grammar, aliases and canonical precedence, JSON/past-witness composition, empty/name/child admission, exact/generated/intermediate capacity, shared limits and moments, actual CLI query/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Exact elapsed projection is not a new clock, tick-to-seconds conversion, exact downstream binary64 arithmetic, inferred counter wrapping, implicit source partitioning, causality or multiverse lineage, arbitrary map execution, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "project-canonical-event-ticks",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

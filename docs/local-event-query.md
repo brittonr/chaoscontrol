@@ -115,18 +115,19 @@ evidence remain unchanged. A destination named `kind`, `text`, `process` or
 `source_kind` changes only its derived projection; canonical selector precedence
 does not change. Naming a projection `tick` does not overwrite the envelope tick.
 
-For elapsed-time triage, project both candidate and witness ticks, copy the
-nearest earlier witness's projection, and subtract:
+## Projecting exact elapsed ticks
+
+`MapElapsedTicks` subtracts a named prior tick from each canonical event tick
+using checked `u64` arithmetic, retaining exact unsigned decimal duration text.
+For elapsed-time triage, project the witness tick, copy the nearest earlier
+witness's projection, and compute the duration:
 
 ```json
 {
-  "MapDifference": {
+  "MapElapsedTicks": {
     "input": {
       "WithLastValue": {
-        "input": {"MapTick": {
-          "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
-          "field": "observed_tick"
-        }},
+        "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
         "witness": {"MapTick": {
           "input": {"Filter": {"input": "All", "predicate": {"Kind": "restart"}}},
           "field": "restart_tick"
@@ -137,32 +138,41 @@ nearest earlier witness's projection, and subtract:
       }
     },
     "field": "elapsed",
-    "minuend": "observed_tick",
-    "subtrahend": "previous_tick"
+    "since_field": "previous_tick"
   }
 }
 ```
 
-A restart at tick 2 followed by an error at tick 8 yields `elapsed = "6.0"`.
+A restart at tick 2 followed by an error at tick 8 yields `elapsed = "6"`.
 An error without a previous in-window restart retains its evidence without
 stale elapsed context. Downstream FieldNumber/Filter/Narrow can select and keep
 the result. Restrict both branches to the intended VM/process/history first.
 
-MapTick's text is exact across u64, but downstream numeric operators still use
-binary64: ticks above `2^53` may round, and subtracting `u64::MAX - 1` from
-`u64::MAX` through MapDifference yields `0.0`, not an exact one-tick duration.
-Use the retained canonical integers outside those operators when exact wide
-duration arithmetic is required. Tick-domain coherence, units and source
-partitioning are caller responsibilities; ordering is not inferred causality.
+The prior field must contain one complete JSON `u64` integer (surrounding JSON
+whitespace is allowed). Missing, signed, fractional, exponent, quoted, malformed,
+out-of-range or future values remove stale destination output without dropping
+the row. Equal ticks yield `"0"`; `u64::MAX - (u64::MAX - 1)` yields `"1"`;
+the maximal span yields `"18446744073709551615"`. Destination aliases read the
+original prior value before replacement. Current tick always comes from canonical
+metadata, not same-named payload or derived projections. Prior-field lookup uses
+the existing canonical selector precedence for `kind`, `text`, `process` and
+`source_kind`; a same-named destination changes only derived data.
 
-The destination uses existing nonempty/control-free/256-byte UTF-8 admission,
-even on empty input. Child queries are fully validated. Each materialized child
+MapTick and MapElapsedTicks are exact across u64, but downstream numeric operators
+still use binary64: ticks/durations above `2^53` may round. MapDifference remains
+binary64 and subtracting `u64::MAX - 1` from `u64::MAX` through it yields `0.0`.
+Use MapElapsedTicks for exact tick durations. Tick-domain coherence, units and
+source partitioning are caller responsibilities; ordering is not inferred causality.
+
+Both operators use existing nonempty/control-free/256-byte UTF-8 field-name
+admission, including the elapsed query's prior field and empty input. Child queries
+are fully validated. Each materialized child
 row costs one operation beyond child work. Admit original and generated
 envelopes before downstream narrowing/filtering/deduplication: even an invalid
 intermediate row that projection could shrink back into bounds is rejected.
 Existing shared node/depth/scan/work/derived/result-byte/prefix bounds and child
-moment reconciliation apply. Receipts bind the child, destination and complete
-canonical source/result facts; evaluation errors publish neither result nor
+moment reconciliation apply. Receipts bind the child, destination, prior field
+when present and complete canonical source/result facts; evaluation errors publish neither result nor
 receipt. New queries need upgraded readers; older query/schema/lookup contracts
 are unchanged. This is not a new clock, automatic time-unit conversion, arbitrary
 map execution, exact downstream arithmetic, multiverse lineage reconstruction,
@@ -413,7 +423,7 @@ proof.
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
 lets downstream queries numerically select fields produced by `Map`, `MapText`, `MapTick`,
-`MapRatio`, `MapDifference`, `RunningCount`, `RunningSum`, `RunningMin` or
+`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningSum`, `RunningMin` or
 `RunningMax`, rather than
 enumerating exact strings or comparing them lexically. For example, retain
 observations after at least two matching events:

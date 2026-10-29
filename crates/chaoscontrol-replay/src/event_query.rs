@@ -602,6 +602,12 @@ pub enum EventQuery {
         input: Box<EventQuery>,
         field: String,
     },
+    /// Subtract a prior u64 field from the canonical tick without precision loss.
+    MapElapsedTicks {
+        input: Box<EventQuery>,
+        field: String,
+        since_field: String,
+    },
     /// Annotate finite field quotients, removing stale output for undefined ratios.
     MapRatio {
         input: Box<EventQuery>,
@@ -1469,6 +1475,33 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.map_elapsed_ticks.projection]
+        EventQuery::MapElapsedTicks {
+            input,
+            field,
+            since_field,
+        } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for event in &mut rows {
+                admit_event(event)?;
+                let elapsed = field_value(event, since_field)
+                    .and_then(|value| serde_json::from_str::<u64>(value).ok())
+                    .and_then(|since| event.tick.checked_sub(since));
+                if let Some(elapsed) = elapsed {
+                    if let Some(value) = event.derived.get_mut(field) {
+                        value.clear();
+                        write!(value, "{elapsed}").expect("writing to a String cannot fail");
+                    } else {
+                        event.derived.insert(field.clone(), elapsed.to_string());
+                    }
+                } else {
+                    event.derived.remove(field);
+                }
+                admit_event(event)?;
+            }
+            Ok(rows)
+        }
         // r[impl chaoscontrol.map_ratio.projection]
         EventQuery::MapRatio {
             input,
@@ -1968,6 +2001,15 @@ fn validate_query_inner<'a>(
             validate_field(field)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::MapElapsedTicks {
+            input,
+            field,
+            since_field,
+        } => {
+            validate_field(field)?;
+            validate_field(since_field)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::MapRatio {
             input,
             field,
@@ -2233,6 +2275,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
         | EventQuery::MapTick { input, .. }
+        | EventQuery::MapElapsedTicks { input, .. }
         | EventQuery::MapRatio { input, .. }
         | EventQuery::MapDifference { input, .. }
         | EventQuery::Narrow { input, .. }

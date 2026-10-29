@@ -134,6 +134,50 @@ retain their admission and operation costs. This is a bounded boolean subset
 of the upstream guide's arbitrary filter functions, not JavaScript execution
 or full Notebook compatibility.
 
+## Composable text selection
+
+`Contains` and `Matches` are available as predicates inside `Filter`, including
+within `All`, `Any` and `Not`. For example, select warnings or errors while
+excluding heartbeat noise:
+
+```json
+{
+  "Filter": {
+    "input": "All",
+    "predicate": {
+      "All": [
+        {"Any": [
+          {"Contains": {"field": "text", "text": "[WARN]"}},
+          {"Contains": {"field": "text", "text": "[ERROR]"}}
+        ]},
+        {"Not": {"Contains": {"field": "text", "text": "heartbeat"}}}
+      ]
+    }
+  }
+}
+```
+
+Contains is a literal, case-sensitive substring search. Matches is exact
+case-sensitive string equality, **not** a regular expression. Unicode text is
+supported without case folding or normalization. The field names `text`, `kind`,
+`process` and `source_kind` select canonical values; other names select derived
+strings, including fields produced by `Map`. Derived names cannot shadow those
+canonical values. Missing fields never match a positive selector, so their
+negation does match; add a positive condition if missing data should be excluded.
+
+Both selectors reuse the existing nonempty, control-free field/needle rules:
+fields are at most 256 UTF-8 bytes and needles at most 8192 bytes. Every leaf is
+validated before evaluation, even when short-circuiting would skip it. Existing
+node/depth/operation bounds and receipt binding apply. Changing a needle
+invalidates its receipt even when selected rows happen to stay identical.
+
+Standalone `EventQuery::Contains` and `EventQuery::Matches` remain supported
+with their existing behavior. New predicate variants require upgraded readers;
+schemas and existing query forms are unchanged. This supports a bounded subset
+of the [Antithesis text-filter examples](https://antithesis.com/docs/product/debugging/advanced_multiverse_debugging/event_sets/),
+not arbitrary functions, regex evaluation or full Notebook compatibility.
+
+
 
 
 ## Limits

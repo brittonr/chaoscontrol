@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "compose-text-event-predicates",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Contains/Matches predicate leaves must compose with All/Any/Not using existing field resolution and field/text byte bounds. Verify case-sensitive literal/exact Unicode selection, canonical precedence, missing-field negation, Map projections, skipped invalid leaves, operation exhaustion and actual CLI query/result receipt drift while preserving standalone selectors.",
+      non_claims = ["Bounded text selection over supplied retained inputs is not arbitrary-function, regex or full Notebook compatibility, reactive branching, capture completeness, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "compose-event-query-predicates",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

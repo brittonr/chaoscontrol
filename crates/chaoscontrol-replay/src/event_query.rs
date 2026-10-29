@@ -464,6 +464,16 @@ pub enum EventPredicate {
     SourceKind(EventSourceKind),
     Kind(String),
     Process(String),
+    /// Literal case-sensitive substring selection over canonical or derived fields.
+    Contains {
+        field: String,
+        text: String,
+    },
+    /// Exact case-sensitive string selection (not a regular expression).
+    Matches {
+        field: String,
+        text: String,
+    },
     /// Compare a JSON number in `details`; missing/non-numeric values never match.
     JsonNumber {
         pointer: String,
@@ -1246,6 +1256,11 @@ impl EventPredicate {
             Self::SourceKind(kind) => event.source_kind == *kind,
             Self::Kind(kind) => event.kind == *kind,
             Self::Process(process) => event.process.as_deref() == Some(process),
+            // r[impl chaoscontrol.text_event_predicate.selection]
+            Self::Contains { field, text } => {
+                field_value(event, field).is_some_and(|value| value.contains(text))
+            }
+            Self::Matches { field, text } => field_value(event, field) == Some(text.as_str()),
             // r[impl chaoscontrol.numeric_event_query.comparison]
             Self::JsonNumber {
                 pointer,
@@ -1362,6 +1377,10 @@ fn validate_predicate(
         }
         EventPredicate::Process(process) => {
             validate_text(process).map_err(|_| EventQueryError::InvalidPredicate)
+        }
+        EventPredicate::Contains { field, text } | EventPredicate::Matches { field, text } => {
+            validate_field(field)?;
+            validate_text(text)
         }
         EventPredicate::JsonNumber { pointer, value, .. } => {
             validate_pointer(pointer)?;

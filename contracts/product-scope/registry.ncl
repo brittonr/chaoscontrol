@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "filter-json-event-text",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "JsonTextNumber must compare finite numeric scalars in bounded JSON text without coercion or canonical mutation, sharing existing JsonNumber semantics and admission. Verify visited parse errors, skipped parsing versus skipped-invalid admission, exact/exhausted operations, actual CLI memory-monitor projection/threshold/UpTo, no partial artifacts and query/source/result receipt drift.",
+      non_claims = ["Supplied retained-input numeric stdout selection is not derived-string numeric coercion, arbitrary transforms, capture completeness, reactive branching, full Notebook compatibility, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "project-json-event-text",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

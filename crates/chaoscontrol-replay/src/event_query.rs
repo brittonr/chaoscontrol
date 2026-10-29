@@ -446,6 +446,22 @@ pub enum NumberComparison {
     GreaterThan,
 }
 
+impl NumberComparison {
+    fn matches(self, actual: Option<&serde_json::Value>, expected: &serde_json::Number) -> bool {
+        actual
+            .and_then(serde_json::Value::as_f64)
+            .filter(|actual| actual.is_finite())
+            .zip(expected.as_f64())
+            .is_some_and(|(actual, expected)| match self {
+                Self::LessThan => actual < expected,
+                Self::LessThanOrEqual => actual <= expected,
+                Self::Equal => actual == expected,
+                Self::GreaterThanOrEqual => actual >= expected,
+                Self::GreaterThan => actual > expected,
+            })
+    }
+}
+
 /// A bounded predicate over one event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -476,6 +492,12 @@ pub enum EventPredicate {
     },
     /// Compare a JSON number in `details`; missing/non-numeric values never match.
     JsonNumber {
+        pointer: String,
+        comparison: NumberComparison,
+        value: serde_json::Number,
+    },
+    /// Compare a JSON number in canonical text; visited invalid JSON is an error.
+    JsonTextNumber {
         pointer: String,
         comparison: NumberComparison,
         value: serde_json::Number,
@@ -1297,20 +1319,23 @@ impl EventPredicate {
                 pointer,
                 comparison,
                 value,
-            } => event
-                .details
-                .as_ref()
-                .and_then(|details| details.pointer(pointer))
-                .and_then(serde_json::Value::as_f64)
-                .filter(|actual| actual.is_finite())
-                .zip(value.as_f64())
-                .is_some_and(|(actual, expected)| match comparison {
-                    NumberComparison::LessThan => actual < expected,
-                    NumberComparison::LessThanOrEqual => actual <= expected,
-                    NumberComparison::Equal => actual == expected,
-                    NumberComparison::GreaterThanOrEqual => actual >= expected,
-                    NumberComparison::GreaterThan => actual > expected,
-                }),
+            } => comparison.matches(
+                event
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.pointer(pointer)),
+                value,
+            ),
+            // r[impl chaoscontrol.json_text_number.comparison]
+            Self::JsonTextNumber {
+                pointer,
+                comparison,
+                value,
+            } => {
+                let parsed: serde_json::Value = serde_json::from_str(&event.text)
+                    .map_err(|_| EventQueryError::InvalidJsonText)?;
+                comparison.matches(parsed.pointer(pointer), value)
+            }
         })
     }
 }
@@ -1418,7 +1443,8 @@ fn validate_predicate(
             validate_field(field)?;
             validate_text(text)
         }
-        EventPredicate::JsonNumber { pointer, value, .. } => {
+        EventPredicate::JsonNumber { pointer, value, .. }
+        | EventPredicate::JsonTextNumber { pointer, value, .. } => {
             validate_pointer(pointer)?;
             if value.as_f64().is_none_or(|value| !value.is_finite()) {
                 return Err(EventQueryError::InvalidPredicate);

@@ -138,6 +138,66 @@ This closes the bounded local threshold-filtering gap illustrated by the
 It does not add arbitrary JavaScript predicates, live branches, reactive sequences
 or hosted Notebook compatibility.
 
+## Numeric JSON stdout filters
+
+`JsonTextNumber` uses the same pointer, comparison and numeric threshold as
+`JsonNumber`, but reads JSON from original event `text` rather than `details`.
+It does not coerce `MapText`'s derived strings into numbers. For example, select
+Chromium observations above 50 from a JSON-emitting memory monitor:
+
+```json
+{
+  "Filter": {
+    "input": {
+      "MapText": {
+        "input": {
+          "Filter": {"input": "All", "predicate": {"Process": "memory-monitor"}}
+        },
+        "field": "app",
+        "pointer": "/process_name"
+      }
+    },
+    "predicate": {
+      "All": [
+        {"Matches": {"field": "app", "text": "chromium"}},
+        {"JsonTextNumber": {
+          "pointer": "/mem_usage", "comparison": "GreaterThan", "value": 50
+        }}
+      ]
+    }
+  }
+}
+```
+
+Example text: `{"process_name":"chromium","mem_usage":80}`. Save the query
+and run the same `query`/`validate` commands above. Wrap it in `UpTo` to select
+only retained history up to a tick. Conflicting `details.mem_usage` or derived
+strings do not affect this predicate; canonical fields remain unchanged.
+
+The five comparisons use the same finite binary64 semantics, rounding and
+256-byte confined pointer rules as `JsonNumber`. Missing pointers and selected
+strings, booleans, null, arrays or objects are false, with ordinary `Not`
+negation. Only visited leaves parse text. Invalid JSON, trailing garbage,
+out-of-range JSON numbers and excessive parser nesting fail with
+`InvalidJsonText`, not a non-match. Filter mixed plain-text logs before parsing,
+or put a source guard first in an `All`; an `Any` may also short-circuit parsing.
+Skipped predicate descendants still undergo pointer/threshold admission.
+
+Each parse is bounded by the existing 8192-byte canonical text cap and default
+parser recursion limit. Visited numeric leaves use the existing logical filter
+operation charge; compound predicates charge visited children as before. No
+parsed-tree cache or new limits are introduced. Evaluation failures publish no
+partial CLI result/receipt. Existing node/depth, scan/result, moment and receipt
+rules remain effective; even a same-output threshold or pointer change invalidates
+a receipt. `JsonNumber`, `Map` and `MapText` retain their existing semantics.
+New predicate variants require upgraded readers; schemas are unchanged.
+
+This supports the retained-history portion of the
+[Antithesis memory-monitor example](https://antithesis.com/docs/product/debugging/advanced_multiverse_debugging/event_sets/).
+It does not implement arbitrary transforms, numeric coercion of derived strings,
+reactive branches, complete capture or full Notebook compatibility.
+
+
 ## Compound predicates
 
 `Filter.predicate` supports `All`, `Any` and `Not` around any existing predicate.

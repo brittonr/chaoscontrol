@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-sometimes-diagnostic-observations",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "SDK diagnostics must retain false sometimes observations without counting them as observed safety violations. Eventual-success, never-successful progress and real safety scenarios must retain raw counts and gaps; actual SDK-to-strict-report quality checks must accept eventual success and reject stalled progress and safety violations.",
+      non_claims = ["Diagnostic observation classification does not make the SDK parser collision-safe or replace strict property verdicts, campaign aggregation, VM execution, replay or release eligibility."],
+    },
+    {
       change = "accept-serializable-stable-assertion-details",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

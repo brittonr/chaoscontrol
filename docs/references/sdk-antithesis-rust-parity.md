@@ -127,6 +127,15 @@ the serializer. Existing `Value` callers and the no-full generic borrowed API
 remain supported. Stable identity is a ChaosControl extension, not an upstream
 Antithesis API.
 
+The SDK diagnostic `LocalDryRunReport` retains false `sometimes` observations
+without counting them as observed safety violations in `failed_assertions`.
+This follows the [upstream existential sometimes contract](https://docs.rs/antithesis_sdk/0.3.0/antithesis_sdk/macro.assert_sometimes.html):
+false/true/false retains three hits and two false observations, but no progress
+gap or observed safety violation. Never-successful progress still produces a
+gap and fails the strict quality gate. The diagnostic violation-hit counter is
+not the strict report's distinct failed-property count; diagnostic reports remain
+non-collision-safe and do not authorize promotion.
+
 ## Random
 
 | Function | Antithesis | ChaosControl | Status |

@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "preserve-sometimes-diagnostic-observations",
+      "evidence_prerequisite": "SDK diagnostics must retain false sometimes observations without counting them as observed safety violations. Eventual-success, never-successful progress and real safety scenarios must retain raw counts and gaps; actual SDK-to-strict-report quality checks must accept eventual success and reject stalled progress and safety violations.",
+      "non_claims": [
+        "Diagnostic observation classification does not make the SDK parser collision-safe or replace strict property verdicts, campaign aggregation, VM execution, replay or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "accept-serializable-stable-assertion-details",
       "evidence_prerequisite": "Stable assertions must accept borrowed serializable structs and unsized strings/slices through the existing bounded serializer, retaining identity and outcomes. Default/sparse regressions must prove serializer invocation only after identity admission and sampling; actual full/no-full consumers must preserve payloads and disabled-mode evaluation without output.",
       "non_claims": [

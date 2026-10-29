@@ -58,6 +58,18 @@ Parse the output with `LocalDryRunReport::from_path` to inspect:
 - local `random_choice_index` observations;
 - `adoption_tracks` / `instrumentation_sources`, so external harness observations and opt-in in-process service assertions are not conflated.
 
+In the SDK diagnostic report, `failed_assertions` counts observed
+always/unreachable violation hits, not distinct failed properties or every false
+condition. False `sometimes` attempts stay in each site's `failure_count`; an
+eventual true observation clears the progress gap. A site that never succeeds
+still appears in `sometimes_without_success` and `gaps()`, even when the observed
+violation counter is zero. Inspect those gaps as well as the counter.
+
+The strict evidence report separately derives failed-property verdicts and can
+therefore report a failed never-successful property when the SDK diagnostic
+counter is zero. The SDK diagnostic parser remains non-collision-safe; do not
+use its counters as promotion authority instead of the strict quality gate.
+
 This dry-run is only an instrumentation check. It does not prove deterministic replay or snapshot-backed reproduction; VM campaign reports must keep those evidence classes separate.
 
 ## Two-track adoption

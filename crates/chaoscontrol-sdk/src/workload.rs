@@ -208,6 +208,8 @@ pub struct LocalDryRunReport {
     pub lifecycle_events: BTreeMap<String, usize>,
     pub cataloged_assertions: usize,
     pub exercised_assertions: usize,
+    /// Observed always/unreachable violation hits, not distinct failed properties.
+    /// False sometimes hits remain in coverage counters and progress-gap reporting.
     pub failed_assertions: usize,
     pub sometimes_without_success: Vec<String>,
     pub reachable_without_hit: Vec<String>,
@@ -357,7 +359,10 @@ impl LocalDryRunReport {
                     site.success_count += 1;
                 } else {
                     site.failure_count += 1;
-                    report.failed_assertions += 1;
+                    // r[impl chaoscontrol.diagnostic_sometimes.observations]
+                    if site.assert_type != "sometimes" {
+                        report.failed_assertions += 1;
+                    }
                 }
                 match assert_type.as_str() {
                     "sometimes" if condition => {
@@ -545,12 +550,15 @@ mod tests {
             .contains(&"missing setup_complete lifecycle event".to_string()));
     }
 
+    // r[verify chaoscontrol.diagnostic_sometimes.observations]
     #[test]
     fn report_records_setup_and_successful_sometimes() {
         let content = r#"
 {"antithesis_setup":{"status":"complete","details":{"workload":"sample"}}}
 {"antithesis_assert":{"assert_type":"sometimes","condition":false,"hit":false,"must_hit":true,"id":"00000001","message":"write succeeds","display_type":"sometimes","details":{"category":"operation"}}}
+{"antithesis_assert":{"assert_type":"sometimes","condition":false,"hit":true,"must_hit":true,"id":"00000001","message":"write succeeds","display_type":"sometimes","details":{}}}
 {"antithesis_assert":{"assert_type":"sometimes","condition":true,"hit":true,"must_hit":true,"id":"00000001","message":"write succeeds","display_type":"sometimes","details":{}}}
+{"antithesis_assert":{"assert_type":"sometimes","condition":false,"hit":true,"must_hit":true,"id":"00000001","message":"write succeeds","display_type":"sometimes","details":{}}}
 "#;
         let report = LocalDryRunReport::from_jsonl(content).unwrap();
         assert!(report.setup_complete);
@@ -559,8 +567,54 @@ mod tests {
         assert_eq!(report.exercised_assertions, 1);
         assert!(report.sometimes_without_success.is_empty());
         assert!(report.unobserved_assertions.is_empty());
-        assert_eq!(report.assertion_coverage[0].observed_hits, 1);
+        assert_eq!(report.assertion_coverage[0].observed_hits, 3);
         assert_eq!(report.assertion_coverage[0].success_count, 1);
+        assert_eq!(report.assertion_coverage[0].failure_count, 2);
+        assert_eq!(report.failed_assertions, 0);
+        assert!(report.gaps().is_empty());
+    }
+
+    // r[verify chaoscontrol.diagnostic_sometimes.observations]
+    #[test]
+    fn diagnostic_progress_gaps_and_safety_violations_remain_distinct() {
+        for (assert_type, conditions, expected_violations) in [
+            ("sometimes", &[false, false][..], 0),
+            ("always", &[true, false, false][..], 2),
+            ("reachability", &[false][..], 1),
+        ] {
+            let mut lines =
+                vec![r#"{"antithesis_setup":{"status":"complete","details":{}}}"#.to_string()];
+            for condition in conditions {
+                lines.push(
+                    serde_json::json!({"antithesis_assert": {
+                        "assert_type": assert_type,
+                        "condition": condition,
+                        "hit": true,
+                        "id": "property",
+                        "message": "checked property",
+                        "details": {"category": "invariant"},
+                    }})
+                    .to_string(),
+                );
+            }
+            let report = LocalDryRunReport::from_jsonl(&lines.join("\n")).unwrap();
+            assert_eq!(
+                report.failed_assertions, expected_violations,
+                "{assert_type}"
+            );
+            let site = &report.assertion_coverage[0];
+            assert_eq!(site.observed_hits, conditions.len());
+            assert_eq!(
+                site.failure_count,
+                conditions.iter().filter(|&&condition| !condition).count()
+            );
+            if assert_type == "sometimes" {
+                assert_eq!(report.sometimes_without_success, ["checked property"]);
+                assert!(report.gaps().iter().any(|gap| gap.contains("sometimes")));
+            } else {
+                assert!(report.sometimes_without_success.is_empty());
+            }
+        }
     }
 
     #[test]

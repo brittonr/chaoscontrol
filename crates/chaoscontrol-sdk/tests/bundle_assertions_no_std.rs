@@ -120,3 +120,32 @@ fn bundle_details_precede_conditions_without_json_or_clone() {
     exercise!(cc_assert_always_some, "no-full ordered some");
     exercise!(cc_assert_sometimes_all, "no-full ordered all");
 }
+
+// r[verify chaoscontrol.noop_assertion_details.optional]
+#[cfg(not(feature = "full"))]
+#[test]
+fn optional_assertion_noop_evaluates_borrowed_details_once_in_order() {
+    fn exercise<D: ?Sized>(details: &D) {
+        for condition in [true, false] {
+            let stage = std::cell::Cell::new(0);
+            cc_assert_always_or_unreachable!(
+                {
+                    assert_eq!(stage.get(), 0);
+                    stage.set(1);
+                    condition
+                },
+                "no-op optional details",
+                {
+                    assert_eq!(stage.get(), 1);
+                    stage.set(2);
+                    details
+                }
+            );
+            assert_eq!(stage.get(), 2);
+        }
+    }
+    struct NonSerializableDetails;
+    exercise(&NonSerializableDetails);
+    exercise("borrowed unsized text");
+    exercise([1_u8, 2, 3].as_slice());
+}

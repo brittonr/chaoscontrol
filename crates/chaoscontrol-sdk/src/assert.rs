@@ -497,9 +497,15 @@ pub fn emit_registered_assertion<S: ?Sized>(
     _details: &S,
 ) {
 }
+// r[impl chaoscontrol.noop_assertion_details.optional]
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]
-pub fn emit_registered_always_or_unreachable(_cond: bool, _id: u32, _message: &str, _details: &()) {
+pub fn emit_registered_always_or_unreachable<S: ?Sized>(
+    _cond: bool,
+    _id: u32,
+    _message: &str,
+    _details: &S,
+) {
 }
 #[cfg(not(feature = "full"))]
 #[doc(hidden)]

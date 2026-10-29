@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-noop-optional-assertion-details",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Optional always assertions must preserve borrowed sized/unsized detail calls and exactly-once condition-before-details evaluation without full; identical downstream callsites must run in both modes, with no disabled-mode output and unchanged enabled optional-property metadata.",
+      non_claims = ["Local compile/runtime feature parity does not prove VM execution, replay, hosted-platform equivalence or release eligibility."],
+    },
+    {
       change = "accept-json-assertion-details",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

@@ -297,10 +297,12 @@ change the assertion oracle or prove exploration quality.
   does not invent a wrapper or erase process ownership to admit them.
 - `random_choice` now has the Antithesis slice signature. Use the
   `random_choice_index(n)` extension when an index bound is more natural.
-- ChaosControl's no-op lifecycle and assertion functions accept a generic
-  detail reference, so `setup_complete(&details)`, `send_event(name,
-  &details)`, and assertion details keep the same call shape with
-  `default-features = false`.
+- ChaosControl's no-op lifecycle and assertion functions, including
+  `assert_always_or_unreachable!`, accept generic borrowed details, including
+  unsized strings/slices and non-serializable types. Disabling `full` preserves
+  the detail-bearing call shape and exactly-once condition-before-details
+  evaluation without JSON work or output. Enabled assertions retain their
+  serialization requirements and optional-property semantics.
 - ChaosControl supports `no_std` when `full` is disabled; Antithesis is std.
 - ChaosControl exposes both `rand_core_v0_6/9/10` and `rand_v0_8/9/10`
   feature names like Antithesis. The default enables `rand_v0_8`, and all

@@ -121,13 +121,26 @@ receipt.json`, then `query-events validate --events events.json query.json
 result.json receipt.json`. Each event in `events.json` must be a canonical
 envelope; an example matching details value is `{"memory":{"used":50.25}}`.
 
-Comparisons are `LessThan`, `LessThanOrEqual`, `Equal`, `GreaterThanOrEqual`
-and `GreaterThan`. Both operands use finite IEEE-754 binary64, like JavaScript
+Comparisons are `LessThan`, `LessThanOrEqual`, `Equal`, `NotEqual`,
+`GreaterThanOrEqual` and `GreaterThan`. Both operands use finite IEEE-754
+binary64, like JavaScript
 Number: integers outside its exact range (beyond ±2^53) may round. This is not
 an exact arbitrary-width integer comparison. The threshold must be a JSON number,
 not a string or null. Missing paths and non-number values never match; no string,
 boolean or null coercion occurs. Pointers follow the existing nonempty `/`-prefixed,
 control-free, 256-byte bound and JSON-pointer `~0`/`~1` escaping.
+
+Use `"comparison": "NotEqual"` to select numeric deviations from the threshold.
+Unlike `Not` around an `Equal` predicate, `NotEqual` does not select missing or
+nonnumeric values. For example, against 50, numeric 49 matches; 50, `"49"`,
+`false`, null and an absent path do not. Signed zero equals zero, and wide
+integers rounded to the same binary64 value are not unequal. The same comparison
+is available in `JsonTextNumber` below; visited invalid JSON remains an error.
+This adds a typed local analogue of the numeric `≠` operator in
+[Antithesis Logs Explorer](https://antithesis.com/docs/reference/logs_explorer_search/),
+not its boolean/number or string coercions. Readers must support `NotEqual`
+before consuming the new comparison value; schemas and older comparisons are
+unchanged.
 
 Filtering preserves original fields and canonical ordering. It uses the existing
 per-row filter operation charge, scan/row/byte limits and receipt binding; a
@@ -176,7 +189,7 @@ and run the same `query`/`validate` commands above. Wrap it in `UpTo` to select
 only retained history up to a tick. Conflicting `details.mem_usage` or derived
 strings do not affect this predicate; canonical fields remain unchanged.
 
-The five comparisons use the same finite binary64 semantics, rounding and
+All six comparisons use the same finite binary64 semantics, rounding and
 256-byte confined pointer rules as `JsonNumber`. Missing pointers and selected
 strings, booleans, null, arrays or objects are false, with ordinary `Not`
 negation. Only visited leaves parse text. Invalid JSON, trailing garbage,

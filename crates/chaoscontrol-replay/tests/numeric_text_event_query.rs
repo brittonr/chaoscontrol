@@ -59,6 +59,7 @@ fn numeric_stdout_selection_preserves_rows_and_does_not_coerce_values() {
         ("LessThan", vec![0]),
         ("LessThanOrEqual", vec![0, 1]),
         ("Equal", vec![1]),
+        ("NotEqual", vec![0, 2, 3, 4, 5]),
         ("GreaterThanOrEqual", vec![1, 2, 3, 4, 5]),
         ("GreaterThan", vec![2, 3, 4, 5]),
     ] {
@@ -106,6 +107,52 @@ fn escaped_unicode_array_pointers_and_binary64_semantics_match_details_compariso
             .rows,
             vec![source.clone()]
         );
+    }
+}
+
+// r[verify chaoscontrol.numeric_event_query.inequality]
+#[test]
+fn inequality_uses_binary64_equality_for_both_canonical_sources() {
+    for (actual, threshold, matches) in [
+        (json!(-0.0), json!(0), false),
+        (json!(17), json!(17.0), false),
+        (
+            json!(9_007_199_254_740_993_u64),
+            json!(9_007_199_254_740_992_u64),
+            false,
+        ),
+        (
+            json!(9_007_199_254_740_994_u64),
+            json!(9_007_199_254_740_992_u64),
+            true,
+        ),
+        (json!(u64::MAX), json!(u64::MAX - 1), false),
+        (json!(1e-300), json!(0), true),
+    ] {
+        let data = json!({"used": actual});
+        let mut source = event(0, data.to_string());
+        source.details = Some(data);
+        for kind in ["JsonNumber", "JsonTextNumber"] {
+            let predicate = query(json!({kind: {
+                "pointer": "/used", "comparison": "NotEqual", "value": threshold
+            }}));
+            let expected = if matches {
+                vec![source.clone()]
+            } else {
+                Vec::new()
+            };
+            assert_eq!(
+                evaluate(
+                    &predicate,
+                    std::slice::from_ref(&source),
+                    &EventQueryLimits::default()
+                )
+                .unwrap()
+                .rows,
+                expected,
+                "{kind}: actual={actual}, threshold={threshold}"
+            );
+        }
     }
 }
 

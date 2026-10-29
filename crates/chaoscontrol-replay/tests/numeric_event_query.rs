@@ -59,6 +59,7 @@ fn numeric_thresholds_compare_numbers_without_coercing_other_json() {
         ("LessThan", vec![0]),
         ("LessThanOrEqual", vec![0, 1]),
         ("Equal", vec![1]),
+        ("NotEqual", vec![0, 2, 3, 4, 5]),
         ("GreaterThanOrEqual", vec![1, 2, 3, 4, 5]),
         ("GreaterThan", vec![2, 3, 4, 5]),
     ] {
@@ -76,6 +77,12 @@ fn numeric_thresholds_compare_numbers_without_coercing_other_json() {
     }
     let result = evaluate(&query("GreaterThan", json!(50)), &events, &limits).unwrap();
     assert_eq!(result.rows, vec![events[4].clone(), events[5].clone()]);
+    let result = evaluate(&query("NotEqual", json!(50)), &events, &limits).unwrap();
+    let expected: Vec<_> = [0, 1, 2, 4, 5]
+        .into_iter()
+        .map(|i| events[i].clone())
+        .collect();
+    assert_eq!(result.rows, expected);
 }
 
 #[test]

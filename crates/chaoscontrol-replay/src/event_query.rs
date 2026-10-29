@@ -449,6 +449,7 @@ pub enum NumberComparison {
     LessThan,
     LessThanOrEqual,
     Equal,
+    NotEqual,
     GreaterThanOrEqual,
     GreaterThan,
 }
@@ -463,6 +464,8 @@ impl NumberComparison {
                 Self::LessThan => actual < expected,
                 Self::LessThanOrEqual => actual <= expected,
                 Self::Equal => actual == expected,
+                // r[impl chaoscontrol.numeric_event_query.inequality]
+                Self::NotEqual => actual != expected,
                 Self::GreaterThanOrEqual => actual >= expected,
                 Self::GreaterThan => actual > expected,
             })

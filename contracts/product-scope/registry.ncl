@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "compare-unequal-numeric-events",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "NotEqual must share finite binary64 comparison for JsonNumber and JsonTextNumber without matching missing or nonnumeric values or changing Not semantics. Verify source separation, signed zero, representation/precision boundaries, visited parsing and skipped admission, existing work bounds, actual CLI query/validate behavior and query/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Typed inequality over supplied retained inputs is not exact arbitrary-width integer comparison, upstream boolean/string coercion or full query-language compatibility, capture completeness, hosted Logs Explorer, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "correlate-temporal-events",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

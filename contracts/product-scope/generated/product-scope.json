@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "compare-unequal-numeric-events",
+      "evidence_prerequisite": "NotEqual must share finite binary64 comparison for JsonNumber and JsonTextNumber without matching missing or nonnumeric values or changing Not semantics. Verify source separation, signed zero, representation/precision boundaries, visited parsing and skipped admission, existing work bounds, actual CLI query/validate behavior and query/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Typed inequality over supplied retained inputs is not exact arbitrary-width integer comparison, upstream boolean/string coercion or full query-language compatibility, capture completeness, hosted Logs Explorer, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "correlate-temporal-events",
       "evidence_prerequisite": "Temporal must correlate independently admitted candidates and witnesses under all four strict-tick relations with inclusive overflow-safe windows, unchanged candidate projections and first-wins duplicate behavior. Verify empty/equal/extreme ticks, invalid witnesses, bounded logical work without Cartesian joins, moment scoping and actual CLI receipts rejecting query/source/result drift without partial failure artifacts.",
       "non_claims": [

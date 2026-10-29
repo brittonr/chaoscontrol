@@ -242,6 +242,68 @@ retain their admission and operation costs. This is a bounded boolean subset
 of the upstream guide's arbitrary filter functions, not JavaScript execution
 or full Notebook compatibility.
 
+## Structured field presence and absence
+
+`JsonPresent` tests whether a confined JSON pointer resolves in original
+`details`; `JsonTextPresent` tests the same condition in JSON parsed from
+original event `text`. Both take `{"pointer":"/path/to/field"}`. Neither reads
+derived strings. A resolved value is present even when it is null, false, zero,
+an empty string, an array or an object. Missing/untraversable paths are absent;
+missing details are absent for `JsonPresent`. Use `Not` for absence:
+
+```json
+{
+  "Filter": {
+    "input": "All",
+    "predicate": {"Not": {"JsonTextPresent": {"pointer": "/memory/used"}}}
+  }
+}
+```
+
+Use the same `query`/`validate` commands above. To exclude missing values from
+a negative numeric query, compose an explicit presence guard:
+
+```json
+{
+  "Filter": {
+    "input": "All",
+    "predicate": {"All": [
+      {"JsonTextPresent": {"pointer": "/memory/used"}},
+      {"Not": {"JsonTextNumber": {
+        "pointer": "/memory/used", "comparison": "GreaterThan", "value": 50
+      }}}
+    ]}
+  }
+}
+```
+
+This excludes absent metrics but includes explicit null and other nonnumeric
+values, because presence is **not** a numeric-type guard. For numeric values at
+most 50, use `JsonTextNumber` with `LessThanOrEqual` instead. Replace the text
+variants with `JsonPresent`/`JsonNumber` for canonical details. No truthiness,
+string/number conversion or upstream boolean/numeric search coercion is added.
+
+Presence leaves reuse the existing 256-byte confined pointer rules, including
+JSON-pointer escaping and array paths. `JsonPresent` does not parse event text;
+generic canonical text admission still applies. Visited `JsonTextPresent`
+leaves strictly parse bounded text just like `MapText` and `JsonTextNumber`:
+invalid/trailing/over-deep JSON fails with `InvalidJsonText`, even under `Not`.
+All/Any short-circuiting can skip parsing, but every descendant's pointer is
+validated before evaluation, even over an empty source. A visited presence leaf
+uses the existing logical filter charge; no new limits or parsed cache are added.
+
+Canonical rows, ordering, node/depth/text/operation bounds, moments and receipt
+binding remain unchanged. The source variant and pointer are receipt-bound even
+when another query selects identical rows. Evaluation failures produce no
+partial CLI result/receipt. New predicate variants require upgraded readers;
+schemas and existing predicate semantics are unchanged.
+
+This supplies bounded local presence/absence selection analogous to the custom
+field operators in [Antithesis Logs Explorer search](https://antithesis.com/docs/reference/logs_explorer_search/),
+not its query syntax, type coercions, hosted interface, temporal search, complete
+event capture or full compatibility.
+
+
 ## Composable text selection
 
 `Contains` and `Matches` are available as predicates inside `Filter`, including

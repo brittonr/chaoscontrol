@@ -502,6 +502,14 @@ pub enum EventPredicate {
         comparison: NumberComparison,
         value: serde_json::Number,
     },
+    /// Test pointer presence in `details`, including explicit null and containers.
+    JsonPresent {
+        pointer: String,
+    },
+    /// Test pointer presence in JSON text; visited invalid JSON is an error.
+    JsonTextPresent {
+        pointer: String,
+    },
 }
 
 /// A typed, bounded query expression.
@@ -1336,6 +1344,17 @@ impl EventPredicate {
                     .map_err(|_| EventQueryError::InvalidJsonText)?;
                 comparison.matches(parsed.pointer(pointer), value)
             }
+            // r[impl chaoscontrol.json_field_presence.selection]
+            Self::JsonPresent { pointer } => event
+                .details
+                .as_ref()
+                .and_then(|details| details.pointer(pointer))
+                .is_some(),
+            Self::JsonTextPresent { pointer } => {
+                let parsed: serde_json::Value = serde_json::from_str(&event.text)
+                    .map_err(|_| EventQueryError::InvalidJsonText)?;
+                parsed.pointer(pointer).is_some()
+            }
         })
     }
 }
@@ -1450,6 +1469,9 @@ fn validate_predicate(
                 return Err(EventQueryError::InvalidPredicate);
             }
             Ok(())
+        }
+        EventPredicate::JsonPresent { pointer } | EventPredicate::JsonTextPresent { pointer } => {
+            validate_pointer(pointer)
         }
         EventPredicate::TickRange { .. }
         | EventPredicate::Vm(_)

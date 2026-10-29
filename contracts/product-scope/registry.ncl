@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "filter-json-field-presence",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "JsonPresent and JsonTextPresent must distinguish missing paths from any resolved JSON value, including null and containers, without row mutation. Verify both sources, escaped paths, strict visited parse errors versus skipped parsing, skipped-invalid admission, existing bounds/moments and actual CLI presence/absence/guard queries with query/source/result receipt drift and no partial artifacts.",
+      non_claims = ["Supplied retained-input field presence is not truthiness or numeric-type validation, upstream search syntax/coercion compatibility, capture completeness, hosted Logs Explorer, temporal search, live branches, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "filter-json-event-text",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

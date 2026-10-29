@@ -565,6 +565,13 @@ pub enum EventQuery {
         predicate: EventPredicate,
         field: String,
     },
+    /// Annotate unique canonical prefixes with inclusive finite numeric totals.
+    RunningSum {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        value_field: String,
+    },
     Map {
         input: Box<EventQuery>,
         field: String,
@@ -741,6 +748,7 @@ pub enum EventQueryError {
     InvalidText,
     InvalidJsonText,
     InvalidRegex,
+    InvalidNumber,
     InvalidWindow,
     InvalidFormat,
     InvalidField,
@@ -777,6 +785,7 @@ impl core::fmt::Display for EventQueryError {
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidJsonText => "event text is not valid JSON within parser bounds",
             Self::InvalidRegex => "event regex is invalid or exceeds compilation bounds",
+            Self::InvalidNumber => "event query requires finite JSON-number operands and totals",
             Self::InvalidWindow => "event query window is reversed",
             Self::InvalidFormat => "event timeline format is not markdown or dot",
             Self::InvalidField => "event query field is not supported",
@@ -1286,6 +1295,40 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.running_sum.prefixes]
+        EventQuery::RunningSum {
+            input,
+            predicate,
+            field,
+            value_field,
+        } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for row in &rows {
+                admit_event(row)?;
+            }
+            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+                rows.sort_by_key(event_order);
+            }
+            rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
+            let mut total = 0.0;
+            for row in &mut rows {
+                if predicate.matches(row, operations, max_operations, regexes)? {
+                    total += finite_field_number(row, value_field)
+                        .ok_or(EventQueryError::InvalidNumber)?;
+                }
+                let number =
+                    serde_json::Number::from_f64(total).ok_or(EventQueryError::InvalidNumber)?;
+                if let Some(value) = row.derived.get_mut(field) {
+                    value.clear();
+                    write!(value, "{number}").expect("writing to a String cannot fail");
+                } else {
+                    row.derived.insert(field.clone(), number.to_string());
+                }
+                admit_event(row)?;
+            }
+            Ok(rows)
+        }
         EventQuery::Map {
             input,
             field,
@@ -1760,6 +1803,17 @@ fn validate_query_inner<'a>(
             validate_predicate(predicate, limits, depth, nodes, regexes)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::RunningSum {
+            input,
+            predicate,
+            field,
+            value_field,
+        } => {
+            validate_field(field)?;
+            validate_field(value_field)?;
+            validate_predicate(predicate, limits, depth, nodes, regexes)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Map {
             input,
             field,
@@ -1977,19 +2031,21 @@ fn validate_text(value: &str) -> Result<(), EventQueryError> {
     Ok(())
 }
 
+fn finite_field_number(event: &EventEnvelope, field: &str) -> Option<f64> {
+    field_value(event, field)
+        .and_then(|text| serde_json::from_str::<serde_json::Number>(text).ok())
+        .and_then(|number| number.as_f64())
+        .filter(|number| number.is_finite())
+}
+
 fn finite_field_ratio(
     event: &EventEnvelope,
     numerator: &str,
     denominator: &str,
 ) -> Option<serde_json::Number> {
-    let number = |field: &str| {
-        field_value(event, field)
-            .and_then(|text| serde_json::from_str::<serde_json::Number>(text).ok())
-            .and_then(|number| number.as_f64())
-            .filter(|number| number.is_finite())
-    };
-    let denominator = number(denominator).filter(|denominator| *denominator != 0.0)?;
-    serde_json::Number::from_f64(number(numerator)? / denominator)
+    let denominator =
+        finite_field_number(event, denominator).filter(|denominator| *denominator != 0.0)?;
+    serde_json::Number::from_f64(finite_field_number(event, numerator)? / denominator)
 }
 
 fn field_value<'a>(event: &'a EventEnvelope, field: &str) -> Option<&'a str> {
@@ -2020,6 +2076,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         EventQuery::UpTo { moment_tick, .. } => Ok(Some(*moment_tick)),
         EventQuery::Filter { input, .. }
         | EventQuery::RunningCount { input, .. }
+        | EventQuery::RunningSum { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
         | EventQuery::MapRatio { input, .. }

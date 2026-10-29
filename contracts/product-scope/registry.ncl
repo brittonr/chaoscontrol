@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "sum-retained-numeric-prefixes",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "RunningSum must annotate inclusive canonical unique-event prefixes using finite binary64 matching operands, preserve first-position projections and reject invalid operands/nonfinite totals without parsing skipped operands. Verify permutations/ties/extreme ticks, negative/fractional/zero/rounding values, output aliasing, canonical precedence, projection/filter composition, both names/predicate admission, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial artifacts.",
+      non_claims = ["Retained running sums are not a generic fold interpreter, JavaScript coercion, exact integer/rational arithmetic, implicit source partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "annotate-last-witness-values",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

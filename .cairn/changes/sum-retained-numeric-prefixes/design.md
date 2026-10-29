@@ -1,0 +1,15 @@
+## Context
+
+The Antithesis fold reference accepts arbitrary reducers; local RunningCount establishes canonical unique-event prefix aggregation and typed predicates. Numeric selected fields already use complete finite JSON-number text and binary64 semantics.
+
+## Decision
+
+Add RunningSum with input, predicate, destination field and value_field. Admit both names and the entire predicate even for empty inputs. Evaluate input, charge every candidate once, admit intermediate rows, stable-sort by (tick,source_id,source_sequence) and retain the first projection per source position before accumulation, matching RunningCount. Start total at +0.0 and use one ordinary binary64 addition per matching event. Canonical order, not input permutation or grouping, determines rounding. No reassociation, compensation or exact arithmetic claim.
+
+Evaluate the predicate against the pre-overwrite row. For matching rows resolve value_field using canonical-name precedence and complete finite JSON-number parsing; missing/malformed/nonfinite operands fail InvalidNumber. Nonmatching operands are not parsed. Convert the new total with serde_json::Number::from_f64; overflow fails InvalidNumber immediately even if a later operand could recover. Annotate every row, including nonmatches, with the current JSON-number text. Reuse existing destination Strings and allocate keys/values only for new projections. Destination aliases of value/predicate fields are safe; canonical evidence remains immutable.
+
+Extract the existing finite operand lookup from finite_field_ratio into a shared private finite_field_number helper used by ratio arithmetic and RunningSum. Do not change FieldRatio semantics. Integrate existing predicate regex cache, shared operation/node/depth/scan/derived/result bounds and child moment traversal. Admit each output immediately so narrowing cannot hide generated capacity failures. Predicate roots use the existing per-row charge; visited compound children add ordinary charges. Receipts bind expression, both names, predicate, canonical sources and result projections; schemas/older variants remain unchanged. Upgraded readers are needed for the new query/error variants.
+
+## Verification
+
+Capture replay baseline and exported query/error references; admit lifecycle gates before implementation and reproduce unsupported RunningSum. Verify full canonical prefix rows under input permutations, tied/extreme ticks, first-duplicate priority, positive/negative/fractional/nonmatching values, destination aliasing, zero/rounding, invalid/missing/overflowing operands, skipped malformed operands, JSON projection and downstream filters. Verify name/predicate admission, intermediate/generated capacity, shared bounds, prefix truncation, moments and receipt drift. Exercise actual CLI query/validate plus failures without partial artifacts. Run replay tests, Clippy, workspace compilation, formatting and scope/evidence checks, synchronize the accepted requirement without archiving, and preserve unrelated global traceability failures.

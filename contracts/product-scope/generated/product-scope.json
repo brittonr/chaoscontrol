@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "sum-retained-numeric-prefixes",
+      "evidence_prerequisite": "RunningSum must annotate inclusive canonical unique-event prefixes using finite binary64 matching operands, preserve first-position projections and reject invalid operands/nonfinite totals without parsing skipped operands. Verify permutations/ties/extreme ticks, negative/fractional/zero/rounding values, output aliasing, canonical precedence, projection/filter composition, both names/predicate admission, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial artifacts.",
+      "non_claims": [
+        "Retained running sums are not a generic fold interpreter, JavaScript coercion, exact integer/rational arithmetic, implicit source partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "annotate-last-witness-values",
       "evidence_prerequisite": "WithLastValue must preserve candidate evidence while copying a selected scalar from the nearest strict earlier in-window witness, with deterministic canonical ties, first-position projection priority and stale-output removal without older-value fallback. Verify tick extremes, zero/empty cases, canonical/empty/missing lookup, witness projection and downstream composition, both names, hidden invalid children, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

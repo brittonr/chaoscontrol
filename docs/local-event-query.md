@@ -223,12 +223,70 @@ This ordering does not infer causality, branch lineage, complete capture or a
 multiverse fold. No JavaScript, generic reducer execution, hosted search, CPU/RSS/
 deadline guarantee, VM execution or replay-proof claim is added.
 
+## Summing numeric prefixes
+
+`RunningSum` supplies a bounded numeric reducer alongside RunningCount, extending
+the local subset of [Antithesis fold](https://antithesis.com/docs/reference/event-set-reference/#fold).
+For cumulative metrics, project the metric with Map/MapText and sum matching
+values. Given numeric `derived.bytes` strings, annotate all rows with transferred
+bytes contributed by `transfer` events:
+
+```json
+{
+  "RunningSum": {
+    "input": "All",
+    "predicate": {"Kind": "transfer"},
+    "field": "bytes_total",
+    "value_field": "bytes"
+  }
+}
+```
+
+The input is admitted and ordered by `(tick, source_id, source_sequence)` before
+aggregation. Repeated positions contribute once using their first query-local
+projection. Every row is retained and annotated with the inclusive total of
+matching rows so far, seeded at `+0.0`. `{"All":[]}` sums all unique positions;
+`{"Any":[]}` produces zero totals without reading any operands. Empty input
+produces no rows. There is no automatic partition/reset by VM, source or process.
+
+The predicate and operand read the original row before the destination changes,
+so destination/value-field aliases are supported. Operand lookup follows
+FieldNumber canonical-name precedence and complete finite JSON-number grammar.
+Only matching operands are parsed: missing, malformed or nonfinite matching
+values fail with `InvalidNumber`, while invalid values on nonmatching rows do
+not contribute or fail. A visited malformed JSON predicate still fails normally.
+The destination receives finite JSON-number text such as `2.5`, `5.0` or `0.0`;
+other projections and canonical evidence remain unchanged. Use FieldNumber for
+downstream numeric thresholds and Narrow to keep the total.
+
+Accumulation uses ordinary binary64 addition in canonical order, without
+reassociation or compensated/exact summation. Negative operands are accepted;
+wide integers may round, tiny operands may underflow, and `0.1 + 0.2` is
+`0.30000000000000004`. The positive-zero seed means a lone negative-zero operand
+produces `0.0`. A nonfinite intermediate total fails `InvalidNumber` immediately,
+even if a later operand could have reduced it. Choose a different representation
+outside this operator when exact integer/currency/rational accumulation is needed.
+
+Both names require nonempty/control-free/256-byte UTF-8 admission, and the entire
+predicate is admitted even on empty input or in a skipped branch. Work, predicate
+short-circuiting/regex caching, intermediate/generated envelope admission,
+structural/scan/result bounds, canonical-prefix truncation and moment handling
+follow RunningCount. Each materialized input row costs one operation beyond child
+work, including duplicates; visited predicate children add their normal charges.
+Receipts bind the complete input/predicate, both names, canonical sources and
+annotated results. Evaluation failures publish neither result nor receipt.
+Older schemas/query forms remain unchanged; new query/error variants require
+upgraded readers. Callers must supply a coherent retained history: this is not a
+generic fold interpreter, JavaScript coercion, exact arithmetic, causal or branch
+lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline bounds,
+VM execution or replay proof.
+
 ## Numeric thresholds on projected fields
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
-lets downstream queries numerically select fields produced by `Map`, `MapText`
-or `RunningCount`, rather than enumerating exact strings or comparing them
-lexically. For example, retain observations after at least two matching events:
+lets downstream queries numerically select fields produced by `Map`, `MapText`,
+`RunningCount` or `RunningSum`, rather than enumerating exact strings or comparing
+them lexically. For example, retain observations after at least two matching events:
 
 ```json
 {

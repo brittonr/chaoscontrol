@@ -43,7 +43,13 @@ a required reachable path and `must_hit=false` identifies a forbidden path.
 The declaration can use `condition=false` and `hit=false`; later observations
 retain the same identity regardless of that placeholder. If calling
 `AssertType::to_kind` directly, pass `must_hit`, not the observed condition.
-Keep display type and must-hit metadata consistent across declarations and hits.
+Keep the complete declaration descriptor and class/function/display/must-hit
+metadata identical on every call; only `condition`, `hit` and diagnostic details
+vary. Conflicting metadata or another string ID with the same compact alias is
+rejected without emitting or consuming the original site's sparse samples.
+Exact duplicates remain usable. This raw API rejects alias collisions rather
+than admitting both IDs; stable namespace APIs retain their documented separate
+namespace collision behavior.
 
 ## Local dry-run
 

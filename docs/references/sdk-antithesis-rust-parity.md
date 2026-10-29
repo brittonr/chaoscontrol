@@ -309,6 +309,14 @@ change the assertion oracle or prove exploration quality.
   records; the VMM AOU flag is set when an `Always` raw site has
   `must_hit = false`. With `full` disabled, a no-op `assert_raw` with the
   same call shape keeps feature-independent code compiling.
+- Raw registration reuse requires an exact descriptor, class, function,
+  display type and must-hit match. Changed metadata or a distinct string ID
+  sharing an existing 32-bit alias is rejected before emission and sparse
+  sampling, rather than rewritten as the original property's observation.
+  Exact duplicates and legitimate positive/negative hits still work. Raw
+  collision capacity remains narrower than upstream string-ID capacity: this
+  is rejection safety, not support for every colliding ID. Regenerate evidence
+  from adapters that previously changed registration metadata between calls.
 - Raw reachability classification uses `must_hit`, not `condition`: required
   reachable declarations may use `condition=false`/`hit=false` and later true
   observations retain the same reachable identity. Optional forbidden paths

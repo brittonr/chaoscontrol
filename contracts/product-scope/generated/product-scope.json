@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "reject-conflicting-raw-registrations",
+      "evidence_prerequisite": "Raw alias reuse must require exact descriptor and registration metadata. Fixed collisions and changed metadata must not emit as the original property or consume sparse samples; exact duplicates and genuine pass/fail hits must survive. Actual default/sparse SDK-to-strict-CLI scenarios must accept rejected conflicts and reject genuine violations.",
+      "non_claims": [
+        "Exact raw registration reuse proves bounded local identity behavior, not support for all colliding IDs, VM execution, replay, hosted equivalence or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "classify-raw-reachability-by-obligation",
       "evidence_prerequisite": "Raw reachability declarations and hits must classify by must-hit, independently of condition. Required false-condition declarations must retain later successful hits with one accepted identity; actual SDK-to-strict-CLI scenarios must accept success and reject missing required paths or forbidden executions, preserving late-site rejection and sparse behavior.",
       "non_claims": [

@@ -74,11 +74,16 @@ pub(crate) fn register_raw(
     let Ok(mut registrations) = RAW_REGISTRATIONS.lock() else {
         return false;
     };
-    if registrations
+    // r[impl chaoscontrol.raw_registration.exact_reuse]
+    if let Some(raw) = registrations
         .iter()
-        .any(|raw| raw.descriptor.compatibility_id == descriptor.compatibility_id)
+        .find(|raw| raw.descriptor.compatibility_id == descriptor.compatibility_id)
     {
-        return true;
+        return raw.descriptor == descriptor
+            && raw.location.class == class
+            && raw.location.function == function
+            && raw.location.display_type == Some(display_type)
+            && raw.location.must_hit == Some(must_hit);
     }
     if RAW_CLOSED.load(Ordering::SeqCst) {
         return false;

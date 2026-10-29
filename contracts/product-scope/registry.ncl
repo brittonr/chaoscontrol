@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "reject-conflicting-raw-registrations",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Raw alias reuse must require exact descriptor and registration metadata. Fixed collisions and changed metadata must not emit as the original property or consume sparse samples; exact duplicates and genuine pass/fail hits must survive. Actual default/sparse SDK-to-strict-CLI scenarios must accept rejected conflicts and reject genuine violations.",
+      non_claims = ["Exact raw registration reuse proves bounded local identity behavior, not support for all colliding IDs, VM execution, replay, hosted equivalence or release eligibility."],
+    },
+    {
       change = "classify-raw-reachability-by-obligation",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "accept-serializable-stable-assertion-details",
+      "evidence_prerequisite": "Stable assertions must accept borrowed serializable structs and unsized strings/slices through the existing bounded serializer, retaining identity and outcomes. Default/sparse regressions must prove serializer invocation only after identity admission and sampling; actual full/no-full consumers must preserve payloads and disabled-mode evaluation without output.",
+      "non_claims": [
+        "Typed stable detail admission is local instrumentation evidence, not an upstream stable-identity API, VM execution, replay, hosted-platform equivalence or release eligibility."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "encapsulate-sdk-catalog-dependency",
       "evidence_prerequisite": "Automatic/stable assertions and numeric/boolean guidance must register in SDK-only and renamed consumers without direct linkme. Local output must retain declarations, accepted hit identity and guidance values; no-full evaluation, const-message rejection, migrated guest builds and the actual template report must remain valid.",
       "non_claims": [

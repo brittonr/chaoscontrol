@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "accept-serializable-stable-assertion-details",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Stable assertions must accept borrowed serializable structs and unsized strings/slices through the existing bounded serializer, retaining identity and outcomes. Default/sparse regressions must prove serializer invocation only after identity admission and sampling; actual full/no-full consumers must preserve payloads and disabled-mode evaluation without output.",
+      non_claims = ["Typed stable detail admission is local instrumentation evidence, not an upstream stable-identity API, VM execution, replay, hosted-platform equivalence or release eligibility."],
+    },
+    {
       change = "encapsulate-sdk-catalog-dependency",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

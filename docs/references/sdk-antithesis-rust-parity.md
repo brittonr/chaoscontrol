@@ -118,6 +118,15 @@ and detail behavior is identical; guidance remains omitted. Operands must
 implement `serde_json::Serialize`; Antithesis requires `Into<Value>`.
 See the guidance decision below.
 
+The borrowed `Serialize + ?Sized` details contract also applies to all four
+ChaosControl stable-identity assertion macros and `assert::assert_raw_with_key`.
+Typed structs, unsized strings and slices serialize directly through the bounded
+writer after stable identity resolution and sparse sampling; no intermediate
+`Value` is required. Unknown identities and sampled-out outcomes do not invoke
+the serializer. Existing `Value` callers and the no-full generic borrowed API
+remain supported. Stable identity is a ChaosControl extension, not an upstream
+Antithesis API.
+
 ## Random
 
 | Function | Antithesis | ChaosControl | Status |

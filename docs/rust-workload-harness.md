@@ -30,6 +30,13 @@ in their manifest. Disabling `full` still requires no catalog registration depen
 Use the category argument to category-specific macros as the source of assertion
 category; shared detail objects must not repeat a conflicting `category` field.
 
+Stable-identity assertions accept borrowed `serde::Serialize` details just like
+automatic assertions: use a typed diagnostic struct, `&str` or a slice directly
+instead of allocating a `serde_json::Value` first. All four stable assertion
+kinds share the bounded serializer. Serialization runs only for an accepted,
+emitted outcome; sparse sampling skips it for repeated outcomes. With `full`
+disabled, the same borrowed calls require no serialization trait and emit nothing.
+
 ## Local dry-run
 
 Set `CHAOSCONTROL_SDK_LOCAL_OUTPUT` before first SDK use, then run the workload normally:

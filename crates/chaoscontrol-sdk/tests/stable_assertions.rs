@@ -4,6 +4,13 @@ use std::collections::BTreeMap;
 
 const EXPECTED_ASSERTIONS: usize = 4;
 
+#[derive(serde::Serialize)]
+struct BorrowedDetails<'a> {
+    node: &'a str,
+    terms: &'a [u64],
+}
+
+// r[verify chaoscontrol.stable_assertion_details.serialize]
 #[test]
 fn stable_macros_bind_all_assertion_kinds_to_catalog() {
     let output = std::env::temp_dir().join(format!(
@@ -14,13 +21,18 @@ fn stable_macros_bind_all_assertion_kinds_to_catalog() {
     std::env::set_var("CHAOSCONTROL_SDK_LOCAL_OUTPUT", &output);
 
     chaoscontrol_init();
+    let details = BorrowedDetails {
+        node: "replica-a",
+        terms: &[2, 3],
+    };
     cc_assert_always_stable!(
         "org.example.stable",
         "always",
         "guest",
         "service-invariant",
         true,
-        "always message"
+        "always message",
+        &details
     );
     cc_assert_sometimes_stable!(
         "org.example.stable",
@@ -28,21 +40,24 @@ fn stable_macros_bind_all_assertion_kinds_to_catalog() {
         "guest",
         "operation",
         true,
-        "sometimes message"
+        "sometimes message",
+        &details
     );
     cc_assert_reachable_stable!(
         "org.example.stable",
         "reachable",
         "guest",
         "branch",
-        "reachable message"
+        "reachable message",
+        details.terms
     );
     cc_assert_unreachable_stable!(
         "org.example.stable",
         "unreachable",
         "guest",
         "invariant",
-        "unreachable message"
+        "unreachable message",
+        details.node
     );
 
     let content = std::fs::read_to_string(&output).expect("local output");
@@ -108,6 +123,19 @@ fn stable_macros_bind_all_assertion_kinds_to_catalog() {
         assert_eq!(event["catalog_status"], "accepted");
         assert!(event["catalog_token"].as_str().is_some());
         assert!(event["assertion_fingerprint"].as_str().is_some());
+        let expected = match event["message"].as_str().expect("message") {
+            "always message" | "sometimes message" => {
+                serde_json::json!({"node": "replica-a", "terms": [2, 3]})
+            }
+            "reachable message" => serde_json::json!([2, 3]),
+            "unreachable message" => serde_json::json!("replica-a"),
+            message => panic!("unexpected message: {message}"),
+        };
+        assert_eq!(event["details"], expected);
+        assert_eq!(
+            event["condition"],
+            event["message"] != "unreachable message"
+        );
     }
 
     std::fs::remove_file(output).expect("remove local output");

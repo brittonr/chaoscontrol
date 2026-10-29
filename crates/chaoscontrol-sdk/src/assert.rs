@@ -325,15 +325,17 @@ pub fn emit_registered_always_or_unreachable<S: serde::Serialize + ?Sized>(
     );
 }
 
+/// Emit borrowed serializable details through an accepted stable identity.
+// r[impl chaoscontrol.stable_assertion_details.serialize]
 #[cfg(feature = "full")]
 #[doc(hidden)]
-pub fn assert_raw_with_key(
+pub fn assert_raw_with_key<S: serde::Serialize + ?Sized>(
     kind: AssertionKind,
     cond: bool,
     namespace: &str,
     key: &str,
     message: &str,
-    details: &serde_json::Value,
+    details: &S,
 ) {
     crate::internal::init();
     let flags = assertion_flags(kind, cond);

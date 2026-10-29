@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "filter-event-regex",
+      "evidence_prerequisite": "Regex must reuse canonical/derived field resolution and compile distinct patterns once per admission under explicit byte/program/DFA/nesting bounds, not per row. Verify literal/exact preservation, Unicode/anchors/negation/projections, skipped/empty invalid-pattern admission, operation/structural bounds, actual query/validate CLI receipts and no partial artifacts on syntax/expansion/nesting failures.",
+      "non_claims": [
+        "Bounded retained-input regex search is not JavaScript/PCRE or upstream negative-field/coercion compatibility, a total RSS or wall-clock limit, hosted Logs Explorer, capture completeness, temporal search, live branches, VM proof or replay readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "filter-json-field-presence",
       "evidence_prerequisite": "JsonPresent and JsonTextPresent must distinguish missing paths from any resolved JSON value, including null and containers, without row mutation. Verify both sources, escaped paths, strict visited parse errors versus skipped parsing, skipped-invalid admission, existing bounds/moments and actual CLI presence/absence/guard queries with query/source/result receipt drift and no partial artifacts.",
       "non_claims": [

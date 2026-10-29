@@ -31,6 +31,13 @@ pub const MAX_TIMELINE_NODES: usize = 10_000;
 pub const MAX_TIMELINE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_FIELD_BYTES: usize = 256;
 
+// Bound expanded programs and lazy DFA caches independently of source-pattern bytes.
+const MAX_REGEX_PROGRAM_BYTES: usize = 256 * 1024;
+const MAX_REGEX_DFA_BYTES: usize = 256 * 1024;
+const MAX_REGEX_NEST_DEPTH: u32 = 64;
+
+type RegexCache<'a> = BTreeMap<&'a str, regex::Regex>;
+
 /// Retained source family of one event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -490,6 +497,11 @@ pub enum EventPredicate {
         field: String,
         text: String,
     },
+    /// Search a canonical or derived string with a bounded Rust regular expression.
+    Regex {
+        field: String,
+        pattern: String,
+    },
     /// Compare a JSON number in `details`; missing/non-numeric values never match.
     JsonNumber {
         pointer: String,
@@ -655,6 +667,7 @@ pub enum EventQueryError {
     InvalidPredicate,
     InvalidText,
     InvalidJsonText,
+    InvalidRegex,
     InvalidWindow,
     InvalidFormat,
     InvalidField,
@@ -690,6 +703,7 @@ impl core::fmt::Display for EventQueryError {
             Self::InvalidPredicate => "event predicate is malformed or unsupported",
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidJsonText => "event text is not valid JSON within parser bounds",
+            Self::InvalidRegex => "event regex is invalid or exceeds compilation bounds",
             Self::InvalidWindow => "event query window is reversed",
             Self::InvalidFormat => "event timeline format is not markdown or dot",
             Self::InvalidField => "event query field is not supported",
@@ -813,7 +827,7 @@ pub fn evaluate(
     limits: &EventQueryLimits,
 ) -> Result<EventQueryResult, EventQueryError> {
     limits.validate()?;
-    validate_query(query, limits)?;
+    let regexes = &validate_query(query, limits)?;
     if events.len() > limits.max_scanned_events {
         return Err(EventQueryError::ScanBound);
     }
@@ -822,7 +836,13 @@ pub fn evaluate(
     }
     validate_source_positions(events)?;
     let mut operations = 0_usize;
-    let mut rows = evaluate_rows(query, events, &mut operations, limits.max_operations)?;
+    let mut rows = evaluate_rows(
+        query,
+        events,
+        &mut operations,
+        limits.max_operations,
+        regexes,
+    )?;
     for event in &rows {
         admit_event(event)?;
     }
@@ -1141,6 +1161,7 @@ fn evaluate_rows(
     events: &[EventEnvelope],
     operations: &mut usize,
     max_operations: usize,
+    regexes: &RegexCache<'_>,
 ) -> Result<Vec<EventEnvelope>, EventQueryError> {
     match query {
         EventQuery::All => {
@@ -1148,16 +1169,16 @@ fn evaluate_rows(
             Ok(events.to_vec())
         }
         EventQuery::Filter { input, predicate } => {
-            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             rows.into_iter()
-                .filter_map(
-                    |event| match predicate.matches(&event, operations, max_operations) {
+                .filter_map(|event| {
+                    match predicate.matches(&event, operations, max_operations, regexes) {
                         Ok(true) => Some(Ok(event)),
                         Ok(false) => None,
                         Err(error) => Some(Err(error)),
-                    },
-                )
+                    }
+                })
                 .collect()
         }
         EventQuery::Map {
@@ -1167,7 +1188,7 @@ fn evaluate_rows(
         } => {
             validate_field(field)?;
             validate_pointer(pointer)?;
-            let mut rows = evaluate_rows(input, events, operations, max_operations)?;
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             for event in &mut rows {
                 let value = event
@@ -1189,7 +1210,7 @@ fn evaluate_rows(
         } => {
             validate_field(field)?;
             validate_pointer(pointer)?;
-            let mut rows = evaluate_rows(input, events, operations, max_operations)?;
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             for event in &mut rows {
                 let mut parsed: serde_json::Value = serde_json::from_str(&event.text)
@@ -1207,7 +1228,7 @@ fn evaluate_rows(
         EventQuery::Contains { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
-            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             Ok(rows
                 .into_iter()
@@ -1217,7 +1238,7 @@ fn evaluate_rows(
         EventQuery::Matches { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
-            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             Ok(rows
                 .into_iter()
@@ -1228,7 +1249,7 @@ fn evaluate_rows(
             let mut rows = Vec::new();
             let mut seen = HashSet::new();
             for input in inputs {
-                let branch = evaluate_rows(input, events, operations, max_operations)?;
+                let branch = evaluate_rows(input, events, operations, max_operations, regexes)?;
                 charge_operations(operations, branch.len(), max_operations)?;
                 for row in branch {
                     if seen.insert((row.source_id, row.source_sequence)) {
@@ -1246,7 +1267,7 @@ fn evaluate_rows(
             if start_tick > end_tick {
                 return Err(EventQueryError::InvalidWindow);
             }
-            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             Ok(rows
                 .into_iter()
@@ -1254,7 +1275,7 @@ fn evaluate_rows(
                 .collect())
         }
         EventQuery::UpTo { input, moment_tick } => {
-            let rows = evaluate_rows(input, events, operations, max_operations)?;
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             charge_operations(operations, rows.len(), max_operations)?;
             Ok(rows
                 .into_iter()
@@ -1285,12 +1306,13 @@ impl EventPredicate {
         event: &EventEnvelope,
         operations: &mut usize,
         max_operations: usize,
+        regexes: &RegexCache<'_>,
     ) -> Result<bool, EventQueryError> {
         Ok(match self {
             Self::All(children) => {
                 for child in children {
                     charge_operations(operations, 1, max_operations)?;
-                    if !child.matches(event, operations, max_operations)? {
+                    if !child.matches(event, operations, max_operations, regexes)? {
                         return Ok(false);
                     }
                 }
@@ -1299,7 +1321,7 @@ impl EventPredicate {
             Self::Any(children) => {
                 for child in children {
                     charge_operations(operations, 1, max_operations)?;
-                    if child.matches(event, operations, max_operations)? {
+                    if child.matches(event, operations, max_operations, regexes)? {
                         return Ok(true);
                     }
                 }
@@ -1307,7 +1329,7 @@ impl EventPredicate {
             }
             Self::Not(child) => {
                 charge_operations(operations, 1, max_operations)?;
-                !child.matches(event, operations, max_operations)?
+                !child.matches(event, operations, max_operations, regexes)?
             }
             Self::TickRange {
                 start_tick,
@@ -1322,6 +1344,13 @@ impl EventPredicate {
                 field_value(event, field).is_some_and(|value| value.contains(text))
             }
             Self::Matches { field, text } => field_value(event, field) == Some(text.as_str()),
+            // r[impl chaoscontrol.event_regex.selection]
+            Self::Regex { field, pattern } => {
+                let regex = regexes
+                    .get(pattern.as_str())
+                    .ok_or(EventQueryError::InvalidRegex)?;
+                field_value(event, field).is_some_and(|value| regex.is_match(value))
+            }
             // r[impl chaoscontrol.numeric_event_query.comparison]
             Self::JsonNumber {
                 pointer,
@@ -1359,18 +1388,24 @@ impl EventPredicate {
     }
 }
 
-fn validate_query(query: &EventQuery, limits: &EventQueryLimits) -> Result<(), EventQueryError> {
+fn validate_query<'a>(
+    query: &'a EventQuery,
+    limits: &EventQueryLimits,
+) -> Result<RegexCache<'a>, EventQueryError> {
     let mut nodes = 0_usize;
-    validate_query_inner(query, limits, 0, &mut nodes)?;
+    let mut compiled = RegexCache::new();
+    let regexes = &mut compiled;
+    validate_query_inner(query, limits, 0, &mut nodes, regexes)?;
     moment_of(query)?;
-    Ok(())
+    Ok(compiled)
 }
 
-fn validate_query_inner(
-    query: &EventQuery,
+fn validate_query_inner<'a>(
+    query: &'a EventQuery,
     limits: &EventQueryLimits,
     depth: usize,
     nodes: &mut usize,
+    regexes: &mut RegexCache<'a>,
 ) -> Result<(), EventQueryError> {
     if depth > limits.max_depth {
         return Err(EventQueryError::QueryDepth);
@@ -1384,8 +1419,8 @@ fn validate_query_inner(
     match query {
         EventQuery::All => Ok(()),
         EventQuery::Filter { input, predicate } => {
-            validate_predicate(predicate, limits, depth, nodes)?;
-            validate_query_inner(input, limits, depth + 1, nodes)
+            validate_predicate(predicate, limits, depth, nodes, regexes)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
         EventQuery::Map {
             input,
@@ -1399,13 +1434,13 @@ fn validate_query_inner(
         } => {
             validate_field(field)?;
             validate_pointer(pointer)?;
-            validate_query_inner(input, limits, depth + 1, nodes)
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
         EventQuery::Contains { input, field, text }
         | EventQuery::Matches { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
-            validate_query_inner(input, limits, depth + 1, nodes)
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
         EventQuery::Window {
             input,
@@ -1415,26 +1450,29 @@ fn validate_query_inner(
             if start_tick > end_tick {
                 return Err(EventQueryError::InvalidWindow);
             }
-            validate_query_inner(input, limits, depth + 1, nodes)
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
-        EventQuery::UpTo { input, .. } => validate_query_inner(input, limits, depth + 1, nodes),
+        EventQuery::UpTo { input, .. } => {
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Union { inputs } => {
             if inputs.is_empty() {
                 return Err(EventQueryError::QueryBound);
             }
             for input in inputs {
-                validate_query_inner(input, limits, depth + 1, nodes)?;
+                validate_query_inner(input, limits, depth + 1, nodes, regexes)?;
             }
             Ok(())
         }
     }
 }
 
-fn validate_predicate(
-    predicate: &EventPredicate,
+fn validate_predicate<'a>(
+    predicate: &'a EventPredicate,
     limits: &EventQueryLimits,
     depth: usize,
     nodes: &mut usize,
+    regexes: &mut RegexCache<'a>,
 ) -> Result<(), EventQueryError> {
     // The enclosing Filter already accounts for the predicate root node.
     if depth > limits.max_depth {
@@ -1443,11 +1481,13 @@ fn validate_predicate(
     match predicate {
         EventPredicate::All(children) | EventPredicate::Any(children) => {
             for child in children {
-                validate_predicate_child(child, limits, depth + 1, nodes)?;
+                validate_predicate_child(child, limits, depth + 1, nodes, regexes)?;
             }
             Ok(())
         }
-        EventPredicate::Not(child) => validate_predicate_child(child, limits, depth + 1, nodes),
+        EventPredicate::Not(child) => {
+            validate_predicate_child(child, limits, depth + 1, nodes, regexes)
+        }
         EventPredicate::TickRange {
             start_tick,
             end_tick,
@@ -1461,6 +1501,22 @@ fn validate_predicate(
         EventPredicate::Contains { field, text } | EventPredicate::Matches { field, text } => {
             validate_field(field)?;
             validate_text(text)
+        }
+        EventPredicate::Regex { field, pattern } => {
+            validate_field(field)?;
+            validate_text(pattern)?;
+            if let std::collections::btree_map::Entry::Vacant(entry) =
+                regexes.entry(pattern.as_str())
+            {
+                let regex = regex::RegexBuilder::new(pattern)
+                    .size_limit(MAX_REGEX_PROGRAM_BYTES)
+                    .dfa_size_limit(MAX_REGEX_DFA_BYTES)
+                    .nest_limit(MAX_REGEX_NEST_DEPTH)
+                    .build()
+                    .map_err(|_| EventQueryError::InvalidRegex)?;
+                entry.insert(regex);
+            }
+            Ok(())
         }
         EventPredicate::JsonNumber { pointer, value, .. }
         | EventPredicate::JsonTextNumber { pointer, value, .. } => {
@@ -1479,11 +1535,12 @@ fn validate_predicate(
     }
 }
 
-fn validate_predicate_child(
-    predicate: &EventPredicate,
+fn validate_predicate_child<'a>(
+    predicate: &'a EventPredicate,
     limits: &EventQueryLimits,
     depth: usize,
     nodes: &mut usize,
+    regexes: &mut RegexCache<'a>,
 ) -> Result<(), EventQueryError> {
     *nodes = nodes
         .checked_add(1)
@@ -1491,7 +1548,7 @@ fn validate_predicate_child(
     if *nodes > limits.max_nodes {
         return Err(EventQueryError::QueryBound);
     }
-    validate_predicate(predicate, limits, depth, nodes)
+    validate_predicate(predicate, limits, depth, nodes, regexes)
 }
 
 fn validate_field(field: &str) -> Result<(), EventQueryError> {

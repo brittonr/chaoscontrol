@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "filter-event-regex",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Regex must reuse canonical/derived field resolution and compile distinct patterns once per admission under explicit byte/program/DFA/nesting bounds, not per row. Verify literal/exact preservation, Unicode/anchors/negation/projections, skipped/empty invalid-pattern admission, operation/structural bounds, actual query/validate CLI receipts and no partial artifacts on syntax/expansion/nesting failures.",
+      non_claims = ["Bounded retained-input regex search is not JavaScript/PCRE or upstream negative-field/coercion compatibility, a total RSS or wall-clock limit, hosted Logs Explorer, capture completeness, temporal search, live branches, VM proof or replay readiness."],
+    },
+    {
       change = "filter-json-field-presence",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

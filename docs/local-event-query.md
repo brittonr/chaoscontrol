@@ -345,7 +345,68 @@ Standalone `EventQuery::Contains` and `EventQuery::Matches` remain supported
 with their existing behavior. New predicate variants require upgraded readers;
 schemas and existing query forms are unchanged. This supports a bounded subset
 of the [Antithesis text-filter examples](https://antithesis.com/docs/product/debugging/advanced_multiverse_debugging/event_sets/),
-not arbitrary functions, regex evaluation or full Notebook compatibility.
+not arbitrary functions or full Notebook compatibility. For regex search, use
+the separate `Regex` predicate below.
+
+## Bounded regular-expression search
+
+`Regex` searches a canonical or derived string field with a Rust regular
+expression. For example, select error codes while excluding heartbeat logs:
+
+```json
+{
+  "Filter": {
+    "input": "All",
+    "predicate": {"All": [
+      {"Regex": {"field": "text", "pattern": "ERR[0-9]+"}},
+      {"Not": {"Regex": {"field": "text", "pattern": "heartbeat"}}}
+    ]}
+  }
+}
+```
+
+Run the same `query`/`validate` commands above. Search is case-sensitive and
+unanchored by default: `ERR[0-9]+` matches `prefix ERR42 timeout`. Use `^`/`$`
+for whole-field matching. Unicode classes, alternation and Rust inline flags
+such as `(?i)` are supported. Backreferences and look-around are not; this is
+not JavaScript/PCRE syntax compatibility. JSON strings must escape backslashes:
+the pattern `\d+` is written as `"\\d+"` in a query file.
+
+Field resolution is identical to Contains/Matches: `text`, `kind`, `process`
+and `source_kind` select canonical values; other names select derived strings,
+including Map/MapText projections. Derived names cannot shadow canonical names.
+Missing fields never match even a zero-width regex; an existing empty derived
+string can match `^$`. `Not` inverts the complete result, including a missing
+field's non-match. This deliberately retains existing predicate semantics, not
+the upstream Logs Explorer negative-operator rule that ignores missing fields.
+Contains remains literal substring search; Matches remains exact equality.
+
+Admission validates all descendants and compiles each distinct pattern once per
+admission, including skipped branches and queries over empty sources. A
+query-local cache borrows pattern strings and reuses compiled programs across
+rows, fields and branches; there is no persistent/global cache. Receipt
+construction independently admits the query. Queries without regex allocate no
+regex cache entries.
+
+Fields retain the 256-byte bound; patterns are nonempty, control-free and at
+most 8192 UTF-8 bytes. Each compiled pattern has a 256 KiB program-size limit,
+a 256 KiB lazy-DFA cache limit and syntax nesting depth 64. Existing query-node
+admission bounds the number of distinct programs. Invalid syntax, unsupported
+constructs and compilation expansion/nesting failures return `InvalidRegex`;
+field/pattern byte failures retain `InvalidField`/`InvalidText`. These engine
+limits are not total process RSS or a wall-clock deadline. Logical operation
+charges cover visited predicates, not regex engine instructions; searches also
+remain bounded by admitted string sizes. Evaluation failures publish no partial
+CLI result or receipt.
+
+Canonical rows/order, structural/work/result bounds, moments and receipt binding
+remain effective. Pattern and field changes invalidate receipts even when rows
+stay identical. New readers are required for the variant; existing schemas and
+queries stay unchanged. This supplies bounded local regex selection analogous
+to [Antithesis Logs Explorer search](https://antithesis.com/docs/reference/logs_explorer_search/),
+not a hosted search interface, arbitrary code, complete capture, temporal search,
+live branching or full Notebook compatibility.
+
 
 
 

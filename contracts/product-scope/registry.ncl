@@ -308,6 +308,13 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["Retained numeric extrema are not arbitrary fold execution, JavaScript coercion, exact arithmetic, implicit source/VM/process partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
     },
     {
+      change = "sum-keyed-event-prefixes",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "RunningSumBy must preserve unique canonical evidence while independently summing finite matching operands per exact selected string key, retain original membership under output aliases and distinguish missing from empty keys without suppressing predicate or matching operand errors. Verify interleaving/permutations/ties/extreme ticks, signed/fractional/rounding values, independent large totals and same-key intermediate overflow, duplicate priority, canonical precedence, JSON/downstream composition, all names/predicate/child admission, hidden generated/intermediate capacity, shared limits/moments and actual CLI query/key/value/predicate/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Keyed numeric totals are not exact arithmetic, implicit VM/source/history identity, automatic resets/windows, composite keys, arbitrary reducers, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "sum-retained-numeric-prefixes",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

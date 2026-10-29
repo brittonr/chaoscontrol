@@ -420,6 +420,58 @@ generic fold interpreter, JavaScript coercion, exact arithmetic, causal or branc
 lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline bounds,
 VM execution or replay proof.
 
+## Summing numeric prefixes per key
+
+`RunningSumBy` extends the bounded local [fold](https://antithesis.com/docs/reference/event-set-reference/#fold)
+subset with independent inclusive numeric totals for an explicit string key.
+For example, sum transferred bytes separately for each process:
+
+```json
+{
+  "RunningSumBy": {
+    "input": "All",
+    "predicate": {"Kind": "transfer"},
+    "field": "bytes_total",
+    "value_field": "bytes",
+    "key_field": "process"
+  }
+}
+```
+
+For interleaved A:2, B:3, A:4 transfers, totals are `2.0`, `3.0`, `6.0`.
+Each present key starts at positive zero; nonmatching rows retain that key's
+current total. Canonical ordering and first-position duplicate priority follow
+RunningSum before grouping. Key lookup follows RunningCountBy: canonical
+kind/text/process/source_kind precedence, otherwise a derived string, with exact
+case-sensitive equality and no Unicode normalization. Map/MapText can project
+service keys. Empty derived keys form a group; missing keys remove stale output
+without accumulating. Missing-key rows still evaluate the predicate and parse
+matching operands: a missing key cannot hide malformed JSON or invalid numbers.
+Nonmatching operands remain unread and predicate short circuiting is unchanged.
+
+Predicate, operand and group membership use original values before replacing
+output, including aliases among all three names. Other projections and canonical
+evidence remain unchanged. Accumulation uses ordinary finite binary64 addition
+in canonical order within each group, with RunningSum's rounding/underflow rules.
+Nonfinite intermediate totals reject immediately, even before later cancellation.
+Independent keys do not share overflow state. FieldNumber and Narrow compose
+downstream without recomputing prefixes.
+
+All three names, predicate and child validate on empty input. Every materialized
+child row is charged and admitted before deduplication; every generated row is
+admitted before downstream filtering/narrowing. Shared structural, scan, work,
+derived, result-byte, canonical-prefix and moment limits apply. Receipts bind the
+entire query (including key/value/output names), sources and annotated results;
+evaluation errors publish neither result nor receipt. The shared sum engine
+groups in place without a key map, copied keys, prefix copies or another event
+collection. New queries require upgraded readers; RunningSum and schemas are
+unchanged.
+
+Choose coherent inputs and keys: equal process/service names do not establish
+VM or history identity. This adds no automatic partition/reset, window, composite
+key, exact arithmetic, arbitrary reducer, causal/multiverse lineage, complete
+capture, hosted search, CPU/RSS/deadline guarantee, VM execution or replay proof.
+
 ## Tracking numeric prefix minima and maxima
 
 `RunningMin` and `RunningMax` add low-watermark and peak-value annotations to
@@ -478,7 +530,7 @@ proof.
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
 lets downstream queries numerically select fields produced by `Map`, `MapText`, `MapTick`,
-`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningCountBy`, `RunningSum`, `RunningMin` or
+`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningCountBy`, `RunningSum`, `RunningSumBy`, `RunningMin` or
 `RunningMax`, rather than
 enumerating exact strings or comparing them lexically. For example, retain
 observations after at least two matching events:

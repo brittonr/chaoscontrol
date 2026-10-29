@@ -384,6 +384,15 @@
       "target_state": "experimental"
     },
     {
+      "change": "sum-keyed-event-prefixes",
+      "evidence_prerequisite": "RunningSumBy must preserve unique canonical evidence while independently summing finite matching operands per exact selected string key, retain original membership under output aliases and distinguish missing from empty keys without suppressing predicate or matching operand errors. Verify interleaving/permutations/ties/extreme ticks, signed/fractional/rounding values, independent large totals and same-key intermediate overflow, duplicate priority, canonical precedence, JSON/downstream composition, all names/predicate/child admission, hidden generated/intermediate capacity, shared limits/moments and actual CLI query/key/value/predicate/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Keyed numeric totals are not exact arithmetic, implicit VM/source/history identity, automatic resets/windows, composite keys, arbitrary reducers, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "sum-retained-numeric-prefixes",
       "evidence_prerequisite": "RunningSum must annotate inclusive canonical unique-event prefixes using finite binary64 matching operands, preserve first-position projections and reject invalid operands/nonfinite totals without parsing skipped operands. Verify permutations/ties/extreme ticks, negative/fractional/zero/rounding values, output aliasing, canonical precedence, projection/filter composition, both names/predicate admission, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial artifacts.",
       "non_claims": [

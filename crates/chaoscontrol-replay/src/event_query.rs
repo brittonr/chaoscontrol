@@ -579,6 +579,14 @@ pub enum EventQuery {
         field: String,
         value_field: String,
     },
+    /// Annotate unique canonical prefixes with independent exact-key numeric totals.
+    RunningSumBy {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        value_field: String,
+        key_field: String,
+    },
     /// Annotate unique canonical prefixes with inclusive finite numeric minima.
     RunningMin {
         input: Box<EventQuery>,
@@ -1408,32 +1416,40 @@ fn evaluate_rows(
             field,
             value_field,
         } => {
-            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
-            charge_operations(operations, rows.len(), max_operations)?;
-            for row in &rows {
-                admit_event(row)?;
-            }
-            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
-                rows.sort_by_key(event_order);
-            }
-            rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
-            let mut total = 0.0;
-            for row in &mut rows {
-                if predicate.matches(row, operations, max_operations, regexes)? {
-                    total += finite_field_number(row, value_field)
-                        .ok_or(EventQueryError::InvalidNumber)?;
-                }
-                let number =
-                    serde_json::Number::from_f64(total).ok_or(EventQueryError::InvalidNumber)?;
-                if let Some(value) = row.derived.get_mut(field) {
-                    value.clear();
-                    write!(value, "{number}").expect("writing to a String cannot fail");
-                } else {
-                    row.derived.insert(field.clone(), number.to_string());
-                }
-                admit_event(row)?;
-            }
-            Ok(rows)
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            sum_rows(
+                rows,
+                predicate,
+                SumSelection {
+                    field,
+                    value_field,
+                    key_field: None,
+                },
+                operations,
+                max_operations,
+                regexes,
+            )
+        }
+        EventQuery::RunningSumBy {
+            input,
+            predicate,
+            field,
+            value_field,
+            key_field,
+        } => {
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            sum_rows(
+                rows,
+                predicate,
+                SumSelection {
+                    field,
+                    value_field,
+                    key_field: Some(key_field),
+                },
+                operations,
+                max_operations,
+                regexes,
+            )
         }
         // r[impl chaoscontrol.running_extrema.prefixes]
         EventQuery::RunningMin {
@@ -1807,6 +1823,90 @@ fn evaluate_rows(
     }
 }
 
+struct SumSelection<'a> {
+    field: &'a String,
+    value_field: &'a str,
+    key_field: Option<&'a str>,
+}
+
+// r[impl chaoscontrol.keyed_running_sum.prefixes]
+fn sum_rows(
+    mut rows: Vec<EventEnvelope>,
+    predicate: &EventPredicate,
+    selection: SumSelection<'_>,
+    operations: &mut usize,
+    max_operations: usize,
+    regexes: &RegexCache<'_>,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    let SumSelection {
+        field,
+        value_field,
+        key_field,
+    } = selection;
+    charge_operations(operations, rows.len(), max_operations)?;
+    for row in &rows {
+        admit_event(row)?;
+    }
+    if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+        rows.sort_by_key(event_order);
+    }
+    rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
+    if let Some(key_field) = key_field {
+        let order = |left: &EventEnvelope, right: &EventEnvelope| {
+            field_value(left, key_field)
+                .cmp(&field_value(right, key_field))
+                .then_with(|| event_order(left).cmp(&event_order(right)))
+        };
+        if !rows.is_sorted_by(|left, right| order(left, right).is_le()) {
+            rows.sort_unstable_by(order);
+        }
+    }
+    let mut remaining = rows.as_mut_slice();
+    while !remaining.is_empty() {
+        // Resolve group membership before overwriting aliased keys.
+        let (present, end) = if let Some(key_field) = key_field {
+            let key = field_value(&remaining[0], key_field);
+            (
+                key.is_some(),
+                remaining.partition_point(|row| field_value(row, key_field) == key),
+            )
+        } else {
+            (true, remaining.len())
+        };
+        let (group, rest) = remaining.split_at_mut(end);
+        let mut total = 0.0;
+        for row in group {
+            if predicate.matches(row, operations, max_operations, regexes)? {
+                let operand =
+                    finite_field_number(row, value_field).ok_or(EventQueryError::InvalidNumber)?;
+                if present {
+                    total += operand;
+                }
+            }
+            if present {
+                let number =
+                    serde_json::Number::from_f64(total).ok_or(EventQueryError::InvalidNumber)?;
+                if let Some(value) = row.derived.get_mut(field) {
+                    value.clear();
+                    write!(value, "{number}").expect("writing to a String cannot fail");
+                } else {
+                    row.derived.insert(field.clone(), number.to_string());
+                }
+            } else {
+                row.derived.remove(field);
+            }
+            admit_event(row)?;
+        }
+        remaining = rest;
+    }
+    if key_field.is_some()
+        && !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right))
+    {
+        rows.sort_unstable_by_key(event_order);
+    }
+    Ok(rows)
+}
+
 struct LastWitnessSelection<'a> {
     field: &'a str,
     witness_field: &'a str,
@@ -2101,6 +2201,19 @@ fn validate_query_inner<'a>(
             key_field,
         } => {
             validate_field(field)?;
+            validate_field(key_field)?;
+            validate_predicate(predicate, limits, depth, nodes, regexes)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
+        EventQuery::RunningSumBy {
+            input,
+            predicate,
+            field,
+            value_field,
+            key_field,
+        } => {
+            validate_field(field)?;
+            validate_field(value_field)?;
             validate_field(key_field)?;
             validate_predicate(predicate, limits, depth, nodes, regexes)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
@@ -2430,6 +2543,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::RunningCount { input, .. }
         | EventQuery::RunningCountBy { input, .. }
         | EventQuery::RunningSum { input, .. }
+        | EventQuery::RunningSumBy { input, .. }
         | EventQuery::RunningMin { input, .. }
         | EventQuery::RunningMax { input, .. }
         | EventQuery::Map { input, .. }

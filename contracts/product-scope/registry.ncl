@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "project-retained-field-differences",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "MapDifference must preserve evidence while annotating finite binary64 minuend-minus-subtrahend values, compute before overwriting aliases and remove stale output for undefined arithmetic. Verify signed-zero/fractional/rounding/underflow/overflow/invalid/missing operands, canonical precedence, JSON/count/past-witness and downstream composition, all three names, hidden intermediate/generated capacity and duplicate overflow, shared limits, moments and actual CLI query/operand-order/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Retained numeric differences are not arbitrary map/fold execution, JavaScript coercion, exact integer/decimal arithmetic, automatic counter-wrap detection, implicit source partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "annotate-retained-numeric-extrema",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

@@ -604,6 +604,13 @@ pub enum EventQuery {
         numerator: String,
         denominator: String,
     },
+    /// Annotate finite field differences, removing stale output when undefined.
+    MapDifference {
+        input: Box<EventQuery>,
+        field: String,
+        minuend: String,
+        subtrahend: String,
+    },
     /// Retain selected derived fields without discarding canonical source evidence.
     Narrow {
         input: Box<EventQuery>,
@@ -1466,6 +1473,34 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.map_difference.projection]
+        EventQuery::MapDifference {
+            input,
+            field,
+            minuend,
+            subtrahend,
+        } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for event in &mut rows {
+                admit_event(event)?;
+                let number = finite_field_number(event, minuend).and_then(|left| {
+                    serde_json::Number::from_f64(left - finite_field_number(event, subtrahend)?)
+                });
+                if let Some(number) = number {
+                    if let Some(value) = event.derived.get_mut(field) {
+                        value.clear();
+                        write!(value, "{number}").expect("writing to a String cannot fail");
+                    } else {
+                        event.derived.insert(field.clone(), number.to_string());
+                    }
+                } else {
+                    event.derived.remove(field);
+                }
+                admit_event(event)?;
+            }
+            Ok(rows)
+        }
         // r[impl chaoscontrol.narrow_query.projections]
         EventQuery::Narrow { input, fields } => {
             let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
@@ -1919,6 +1954,17 @@ fn validate_query_inner<'a>(
             validate_field(denominator)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::MapDifference {
+            input,
+            field,
+            minuend,
+            subtrahend,
+        } => {
+            validate_field(field)?;
+            validate_field(minuend)?;
+            validate_field(subtrahend)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Narrow { input, fields } => {
             if fields.len() > MAX_DERIVED_FIELDS {
                 return Err(EventQueryError::QueryBound);
@@ -2162,6 +2208,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
         | EventQuery::MapRatio { input, .. }
+        | EventQuery::MapDifference { input, .. }
         | EventQuery::Narrow { input, .. }
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }

@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "project-retained-field-differences",
+      "evidence_prerequisite": "MapDifference must preserve evidence while annotating finite binary64 minuend-minus-subtrahend values, compute before overwriting aliases and remove stale output for undefined arithmetic. Verify signed-zero/fractional/rounding/underflow/overflow/invalid/missing operands, canonical precedence, JSON/count/past-witness and downstream composition, all three names, hidden intermediate/generated capacity and duplicate overflow, shared limits, moments and actual CLI query/operand-order/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Retained numeric differences are not arbitrary map/fold execution, JavaScript coercion, exact integer/decimal arithmetic, automatic counter-wrap detection, implicit source partitioning, causal or multiverse lineage reconstruction, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "annotate-retained-numeric-extrema",
       "evidence_prerequisite": "RunningMin/RunningMax must annotate finite canonical unique-event prefix extrema, remove stale output before the first match, retain first-position projections/equal-value signed zeros and reject invalid matching operands without parsing skipped values. Verify negative-only/empty/no-match prefixes, ties/extreme ticks/permutations, binary64 boundaries, aliases/canonical precedence, projection/filter composition, both names/full predicate admission, hidden intermediate/generated capacity, shared limits, moments and actual CLI operator/query/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

@@ -339,7 +339,8 @@ proof.
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
 lets downstream queries numerically select fields produced by `Map`, `MapText`,
-`RunningCount`, `RunningSum`, `RunningMin` or `RunningMax`, rather than
+`MapRatio`, `MapDifference`, `RunningCount`, `RunningSum`, `RunningMin` or
+`RunningMax`, rather than
 enumerating exact strings or comparing them lexically. For example, retain
 observations after at least two matching events:
 
@@ -521,6 +522,57 @@ receipt. Old variants/schemas are unchanged; new queries require upgraded reader
 This is one bounded arithmetic projection, not a general map/fold engine,
 JavaScript coercion, exact rational arithmetic, complete capture, hosted search,
 CPU/RSS/deadline guarantee, VM execution or replay proof.
+
+## Retaining computed metric differences
+
+`MapDifference` adds `minuend - subtrahend` as a derived JSON-number string.
+Both operands are field names, not literal values. This extends the bounded
+local subset of [Antithesis map/add_fields](https://antithesis.com/docs/reference/event-set-reference/#map)
+without a JavaScript interpreter. Given projected `current = "20"` and
+`previous = "8"`, retain a delta of `"12.0"`:
+
+```json
+{
+  "MapDifference": {
+    "input": "All",
+    "field": "delta",
+    "minuend": "current",
+    "subtrahend": "previous"
+  }
+}
+```
+
+Map/MapText can supply operands from canonical JSON; RunningCount can supply
+counters, and WithLastValue can supply a previous measurement. Restrict those
+queries to the intended VM/process/history before comparing observations.
+Downstream FieldNumber/Filter/Narrow can select or retain the computed delta.
+This is numeric subtraction, unlike the `Difference` event-set operator.
+
+Operand lookup follows canonical-name precedence and complete finite JSON-number
+grammar. Read the minuend first, then the subtrahend, before overwriting output:
+the destination can alias either operand or both. A finite result replaces the
+destination projection, preserving other projections and all canonical evidence.
+Missing/malformed/nonfinite operands or an overflowing difference retain the row
+but remove stale destination output, matching MapRatio. This is not a query
+error, and stale deltas cannot survive recomputation to pass a numeric filter.
+Writing `field = "kind"` affects only `derived.kind`; canonical lookup still wins.
+
+Subtraction uses binary64, not exact integer/decimal arithmetic: `0.3 - 0.2`
+produces `0.09999999999999998`, wide integers may round before subtraction,
+tiny values may underflow, `-0 - 0` is `-0.0` and `-0 - -0` is `0.0`.
+Negative differences are valid, not automatic counter-wrap detection.
+
+All three names require nonempty/control-free/256-byte UTF-8 admission even on
+empty input. Charge one operation per materialized child row beyond child work.
+Admit input and generated envelopes before downstream narrowing/deduplication;
+existing field slots can be replaced without adding a slot. Existing shared
+structural/scan/work/derived/result-byte/prefix bounds and child moments apply.
+Receipts bind operand order, all names, the child query and complete canonical
+source/result facts. Admission/evaluation errors publish neither result nor
+receipt. New queries require upgraded readers; older queries/schemas remain
+unchanged. This is not arbitrary map/fold execution, JavaScript coercion, exact
+arithmetic, causal or multiverse reconstruction, complete capture, hosted search,
+CPU/RSS/deadline bounds, VM execution or replay proof.
 
 ## Numeric JSON filters
 

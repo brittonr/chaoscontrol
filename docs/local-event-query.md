@@ -190,9 +190,10 @@ and empty input produces no rows. Nonmatching rows remain annotated, rather than
 being dropped. Filters inside the input restrict what is counted; downstream
 filters select observations without recomputing their prefixes.
 
-The checked u64 count is a decimal string in the named `derived` field. It can
-be selected by `Matches` or retained with `Narrow`; `JsonNumber` still reads
-canonical details, not derived strings. Existing target values are replaced
+The checked u64 count is a decimal string in the named `derived` field. Use
+`FieldNumber` below for numeric thresholds, `Matches` for exact strings, or
+`Narrow` to retain it; `JsonNumber` still reads canonical details, not derived
+strings. Existing target values are replaced
 after the predicate reads the original row. All other projections and canonical
 fields remain unchanged; canonical names still take precedence in text filters.
 For JSON log text, use `JsonTextNumber` instead of `JsonNumber`, or project a
@@ -221,6 +222,69 @@ history. Counts span the selected sources/VMs without automatic partition/reset.
 This ordering does not infer causality, branch lineage, complete capture or a
 multiverse fold. No JavaScript, generic reducer execution, hosted search, CPU/RSS/
 deadline guarantee, VM execution or replay-proof claim is added.
+
+## Numeric thresholds on projected fields
+
+`FieldNumber` compares a canonical/derived string as a finite JSON number. It
+lets downstream queries numerically select fields produced by `Map`, `MapText`
+or `RunningCount`, rather than enumerating exact strings or comparing them
+lexically. For example, retain observations after at least two matching events:
+
+```json
+{
+  "Filter": {
+    "input": {
+      "RunningCount": {
+        "input": "All",
+        "predicate": {"Kind": "error"},
+        "field": "errors_seen"
+      }
+    },
+    "predicate": {
+      "FieldNumber": {
+        "field": "errors_seen",
+        "comparison": "GreaterThanOrEqual",
+        "value": 2
+      }
+    }
+  }
+}
+```
+
+This supplies bounded local numeric filtering over synthetic fields, as in the
+[Antithesis map/filter example](https://antithesis.com/docs/reference/event-set-reference/#map).
+It does not add arithmetic or JavaScript `Number()` coercions. The six existing
+relations and finite binary64 rules apply, including signed zero, rounding past
+±2^53 and numeric underflow. The threshold must be a JSON number, not a string.
+
+The entire selected field must be JSON-number text: decimal/exponent forms and
+surrounding JSON whitespace are accepted. Empty/missing fields, quoted strings,
+booleans, null, containers, trailing text, leading `+`, leading-zero integers,
+hexadecimal, NaN, Infinity and overflowing numbers do not match **any** relation,
+including `NotEqual`. `Not` around `Equal` still selects missing/nonnumeric values
+as well as numeric inequalities. Invalid field text is a nonmatch, not a JSON
+parse error. `JsonTextNumber` is unchanged and still rejects malformed visited
+JSON documents; use it for a pointer inside canonical JSON log text.
+
+Lookup follows existing text operators: canonical `kind`, `text`, `process` and
+`source_kind` take precedence over same-named derived entries. All other names
+address derived entries; this is not general envelope/JSON-pointer lookup.
+An absent canonical process does not fall back to a derived process value.
+Names are exact, case-sensitive, nonempty, control-free and at most 256 UTF-8
+bytes. Name and finite-threshold admission applies even on empty input and in
+skipped compound branches. Parsing is bounded by existing admitted canonical text
+and aggregate derived-byte limits; no extra cache, source mutation or per-field
+cap is introduced.
+
+The leaf reuses existing row and compound-predicate operation charges, node/depth,
+scan/result-byte bounds, canonical ordering/prefix truncation, moments and receipt
+checks. Complete field/relation/threshold expressions remain receipt-bound even
+when changed expressions select identical rows. Canonical source evidence and
+result projections remain protected by existing receipt checks. Evaluation
+failures publish neither result nor receipt. Old queries/schemas are unchanged;
+upgraded readers are required for this new predicate. No exact arbitrary-width
+numeric comparison, complete capture, hosted search, VM execution or replay-proof
+claim is added.
 
 ## Numeric JSON filters
 

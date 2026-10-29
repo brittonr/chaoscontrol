@@ -506,6 +506,12 @@ pub enum EventPredicate {
         field: String,
         pattern: String,
     },
+    /// Compare finite JSON-number text in a canonical or derived string field.
+    FieldNumber {
+        field: String,
+        comparison: NumberComparison,
+        value: serde_json::Number,
+    },
     /// Compare a JSON number in `details`; missing/non-numeric values never match.
     JsonNumber {
         pointer: String,
@@ -1544,6 +1550,17 @@ impl EventPredicate {
                     .ok_or(EventQueryError::InvalidRegex)?;
                 field_value(event, field).is_some_and(|value| regex.is_match(value))
             }
+            // r[impl chaoscontrol.field_number.comparison]
+            Self::FieldNumber {
+                field,
+                comparison,
+                value,
+            } => {
+                let actual = field_value(event, field)
+                    .and_then(|text| serde_json::from_str::<serde_json::Number>(text).ok())
+                    .map(serde_json::Value::Number);
+                comparison.matches(actual.as_ref(), value)
+            }
             // r[impl chaoscontrol.numeric_event_query.comparison]
             Self::JsonNumber {
                 pointer,
@@ -1736,6 +1753,13 @@ fn validate_predicate<'a>(
                     .build()
                     .map_err(|_| EventQueryError::InvalidRegex)?;
                 entry.insert(regex);
+            }
+            Ok(())
+        }
+        EventPredicate::FieldNumber { field, value, .. } => {
+            validate_field(field)?;
+            if value.as_f64().is_none_or(|value| !value.is_finite()) {
+                return Err(EventQueryError::InvalidPredicate);
             }
             Ok(())
         }

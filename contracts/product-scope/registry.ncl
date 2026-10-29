@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "compare-projected-numeric-fields",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "FieldNumber must compare complete finite JSON-number text from existing canonical/derived lookup without lexical ordering or broad coercion. Verify six relations, nonnumeric NotEqual versus Not, whitespace/zero/precision boundaries, canonical-name precedence, Map/MapText/RunningCount composition, field/threshold admission on empty/skipped paths, admitted byte capacity, shared limits and actual CLI expression/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Projected numeric thresholds are not JavaScript Number coercion or general arithmetic, exact arbitrary-width integer comparison, arbitrary envelope lookup, complete capture, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "count-retained-event-prefixes",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

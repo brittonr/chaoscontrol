@@ -20,7 +20,7 @@ struct SetupEnvelope {
 #[serde(deny_unknown_fields)]
 struct SetupRecord {
     status: String,
-    details: Map<String, Value>,
+    details: Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -219,13 +219,16 @@ pub fn summarize_sdk_local_jsonl(
                     line_idx + 1
                 )));
             }
-            if setup.antithesis_setup.details.len() > MAX_SETUP_DETAIL_FIELDS
-                || setup
-                    .antithesis_setup
-                    .details
-                    .keys()
-                    .any(|key| key.is_empty() || key.len() > MAX_SETUP_DETAIL_KEY_BYTES)
-            {
+            // r[impl chaoscontrol.setup_json_details.shapes]
+            // Only object details carry metadata; other JSON values are workload data.
+            let details = setup.antithesis_setup.details.as_object();
+            // r[impl chaoscontrol.setup_json_details.bounds]
+            if details.is_some_and(|details| {
+                details.len() > MAX_SETUP_DETAIL_FIELDS
+                    || details
+                        .keys()
+                        .any(|key| key.is_empty() || key.len() > MAX_SETUP_DETAIL_KEY_BYTES)
+            }) {
                 return Err(EvidenceError::new(format!(
                     "setup details exceed metadata bounds at line {}",
                     line_idx + 1
@@ -233,7 +236,7 @@ pub fn summarize_sdk_local_jsonl(
             }
             setup_complete = true;
             *lifecycle.entry("setup_complete".to_string()).or_default() += 1;
-            if let Some(track) = details_track(&setup.antithesis_setup.details) {
+            if let Some(track) = details.and_then(details_track) {
                 *adoption_tracks.entry(track).or_default() += 1;
             }
         } else if object.contains_key("chaoscontrol_random_choice") {

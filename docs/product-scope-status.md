@@ -34,6 +34,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 
 | Change | Target state | Owner | Evidence prerequisite |
 | --- | --- | --- | --- |
+| `accept-json-setup-details` | `experimental` | `chaoscontrol-evidence` | Every bounded JSON setup-details shape must pass SDK-to-report quality checks while required fields, status, duplicate setup, object metadata bounds, generic JSON limits and assertion identity remain enforced. |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
 | `add-assertion-hit-checkpoints` | `experimental` | `chaoscontrol-explore` | Exact post-hit boundary observation, pure seeded selection, snapshot capture, frontier restore, bounded receipts, and positive and negative fixtures must pass. |
 | `add-counterfactual-replay-witnesses` | `experimental` | `chaoscontrol-evidence` | An exact common-prefix replay pair with one schedule-entry omission, independently validated outcomes, bounded search, and adversarial binding fixtures must pass. |

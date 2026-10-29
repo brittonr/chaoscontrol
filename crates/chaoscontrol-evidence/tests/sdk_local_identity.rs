@@ -271,7 +271,6 @@ fn caller_flip_invalid_setup_and_duplicate_messages_fail_closed() {
         "{\"antithesis_setup\":null}\n",
         "{\"antithesis_setup\":{\"status\":\"pending\",\"details\":{}}}\n",
         "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":{},\"extra\":true}}\n",
-        "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":null}}\n",
     ] {
         assert!(summarize_sdk_local_jsonl(setup, EVIDENCE_CLASS, None).is_err());
     }
@@ -296,4 +295,105 @@ fn duplicate_and_unknown_catalog_fields_are_rejected() {
     let unknown = "{\"chaoscontrol_assertion_catalog\":{\"record\":\"begin\",\"catalog_version\":1,\"expected_descriptors\":0,\"valid\":true,\"extra\":false}}\n";
     assert!(summarize_sdk_local_jsonl(duplicate, EVIDENCE_CLASS, None).is_err());
     assert!(summarize_sdk_local_jsonl(unknown, EVIDENCE_CLASS, None).is_err());
+}
+
+#[test]
+fn setup_details_accept_all_json_types_without_changing_assertion_identity() {
+    let assertion = descriptor("stable:setup-details", "raft");
+    let catalog = catalog_jsonl(std::slice::from_ref(&assertion));
+    for details in [
+        Value::Null,
+        json!(false),
+        json!(true),
+        json!(u64::MAX),
+        json!(-1),
+        json!(0.5),
+        json!("ready \"雪\""),
+        json!([]),
+        json!([{"adoption_track": "nested-not-metadata"}, [null, false, 7]]),
+        json!({}),
+        json!({"adoption_track": "external-harness"}),
+    ] {
+        let setup = render_lines(&[json!({
+            "antithesis_setup": {"status": "complete", "details": details}
+        })]);
+        let input = format!(
+            "{catalog}{setup}{}",
+            event_line(&assertion, &assertion.message, None)
+        );
+        let report = summarize_sdk_local_jsonl(&input, EVIDENCE_CLASS, None)
+            .unwrap_or_else(|error| panic!("details {details}: {error}"));
+        assert_eq!(report["setup_complete"], true);
+        assert_eq!(report["lifecycle_events"]["setup_complete"], 1);
+        assert_eq!(report["observed_assertions"], 1);
+        assert_eq!(report["failed_assertions"], 0);
+        assert_eq!(report["catalog_status"], "accepted");
+        assert!(check_sdk_assertion_quality_report(&report).unwrap().passed);
+        let expected_tracks = if details.is_object() && details.get("adoption_track").is_some() {
+            json!({"external-harness": 1})
+        } else {
+            json!({})
+        };
+        assert_eq!(report["adoption_tracks"], expected_tracks);
+    }
+}
+
+#[test]
+fn json_setup_details_preserve_record_and_metadata_bounds() {
+    const MAX_FIELDS: usize = 64;
+    const MAX_KEY_BYTES: usize = 128;
+    let mut boundary = (0..MAX_FIELDS - 1)
+        .map(|index| (format!("field-{index}"), Value::Null))
+        .collect::<serde_json::Map<_, _>>();
+    boundary.insert("é".repeat(MAX_KEY_BYTES / "é".len()), Value::Null);
+    let setup = |details| {
+        render_lines(&[json!({
+            "antithesis_setup": {"status": "complete", "details": details}
+        })])
+    };
+    let valid = setup(Value::Object(boundary.clone()));
+    let report = summarize_sdk_local_jsonl(&valid, EVIDENCE_CLASS, None)
+        .expect("object metadata at both limits");
+    assert_eq!(report["setup_complete"], true);
+
+    boundary.insert("one-too-many".to_string(), Value::Null);
+    for details in [
+        Value::Object(boundary),
+        json!({"": null}),
+        Value::Object(
+            [("x".repeat(MAX_KEY_BYTES + 1), Value::Null)]
+                .into_iter()
+                .collect(),
+        ),
+    ] {
+        let error = summarize_sdk_local_jsonl(&setup(details), EVIDENCE_CLASS, None)
+            .expect_err("object metadata bounds remain enforced");
+        assert!(error.message().contains("metadata bounds"), "{error}");
+    }
+    for invalid in [
+        "{\"antithesis_setup\":{\"status\":\"complete\"}}\n".to_string(),
+        "{\"antithesis_setup\":{\"status\":null,\"details\":null}}\n".to_string(),
+        "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":false,\"extra\":true}}\n"
+            .to_string(),
+        format!("{valid}{valid}"),
+    ] {
+        assert!(summarize_sdk_local_jsonl(&invalid, EVIDENCE_CLASS, None).is_err());
+    }
+}
+
+#[test]
+fn non_object_setup_details_still_obey_json_resource_limits() {
+    const EXCESSIVE_DEPTH: usize = 65;
+    const EXCESSIVE_STRING_BYTES: usize = 13 * 1024;
+    let nested = format!(
+        "{}0{}",
+        "[".repeat(EXCESSIVE_DEPTH),
+        "]".repeat(EXCESSIVE_DEPTH)
+    );
+    let long_string = serde_json::to_string(&"x".repeat(EXCESSIVE_STRING_BYTES)).unwrap();
+    for details in [nested, long_string] {
+        let input =
+            format!("{{\"antithesis_setup\":{{\"status\":\"complete\",\"details\":{details}}}}}\n");
+        assert!(summarize_sdk_local_jsonl(&input, EVIDENCE_CLASS, None).is_err());
+    }
 }

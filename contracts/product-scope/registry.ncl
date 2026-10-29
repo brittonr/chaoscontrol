@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "accept-json-setup-details",
+      owner = "chaoscontrol-evidence",
+      target_state = "experimental",
+      evidence_prerequisite = "Every bounded JSON setup-details shape must pass SDK-to-report quality checks while required fields, status, duplicate setup, object metadata bounds, generic JSON limits and assertion identity remain enforced.",
+      non_claims = ["Local lifecycle evidence admission does not prove VM execution, replay, hosted-platform parity or release eligibility."],
+    },
+    {
       change = "preserve-raw-assertion-report-ids",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

@@ -43,6 +43,17 @@ and later explicit initialization do not duplicate the catalog. Register raw
 sites before any of these initialization triggers. Empty/singleton choices,
 empty byte filling and no-full no-op operations do not initialize output.
 
+Setup details follow the full JSON-value contract of
+[`setup_complete` in Antithesis 0.3.0](https://docs.rs/antithesis_sdk/0.3.0/src/antithesis_sdk/lifecycle.rs.html):
+objects, arrays, strings, numbers, booleans and explicit null all pass from the
+ChaosControl SDK into strict local evidence reports. Only a top-level object
+contributes adoption metadata; scalar text and nested array objects do not.
+The reader still requires the `details` field, complete status and a single
+setup record. Object metadata remains bounded to 64 fields with nonempty keys
+of at most 128 UTF-8 bytes, and every shape retains generic JSON/stream bounds.
+This reader correction does not change SDK output, assertion identity, VM
+setup behavior or the local-instrumentation evidence boundary.
+
 ## Assertion macros
 
 | Concept | Antithesis | ChaosControl | Status |

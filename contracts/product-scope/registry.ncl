@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "count-retained-event-prefixes",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "RunningCount must annotate inclusive canonical unique-position prefixes using existing predicates and preserve source evidence. Verify input permutations, tied/extreme ticks and multiple sources, all/none/empty cases, first-projection duplicate precedence, predicate-before-overwrite, downstream composition, intermediate/generated admission, visited/skipped JSON, field/predicate admission, shared work/structural/result bounds, moments and actual CLI expression/source/result receipt drift without partial failure artifacts.",
+      non_claims = ["Retained running counts are not a generic reducer or JavaScript interpreter, causality or multiverse/branch-lineage reconstruction, automatic per-source/VM partitioning, complete capture, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "narrow-retained-event-projections",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

@@ -10,6 +10,7 @@ use chaoscontrol_fault::outcomes::{
 use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fmt::Write as _;
 
 pub const EVENT_ENVELOPE_SCHEMA: &str = "chaoscontrol.event-envelope.v1";
 pub const EVENT_QUERY_RECEIPT_SCHEMA: &str = "chaoscontrol.event-query-receipt.v1";
@@ -544,6 +545,12 @@ pub enum EventQuery {
     Filter {
         input: Box<EventQuery>,
         predicate: EventPredicate,
+    },
+    /// Annotate unique canonical prefixes with inclusive predicate match counts.
+    RunningCount {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
     },
     Map {
         input: Box<EventQuery>,
@@ -1219,6 +1226,38 @@ fn evaluate_rows(
                 })
                 .collect()
         }
+        // r[impl chaoscontrol.running_count.prefixes]
+        EventQuery::RunningCount {
+            input,
+            predicate,
+            field,
+        } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for row in &rows {
+                admit_event(row)?;
+            }
+            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+                rows.sort_by_key(event_order);
+            }
+            rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
+            let mut count = 0_u64;
+            for row in &mut rows {
+                if predicate.matches(row, operations, max_operations, regexes)? {
+                    count = count
+                        .checked_add(1)
+                        .ok_or(EventQueryError::CounterOverflow)?;
+                }
+                if let Some(value) = row.derived.get_mut(field) {
+                    value.clear();
+                    write!(value, "{count}").expect("writing to a String cannot fail");
+                } else {
+                    row.derived.insert(field.clone(), count.to_string());
+                }
+                admit_event(row)?;
+            }
+            Ok(rows)
+        }
         EventQuery::Map {
             input,
             field,
@@ -1576,6 +1615,15 @@ fn validate_query_inner<'a>(
             validate_predicate(predicate, limits, depth, nodes, regexes)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::RunningCount {
+            input,
+            predicate,
+            field,
+        } => {
+            validate_field(field)?;
+            validate_predicate(predicate, limits, depth, nodes, regexes)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Map {
             input,
             field,
@@ -1647,7 +1695,7 @@ fn validate_predicate<'a>(
     nodes: &mut usize,
     regexes: &mut RegexCache<'a>,
 ) -> Result<(), EventQueryError> {
-    // The enclosing Filter already accounts for the predicate root node.
+    // The enclosing query already accounts for the predicate root node.
     if depth > limits.max_depth {
         return Err(EventQueryError::QueryDepth);
     }
@@ -1777,6 +1825,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
     match query {
         EventQuery::UpTo { moment_tick, .. } => Ok(Some(*moment_tick)),
         EventQuery::Filter { input, .. }
+        | EventQuery::RunningCount { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
         | EventQuery::Narrow { input, .. }

@@ -147,6 +147,81 @@ result nor receipt. Existing queries and schemas are unchanged; upgraded readers
 are required for the new variant. No JavaScript, complete capture, VM execution,
 replay proof or hosted event-search claim is added.
 
+## Counting matching prefixes
+
+`RunningCount` annotates every selected observation with the number of matching
+observations at or before it. This is a bounded local analogue of the counting
+example in [Antithesis fold](https://antithesis.com/docs/reference/event-set-reference/#fold),
+not an arbitrary reducer. Count severity-20 logs and then select severity-30 logs:
+
+```json
+{
+  "Filter": {
+    "input": {
+      "RunningCount": {
+        "input": "All",
+        "predicate": {
+          "JsonNumber": {
+            "pointer": "/severity",
+            "comparison": "Equal",
+            "value": 20
+          }
+        },
+        "field": "severity20_seen"
+      }
+    },
+    "predicate": {
+      "JsonNumber": {
+        "pointer": "/severity",
+        "comparison": "Equal",
+        "value": 30
+      }
+    }
+  }
+}
+```
+
+Rows are ordered by `(tick, source_id, source_sequence)` before counting.
+Repeated source positions count once, retaining their first encountered derived
+projection. Tied ticks follow source ID and sequence order; they are not treated
+as simultaneous. The counter starts at zero and includes the current row when
+it matches. `{"All":[]}` counts all unique positions, `{"Any":[]}` counts none,
+and empty input produces no rows. Nonmatching rows remain annotated, rather than
+being dropped. Filters inside the input restrict what is counted; downstream
+filters select observations without recomputing their prefixes.
+
+The checked u64 count is a decimal string in the named `derived` field. It can
+be selected by `Matches` or retained with `Narrow`; `JsonNumber` still reads
+canonical details, not derived strings. Existing target values are replaced
+after the predicate reads the original row. All other projections and canonical
+fields remain unchanged; canonical names still take precedence in text filters.
+For JSON log text, use `JsonTextNumber` instead of `JsonNumber`, or project a
+field with `MapText` and use an existing text/regex predicate.
+
+The field uses existing nonempty, control-free, 256-byte UTF-8 admission even
+on empty input. Predicates reuse Filter's structural accounting, regex cache and
+short-circuit semantics. Every materialized input row, including duplicates,
+costs one logical operation beyond child work; visited predicate children add
+their existing charges. All child rows are admitted before deduplication, and
+each annotated row is admitted immediately, so downstream filtering/narrowing
+cannot conceal capacity overflow. Malformed visited JSON fails; short-circuited
+JSON leaves need not parse, but their pointers/patterns must still be admitted.
+Sorting reuses the child vector and is skipped when already ordered. No prefix
+copies or additional event collection is made.
+
+Existing scan/node/depth/operation/result-byte bounds, canonical-prefix truncation,
+moment propagation and receipt checks apply. Receipts bind the complete input,
+predicate and field, even when an alternative expression yields identical rows,
+plus every canonical source-visible field and the annotated results. Evaluation
+errors publish neither result nor receipt. Existing schemas/queries remain
+unchanged; new readers are required for this variant.
+
+Callers must supply a coherent tick domain and scope the input to one retained
+history. Counts span the selected sources/VMs without automatic partition/reset.
+This ordering does not infer causality, branch lineage, complete capture or a
+multiverse fold. No JavaScript, generic reducer execution, hosted search, CPU/RSS/
+deadline guarantee, VM execution or replay-proof claim is added.
+
 ## Numeric JSON filters
 
 `Filter` accepts a `JsonNumber` predicate over a JSON pointer into the original

@@ -123,8 +123,8 @@ impl Default for TrackingInfo {
 /// Antithesis-compatible assertion classification.
 ///
 /// Unlike [`AssertionKind`], reachability is a single variant. Use
-/// [`AssertType::to_kind`] with the observed condition to distinguish a
-/// reachable site from an unreachable one.
+/// [`AssertType::to_kind`] with the property's `must_hit` execution obligation
+/// to distinguish a required reachable site from an optional forbidden path.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "full", derive(serde::Serialize))]
 #[cfg_attr(feature = "full", serde(rename_all = "lowercase"))]
@@ -140,13 +140,14 @@ pub enum AssertType {
 impl AssertType {
     /// Resolve a reachability classification to the concrete assertion kind.
     ///
-    /// `condition` is the recorded condition value: reachable assertions
-    /// record `true`, unreachable assertions record `false`.
-    pub const fn to_kind(self, condition: bool) -> AssertionKind {
+    /// `must_hit` selects required reachable sites (`true`) or forbidden paths
+    /// (`false`). Do not pass an observed condition: declarations may use a
+    /// false placeholder even for required reachable sites.
+    pub const fn to_kind(self, must_hit: bool) -> AssertionKind {
         match self {
             AssertType::Always => AssertionKind::Always,
             AssertType::Sometimes => AssertionKind::Sometimes,
-            AssertType::Reachability if condition => AssertionKind::Reachable,
+            AssertType::Reachability if must_hit => AssertionKind::Reachable,
             AssertType::Reachability => AssertionKind::Unreachable,
         }
     }
@@ -358,8 +359,9 @@ pub fn assert_raw_with_key<S: serde::Serialize + ?Sized>(
 ///
 /// The descriptor must be declared before the catalog is emitted. After
 /// that point new raw sites are rejected; existing sites can still emit
-/// hits. `display_type` is ignored because the fallback writer derives it
-/// from the assertion kind and `must_hit`.
+/// hits. Reachability kind follows `must_hit`, independently of the condition
+/// and whether this is a declaration or observation. Caller-supplied
+/// `display_type` is preserved in fallback output.
 #[cfg(feature = "full")]
 #[allow(clippy::too_many_arguments)]
 pub fn assert_raw(
@@ -381,7 +383,8 @@ pub fn assert_raw(
         AssertionDescriptor, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
     };
 
-    let kind = assert_type.to_kind(condition);
+    // r[impl chaoscontrol.raw_reachability.obligation]
+    let kind = assert_type.to_kind(must_hit);
     let compatibility_id = location_id(&id);
     let descriptor = AssertionDescriptor {
         identity_version: ASSERTION_IDENTITY_VERSION,

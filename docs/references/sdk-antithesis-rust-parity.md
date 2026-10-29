@@ -309,6 +309,15 @@ change the assertion oracle or prove exploration quality.
   records; the VMM AOU flag is set when an `Always` raw site has
   `must_hit = false`. With `full` disabled, a no-op `assert_raw` with the
   same call shape keeps feature-independent code compiling.
+- Raw reachability classification uses `must_hit`, not `condition`: required
+  reachable declarations may use `condition=false`/`hit=false` and later true
+  observations retain the same reachable identity. Optional forbidden paths
+  remain unreachable. `AssertType::to_kind` now takes the `must_hit` obligation;
+  adapters calling it directly must pass that metadata rather than a condition.
+  This matches the declaration/hit separation in the upstream
+  [`assert_raw` contract](https://docs.rs/antithesis_sdk/0.3.0/antithesis_sdk/assert/fn.assert_raw.html).
+  Regenerate earlier raw reachable artifacts misclassified from a false
+  placeholder; do not treat their dropped hits as current-source evidence.
 - `cc_assert_always_some!` accepts both the Antithesis brace-bundle shape
   (`{name: cond, ...}`, meaning "at least one") and the ChaosControl
   single-expression `Option::is_some` shape. `cc_assert_always_any!` is the

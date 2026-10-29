@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "classify-raw-reachability-by-obligation",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Raw reachability declarations and hits must classify by must-hit, independently of condition. Required false-condition declarations must retain later successful hits with one accepted identity; actual SDK-to-strict-CLI scenarios must accept success and reject missing required paths or forbidden executions, preserving late-site rejection and sparse behavior.",
+      non_claims = ["Raw reachability identity evidence is local instrumentation only, not VM execution, replay, hosted-platform equivalence or release eligibility."],
+    },
+    {
       change = "honor-optional-sdk-diagnostic-gaps",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

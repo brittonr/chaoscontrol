@@ -37,6 +37,14 @@ kinds share the bounded serializer. Serialization runs only for an accepted,
 emitted outcome; sparse sampling skips it for repeated outcomes. With `full`
 disabled, the same borrowed calls require no serialization trait and emit nothing.
 
+Third-party adapters using `assert_raw` must register every raw site before any
+initialization trigger. For `AssertType::Reachability`, `must_hit=true` identifies
+a required reachable path and `must_hit=false` identifies a forbidden path.
+The declaration can use `condition=false` and `hit=false`; later observations
+retain the same identity regardless of that placeholder. If calling
+`AssertType::to_kind` directly, pass `must_hit`, not the observed condition.
+Keep display type and must-hit metadata consistent across declarations and hits.
+
 ## Local dry-run
 
 Set `CHAOSCONTROL_SDK_LOCAL_OUTPUT` before first SDK use, then run the workload normally:

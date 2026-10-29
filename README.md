@@ -99,7 +99,7 @@ Use the Nix development shell for the pinned Campaign dependency. It supplies a 
 or DOT timelines over recordings, dlogs, event envelopes, branch markers, and
 canonical fault-stage traces. Queries include ratio projections, numeric field
 ratios and thresholds, running match counts, projection narrowing, priority-preserving tick deduplication,
-intersection/difference, regex selection and temporal witness correlation. See the [local event query guide](docs/local-event-query.md)
+intersection/difference, regex selection, temporal witness correlation and nearest-witness value annotation. See the [local event query guide](docs/local-event-query.md)
 for inputs, limits, receipt fields, and non-claims.
 
 ## Features

@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "annotate-last-witness-values",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "WithLastValue must preserve candidate evidence while copying a selected scalar from the nearest strict earlier in-window witness, with deterministic canonical ties, first-position projection priority and stale-output removal without older-value fallback. Verify tick extremes, zero/empty cases, canonical/empty/missing lookup, witness projection and downstream composition, both names, hidden invalid children, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Nearest witness value annotation is not full nested-event with_last parity, inferred causality, multiverse lineage, implicit VM/process/source partitioning, with_next/timeouts, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "project-retained-field-ratios",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

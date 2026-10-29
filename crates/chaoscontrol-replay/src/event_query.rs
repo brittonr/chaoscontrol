@@ -622,6 +622,14 @@ pub enum EventQuery {
         relation: TemporalRelation,
         within_ticks: u64,
     },
+    /// Copy a scalar from the nearest strictly earlier witness in a tick window.
+    WithLastValue {
+        input: Box<EventQuery>,
+        witness: Box<EventQuery>,
+        field: String,
+        witness_field: String,
+        within_ticks: u64,
+    },
     Window {
         input: Box<EventQuery>,
         start_tick: u64,
@@ -1452,6 +1460,25 @@ fn evaluate_rows(
                 max_operations,
             )
         }
+        EventQuery::WithLastValue {
+            input,
+            witness,
+            field,
+            witness_field,
+            within_ticks,
+        } => {
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            let witnesses = evaluate_rows(witness, events, operations, max_operations, regexes)?;
+            with_last_value_rows(
+                rows,
+                witnesses,
+                field,
+                witness_field,
+                *within_ticks,
+                operations,
+                max_operations,
+            )
+        }
         EventQuery::Window {
             input,
             start_tick,
@@ -1476,6 +1503,48 @@ fn evaluate_rows(
                 .collect())
         }
     }
+}
+
+// r[impl chaoscontrol.last_witness_value.annotation]
+fn with_last_value_rows(
+    mut rows: Vec<EventEnvelope>,
+    mut witnesses: Vec<EventEnvelope>,
+    field: &str,
+    witness_field: &str,
+    within_ticks: u64,
+    operations: &mut usize,
+    max_operations: usize,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    charge_operations(operations, rows.len(), max_operations)?;
+    charge_operations(operations, witnesses.len(), max_operations)?;
+    for witness in &witnesses {
+        admit_event(witness)?;
+    }
+    if !witnesses.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+        witnesses.sort_by_key(event_order);
+    }
+    witnesses.dedup_by_key(|witness| (witness.source_id, witness.source_sequence));
+    for row in &mut rows {
+        admit_event(row)?;
+        let cursor = witnesses.partition_point(|witness| witness.tick < row.tick);
+        let value = cursor
+            .checked_sub(1)
+            .map(|index| &witnesses[index])
+            .filter(|witness| row.tick - witness.tick <= within_ticks)
+            .and_then(|witness| field_value(witness, witness_field));
+        if let Some(value) = value {
+            if let Some(output) = row.derived.get_mut(field) {
+                output.clear();
+                output.push_str(value);
+            } else {
+                row.derived.insert(field.to_string(), value.to_string());
+            }
+        } else {
+            row.derived.remove(field);
+        }
+        admit_event(row)?;
+    }
+    Ok(rows)
 }
 
 // r[impl chaoscontrol.temporal_event_query.correlation]
@@ -1744,6 +1813,18 @@ fn validate_query_inner<'a>(
         EventQuery::UpTo { input, .. } => {
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::WithLastValue {
+            input,
+            witness,
+            field,
+            witness_field,
+            ..
+        } => {
+            validate_field(field)?;
+            validate_field(witness_field)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)?;
+            validate_query_inner(witness, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Temporal {
             input,
             witness: other,
@@ -1960,6 +2041,11 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
             Ok(moment)
         }
         EventQuery::Temporal {
+            input,
+            witness: other,
+            ..
+        }
+        | EventQuery::WithLastValue {
             input,
             witness: other,
             ..

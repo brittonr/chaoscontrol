@@ -914,6 +914,66 @@ branch lineage, establish complete capture, or provide live branching, hosted
 search, VM/replay proof or full upstream query-language compatibility. Existing
 queries and schemas are unchanged; new variants require upgraded readers.
 
+## Nearest earlier witness values
+
+`WithLastValue` preserves candidate rows and copies one selected string from
+their nearest strictly earlier witness. It supplies bounded scalar context
+analogous to [Antithesis with_last](https://antithesis.com/docs/reference/event-set-reference/#with_last),
+not its nested-event representation or multiverse history semantics. For example,
+carry the last restart message into each error within five ticks:
+
+```json
+{
+  "WithLastValue": {
+    "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
+    "witness": {"Filter": {"input": "All", "predicate": {"Kind": "restart"}}},
+    "field": "last_restart",
+    "witness_field": "text",
+    "within_ticks": 5
+  }
+}
+```
+
+Run the usual `query` and `validate` commands. For candidate tick `c`, eligible
+witness ticks satisfy `c - within_ticks <= w < c`. Choose the greatest eligible
+`(tick, source_id, source_sequence)` key. Same-tick witnesses never establish
+earlier context; zero windows never match, and subtraction is safe at zero and
+`u64::MAX`. The source/sequence tie-break is deterministic, not causal ordering.
+Repeated witness positions keep their first query-local projection.
+
+`witness_field` uses existing canonical `kind`/`text`/`process`/`source_kind`
+lookup, otherwise a derived string. Map/MapText projections on the witness
+branch can supply custom context, which downstream text/numeric predicates and
+Narrow can reuse on candidate rows. A present empty string is copied. An absent
+value on the nearest witness does **not** fall back to an older witness. No
+witness, an out-of-range witness or a missing selected value removes only the
+destination projection, preventing stale context without dropping the candidate.
+Canonical candidate evidence is never overwritten, even if `field` is a
+canonical name; canonical lookup still wins over a same-named projection.
+
+Both field names must be nonempty, control-free and at most 256 UTF-8 bytes,
+including on empty inputs. Both child queries are independently evaluated and
+admitted even when there are no candidates or the window is zero. Invalid
+intermediate witnesses, malformed visited JSON and generated candidate capacity
+overflows remain errors; later narrowing/deduplication cannot hide them.
+Evaluation errors publish neither result nor receipt.
+
+Witnesses are canonically sorted in place and binary-searched per candidate;
+there is no Cartesian join, extra tick array or candidate-vector clone during
+annotation. Charge normal child work plus one operation per candidate and per
+witness before deduplication. Existing node/depth/scan/derived-field/derived-byte/
+result bounds, final ordering/prefix truncation and moment rules apply. An outer
+UpTo caps its output, not hidden witness history; constrain child queries at the
+intended moment. Receipts bind both expressions, both names, the window and all
+canonical source/result facts, including witness observations.
+
+Callers must supply a coherent tick domain and explicitly restrict both branches
+for VM/process/source matching. This does not infer causality or branch lineage,
+provide nested witness objects/multiple named sets/with_next timeouts, or claim
+complete capture, hosted search, CPU/RSS/deadline bounds, VM execution, replay
+proof or full upstream compatibility. Old variants/schemas remain unchanged;
+WithLastValue queries require upgraded readers.
+
 ## Limits
 
 `EventQueryLimits` defaults and caps are:

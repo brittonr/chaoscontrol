@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "annotate-last-witness-values",
+      "evidence_prerequisite": "WithLastValue must preserve candidate evidence while copying a selected scalar from the nearest strict earlier in-window witness, with deterministic canonical ties, first-position projection priority and stale-output removal without older-value fallback. Verify tick extremes, zero/empty cases, canonical/empty/missing lookup, witness projection and downstream composition, both names, hidden invalid children, intermediate/generated capacity, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
+      "non_claims": [
+        "Nearest witness value annotation is not full nested-event with_last parity, inferred causality, multiverse lineage, implicit VM/process/source partitioning, with_next/timeouts, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "project-retained-field-ratios",
       "evidence_prerequisite": "MapRatio must annotate finite binary64 quotients using shared FieldRatio arithmetic, compute before overwriting aliases and remove stale output for undefined ratios. Verify canonical evidence/lookup, signed-zero/underflow/rounding, Map/MapText/count/filter/narrow composition, all three names, exact intermediate/generated capacity and unhideable overflow, shared limits, moments and actual CLI query/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

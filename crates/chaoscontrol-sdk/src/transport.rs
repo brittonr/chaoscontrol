@@ -373,13 +373,6 @@ fn dispatch_local_bound(
     use chaoscontrol_protocol::*;
     let always_or_unreachable = flags & chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK != 0;
     let condition_flag = flags & chaoscontrol_protocol::CONDITION_FLAG_MASK != 0;
-    let kind = match command {
-        CMD_ASSERT_ALWAYS => crate::assert::AssertionKind::Always,
-        CMD_ASSERT_SOMETIMES => crate::assert::AssertionKind::Sometimes,
-        CMD_ASSERT_REACHABLE => crate::assert::AssertionKind::Reachable,
-        CMD_ASSERT_UNREACHABLE => crate::assert::AssertionKind::Unreachable,
-        _ => return,
-    };
     let (assert_type, derived_display_type, derived_must_hit, condition) = match command {
         CMD_ASSERT_ALWAYS => (
             "always",
@@ -396,9 +389,7 @@ fn dispatch_local_bound(
         CMD_ASSERT_UNREACHABLE => ("reachability", "Unreachable", false, false),
         _ => return,
     };
-    let location = identity
-        .compatibility_id
-        .and_then(|id| crate::assertion_catalog::location_for_compatibility(id, kind, message));
+    let location = crate::assertion_catalog::location_for_identity(identity);
     let display_type = location
         .as_ref()
         .and_then(|location| location.display_type)
@@ -456,15 +447,7 @@ pub(crate) fn local_emit_declaration(
         ProtocolKind::Reachable => ("reachability", true),
         ProtocolKind::Unreachable => ("reachability", false),
     };
-    let kind = match descriptor.kind {
-        ProtocolKind::Always => crate::assert::AssertionKind::Always,
-        ProtocolKind::Sometimes => crate::assert::AssertionKind::Sometimes,
-        ProtocolKind::Reachable => crate::assert::AssertionKind::Reachable,
-        ProtocolKind::Unreachable => crate::assert::AssertionKind::Unreachable,
-    };
-    let location = descriptor.compatibility_id.and_then(|id| {
-        crate::assertion_catalog::location_for_compatibility(id, kind, &descriptor.message)
-    });
+    let location = crate::assertion_catalog::location_for_descriptor(descriptor);
     let must_hit = location
         .as_ref()
         .and_then(|location| location.must_hit)

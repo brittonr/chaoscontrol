@@ -171,8 +171,14 @@ fallback schema. A strict Antithesis schema validator sees extra fields.
 | Catalog declarations | `antithesis_assert` records with `hit = false` at init | same records after catalog completion, with identity extensions | superset |
 | Must-hit verdicts | unexercised must-hit properties fail | local evidence and the VMM oracle apply `must_hit` to unexercised verdicts | equivalent |
 | Display type and must-hit | `Always`/`AlwaysOrUnreachable`/`Sometimes`/`Reachable`/`Unreachable` with Antithesis `must_hit` values | same display types and `must_hit` mapping | equivalent |
-| Assertion location | `location` with class, function, file, line, column | same object, from the call-site catalog entry | equivalent |
+| Assertion location | `location` with class, function, file, line, column | same object, resolved through the accepted descriptor rather than an ambiguous compact alias | equivalent |
 | Guidance records | `antithesis_guidance` watermarks, JSON guidance, and initialization catalog | same record shape, typed `GuidanceType`, per-site watermarks, `hit = false` catalog records, and `cc_guidance_json!` for stable sites | equivalent |
+
+Local assertion hits select source metadata through their accepted fingerprint;
+declarations use the descriptor being declared. Distinct stable namespaces
+with colliding aliases and identical kind/message retain their own locations.
+This does not make unqualified ambiguous aliases resolvable or admit unknown
+sites. Raw source metadata, display type and must-hit overrides are preserved.
 
 ## Guidance decision
 

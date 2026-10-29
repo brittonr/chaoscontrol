@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-colliding-assertion-locations",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Colliding accepted stable sites with identical kind/message must retain independently attributed hit/declaration locations; unresolved calls must remain rejected and raw display, must-hit and source metadata preserved.",
+      non_claims = ["Local source attribution does not prove VM execution, replay, hosted-platform parity or release eligibility."],
+    },
+    {
       change = "preserve-bundle-details-evaluation-order",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

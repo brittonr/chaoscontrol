@@ -182,16 +182,35 @@ pub(crate) fn resolve_compatibility(
     })
 }
 
-/// Resolve the source metadata for one compatibility assertion site.
-pub(crate) fn location_for_compatibility(
-    id: u32,
-    kind: AssertionKind,
-    message: &str,
-) -> Option<CatalogLocation> {
-    let catalog_kind = kind.to_catalog_kind();
-    let mut matches = ASSERTION_CATALOG
-        .iter()
-        .filter(|entry| entry.id == id && entry.kind == catalog_kind && entry.message == message);
+/// Resolve hit metadata from its accepted descriptor, not its compact alias.
+// r[impl chaoscontrol.assertion_locations.identity]
+pub(crate) fn location_for_identity(identity: BoundIdentity) -> Option<CatalogLocation> {
+    let catalog = SDK_CATALOG.get()?;
+    let accepted = catalog.accepted.as_ref().ok()?.as_ref()?;
+    let assertion = accepted.assertions.get(&identity.fingerprint)?;
+    location_for_descriptor(&assertion.descriptor)
+}
+
+/// Resolve declaration or hit source metadata without allocating candidate descriptors.
+// r[impl chaoscontrol.assertion_locations.preservation]
+pub(crate) fn location_for_descriptor(descriptor: &AssertionDescriptor) -> Option<CatalogLocation> {
+    let mut matches = ASSERTION_CATALOG.iter().filter(|entry| {
+        entry.namespace == descriptor.namespace
+            && Some(entry.id) == descriptor.compatibility_id
+            && protocol_catalog_kind(entry.kind).ok() == Some(descriptor.kind)
+            && entry.message == descriptor.message
+            && entry.file == descriptor.source_file
+            && entry.line == descriptor.source_line
+            && entry.column == descriptor.source_column
+            && match (entry.logical_key, &descriptor.logical_key) {
+                (CatalogLogicalKey::Stable(entry_key), AssertionLogicalKey::Stable { key }) => {
+                    entry_key == key
+                }
+                // Automatic keys derive from the matched file/line/column.
+                (CatalogLogicalKey::Automatic(_), AssertionLogicalKey::Automatic { .. }) => true,
+                _ => false,
+            }
+    });
     match (matches.next(), matches.next()) {
         (Some(first), None) => Some(CatalogLocation {
             class: first.class,
@@ -202,23 +221,16 @@ pub(crate) fn location_for_compatibility(
             display_type: None,
             must_hit: Some(first.must_hit),
         }),
-        (None, _) => raw_location_for_compatibility(id, kind, message),
+        (None, _) => raw_location_for_descriptor(descriptor),
         (Some(_), Some(_)) => None,
     }
 }
 
-fn raw_location_for_compatibility(
-    id: u32,
-    kind: AssertionKind,
-    message: &str,
-) -> Option<CatalogLocation> {
-    let kind = protocol_kind(kind);
+fn raw_location_for_descriptor(descriptor: &AssertionDescriptor) -> Option<CatalogLocation> {
     let registrations = RAW_REGISTRATIONS.lock().ok()?;
-    let mut matches = registrations.iter().filter(|raw| {
-        raw.descriptor.compatibility_id == Some(id)
-            && raw.descriptor.kind == kind
-            && raw.descriptor.message == message
-    });
+    let mut matches = registrations
+        .iter()
+        .filter(|raw| raw.descriptor == *descriptor);
     let first = matches.next()?;
     if matches.next().is_some() {
         return None;

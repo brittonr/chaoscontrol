@@ -62,7 +62,7 @@ static RAW_CLOSED: AtomicBool = AtomicBool::new(false);
 
 /// Register one runtime raw assertion before the catalog is emitted.
 pub(crate) fn register_raw(
-    descriptor: AssertionDescriptor,
+    descriptor: &AssertionDescriptor,
     class: &str,
     function: &str,
     display_type: &str,
@@ -75,11 +75,11 @@ pub(crate) fn register_raw(
         return false;
     };
     // r[impl chaoscontrol.raw_registration.exact_reuse]
-    if let Some(raw) = registrations
-        .iter()
-        .find(|raw| raw.descriptor.compatibility_id == descriptor.compatibility_id)
-    {
-        return raw.descriptor == descriptor
+    if let Some(raw) = registrations.iter().find(|raw| {
+        raw.descriptor.namespace == descriptor.namespace
+            && raw.descriptor.logical_key == descriptor.logical_key
+    }) {
+        return raw.descriptor == *descriptor
             && raw.location.class == class
             && raw.location.function == function
             && raw.location.display_type == Some(display_type)
@@ -98,7 +98,7 @@ pub(crate) fn register_raw(
         must_hit: Some(must_hit),
     };
     registrations.push(RawRegistration {
-        descriptor,
+        descriptor: descriptor.clone(),
         location,
     });
     true
@@ -273,12 +273,12 @@ pub(crate) fn resolve_stable(
 ) -> Option<BoundIdentity> {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
     let accepted = catalog.accepted.as_ref().ok()?.as_ref()?;
-    let logical_key = AssertionLogicalKey::Stable {
-        key: key.to_string(),
-    };
     let mut matches = accepted.assertions.values().filter(|assertion| {
         assertion.descriptor.namespace == namespace
-            && assertion.descriptor.logical_key == logical_key
+            && matches!(
+                &assertion.descriptor.logical_key,
+                AssertionLogicalKey::Stable { key: registered } if registered == key
+            )
             && assertion.descriptor.kind == protocol_kind(kind)
             && assertion.descriptor.message == message
     });

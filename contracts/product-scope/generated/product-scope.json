@@ -330,10 +330,19 @@
   ],
   "change_intents": [
     {
-      "change": "reject-conflicting-raw-registrations",
-      "evidence_prerequisite": "Raw alias reuse must require exact descriptor and registration metadata. Fixed collisions and changed metadata must not emit as the original property or consume sparse samples; exact duplicates and genuine pass/fail hits must survive. Actual default/sparse SDK-to-strict-CLI scenarios must accept rejected conflicts and reject genuine violations.",
+      "change": "bind-runtime-raw-string-identities",
+      "evidence_prerequisite": "Runtime raw descriptors must omit compact aliases and resolve by exact string key. Historically colliding IDs must both retain independent declarations, fingerprints, outcomes and sparse samples; actual default/sparse strict reports must accept passing properties and attribute left/right violations separately. Same-ID metadata conflicts and late unknown keys remain rejected; regenerate raw identity artifacts.",
       "non_claims": [
-        "Exact raw registration reuse proves bounded local identity behavior, not support for all colliding IDs, VM execution, replay, hosted equivalence or release eligibility."
+        "Runtime raw string identity proves bounded local instrumentation, not VM execution, replay, hosted equivalence or release eligibility; compiled aliases are unchanged."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
+      "change": "reject-conflicting-raw-registrations",
+      "evidence_prerequisite": "Raw logical-key reuse must require exact descriptor and registration metadata. Changed same-ID metadata must not emit as the original property or consume sparse samples; exact duplicates and genuine pass/fail hits must survive. Distinct historically colliding string keys are independent under the runtime raw string-identity cutover.",
+      "non_claims": [
+        "Exact raw registration reuse proves bounded local identity behavior, not VM execution, replay, hosted equivalence or release eligibility."
       ],
       "owner": "chaoscontrol-sdk",
       "target_state": "experimental"
@@ -430,7 +439,7 @@
     },
     {
       "change": "preserve-raw-assertion-report-ids",
-      "evidence_prerequisite": "Accepted raw-namespace declarations and hits must retain exact caller IDs through JSONL and strict evidence reports; bound declarations must not count as hits, and inconsistent IDs and late raw sites remain rejected. Ordinary compiled IDs and VM aliases remain unchanged.",
+      "evidence_prerequisite": "Accepted raw-namespace declarations and hits must retain exact caller IDs through JSONL and strict evidence reports; bound declarations must not count as hits, and inconsistent IDs and late raw sites remain rejected. Compiled IDs and aliases remain unchanged; runtime raw identity artifacts require regeneration at the string-key cutover.",
       "non_claims": [
         "Local fallback and evidence-reader behavior does not prove VM execution, replay, hosted-platform parity or release eligibility."
       ],

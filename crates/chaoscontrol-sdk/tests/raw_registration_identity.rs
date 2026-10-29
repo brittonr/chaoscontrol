@@ -1,6 +1,6 @@
 #![cfg(feature = "full")]
 
-use chaoscontrol_sdk::assert::{assert_raw, location_id, AssertType};
+use chaoscontrol_sdk::assert::{assert_raw, AssertType};
 use serde_json::{json, Value};
 
 #[derive(Clone, Copy)]
@@ -29,10 +29,6 @@ const ORIGINAL: Site = Site {
     kind: AssertType::Always,
     display: "Always",
 };
-const COLLISION: Site = Site {
-    id: "org.example.sparse-b:05d3992156bd4061",
-    ..ORIGINAL
-};
 
 fn emit(site: Site, condition: bool, hit: bool, attempt: &str) {
     assert_raw(
@@ -55,13 +51,11 @@ fn emit(site: Site, condition: bool, hit: bool, attempt: &str) {
 // r[verify chaoscontrol.raw_registration.exact_reuse]
 #[test]
 fn conflicting_raw_calls_cannot_steal_identity_or_outcome_samples() {
-    assert_eq!(location_id(ORIGINAL.id), location_id(COLLISION.id));
     let output =
         std::env::temp_dir().join(format!("cc-raw-registration-{}.jsonl", std::process::id()));
     let _ = std::fs::remove_file(&output);
     std::env::set_var("CHAOSCONTROL_SDK_LOCAL_OUTPUT", &output);
     let conflicts = [
-        COLLISION,
         Site {
             message: "changed message",
             ..ORIGINAL

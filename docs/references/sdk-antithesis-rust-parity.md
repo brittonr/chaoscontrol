@@ -233,8 +233,10 @@ through local JSONL and strict evidence reports. This follows the upstream
 additionally checked on 2026-10-28. Stable keys in the `raw` namespace have
 this report-ID meaning for both compiled and runtime registration. Compiled
 sites outside that namespace retain compact hexadecimal alias IDs (or full
-fingerprints without an alias). VM compatibility aliases, fingerprints and
-catalog tokens are unchanged. The reader validates `hit = false` declarations
+fingerprints without an alias). Compiled compatibility aliases remain unchanged.
+Runtime raw descriptors now omit compatibility aliases and resolve by string key,
+so their fingerprints and catalog tokens change; regenerate their artifacts.
+The reader validates `hit = false` declarations
 against the accepted catalog without counting them as observations, including
 reachable declarations whose condition is false.
 
@@ -309,14 +311,16 @@ change the assertion oracle or prove exploration quality.
   records; the VMM AOU flag is set when an `Always` raw site has
   `must_hit = false`. With `full` disabled, a no-op `assert_raw` with the
   same call shape keeps feature-independent code compiling.
-- Raw registration reuse requires an exact descriptor, class, function,
-  display type and must-hit match. Changed metadata or a distinct string ID
-  sharing an existing 32-bit alias is rejected before emission and sparse
-  sampling, rather than rewritten as the original property's observation.
-  Exact duplicates and legitimate positive/negative hits still work. Raw
-  collision capacity remains narrower than upstream string-ID capacity: this
-  is rejection safety, not support for every colliding ID. Regenerate evidence
-  from adapters that previously changed registration metadata between calls.
+- Raw registration reuse is keyed by the exact string ID and requires an exact
+  descriptor, class, function, display type and must-hit match. Changed metadata
+  for the same ID is rejected before emission and sparse sampling. Distinct
+  runtime raw IDs whose former 32-bit hashes collide are both admitted as
+  alias-free stable identities, with independent fingerprints, observations and
+  sparse samples. Exact duplicates and legitimate positive/negative hits still
+  work. Compiled macro aliases are unchanged. Runtime raw fingerprints/catalog
+  tokens change at this cutover: regenerate earlier runtime raw artifacts rather
+  than adding a compatibility-alias fallback. Stable lookup borrows the string
+  key; repeated observations do not allocate a temporary lookup key.
 - Raw reachability classification uses `must_hit`, not `condition`: required
   reachable declarations may use `condition=false`/`hit=false` and later true
   observations retain the same reachable identity. Optional forbidden paths

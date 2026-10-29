@@ -45,11 +45,13 @@ retain the same identity regardless of that placeholder. If calling
 `AssertType::to_kind` directly, pass `must_hit`, not the observed condition.
 Keep the complete declaration descriptor and class/function/display/must-hit
 metadata identical on every call; only `condition`, `hit` and diagnostic details
-vary. Conflicting metadata or another string ID with the same compact alias is
-rejected without emitting or consuming the original site's sparse samples.
-Exact duplicates remain usable. This raw API rejects alias collisions rather
-than admitting both IDs; stable namespace APIs retain their documented separate
-namespace collision behavior.
+vary. Changed metadata for the same ID is rejected without emitting or consuming
+the original site's sparse samples. Exact duplicates remain usable. Distinct
+runtime raw string IDs are independent even when their historical compact hashes
+collide: their descriptors omit compatibility aliases and their observations use
+the existing stable-key/fingerprint-bound transport. Compiled macro aliases are
+unchanged. Regenerate runtime raw JSONL and derived reports after upgrading;
+runtime raw fingerprints/catalog tokens change at this cutover, not raw output IDs.
 
 ## Local dry-run
 

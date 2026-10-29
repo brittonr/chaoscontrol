@@ -338,8 +338,21 @@ pub fn assert_raw_with_key<S: serde::Serialize + ?Sized>(
     message: &str,
     details: &S,
 ) {
+    emit_stable_assertion_core(kind, cond, namespace, key, message, details, 0);
+}
+
+#[cfg(feature = "full")]
+fn emit_stable_assertion_core<S: serde::Serialize + ?Sized>(
+    kind: AssertionKind,
+    cond: bool,
+    namespace: &str,
+    key: &str,
+    message: &str,
+    details: &S,
+    extra_flags: u8,
+) {
     crate::internal::init();
-    let flags = assertion_flags(kind, cond);
+    let flags = assertion_flags(kind, cond) | extra_flags;
     let Some(identity) = crate::assertion_catalog::resolve_stable(namespace, key, kind, message)
     else {
         transport::hypercall_raw(kind.to_command(), flags, 0, &[]);
@@ -385,12 +398,11 @@ pub fn assert_raw(
 
     // r[impl chaoscontrol.raw_reachability.obligation]
     let kind = assert_type.to_kind(must_hit);
-    let compatibility_id = location_id(&id);
     let descriptor = AssertionDescriptor {
         identity_version: ASSERTION_IDENTITY_VERSION,
         namespace: "raw".to_string(),
         logical_key: AssertionLogicalKey::Stable { key: id },
-        compatibility_id: Some(compatibility_id),
+        compatibility_id: None,
         kind: match kind {
             AssertionKind::Always => chaoscontrol_protocol::identity::AssertionKind::Always,
             AssertionKind::Sometimes => chaoscontrol_protocol::identity::AssertionKind::Sometimes,
@@ -407,7 +419,7 @@ pub fn assert_raw(
         category: "raw".to_string(),
     };
     if !crate::assertion_catalog::register_raw(
-        descriptor,
+        &descriptor,
         &class,
         &function,
         &display_type,
@@ -418,15 +430,24 @@ pub fn assert_raw(
     if !hit {
         return;
     }
-    crate::internal::init();
-    if crate::assertion_catalog::resolve_compatibility(compatibility_id, kind, &message).is_none() {
+    // r[impl chaoscontrol.raw_string_ids.independent]
+    let AssertionLogicalKey::Stable { key } = &descriptor.logical_key else {
         return;
-    }
-    if kind == AssertionKind::Always && !must_hit {
-        emit_registered_always_or_unreachable(condition, compatibility_id, &message, details);
+    };
+    let extra_flags = if kind == AssertionKind::Always && !must_hit {
+        chaoscontrol_protocol::ALWAYS_OR_UNREACHABLE_FLAG_MASK
     } else {
-        emit_registered_assertion(kind, condition, compatibility_id, &message, details);
-    }
+        0
+    };
+    emit_stable_assertion_core(
+        kind,
+        condition,
+        &descriptor.namespace,
+        key,
+        &message,
+        details,
+        extra_flags,
+    );
 }
 
 /// No-op raw assertion entry point when the SDK is compiled without `full`.

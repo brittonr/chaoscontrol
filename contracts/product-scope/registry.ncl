@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "initialize-sdk-on-first-use",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Lifecycle, entropy-consuming random and direct guidance first use must emit metadata and the catalog once, preserve unexecuted properties, avoid initialization recursion, and retain entropy-free and no-full behavior.",
+      non_claims = ["Local initialization evidence does not establish VM execution, replay, hosted platform parity or release readiness."],
+    },
+    {
       change = "bind-stable-json-guidance",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

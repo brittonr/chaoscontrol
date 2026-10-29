@@ -280,6 +280,7 @@ pub fn emit_json_with_key(
     maximize: bool,
     guidance_data: Value,
 ) {
+    crate::internal::init();
     let Some(identity) = crate::assertion_catalog::resolve_stable(namespace, key, kind, message)
     else {
         return;
@@ -362,6 +363,9 @@ fn emit(
     guidance_data: Value,
     hit: bool,
 ) {
+    if hit {
+        crate::internal::init();
+    }
     let Some(identity) = crate::assertion_catalog::resolve_compatibility(id, kind, message) else {
         return;
     };
@@ -413,7 +417,7 @@ fn emit_bound(
         "assertion_fingerprint": identity.fingerprint,
         "catalog_status": "accepted",
     });
-    crate::lifecycle::send_event("antithesis_guidance", &record);
+    crate::lifecycle::send_event_uninitialized("antithesis_guidance", &record);
 }
 
 /// Emit numeric guidance when the per-site watermark accepts `value`.

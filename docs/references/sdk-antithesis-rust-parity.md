@@ -27,7 +27,7 @@ Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
 
 | Function | Antithesis | ChaosControl | Status |
 |---|---|---|---|
-| Init | `antithesis_init()` | `chaoscontrol_init()`; the first assertion also registers the catalog lazily | equivalent |
+| Init | `antithesis_init()`; lazy output/random handler | `chaoscontrol_init()`; lazy initialization before assertion/lifecycle output, entropy requests and direct guidance hits | equivalent |
 | VM detection | (none) | `is_in_vm()`, `is_local_output()` | absent |
 | Guest shell | (none) | `runtime::guest_init()` | absent |
 | Setup complete | `lifecycle::setup_complete(&Value)` | `lifecycle::setup_complete(&Value)` with `full` | equivalent |
@@ -35,6 +35,13 @@ Versions compared: `antithesis_sdk` 0.2.9 and 0.3.0 (crates.io),
 | Local output env | `ANTITHESIS_SDK_LOCAL_OUTPUT` | `CHAOSCONTROL_SDK_LOCAL_OUTPUT` (primary) or `ANTITHESIS_SDK_LOCAL_OUTPUT` (fallback) | equivalent |
 | Local output constant | `LOCAL_OUTPUT` | `LOCAL_OUTPUT` and `ANTITHESIS_LOCAL_OUTPUT` at crate root in every feature set | superset |
 | Convenience imports | `prelude` | `prelude` with both `cc_*` and unprefixed Antithesis names, `lifecycle`/`random` modules, plus the `compat` module | superset |
+
+With `full`, the first lifecycle output, entropy-consuming random request or
+direct guidance hit emits SDK metadata and the assertion catalog before the
+observation, even when no assertion body executes. Repeated/concurrent calls
+and later explicit initialization do not duplicate the catalog. Register raw
+sites before any of these initialization triggers. Empty/singleton choices,
+empty byte filling and no-full no-op operations do not initialize output.
 
 ## Assertion macros
 

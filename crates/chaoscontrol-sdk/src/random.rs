@@ -51,6 +51,8 @@ use chaoscontrol_protocol::*;
 /// let delay_ms = chaoscontrol_sdk::random::get_random() % 1000;
 /// ```
 pub fn get_random() -> u64 {
+    #[cfg(feature = "full")]
+    crate::internal::init();
     let (result, _status) = transport::hypercall_simple(CMD_RANDOM_GET, 0);
     result
 }
@@ -73,6 +75,8 @@ pub fn random_choice_index(n: usize) -> usize {
     if n <= 1 {
         return 0;
     }
+    #[cfg(feature = "full")]
+    crate::internal::init();
     let (result, _status) = transport::hypercall_simple(CMD_RANDOM_CHOICE, n as u32);
     (result as usize) % n
 }

@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "initialize-sdk-on-first-use",
+      "evidence_prerequisite": "Lifecycle, entropy-consuming random and direct guidance first use must emit metadata and the catalog once, preserve unexecuted properties, avoid initialization recursion, and retain entropy-free and no-full behavior.",
+      "non_claims": [
+        "Local initialization evidence does not establish VM execution, replay, hosted platform parity or release readiness."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "bind-stable-json-guidance",
       "evidence_prerequisite": "Stable JSON guidance must retain distinct accepted fingerprints across compact alias collisions, reject unknown or mismatched namespace/key/kind/message, and preserve guidance records and compatibility APIs.",
       "non_claims": [

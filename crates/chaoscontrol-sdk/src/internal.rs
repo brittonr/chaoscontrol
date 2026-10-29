@@ -200,8 +200,11 @@ static INITIALIZED: OnceLock<()> = OnceLock::new();
 /// Detects the transport mode (VM, local output, or no-op) and performs
 /// any one-time setup.  Safe to call multiple times (idempotent).
 ///
-/// This should be called as early as possible in your program.  If not
-/// called explicitly, it will be called lazily on first SDK use.
+/// Explicit early initialization is supported. Assertion/lifecycle output,
+/// entropy requests and guidance hits also initialize lazily; detection
+/// queries and entropy-free fast paths do not initialize the catalog.
+// r[impl chaoscontrol.sdk_first_use.initialization]
+// r[impl chaoscontrol.sdk_first_use.idempotence]
 pub fn init() {
     INITIALIZED.get_or_init(|| {
         // Force mode detection
@@ -221,7 +224,7 @@ fn emit_sdk_info() {
             local_emit_value(&serde_json::json!({ "antithesis_sdk": details }));
         }
         TransportMode::VmVmcall { .. } | TransportMode::VmPortIo { .. } => {
-            crate::lifecycle::send_event("antithesis_sdk", &details);
+            crate::lifecycle::send_event_uninitialized("antithesis_sdk", &details);
         }
         TransportMode::Noop => {}
     }

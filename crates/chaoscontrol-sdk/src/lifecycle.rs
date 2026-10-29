@@ -27,6 +27,7 @@ use chaoscontrol_protocol::*;
 /// ```
 #[cfg(feature = "full")]
 pub fn setup_complete(details: &serde_json::Value) {
+    crate::internal::init();
     let json_bytes = serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec());
     transport::hypercall(
         CMD_LIFECYCLE_SETUP_COMPLETE,
@@ -65,6 +66,14 @@ pub fn setup_complete<T: ?Sized>(_details: &T) {
 /// ```
 #[cfg(feature = "full")]
 pub fn send_event(name: &str, details: &serde_json::Value) {
+    crate::internal::init();
+    send_event_uninitialized(name, details);
+}
+
+/// Emit an event during initialization without reentering its OnceLock.
+/// SDK/catalog writers must use this path; application entry points initialize.
+#[cfg(feature = "full")]
+pub(crate) fn send_event_uninitialized(name: &str, details: &serde_json::Value) {
     let id = crate::assert::location_id(name);
     let json_bytes = serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec());
     transport::hypercall(CMD_LIFECYCLE_SEND_EVENT, 0, id, name, &json_bytes);

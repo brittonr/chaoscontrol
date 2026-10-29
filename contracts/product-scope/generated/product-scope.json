@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "correlate-temporal-events",
+      "evidence_prerequisite": "Temporal must correlate independently admitted candidates and witnesses under all four strict-tick relations with inclusive overflow-safe windows, unchanged candidate projections and first-wins duplicate behavior. Verify empty/equal/extreme ticks, invalid witnesses, bounded logical work without Cartesian joins, moment scoping and actual CLI receipts rejecting query/source/result drift without partial failure artifacts.",
+      "non_claims": [
+        "Supplied retained-input tick correlation is not causality, automatic VM/process/source partitioning, branch-lineage admission, complete capture, seconds-based or full upstream query compatibility, hosted search, live branching, a wall-clock/RSS guarantee, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "filter-event-regex",
       "evidence_prerequisite": "Regex must reuse canonical/derived field resolution and compile distinct patterns once per admission under explicit byte/program/DFA/nesting bounds, not per row. Verify literal/exact preservation, Unicode/anchors/negation/projections, skipped/empty invalid-pattern admission, operation/structural bounds, actual query/validate CLI receipts and no partial artifacts on syntax/expansion/nesting failures.",
       "non_claims": [

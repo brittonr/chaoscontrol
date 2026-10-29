@@ -524,6 +524,15 @@ pub enum EventPredicate {
     },
 }
 
+/// Strict tick direction and witness existence for retained temporal search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TemporalRelation {
+    PrecededBy,
+    NotPrecededBy,
+    FollowedBy,
+    NotFollowedBy,
+}
+
 /// A typed, bounded query expression.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -556,6 +565,13 @@ pub enum EventQuery {
     },
     Union {
         inputs: Vec<EventQuery>,
+    },
+    /// Select candidates by nearby witnesses in the caller-supplied tick domain.
+    Temporal {
+        input: Box<EventQuery>,
+        witness: Box<EventQuery>,
+        relation: TemporalRelation,
+        within_ticks: u64,
     },
     Window {
         input: Box<EventQuery>,
@@ -690,7 +706,7 @@ impl core::fmt::Display for EventQueryError {
         let message = match self {
             Self::QueryBound => "event query node count exceeds the bound",
             Self::QueryDepth => "event query depth exceeds the bound",
-            Self::AmbiguousMoment => "event query union spans more than one moment",
+            Self::AmbiguousMoment => "event query combines more than one moment",
             Self::ScanBound => "event query scan count exceeds the bound",
             Self::RowBound => "event query result rows exceed the bound",
             Self::ResultBound => "event query result bytes exceed the bound",
@@ -1259,6 +1275,23 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        EventQuery::Temporal {
+            input,
+            witness,
+            relation,
+            within_ticks,
+        } => {
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            let witnesses = evaluate_rows(witness, events, operations, max_operations, regexes)?;
+            temporal_rows(
+                rows,
+                witnesses,
+                *relation,
+                *within_ticks,
+                operations,
+                max_operations,
+            )
+        }
         EventQuery::Window {
             input,
             start_tick,
@@ -1283,6 +1316,51 @@ fn evaluate_rows(
                 .collect())
         }
     }
+}
+
+// r[impl chaoscontrol.temporal_event_query.correlation]
+fn temporal_rows(
+    mut rows: Vec<EventEnvelope>,
+    mut witnesses: Vec<EventEnvelope>,
+    relation: TemporalRelation,
+    within_ticks: u64,
+    operations: &mut usize,
+    max_operations: usize,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    charge_operations(operations, rows.len(), max_operations)?;
+    charge_operations(operations, witnesses.len(), max_operations)?;
+    for witness in &witnesses {
+        admit_event(witness)?;
+    }
+    witnesses.sort_unstable_by_key(|event| event.tick);
+    let preceding = matches!(
+        relation,
+        TemporalRelation::PrecededBy | TemporalRelation::NotPrecededBy
+    );
+    let negative = matches!(
+        relation,
+        TemporalRelation::NotPrecededBy | TemporalRelation::NotFollowedBy
+    );
+    rows.retain(|event| {
+        let cursor = witnesses.partition_point(|witness| {
+            if preceding {
+                witness.tick < event.tick
+            } else {
+                witness.tick <= event.tick
+            }
+        });
+        let matched = if preceding {
+            cursor.checked_sub(1).is_some_and(|index| {
+                witnesses[index].tick >= event.tick.saturating_sub(within_ticks)
+            })
+        } else {
+            witnesses
+                .get(cursor)
+                .is_some_and(|witness| witness.tick <= event.tick.saturating_add(within_ticks))
+        };
+        matched != negative
+    });
+    Ok(rows)
 }
 
 fn charge_operations(
@@ -1455,6 +1533,10 @@ fn validate_query_inner<'a>(
         EventQuery::UpTo { input, .. } => {
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::Temporal { input, witness, .. } => {
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)?;
+            validate_query_inner(witness, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Union { inputs } => {
             if inputs.is_empty() {
                 return Err(EventQueryError::QueryBound);
@@ -1621,6 +1703,14 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
                 moment = Some(candidate);
             }
             Ok(moment)
+        }
+        EventQuery::Temporal { input, witness, .. } => {
+            let input = moment_of(input)?;
+            let witness = moment_of(witness)?;
+            if matches!((input, witness), (Some(left), Some(right)) if left != right) {
+                return Err(EventQueryError::AmbiguousMoment);
+            }
+            Ok(input.or(witness))
         }
         EventQuery::All => Ok(None),
     }

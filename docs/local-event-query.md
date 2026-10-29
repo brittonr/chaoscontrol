@@ -26,9 +26,11 @@ partially read.
   for legacy traces without deltas.
 - Branch markers retain their observed tick, owner, identity, and payload
   digest.
-- Two different records at one `(source_id, source_sequence)` are rejected.
-  Byte-identical repeats collapse only when a union produces them.
-- Query unions must not span more than one `UpTo` moment.
+- Different source-visible content at one `(source_id, source_sequence)` is
+  rejected. Repeated source positions collapse under existing deduplication,
+  retaining the first candidate's query-local projections.
+- Directly combined `Union` or `Temporal` children must not span more than one
+  `UpTo` moment.
 
 ## Commands
 
@@ -404,12 +406,77 @@ remain effective. Pattern and field changes invalidate receipts even when rows
 stay identical. New readers are required for the variant; existing schemas and
 queries stay unchanged. This supplies bounded local regex selection analogous
 to [Antithesis Logs Explorer search](https://antithesis.com/docs/reference/logs_explorer_search/),
-not a hosted search interface, arbitrary code, complete capture, temporal search,
-live branching or full Notebook compatibility.
+not a hosted search interface, arbitrary code, complete capture, live branching
+or full Notebook compatibility. Combine it with `Temporal` below for retained
+tick correlation.
 
 
 
 
+
+## Temporal witness correlation
+
+`Temporal` selects candidate events by the existence or absence of independently
+queried witnesses. For example, select errors within five simulation ticks of
+an earlier restart, using the caller's `error` and `restart` kind labels:
+
+```json
+{
+  "Temporal": {
+    "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
+    "witness": {"Filter": {"input": "All", "predicate": {"Kind": "restart"}}},
+    "relation": "PrecededBy",
+    "within_ticks": 5
+  }
+}
+```
+
+Run `query` and `validate` with the same commands above. For candidate tick `c`,
+witness tick `w`, and nonnegative `within_ticks = d`:
+
+| Relation | Candidate is selected when |
+| --- | --- |
+| `PrecededBy` | Some witness satisfies `c - d <= w < c` |
+| `NotPrecededBy` | No witness satisfies `c - d <= w < c` |
+| `FollowedBy` | Some witness satisfies `c < w <= c + d` |
+| `NotFollowedBy` | No witness satisfies `c < w <= c + d` |
+
+Endpoints saturate safely at zero and `u64::MAX`. Same-tick events do not
+establish ordering, even if their source positions differ. A zero-width window
+has no positive matches; negative forms retain every candidate. An empty
+witness set has the same existence behavior. Candidate rows and projections
+are unchanged; witness rows and their projections are not emitted or merged.
+Candidate order is preserved before existing canonical sorting and first-wins
+duplicate removal, including conflicting query-local projections of a repeat.
+
+Both children can use existing filters, projections, regexes, windows, unions
+and nested temporal expressions. Both are evaluated and admitted even when
+the candidate set is empty or the window is zero. Invalid witness projections,
+malformed JSON, skipped invalid regexes and exhausted bounds remain errors,
+not evidence of witness absence. Evaluation failures emit no partial CLI result
+or receipt. Receipts bind both expressions, the relation/window and all supplied
+source events, including witnesses that never select a candidate.
+
+Witnesses are sorted by tick in place; each candidate binary-searches its
+nearest strict witness without a Cartesian join, extra tick arrays or copied
+candidate rows during correlation. In addition to both child evaluations,
+charge one logical temporal operation per candidate and per witness. Existing
+node/depth/work/result bounds apply. Logical counts are not comparison counts,
+total process RSS limits or a wall-clock deadline.
+
+Directly combined differing child moments return `AmbiguousMoment`. An outer
+`UpTo` determines its reported moment and caps only the rows of the expression
+it wraps; it does not retroactively cap hidden witnesses. To exclude future
+witnesses, wrap the `witness` expression itself in `UpTo` at the intended tick.
+
+Callers must supply a coherent tick domain and restrict both child queries when
+VM/process/source matching is required; there is no implicit partition or join
+key. This is a bounded local analogue of the temporal operators in
+[Antithesis Logs Explorer search](https://antithesis.com/docs/reference/logs_explorer_search/),
+using simulation ticks rather than seconds. It does not infer causality, admit
+branch lineage, establish complete capture, or provide live branching, hosted
+search, VM/replay proof or full upstream query-language compatibility. Existing
+queries and schemas are unchanged; new variants require upgraded readers.
 
 ## Limits
 

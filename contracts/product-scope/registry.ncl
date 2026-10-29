@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "correlate-temporal-events",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Temporal must correlate independently admitted candidates and witnesses under all four strict-tick relations with inclusive overflow-safe windows, unchanged candidate projections and first-wins duplicate behavior. Verify empty/equal/extreme ticks, invalid witnesses, bounded logical work without Cartesian joins, moment scoping and actual CLI receipts rejecting query/source/result drift without partial failure artifacts.",
+      non_claims = ["Supplied retained-input tick correlation is not causality, automatic VM/process/source partitioning, branch-lineage admission, complete capture, seconds-based or full upstream query compatibility, hosted search, live branching, a wall-clock/RSS guarantee, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "filter-event-regex",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

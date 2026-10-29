@@ -29,8 +29,8 @@ partially read.
 - Different source-visible content at one `(source_id, source_sequence)` is
   rejected. Repeated source positions collapse under existing deduplication,
   retaining the first candidate's query-local projections.
-- Directly combined `Union`, `Temporal`, `Intersect` or `Difference` children
-  must not span more than one `UpTo` moment.
+- Directly combined `Union`, `DistinctByTick`, `Temporal`, `Intersect` or
+  `Difference` children must not span more than one `UpTo` moment.
 
 ## Commands
 
@@ -266,6 +266,61 @@ ChaosControl deliberately uses source-position identity, not upstream full-field
 synthetic-event equality. No arbitrary JavaScript, branch-lineage admission,
 capture completeness, hosted event-search service, VM execution or replay-proof
 claim is added.
+
+## One observation per tick
+
+`DistinctByTick` combines a nonempty ordered `inputs` list, retaining only the
+first encountered row at each simulation tick. Prefer enriched observations
+before falling back to all retained events:
+
+```json
+{
+  "DistinctByTick": {
+    "inputs": [
+      {"Map": {
+        "input": {"Filter": {"input": "All", "predicate": {"Kind": "preferred"}}},
+        "field": "chosen",
+        "pointer": "/label"
+      }},
+      "All"
+    ]
+  }
+}
+```
+
+Run the same `query`/`validate` commands above. Earlier inputs win collisions;
+within one input, its first encountered row wins. Winner selection precedes
+final canonical sorting, so it is not a minimum-source-ID or earliest-position
+selection. Reordering branches or tied source rows can change winners. Complete
+winning envelopes/projections survive and remain usable by downstream filters;
+losing fields are not merged. An empty `inputs` list is rejected, but one empty
+branch or an empty source is valid. Zero and `u64::MAX` ticks need no conversion.
+
+The key is the tick alone across all supplied sources and VMs. Callers must
+supply a coherent tick domain and filter the scope they intend to collapse.
+Use `Union` instead to retain distinct source positions at the same tick;
+Union's existing identity and behavior are unchanged.
+
+All descendants and materialized branch rows remain admitted, including later
+branches whose ticks already have winners. Malformed visited JSON, invalid
+regexes and invalid projected collisions are errors, not harmless duplicates.
+One logical deduplication operation is charged per materialized branch row in
+addition to child evaluation. A seen-tick set follows the existing Union
+pattern; shared node/depth/work/scan/result bounds apply. Row caps retain the
+canonical prefix with correct matched/truncated facts; byte/work failures emit
+no partial CLI result or receipt. Logical counts are not CPU/RSS/deadline bounds.
+
+Moments follow Union's rules: directly conflicting child moments are ambiguous;
+an outer `UpTo` keeps its existing expression scope. Receipts bind branch order,
+every expression, limits, every supplied source event (including losers), and
+the complete winning rows. New variants require upgraded readers; schemas and
+existing queries are unchanged.
+
+This is a bounded local analogue of
+[Antithesis `distinct_by_moment`](https://antithesis.com/docs/reference/event-set-reference/#distinct_by_moment),
+using integer simulation ticks rather than upstream vtime/Moment objects. It
+does not establish session or branch-lineage equivalence, automatic per-source
+partitioning, complete capture, hosted event search, VM execution or replay proof.
 
 ## Compound predicates
 

@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "deduplicate-retained-event-ticks",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "DistinctByTick must keep the first encountered complete row per simulation tick with declared branch priority before canonical sorting. Verify enriched projections/downstream filters, source/tick collisions, input order, empty/extreme cases, admission/parsing of discarded branches, exact/exhausted shared bounds, prefix truncation, moments and actual CLI priority/expression/source/result receipt drift without partial failure artifacts.",
+      non_claims = ["Retained tick deduplication is not upstream Moment/session or branch-lineage equivalence, automatic per-source/VM partitioning, complete capture, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "combine-retained-event-sets",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

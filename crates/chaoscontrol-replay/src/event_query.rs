@@ -569,6 +569,10 @@ pub enum EventQuery {
     Union {
         inputs: Vec<EventQuery>,
     },
+    /// Keep the first encountered row per tick, preferring earlier inputs.
+    DistinctByTick {
+        inputs: Vec<EventQuery>,
+    },
     /// Keep left rows present in `other`, using source-position identity.
     Intersect {
         input: Box<EventQuery>,
@@ -1288,6 +1292,22 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.distinct_tick_query.precedence]
+        EventQuery::DistinctByTick { inputs } => {
+            let mut rows = Vec::new();
+            let mut seen = HashSet::new();
+            for input in inputs {
+                let branch = evaluate_rows(input, events, operations, max_operations, regexes)?;
+                charge_operations(operations, branch.len(), max_operations)?;
+                for row in branch {
+                    admit_event(&row)?;
+                    if seen.insert(row.tick) {
+                        rows.push(row);
+                    }
+                }
+            }
+            Ok(rows)
+        }
         // r[impl chaoscontrol.event_set_algebra.combination]
         EventQuery::Intersect { input, other } | EventQuery::Difference { input, other } => {
             let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
@@ -1581,7 +1601,7 @@ fn validate_query_inner<'a>(
             validate_query_inner(input, limits, depth + 1, nodes, regexes)?;
             validate_query_inner(other, limits, depth + 1, nodes, regexes)
         }
-        EventQuery::Union { inputs } => {
+        EventQuery::Union { inputs } | EventQuery::DistinctByTick { inputs } => {
             if inputs.is_empty() {
                 return Err(EventQueryError::QueryBound);
             }
@@ -1735,7 +1755,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }
         | EventQuery::Window { input, .. } => moment_of(input),
-        EventQuery::Union { inputs } => {
+        EventQuery::Union { inputs } | EventQuery::DistinctByTick { inputs } => {
             let mut moment = None;
             for input in inputs {
                 let Some(candidate) = moment_of(input)? else {

@@ -709,6 +709,23 @@ pub enum EventQuery {
         key_field: String,
         within_ticks: u64,
     },
+    /// Copy a scalar from the nearest strictly later witness in a tick window.
+    WithNextValue {
+        input: Box<EventQuery>,
+        witness: Box<EventQuery>,
+        field: String,
+        witness_field: String,
+        within_ticks: u64,
+    },
+    /// Copy a later witness scalar only when its selected key matches the candidate.
+    WithNextValueBy {
+        input: Box<EventQuery>,
+        witness: Box<EventQuery>,
+        field: String,
+        witness_field: String,
+        key_field: String,
+        within_ticks: u64,
+    },
     Window {
         input: Box<EventQuery>,
         start_tick: u64,
@@ -1781,14 +1798,15 @@ fn evaluate_rows(
         } => {
             let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             let witnesses = evaluate_rows(witness, events, operations, max_operations, regexes)?;
-            with_last_value_rows(
+            with_witness_value_rows(
                 rows,
                 witnesses,
-                LastWitnessSelection {
+                WitnessValueSelection {
                     field,
                     witness_field,
                     key_field: None,
                     within_ticks: *within_ticks,
+                    direction: WitnessDirection::Earlier,
                 },
                 operations,
                 max_operations,
@@ -1805,14 +1823,62 @@ fn evaluate_rows(
         } => {
             let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
             let witnesses = evaluate_rows(witness, events, operations, max_operations, regexes)?;
-            with_last_value_rows(
+            with_witness_value_rows(
                 rows,
                 witnesses,
-                LastWitnessSelection {
+                WitnessValueSelection {
                     field,
                     witness_field,
                     key_field: Some(key_field),
                     within_ticks: *within_ticks,
+                    direction: WitnessDirection::Earlier,
+                },
+                operations,
+                max_operations,
+            )
+        }
+        EventQuery::WithNextValue {
+            input,
+            witness,
+            field,
+            witness_field,
+            within_ticks,
+        } => {
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            let witnesses = evaluate_rows(witness, events, operations, max_operations, regexes)?;
+            with_witness_value_rows(
+                rows,
+                witnesses,
+                WitnessValueSelection {
+                    field,
+                    witness_field,
+                    key_field: None,
+                    within_ticks: *within_ticks,
+                    direction: WitnessDirection::Later,
+                },
+                operations,
+                max_operations,
+            )
+        }
+        EventQuery::WithNextValueBy {
+            input,
+            witness,
+            field,
+            witness_field,
+            key_field,
+            within_ticks,
+        } => {
+            let rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            let witnesses = evaluate_rows(witness, events, operations, max_operations, regexes)?;
+            with_witness_value_rows(
+                rows,
+                witnesses,
+                WitnessValueSelection {
+                    field,
+                    witness_field,
+                    key_field: Some(key_field),
+                    within_ticks: *within_ticks,
+                    direction: WitnessDirection::Later,
                 },
                 operations,
                 max_operations,
@@ -2022,26 +2088,35 @@ fn extrema_rows(
     Ok(rows)
 }
 
-struct LastWitnessSelection<'a> {
+#[derive(Clone, Copy)]
+enum WitnessDirection {
+    Earlier,
+    Later,
+}
+
+struct WitnessValueSelection<'a> {
     field: &'a str,
     witness_field: &'a str,
     key_field: Option<&'a str>,
     within_ticks: u64,
+    direction: WitnessDirection,
 }
 
 // r[impl chaoscontrol.last_witness_value.annotation]
-fn with_last_value_rows(
+// r[impl chaoscontrol.next_witness_value.annotation]
+fn with_witness_value_rows(
     mut rows: Vec<EventEnvelope>,
     mut witnesses: Vec<EventEnvelope>,
-    selection: LastWitnessSelection<'_>,
+    selection: WitnessValueSelection<'_>,
     operations: &mut usize,
     max_operations: usize,
 ) -> Result<Vec<EventEnvelope>, EventQueryError> {
-    let LastWitnessSelection {
+    let WitnessValueSelection {
         field,
         witness_field,
         key_field,
         within_ticks,
+        direction,
     } = selection;
     charge_operations(operations, rows.len(), max_operations)?;
     charge_operations(operations, witnesses.len(), max_operations)?;
@@ -2067,19 +2142,36 @@ fn with_last_value_rows(
         let witness = if let Some(key_field) = key_field {
             field_value(row, key_field).and_then(|key| {
                 let cursor = witnesses.partition_point(|witness| {
-                    (field_value(witness, key_field), witness.tick) < (Some(key), row.tick)
+                    let position = (field_value(witness, key_field), witness.tick);
+                    match direction {
+                        WitnessDirection::Earlier => position < (Some(key), row.tick),
+                        WitnessDirection::Later => position <= (Some(key), row.tick),
+                    }
                 });
-                cursor
-                    .checked_sub(1)
-                    .map(|index| &witnesses[index])
+                let index = match direction {
+                    WitnessDirection::Earlier => cursor.checked_sub(1),
+                    WitnessDirection::Later => Some(cursor),
+                };
+                index
+                    .and_then(|index| witnesses.get(index))
                     .filter(|witness| field_value(witness, key_field) == Some(key))
             })
         } else {
-            let cursor = witnesses.partition_point(|witness| witness.tick < row.tick);
-            cursor.checked_sub(1).map(|index| &witnesses[index])
+            let cursor = witnesses.partition_point(|witness| match direction {
+                WitnessDirection::Earlier => witness.tick < row.tick,
+                WitnessDirection::Later => witness.tick <= row.tick,
+            });
+            let index = match direction {
+                WitnessDirection::Earlier => cursor.checked_sub(1),
+                WitnessDirection::Later => Some(cursor),
+            };
+            index.and_then(|index| witnesses.get(index))
         };
         let value = witness
-            .filter(|witness| row.tick - witness.tick <= within_ticks)
+            .filter(|witness| match direction {
+                WitnessDirection::Earlier => row.tick - witness.tick <= within_ticks,
+                WitnessDirection::Later => witness.tick - row.tick <= within_ticks,
+            })
             .and_then(|witness| field_value(witness, witness_field));
         if let Some(value) = value {
             if let Some(output) = row.derived.get_mut(field) {
@@ -2453,6 +2545,13 @@ fn validate_query_inner<'a>(
             field,
             witness_field,
             ..
+        }
+        | EventQuery::WithNextValue {
+            input,
+            witness,
+            field,
+            witness_field,
+            ..
         } => {
             validate_field(field)?;
             validate_field(witness_field)?;
@@ -2460,6 +2559,14 @@ fn validate_query_inner<'a>(
             validate_query_inner(witness, limits, depth + 1, nodes, regexes)
         }
         EventQuery::WithLastValueBy {
+            input,
+            witness,
+            field,
+            witness_field,
+            key_field,
+            ..
+        }
+        | EventQuery::WithNextValueBy {
             input,
             witness,
             field,
@@ -2711,6 +2818,16 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
             ..
         }
         | EventQuery::WithLastValueBy {
+            input,
+            witness: other,
+            ..
+        }
+        | EventQuery::WithNextValue {
+            input,
+            witness: other,
+            ..
+        }
+        | EventQuery::WithNextValueBy {
             input,
             witness: other,
             ..
@@ -3388,6 +3505,19 @@ mod tests {
         assert_eq!(
             admit_event(&event).unwrap_err(),
             EventQueryError::InvalidEvent
+        );
+    }
+
+    #[test]
+    fn query_pointer_requires_a_confined_path() {
+        let query = EventQuery::Map {
+            input: Box::new(EventQuery::All),
+            field: "x".to_string(),
+            pointer: "not-a-pointer".to_string(),
+        };
+        assert_eq!(
+            evaluate(&query, &events(), &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::InvalidPointer
         );
     }
 

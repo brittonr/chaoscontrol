@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "annotate-next-witness-values",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "WithNextValue/WithNextValueBy must retain candidate evidence while copying the closest strictly later scalar within the tick window, with exact same-key matching when requested. Verify pairwise oracle, permutations/canonical ties, zero/max ticks and inclusive windows, missing/empty/Unicode/canonical keys and values, no farther-value fallback, aliases, first duplicate projection priority, JSON/downstream composition, all names/both hidden children, intermediate/generated capacity, shared limits/prefixes/moments including outer versus child UpTo, actual CLI direction/window/key/expression/source/result receipt drift without partial evaluation artifacts and unchanged earlier-witness regressions.",
+      non_claims = ["Forward scalar context is not Antithesis with_next matched-event output, synthetic timeout events, nested witnesses, named witness sets, inferred VM/source/history identity, coherent tick domains, causality or multiverse lineage, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "count-keyed-event-prefixes",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

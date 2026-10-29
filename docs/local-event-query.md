@@ -1447,6 +1447,65 @@ nested events, composite keys, multiple named sets, future/timeout events,
 arbitrary joins, complete capture, hosted search, CPU/RSS/deadline bounds, VM
 execution or replay proof.
 
+## Nearest later witness values
+
+`WithNextValue` retains candidates and copies a string from their nearest
+strictly later witness. `WithNextValueBy` additionally requires an exact same-key
+match. For example, annotate each error with its process's next recovery message:
+
+```json
+{
+  "WithNextValueBy": {
+    "input": {"Filter": {"input": "All", "predicate": {"Kind": "error"}}},
+    "witness": {"Filter": {"input": "All", "predicate": {"Kind": "recovery"}}},
+    "field": "next_recovery",
+    "witness_field": "text",
+    "key_field": "process",
+    "within_ticks": 5
+  }
+}
+```
+
+Use WithNextValue and omit key_field for global matching. Run the usual `query`
+and `validate` commands. Eligible witnesses satisfy
+`0 < witness.tick - candidate.tick <= within_ticks`; select the least canonical
+`(tick, source_id, source_sequence)`. All same-tick witnesses are excluded. Zero
+windows never match; directional subtraction is safe through `u64::MAX` without
+adding the window to the candidate tick. Canonical tie-breaks are deterministic,
+not causal. First duplicate witness projections win before key grouping.
+
+Key and value lookup follow WithLastValueBy's canonical-name precedence.
+Keys compare exact strings without coercion or Unicode normalization: missing
+keys never match (even missing-to-missing), while present empty derived keys do.
+Map/MapText can project custom keys on both branches and scalar witness values;
+MapTick can expose the next witness's exact tick. Downstream filters/Narrow can
+reuse the copied context. Output aliases read original candidate keys and
+witness values. Canonical candidate evidence and other projections are retained.
+No witness, out-of-window witness or absent value on the nearest witness removes
+stale destination output; there is no fallback to a farther value-bearing
+witness. Present empty values are copied.
+
+Both children execute and validate even for no candidates or a zero window.
+Names, work charges, intermediate/generated envelope admission, shared limits,
+final canonical ordering/prefix truncation and moment reconciliation follow the
+earlier-witness forms. The shared directional engine sorts/binary-searches the
+witness vector without a Cartesian join, extra key/index map or candidate clone.
+Receipts bind direction, both expressions, all names, key/window and complete
+source/result facts. Evaluation errors publish neither result nor receipt.
+An outer UpTo caps output, **not hidden witness history**. To exclude future
+context beyond a moment, explicitly apply the same UpTo to both child branches.
+
+This supplies bounded local forward scalar context inspired by
+[Antithesis with_next](https://antithesis.com/docs/reference/event-set-reference/#with_next),
+not its output contract: upstream returns matched following events annotated
+with an input event and may synthesize timeout events; these forms retain the
+input candidates, copy one scalar and clear unmatched output. No matched-event
+replacement, synthetic timeouts, nested events, named witness sets, inferred
+causality, VM/history identity, multiverse lineage, complete capture, hosted
+search, CPU/RSS/deadline guarantee, VM execution or replay proof is added.
+Existing earlier-witness forms/schemas are unchanged; new forms require upgraded
+readers. Callers must supply coherent tick domains and scope both branches.
+
 ## Limits
 
 `EventQueryLimits` defaults and caps are:

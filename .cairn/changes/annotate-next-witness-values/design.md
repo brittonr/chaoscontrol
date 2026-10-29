@@ -1,0 +1,15 @@
+## Decision
+
+Add WithNextValue { input, witness, field, witness_field, within_ticks } and keyed WithNextValueBy with key_field. Rename private earlier-only helper/selection through LSP into direction-neutral names and add an Earlier/Later direction. Keep old public forms and semantics; no shims. Shared helper evaluates/admit/charges both branches as before, canonically stable-sorts and deduplicates witnesses before optional key grouping, then binary-searches each original candidate. No Cartesian product, extra index/key map, candidate clone or witness-string copies except the requested output value.
+
+For Later, eligible witnesses satisfy w.tick > c.tick and w.tick - c.tick <= within_ticks; pick the least (tick, source_id, source_sequence). Use upper-bound partition (<= candidate tick) to skip all same-tick witnesses and slice.get(cursor) for safe end handling; keyed partition compares (optional key, tick), then checks exact same-key identity. Missing keys never match, including missing-to-missing; empty keys match. Earlier path retains lower-bound partition and previous-index selection, picking greatest canonical tie. Select before output mutation; aliases read original key and witness values. Do not compute c.tick + window (overflow); subtract only after strict directional selection. Zero window never matches. Missing/out-of-range witness or missing selected scalar clears stale output with no farther-value fallback; empty scalar is copied. Canonical lookup wins over shadows.
+
+Names and both children validate on empty input/zero windows; both branches still execute and admit hidden invalid rows. Charge normal child work plus each materialized candidate/witness before dedup. Reuse output string storage, admit every generated row immediately. Preserve shared structure/scan/work/derived/result/prefix bounds, source-position priority, moment reconciliation and full receipts. UpTo on the outer result does not cap hidden witness history; callers must constrain both children for a moment-bounded view.
+
+## Verification
+
+Baseline and EventQuery references before source edits; scoped Cairn gates first. Failing-before unsupported forward query, then permanent tests for keyed/unkeyed pairwise oracle across permutations/ties/tick extremes/zero and inclusive windows; missing/empty/Unicode keys, first duplicate projection priority, missing nearest value/no fallback, aliases and canonical precedence; JSON and downstream composition; empty/name/both-child admission, hidden intermediate/generated capacity; shared limits/prefixes/moments/receipts. Run actual query-events query/validate for full expected candidates, evaluation failures without artifacts and query/source/result drift. Run replay suite, Clippy, workspace compilation, formatting, scope/evidence checks; synchronize requirement and commit/push owned changes only.
+
+## Boundaries
+
+Tick order is deterministic, not causal; equal keys do not establish VM or history identity. This is candidate-preserving retained-input scalar lookup, not upstream matched-event/timeout/multiverse semantics.

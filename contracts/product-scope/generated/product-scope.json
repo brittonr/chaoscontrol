@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "annotate-next-witness-values",
+      "evidence_prerequisite": "WithNextValue/WithNextValueBy must retain candidate evidence while copying the closest strictly later scalar within the tick window, with exact same-key matching when requested. Verify pairwise oracle, permutations/canonical ties, zero/max ticks and inclusive windows, missing/empty/Unicode/canonical keys and values, no farther-value fallback, aliases, first duplicate projection priority, JSON/downstream composition, all names/both hidden children, intermediate/generated capacity, shared limits/prefixes/moments including outer versus child UpTo, actual CLI direction/window/key/expression/source/result receipt drift without partial evaluation artifacts and unchanged earlier-witness regressions.",
+      "non_claims": [
+        "Forward scalar context is not Antithesis with_next matched-event output, synthetic timeout events, nested witnesses, named witness sets, inferred VM/source/history identity, coherent tick domains, causality or multiverse lineage, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."
+      ],
+      "owner": "chaoscontrol-replay",
+      "target_state": "experimental"
+    },
+    {
       "change": "count-keyed-event-prefixes",
       "evidence_prerequisite": "RunningCountBy must preserve evidence while annotating independent inclusive checked u64 counts for explicit string keys. Verify interleaved/empty/missing/Unicode/canonical keys, permutations/ties/boundary ticks, original-key and predicate aliases, duplicate projection priority, JSON and downstream composition, missing-key predicate errors and short circuiting, empty/name/child/predicate admission, exact/generated/intermediate capacity, shared limits/moments and actual CLI query/key/predicate/source/result receipt drift without partial evaluation artifacts.",
       "non_claims": [

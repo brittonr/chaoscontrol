@@ -48,11 +48,16 @@ Setup details follow the full JSON-value contract of
 objects, arrays, strings, numbers, booleans and explicit null all pass from the
 ChaosControl SDK into strict local evidence reports. Only a top-level object
 contributes adoption metadata; scalar text and nested array objects do not.
-The reader still requires the `details` field, complete status and a single
-setup record. Object metadata remains bounded to 64 fields with nonempty keys
-of at most 128 UTF-8 bytes, and every shape retains generic JSON/stream bounds.
-This reader correction does not change SDK output, assertion identity, VM
-setup behavior or the local-instrumentation evidence boundary.
+Both strict local evidence and SDK diagnostic readers follow the documented
+first-call-wins setup transition: repeated valid completions neither replace the
+first record's adoption metadata nor increment its semantic completion count.
+The SDK still emits each call. Every record, including repeats, must retain
+the required `details` field, complete status and exact envelope. Strict
+evidence object metadata remains bounded to 64 fields with nonempty keys of
+at most 128 UTF-8 bytes; each reader enforces its generic JSON/stream bounds
+before ignoring repeats. Subsequent assertions/events remain observable.
+This is local input-order instrumentation evidence, not a change to VM setup
+behavior or a claim about cross-process global ordering.
 
 ## Assertion macros
 

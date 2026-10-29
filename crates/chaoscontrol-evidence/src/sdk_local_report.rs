@@ -213,12 +213,6 @@ pub fn summarize_sdk_local_jsonl(
                     line_idx + 1
                 )));
             }
-            if setup_complete {
-                return Err(EvidenceError::new(format!(
-                    "duplicate setup record at line {}",
-                    line_idx + 1
-                )));
-            }
             // r[impl chaoscontrol.setup_json_details.shapes]
             // Only object details carry metadata; other JSON values are workload data.
             let details = setup.antithesis_setup.details.as_object();
@@ -233,6 +227,11 @@ pub fn summarize_sdk_local_jsonl(
                     "setup details exceed metadata bounds at line {}",
                     line_idx + 1
                 )));
+            }
+            // r[impl chaoscontrol.setup_json_details.first_completion]
+            // Repeats are idempotent only after their record and metadata validate.
+            if setup_complete {
+                continue;
             }
             setup_complete = true;
             *lifecycle.entry("setup_complete".to_string()).or_default() += 1;

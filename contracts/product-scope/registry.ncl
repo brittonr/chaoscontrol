@@ -266,10 +266,17 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "preserve-first-setup-completion",
+      owner = "chaoscontrol-evidence",
+      target_state = "experimental",
+      evidence_prerequisite = "Strict evidence and SDK diagnostic readers must retain only the first validated setup completion and its metadata, continue processing assertions/events, and reject malformed or over-limit repeats. Actual repeated SDK output must pass local report quality checks for every JSON details shape.",
+      non_claims = ["Local input-order lifecycle evidence does not establish cross-process global ordering, VM execution, replay, hosted-platform parity or release eligibility."],
+    },
+    {
       change = "accept-json-setup-details",
       owner = "chaoscontrol-evidence",
       target_state = "experimental",
-      evidence_prerequisite = "Every bounded JSON setup-details shape must pass SDK-to-report quality checks while required fields, status, duplicate setup, object metadata bounds, generic JSON limits and assertion identity remain enforced.",
+      evidence_prerequisite = "Every bounded JSON setup-details shape must pass SDK-to-report quality checks while required fields, status, first-completion semantics, object metadata bounds, generic JSON limits and assertion identity remain enforced.",
       non_claims = ["Local lifecycle evidence admission does not prove VM execution, replay, hosted-platform parity or release eligibility."],
     },
     {

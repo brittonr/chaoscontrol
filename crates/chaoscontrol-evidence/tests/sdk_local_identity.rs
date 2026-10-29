@@ -375,7 +375,6 @@ fn json_setup_details_preserve_record_and_metadata_bounds() {
         "{\"antithesis_setup\":{\"status\":null,\"details\":null}}\n".to_string(),
         "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":false,\"extra\":true}}\n"
             .to_string(),
-        format!("{valid}{valid}"),
     ] {
         assert!(summarize_sdk_local_jsonl(&invalid, EVIDENCE_CLASS, None).is_err());
     }
@@ -395,5 +394,55 @@ fn non_object_setup_details_still_obey_json_resource_limits() {
         let input =
             format!("{{\"antithesis_setup\":{{\"status\":\"complete\",\"details\":{details}}}}}\n");
         assert!(summarize_sdk_local_jsonl(&input, EVIDENCE_CLASS, None).is_err());
+    }
+}
+
+#[test]
+fn repeated_setup_keeps_the_first_completion_and_its_metadata() {
+    let assertion = descriptor("stable:first-setup", "raft");
+    let catalog = catalog_jsonl(std::slice::from_ref(&assertion));
+    for first in [
+        json!({"adoption_track": "first"}),
+        Value::Null,
+        json!(true),
+        json!(7),
+        json!("ready"),
+        json!([{"adoption_track": "nested"}]),
+    ] {
+        let records = [
+            first.clone(),
+            first.clone(),
+            json!({"adoption_track": "replacement"}),
+            Value::Null,
+        ]
+        .into_iter()
+        .map(|details| {
+            json!({
+                "antithesis_setup": {"status": "complete", "details": details}
+            })
+        })
+        .collect::<Vec<_>>();
+        let input = format!(
+            "{catalog}{}{}{}",
+            render_lines(&records),
+            event_line(&assertion, &assertion.message, None),
+            render_lines(&[json!({"after_setup": {}})])
+        );
+        let report = summarize_sdk_local_jsonl(&input, EVIDENCE_CLASS, None)
+            .expect("valid repeated setup report");
+        assert_eq!(report["setup_complete"], true);
+        assert_eq!(report["lifecycle_events"]["setup_complete"], 1);
+        assert_eq!(report["lifecycle_events"]["after_setup"], 1);
+        assert_eq!(report["observed_assertions"], 1);
+        assert_eq!(report["failed_assertions"], 0);
+        assert_eq!(
+            report["adoption_tracks"],
+            if first.is_object() {
+                json!({"first": 1})
+            } else {
+                json!({})
+            }
+        );
+        assert!(check_sdk_assertion_quality_report(&report).unwrap().passed);
     }
 }

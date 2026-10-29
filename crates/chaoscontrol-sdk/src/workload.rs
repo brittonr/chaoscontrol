@@ -370,11 +370,10 @@ impl LocalDryRunReport {
                 }
             } else if value.get("antithesis_setup").is_some() {
                 let setup = exact_setup_record(&value, line_no)?;
+                // r[impl chaoscontrol.setup_json_details.first_completion]
+                // Keep validation above this guard; malformed repeats remain errors.
                 if report.setup_complete {
-                    return Err(invalid_data(format!(
-                        "duplicate setup record at line {}",
-                        line_no + 1
-                    )));
+                    continue;
                 }
                 report.setup_complete = true;
                 *report
@@ -466,7 +465,7 @@ fn exact_setup_record(
         .filter(|setup| setup.len() == 2)
         .ok_or_else(|| invalid_data(format!("invalid setup record at line {}", line_no + 1)))?;
     if setup.get("status").and_then(Value::as_str) != Some("complete")
-        || !setup.get("details").is_some_and(Value::is_object)
+        || !setup.contains_key("details")
     {
         return Err(invalid_data(format!(
             "invalid setup record at line {}",
@@ -606,24 +605,72 @@ mod tests {
     fn diagnostic_setup_and_json_shape_fail_closed() {
         const OVER_DEEP_LEVELS: usize = 65;
         const OVER_STRING_BUDGET: usize = 13 * 1024;
+        let valid_prefix = "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":null}}\n";
         for invalid in [
             r#"{"antithesis_setup":null}"#,
             r#"{"antithesis_setup":{"status":"pending","details":{}}}"#,
-            r#"{"antithesis_setup":{"status":"complete","details":null}}"#,
+            r#"{"antithesis_setup":{"status":"complete"}}"#,
             r#"{"antithesis_setup":{"status":"complete","details":{},"extra":true}}"#,
         ] {
             assert!(LocalDryRunReport::from_jsonl(invalid).is_err());
+            assert!(LocalDryRunReport::from_jsonl(&format!("{valid_prefix}{invalid}\n")).is_err());
         }
-        let valid_setup = r#"{"antithesis_setup":{"status":"complete","details":{}}}"#;
-        assert!(LocalDryRunReport::from_jsonl(&format!("{valid_setup}\n{valid_setup}\n")).is_err());
         let deep = format!(
             "{}0{}",
             "[".repeat(OVER_DEEP_LEVELS),
             "]".repeat(OVER_DEEP_LEVELS)
         );
         assert!(LocalDryRunReport::from_jsonl(&deep).is_err());
+        assert!(LocalDryRunReport::from_jsonl(&format!("{valid_prefix}{deep}\n")).is_err());
         let strings = format!(r#"{{"value":"{}"}}"#, "x".repeat(OVER_STRING_BUDGET));
         assert!(LocalDryRunReport::from_jsonl(&strings).is_err());
+        assert!(LocalDryRunReport::from_jsonl(&format!("{valid_prefix}{strings}\n")).is_err());
+    }
+
+    #[test]
+    fn diagnostic_setup_keeps_first_completion_and_its_metadata() {
+        for first in [
+            serde_json::json!({"adoption_track": "first"}),
+            Value::Null,
+            serde_json::json!(false),
+            serde_json::json!(7),
+            serde_json::json!("ready"),
+            serde_json::json!([{"adoption_track": "nested"}]),
+        ] {
+            let mut input = String::new();
+            for details in [
+                first.clone(),
+                first.clone(),
+                serde_json::json!({"adoption_track": "replacement"}),
+                Value::Null,
+            ] {
+                input.push_str(
+                    &serde_json::json!({"antithesis_setup": {
+                        "status": "complete", "details": details
+                    }})
+                    .to_string(),
+                );
+                input.push('\n');
+            }
+            input.push_str("{\"after_setup\":{}}\n");
+            input.push_str(concat!(
+                r#"{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"id":"1","message":"after setup","details":{"category":"invariant"}}}"#,
+                "\n"
+            ));
+            let report = LocalDryRunReport::from_jsonl(&input).expect("valid repeated setup");
+            assert!(report.setup_complete);
+            assert_eq!(report.lifecycle_events.get("setup_complete"), Some(&1));
+            assert_eq!(report.lifecycle_events.get("after_setup"), Some(&1));
+            assert_eq!(
+                report.adoption_tracks,
+                if first.is_object() {
+                    BTreeMap::from([("first".to_string(), 1)])
+                } else {
+                    BTreeMap::new()
+                }
+            );
+            assert_eq!(report.exercised_assertions, 1);
+        }
     }
 
     #[cfg(unix)]

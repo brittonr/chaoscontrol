@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "count-keyed-event-prefixes",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "RunningCountBy must preserve evidence while annotating independent inclusive checked u64 counts for explicit string keys. Verify interleaved/empty/missing/Unicode/canonical keys, permutations/ties/boundary ticks, original-key and predicate aliases, duplicate projection priority, JSON and downstream composition, missing-key predicate errors and short circuiting, empty/name/child/predicate admission, exact/generated/intermediate capacity, shared limits/moments and actual CLI query/key/predicate/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Keyed counts do not infer VM/source/history identity, coherent tick domains, causality or multiverse lineage, automatic resets, sliding windows, composite keys, arbitrary reducers, complete capture, hosted search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "correlate-keyed-last-witness",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

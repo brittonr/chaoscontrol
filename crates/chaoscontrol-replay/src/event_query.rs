@@ -565,6 +565,13 @@ pub enum EventQuery {
         predicate: EventPredicate,
         field: String,
     },
+    /// Annotate unique canonical prefixes with independent exact-key match counts.
+    RunningCountBy {
+        input: Box<EventQuery>,
+        predicate: EventPredicate,
+        field: String,
+        key_field: String,
+    },
     /// Annotate unique canonical prefixes with inclusive finite numeric totals.
     RunningSum {
         input: Box<EventQuery>,
@@ -1336,6 +1343,64 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.keyed_running_count.prefixes]
+        EventQuery::RunningCountBy {
+            input,
+            predicate,
+            field,
+            key_field,
+        } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            for row in &rows {
+                admit_event(row)?;
+            }
+            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+                rows.sort_by_key(event_order);
+            }
+            rows.dedup_by_key(|row| (row.source_id, row.source_sequence));
+            let key_order = |left: &EventEnvelope, right: &EventEnvelope| {
+                field_value(left, key_field)
+                    .cmp(&field_value(right, key_field))
+                    .then_with(|| event_order(left).cmp(&event_order(right)))
+            };
+            if !rows.is_sorted_by(|left, right| key_order(left, right).is_le()) {
+                rows.sort_unstable_by(key_order);
+            }
+            let mut remaining = rows.as_mut_slice();
+            while !remaining.is_empty() {
+                // Resolve boundaries before output aliases can change the grouping key.
+                let key = field_value(&remaining[0], key_field);
+                let present = key.is_some();
+                let end = remaining.partition_point(|row| field_value(row, key_field) == key);
+                let (group, rest) = remaining.split_at_mut(end);
+                let mut count = 0_u64;
+                for row in group {
+                    let matching = predicate.matches(row, operations, max_operations, regexes)?;
+                    if present {
+                        if matching {
+                            count = count
+                                .checked_add(1)
+                                .ok_or(EventQueryError::CounterOverflow)?;
+                        }
+                        if let Some(value) = row.derived.get_mut(field) {
+                            value.clear();
+                            write!(value, "{count}").expect("writing to a String cannot fail");
+                        } else {
+                            row.derived.insert(field.clone(), count.to_string());
+                        }
+                    } else {
+                        row.derived.remove(field);
+                    }
+                    admit_event(row)?;
+                }
+                remaining = rest;
+            }
+            if !rows.is_sorted_by(|left, right| event_order(left) <= event_order(right)) {
+                rows.sort_unstable_by_key(event_order);
+            }
+            Ok(rows)
+        }
         // r[impl chaoscontrol.running_sum.prefixes]
         EventQuery::RunningSum {
             input,
@@ -2029,6 +2094,17 @@ fn validate_query_inner<'a>(
             validate_predicate(predicate, limits, depth, nodes, regexes)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::RunningCountBy {
+            input,
+            predicate,
+            field,
+            key_field,
+        } => {
+            validate_field(field)?;
+            validate_field(key_field)?;
+            validate_predicate(predicate, limits, depth, nodes, regexes)?;
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::RunningSum {
             input,
             predicate,
@@ -2352,6 +2428,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         EventQuery::UpTo { moment_tick, .. } => Ok(Some(*moment_tick)),
         EventQuery::Filter { input, .. }
         | EventQuery::RunningCount { input, .. }
+        | EventQuery::RunningCountBy { input, .. }
         | EventQuery::RunningSum { input, .. }
         | EventQuery::RunningMin { input, .. }
         | EventQuery::RunningMax { input, .. }

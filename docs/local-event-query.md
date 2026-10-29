@@ -307,6 +307,61 @@ This ordering does not infer causality, branch lineage, complete capture or a
 multiverse fold. No JavaScript, generic reducer execution, hosted search, CPU/RSS/
 deadline guarantee, VM execution or replay-proof claim is added.
 
+## Counting matching prefixes per key
+
+`RunningCountBy` maintains an independent inclusive count for each explicit
+string key, extending the bounded local analogue of
+[Antithesis fold](https://antithesis.com/docs/reference/event-set-reference/#fold).
+For example, count errors separately for each process:
+
+```json
+{
+  "RunningCountBy": {
+    "input": "All",
+    "predicate": {"Kind": "error"},
+    "field": "errors_seen",
+    "key_field": "process"
+  }
+}
+```
+
+If A reports an error, B reports an error, A reports an info record, and A
+reports another error, their annotations are `"1"`, `"1"`, `"1"`, `"2"`.
+Nonmatching observations retain their key's count, seeded at zero. Counts use
+unique canonical `(tick, source_id, source_sequence)` prefixes and include the
+current matching row; tied ticks follow that deterministic order, not causality.
+Repeated source positions keep their first projection before grouping.
+
+`key_field` uses canonical `kind`/`text`/`process`/`source_kind` precedence,
+otherwise a derived string. Project custom service identifiers with Map/MapText.
+Keys compare exactly without coercion, case folding or Unicode normalization.
+Present empty keys form a group; missing keys retain the row but remove stale
+count output. Missing keys still evaluate the predicate, so visited malformed
+JSON remains an error; normal predicate short circuiting still applies. The
+predicate and group membership use original values before output replacement,
+including when `field` aliases `key_field`. All other projections and canonical
+evidence remain unchanged. Use FieldNumber/Matches downstream to select counts,
+and Narrow to retain them. Downstream filtering does not recompute prefixes.
+
+Both names, the predicate and child validate on empty input. Charge child work
+plus one operation per materialized row before deduplication, with normal visited
+predicate-child charges. Admit original and generated rows before duplicates,
+filtering or narrowing can hide capacity errors. Grouping reuses the child vector
+without a key map, copied key strings, prefix copies or another event collection;
+group boundaries are resolved before mutating aliased keys. Output order is
+restored to canonical order. Shared node/depth/scan/work/derived/result-byte/
+prefix limits, moments and receipt rules apply. Receipts bind the entire input,
+predicate, key/output names and all source/result facts. Evaluation errors publish
+neither result nor receipt. New queries require upgraded readers; RunningCount
+and existing schemas remain unchanged.
+
+Choose keys and restrict the input to coherent observations: equal process names
+may span VMs, and equal service keys do not establish common causal history.
+This adds no automatic partition/reset, sliding window, composite key, arbitrary
+reducer, multiverse lineage, complete capture, hosted search, CPU/RSS/deadline
+bound, VM execution or replay proof. Decimal counts are exact; downstream numeric
+selection remains binary64.
+
 ## Summing numeric prefixes
 
 `RunningSum` supplies a bounded numeric reducer alongside RunningCount, extending
@@ -423,7 +478,7 @@ proof.
 
 `FieldNumber` compares a canonical/derived string as a finite JSON number. It
 lets downstream queries numerically select fields produced by `Map`, `MapText`, `MapTick`,
-`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningSum`, `RunningMin` or
+`MapElapsedTicks`, `MapRatio`, `MapDifference`, `RunningCount`, `RunningCountBy`, `RunningSum`, `RunningMin` or
 `RunningMax`, rather than
 enumerating exact strings or comparing them lexically. For example, retain
 observations after at least two matching events:

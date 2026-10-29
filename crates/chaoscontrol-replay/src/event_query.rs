@@ -556,6 +556,11 @@ pub enum EventQuery {
         field: String,
         pointer: String,
     },
+    /// Retain selected derived fields without discarding canonical source evidence.
+    Narrow {
+        input: Box<EventQuery>,
+        fields: Vec<String>,
+    },
     Contains {
         input: Box<EventQuery>,
         field: String,
@@ -1258,6 +1263,19 @@ fn evaluate_rows(
             }
             Ok(rows)
         }
+        // r[impl chaoscontrol.narrow_query.projections]
+        EventQuery::Narrow { input, fields } => {
+            let mut rows = evaluate_rows(input, events, operations, max_operations, regexes)?;
+            charge_operations(operations, rows.len(), max_operations)?;
+            let fields: HashSet<_> = fields.iter().map(String::as_str).collect();
+            for event in &mut rows {
+                admit_event(event)?;
+                event
+                    .derived
+                    .retain(|field, _| fields.contains(field.as_str()));
+            }
+            Ok(rows)
+        }
         EventQuery::Contains { input, field, text } => {
             validate_field(field)?;
             validate_text(text)?;
@@ -1572,6 +1590,15 @@ fn validate_query_inner<'a>(
             validate_pointer(pointer)?;
             validate_query_inner(input, limits, depth + 1, nodes, regexes)
         }
+        EventQuery::Narrow { input, fields } => {
+            if fields.len() > MAX_DERIVED_FIELDS {
+                return Err(EventQueryError::QueryBound);
+            }
+            for field in fields {
+                validate_field(field)?;
+            }
+            validate_query_inner(input, limits, depth + 1, nodes, regexes)
+        }
         EventQuery::Contains { input, field, text }
         | EventQuery::Matches { input, field, text } => {
             validate_field(field)?;
@@ -1752,6 +1779,7 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
         EventQuery::Filter { input, .. }
         | EventQuery::Map { input, .. }
         | EventQuery::MapText { input, .. }
+        | EventQuery::Narrow { input, .. }
         | EventQuery::Contains { input, .. }
         | EventQuery::Matches { input, .. }
         | EventQuery::Window { input, .. } => moment_of(input),

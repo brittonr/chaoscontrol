@@ -95,6 +95,58 @@ required to consume the `MapText` variant. No arbitrary transformations, live
 branching or full Notebook compatibility are implied.
 
 
+## Keeping selected projections
+
+`Narrow` removes unlisted query-local `derived` fields after projection. For
+example, keep only `component` from an enriched input:
+
+```json
+{
+  "Narrow": {
+    "input": {
+      "MapText": {
+        "input": "All",
+        "field": "component",
+        "pointer": "/component"
+      }
+    },
+    "fields": ["component"]
+  }
+}
+```
+
+This implements a bounded local analogue of
+[Antithesis narrow](https://antithesis.com/docs/reference/event-set-reference/#narrow).
+Unlike upstream selection over general synthetic event fields, only the
+`derived` map is restricted. All canonical fields, including text, details,
+source identity, tick, owner and payload digest, remain unchanged. It is not
+a payload redaction feature. Canonical names such as `kind` still take precedence
+over same-named derived entries when filtering.
+
+Names are exact and case-sensitive. Missing names are ignored, duplicates and
+list order do not change selection, and an empty list clears all projections
+without dropping events. Selected values remain unchanged and usable by later
+filters; later `Map`/`MapText` operations may add fields again. Selection does not
+change encounter order or first-wins duplicate-source precedence.
+
+At most 256 list entries are admitted, counting duplicates; oversized lists
+return `QueryBound`. Each name must be nonempty, contain no control characters,
+and fit 256 UTF-8 bytes (`InvalidField` otherwise), even on empty input. Every
+child row is admitted before pruning, so clearing fields cannot conceal invalid
+or oversized projections or bypass child JSON parsing. Selection uses one bounded
+set of borrowed field names and prunes maps in place, with one logical operation
+per candidate row in addition to child work. Existing scan/node/depth/result
+bounds, canonical-prefix truncation and moment handling apply.
+
+Receipts bind the complete field list, including order, duplicates and missing
+names, even if those choices yield identical rows. Source binding still includes
+every canonical source-visible field, including discarded/out-of-moment events;
+query-local input `derived` maps are not source identity. Result binding and
+re-evaluation protect retained projections. Evaluation failures publish neither
+result nor receipt. Existing queries and schemas are unchanged; upgraded readers
+are required for the new variant. No JavaScript, complete capture, VM execution,
+replay proof or hosted event-search claim is added.
+
 ## Numeric JSON filters
 
 `Filter` accepts a `JsonNumber` predicate over a JSON pointer into the original

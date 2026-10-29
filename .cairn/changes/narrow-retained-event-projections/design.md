@@ -1,0 +1,13 @@
+## Context
+
+Antithesis narrow restricts an event to selected fields plus fields that cannot be dropped. ChaosControl source fields and details are immutable retained evidence; only the derived map is query-local. Map and MapText populate it, and text predicates use it except where canonical field names take precedence.
+
+## Decision
+
+Add EventQuery::Narrow { input: Box<EventQuery>, fields: Vec<String> }. Keep the existing enum/receipt schemas and require upgraded readers for the new variant. Bound fields by MAX_DERIVED_FIELDS (256 list entries including duplicates), using QueryBound for an oversized list and validate_field for each name (nonempty, no control characters, at most 256 UTF-8 bytes). Validate before evaluating the child even on empty input. Empty/duplicate/missing lists are valid set selection; no case folding or canonical-field deletion.
+
+Evaluate the child using the shared operation counter and regex cache; charge one additional logical operation per candidate row. Create one bounded HashSet of borrowed names for membership instead of cloning names or repeatedly scanning 256 names for every map key. Admit every intermediate row before retaining selected derived entries in place. This prevents a narrowing operation from hiding over-capacity or oversized child projections. Canonical source fields, complete values of retained entries, row encounter order, and duplicate-source precedence remain unchanged. No envelope clones or new per-row maps during pruning. The existing outer evaluator performs final admission, canonical ordering, deduplication, truncation and serialized-byte checks. Propagate the child's moment just like Map.
+
+## Verification
+
+Capture baseline and inspect EventQuery LSP references; admit native proposal/design/tasks gates before implementation. Reproduce the unsupported variant with a consumer behavior regression. Verify full-envelope preservation, empty/missing/duplicate/case/Unicode selection, chained projections and downstream predicates, canonical-field precedence, exact/over field count and UTF-8 limits including empty input, discarded intermediate admission/parsing, operations/nodes/depth/result bytes/scan/prefix boundaries, moments, source-position precedence and query/source/result receipt drift. Run the actual CLI for success/rejection and no partial artifacts. Run replay tests, Clippy, workspace compilation, formatting, scope/evidence checks and scoped gates; sync the requirement, leaving the change active. Preserve/exclude the user's pointer test. Evidence is synthetic local query execution, not VM or replay proof.

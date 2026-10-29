@@ -97,9 +97,9 @@ Use the Nix development shell for the pinned Campaign dependency. It supplies a 
 
 `query-events` exposes bounded queries, receipt validation, and static Markdown
 or DOT timelines over recordings, dlogs, event envelopes, branch markers, and
-canonical fault-stage traces. Queries include priority-preserving tick
-deduplication, intersection/difference, typed numeric inequality, regex selection
-and four-way temporal witness correlation. See the [local event query guide](docs/local-event-query.md)
+canonical fault-stage traces. Queries include projection narrowing,
+priority-preserving tick deduplication, intersection/difference, typed numeric
+inequality, regex selection and four-way temporal witness correlation. See the [local event query guide](docs/local-event-query.md)
 for inputs, limits, receipt fields, and non-claims.
 
 ## Features

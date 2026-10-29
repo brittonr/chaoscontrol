@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "narrow-retained-event-projections",
+      owner = "chaoscontrol-replay",
+      target_state = "experimental",
+      evidence_prerequisite = "Narrow must retain exactly listed derived keys while preserving complete canonical evidence and validating child rows before pruning. Verify empty/missing/duplicate/case/Unicode selection, projection/filter composition, canonical-name precedence, list/name admission on empty inputs, hidden invalid projections/parsing, shared work/structural/result limits, moments, duplicate precedence and actual CLI expression/source/result receipt drift without partial evaluation artifacts.",
+      non_claims = ["Retained projection narrowing is not canonical-payload redaction, arbitrary synthetic-event transformations, JavaScript, upstream Moment/lineage equivalence, capture completeness, hosted event search, CPU/RSS/deadline guarantees, VM execution, replay proof or release readiness."],
+    },
+    {
       change = "deduplicate-retained-event-ticks",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

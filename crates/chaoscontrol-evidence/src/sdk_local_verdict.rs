@@ -72,8 +72,13 @@ pub(crate) fn report_kind(value: &str) -> Option<AssertionKind> {
     }
 }
 
-pub(crate) fn blocks_as_unobserved(kind: AssertionKind, observed: bool) -> bool {
-    !observed && kind != AssertionKind::Unreachable
+// r[impl chaoscontrol.optional_local_quality.blockers]
+pub(crate) fn blocks_as_unobserved(
+    kind: AssertionKind,
+    observed: bool,
+    must_hit: Option<bool>,
+) -> bool {
+    !observed && derive_local_verdict(kind, 0, 0, must_hit) != LocalAssertionVerdict::Passed
 }
 
 pub(crate) fn counts_match_kind(

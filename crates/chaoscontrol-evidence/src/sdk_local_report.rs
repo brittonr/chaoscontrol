@@ -4,6 +4,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::sdk_local_verdict::{
+    blocks_as_unobserved, derive_local_verdict, report_kind, LocalAssertionVerdict,
+};
 use crate::{EvidenceError, EvidenceResult};
 
 pub const DEFAULT_SDK_LOCAL_EVIDENCE_CLASS: &str = "instrumentation-dry-run";
@@ -91,8 +94,6 @@ pub fn summarize_sdk_local_jsonl(
         })
         .collect();
     let mut exercised: BTreeSet<String> = BTreeSet::new();
-    let mut sometimes_success: BTreeSet<String> = BTreeSet::new();
-    let mut reachable_hit: BTreeSet<String> = BTreeSet::new();
     let mut random_choice_calls = 0u64;
     let mut setup_complete = false;
     let mut adoption_tracks: BTreeMap<String, u64> = BTreeMap::new();
@@ -179,7 +180,7 @@ pub fn summarize_sdk_local_jsonl(
             {
                 continue;
             }
-            exercised.insert(assertion_id.clone());
+            exercised.insert(assertion_id);
             site.observed = true;
             site.observed_hits += 1;
             let condition = assertion
@@ -190,12 +191,6 @@ pub fn summarize_sdk_local_jsonl(
                 site.success_count += 1;
             } else {
                 site.failure_count += 1;
-            }
-            if site.assert_type == "sometimes" && condition {
-                sometimes_success.insert(assertion_id.clone());
-            }
-            if matches!(site.assert_type.as_str(), "reachable" | "reachability") && condition {
-                reachable_hit.insert(assertion_id);
             }
             continue;
         }
@@ -248,46 +243,30 @@ pub fn summarize_sdk_local_jsonl(
         }
     }
 
-    let sometimes_without_success = catalog
-        .iter()
-        .filter(|(id, site)| site.assert_type == "sometimes" && !sometimes_success.contains(*id))
-        .map(|(_, site)| site.message.clone())
-        .collect::<Vec<_>>();
-    let reachable_without_hit = catalog
-        .iter()
-        .filter(|(id, site)| {
-            matches!(site.assert_type.as_str(), "reachable" | "reachability")
-                && !reachable_hit.contains(*id)
-        })
-        .map(|(_, site)| site.message.clone())
-        .collect::<Vec<_>>();
-    let uncategorized = catalog
-        .values()
-        .filter(|site| site.category == "uncategorized")
-        .count() as u64;
-    let unobserved_assertions = catalog
-        .values()
-        .filter(|site| {
-            let kind = crate::sdk_local_verdict::report_kind(&site.assert_type);
-            kind.is_none_or(|kind| {
-                crate::sdk_local_verdict::blocks_as_unobserved(kind, site.observed)
-            })
-        })
-        .map(|site| site.message.clone())
-        .collect::<Vec<_>>();
-    let failed = catalog
-        .values()
-        .filter(|site| {
-            crate::sdk_local_verdict::report_kind(&site.assert_type).is_some_and(|kind| {
-                crate::sdk_local_verdict::derive_local_verdict(
-                    kind,
-                    site.success_count,
-                    site.failure_count,
-                    site.must_hit,
-                ) == crate::sdk_local_verdict::LocalAssertionVerdict::Failed
-            })
-        })
-        .count() as u64;
+    let mut sometimes_without_success = Vec::new();
+    let mut reachable_without_hit = Vec::new();
+    let mut unobserved_assertions = Vec::new();
+    let mut uncategorized = 0_u64;
+    let mut failed = 0_u64;
+    for site in catalog.values() {
+        let kind = report_kind(&site.assert_type);
+        let verdict = kind.map(|kind| {
+            derive_local_verdict(kind, site.success_count, site.failure_count, site.must_hit)
+        });
+        if site.assert_type == "sometimes" && verdict != Some(LocalAssertionVerdict::Passed) {
+            sometimes_without_success.push(site.message.clone());
+        }
+        if matches!(site.assert_type.as_str(), "reachable" | "reachability")
+            && verdict != Some(LocalAssertionVerdict::Passed)
+        {
+            reachable_without_hit.push(site.message.clone());
+        }
+        uncategorized += u64::from(site.category == "uncategorized");
+        if kind.is_none_or(|kind| blocks_as_unobserved(kind, site.observed, site.must_hit)) {
+            unobserved_assertions.push(site.message.clone());
+        }
+        failed += u64::from(verdict == Some(LocalAssertionVerdict::Failed));
+    }
 
     let mut gaps = Vec::new();
     if !setup_complete {

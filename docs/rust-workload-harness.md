@@ -70,6 +70,14 @@ therefore report a failed never-successful property when the SDK diagnostic
 counter is zero. The SDK diagnostic parser remains non-collision-safe; do not
 use its counters as promotion authority instead of the strict quality gate.
 
+The strict local quality gate honors admitted `must_hit=false`: an unexecuted
+`AlwaysOrUnreachable` property keeps its registered identity, zero counts and
+`observed=false`, but does not block as unobserved. Required or unknown-metadata
+sites still block, and any observed optional safety violation still fails.
+This does not exempt missing setup, uncategorized sites or invalid identity and
+metadata. Rebuild older derived reports that listed a passing optional site as
+an observation blocker; report validation recomputes the corrected lists.
+
 This dry-run is only an instrumentation check. It does not prove deterministic replay or snapshot-backed reproduction; VM campaign reports must keep those evidence classes separate.
 
 ## Two-track adoption

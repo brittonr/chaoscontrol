@@ -292,6 +292,12 @@ change the assertion oracle or prove exploration quality.
   is rejected rather than silently merged. Explicit null/nonboolean metadata
   is invalid. Historical documents remain readable; older closed-record
   consumers need an upgrade to read documents containing the new field.
+- Strict local quality observation/progress lists follow the same admitted
+  verdict semantics. A zero-hit `AlwaysOrUnreachable` property no longer creates
+  a contradictory unobserved-site blocker; its coverage row still reports zero
+  hits and `observed=false`. Required/unknown no-hit sites and observed violations
+  still block. Report-total validation recomputes those lists, so regenerate
+  previously derived optional-site reports rather than retaining stale blockers.
 - `assert_raw` registers runtime descriptors before catalog emission. A new
   raw site after initialization is rejected; hits for declared sites still
   emit. Caller-supplied `display_type` and `must_hit` are preserved in local

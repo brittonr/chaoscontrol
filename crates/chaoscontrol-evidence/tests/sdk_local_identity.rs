@@ -148,6 +148,121 @@ fn strict_local_catalog_is_idempotent_and_aggregates_exact_events() {
     );
 }
 
+// r[verify chaoscontrol.optional_local_quality.blockers]
+#[test]
+fn optional_no_hit_properties_pass_without_inventing_observations() {
+    let value = descriptor("stable:optional-quality", "raft");
+    let base = format!(
+        "{}{}",
+        catalog_jsonl(std::slice::from_ref(&value)),
+        setup_line()
+    );
+    let record = |hit: bool, must_hit: bool| {
+        let mut event: Value = serde_json::from_str(&event_line_with_condition(
+            &value,
+            &value.message,
+            None,
+            false,
+        ))
+        .expect("assertion record");
+        event["antithesis_assert"]["hit"] = json!(hit);
+        event["antithesis_assert"]["must_hit"] = json!(must_hit);
+        event["antithesis_assert"]["display_type"] = json!(if must_hit {
+            "Always"
+        } else {
+            "AlwaysOrUnreachable"
+        });
+        render_lines(&[event])
+    };
+    let optional = format!("{base}{}", record(false, false));
+    let report =
+        summarize_sdk_local_jsonl(&optional, EVIDENCE_CLASS, None).expect("optional report");
+    assert_eq!(report["registered_assertions"], 1);
+    assert_eq!(report["exercised_assertions"], 0);
+    assert_eq!(report["failed_assertions"], 0);
+    assert_eq!(report["assertion_coverage"][0]["observed"], false);
+    assert_eq!(report["assertion_coverage"][0]["observed_hits"], 0);
+    assert_eq!(report["assertion_coverage"][0]["must_hit"], false);
+    assert_eq!(report["unobserved_assertions"], json!([]));
+    assert!(
+        check_sdk_assertion_quality_report(&report)
+            .expect("optional quality")
+            .passed
+    );
+
+    let mut stale = report.clone();
+    stale["unobserved_assertion_count"] = json!(1);
+    stale["unobserved_assertions"] = json!([value.message]);
+    assert!(check_sdk_assertion_quality_report(&stale).is_err());
+
+    for input in [base.clone(), format!("{base}{}", record(false, true))] {
+        let required = summarize_sdk_local_jsonl(&input, EVIDENCE_CLASS, None)
+            .expect("required or unknown report");
+        assert_eq!(required["unobserved_assertions"], json!([value.message]));
+        assert!(
+            !check_sdk_assertion_quality_report(&required)
+                .expect("required quality")
+                .passed
+        );
+        let mut forged = required;
+        forged["unobserved_assertion_count"] = json!(0);
+        forged["unobserved_assertions"] = json!([]);
+        assert!(check_sdk_assertion_quality_report(&forged).is_err());
+    }
+
+    let violated = format!("{optional}{}", record(true, false));
+    let report = summarize_sdk_local_jsonl(&violated, EVIDENCE_CLASS, None)
+        .expect("observed optional violation");
+    assert_eq!(report["failed_assertions"], 1);
+    assert_eq!(report["assertion_coverage"][0]["failure_count"], 1);
+    assert!(
+        !check_sdk_assertion_quality_report(&report)
+            .expect("violated optional quality")
+            .passed
+    );
+}
+
+// r[verify chaoscontrol.optional_local_quality.blockers]
+#[test]
+fn required_progress_sites_still_block_when_unobserved() {
+    for kind in [AssertionKind::Sometimes, AssertionKind::Reachable] {
+        let mut value = descriptor("stable:required-progress", "raft");
+        value.kind = kind;
+        let mut declaration: Value = serde_json::from_str(&event_line_with_condition(
+            &value,
+            &value.message,
+            None,
+            false,
+        ))
+        .expect("declaration");
+        declaration["antithesis_assert"]["hit"] = json!(false);
+        let content = format!(
+            "{}{}{}",
+            catalog_jsonl(std::slice::from_ref(&value)),
+            setup_line(),
+            render_lines(&[declaration])
+        );
+        let report = summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None)
+            .expect("required progress report");
+        let progress_field = if kind == AssertionKind::Sometimes {
+            "sometimes_without_success"
+        } else {
+            "reachable_without_hit"
+        };
+        assert_eq!(report[progress_field], json!([value.message]));
+        assert_eq!(report["unobserved_assertions"], json!([value.message]));
+        assert_eq!(report["failed_assertions"], 1);
+        assert!(
+            !check_sdk_assertion_quality_report(&report)
+                .expect("required progress quality")
+                .passed
+        );
+        let mut forged = report;
+        forged[progress_field] = json!([]);
+        assert!(check_sdk_assertion_quality_report(&forged).is_err());
+    }
+}
+
 #[test]
 fn local_catalog_metadata_conflicts_are_rejected() {
     let base = descriptor("stable:raft", "raft");

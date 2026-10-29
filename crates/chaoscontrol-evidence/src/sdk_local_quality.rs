@@ -243,13 +243,17 @@ fn validate_derived_totals(report: &LocalReportV2) -> EvidenceResult<()> {
         failed += u64::from(verdict == crate::sdk_local_verdict::LocalAssertionVerdict::Failed);
         observed += u64::from(entry.observed);
         uncategorized += u64::from(entry.category == "uncategorized");
-        if crate::sdk_local_verdict::blocks_as_unobserved(kind, entry.observed) {
+        if crate::sdk_local_verdict::blocks_as_unobserved(kind, entry.observed, entry.must_hit) {
             unobserved.push(entry.message.clone());
         }
-        if kind == AssertionKind::Reachable && entry.success_count == 0 {
+        if kind == AssertionKind::Reachable
+            && verdict != crate::sdk_local_verdict::LocalAssertionVerdict::Passed
+        {
             reachable.push(entry.message.clone());
         }
-        if kind == AssertionKind::Sometimes && entry.success_count == 0 {
+        if kind == AssertionKind::Sometimes
+            && verdict != crate::sdk_local_verdict::LocalAssertionVerdict::Passed
+        {
             sometimes.push(entry.message.clone());
         }
         let _review_only = &entry.adoption_tracks;

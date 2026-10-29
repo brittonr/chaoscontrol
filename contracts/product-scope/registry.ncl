@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "honor-optional-local-quality-observations",
+      owner = "chaoscontrol-evidence",
+      target_state = "experimental",
+      evidence_prerequisite = "Strict report observation/progress blockers and aggregate validation must follow admitted must-hit verdicts. Actual SDK optional no-hit reports must pass local quality without invented observations, while required/unknown no-hit sites, observed violations and inconsistent reports remain blocking or rejected.",
+      non_claims = ["Optional local quality semantics prove bounded instrumentation facts, not VM execution, replay, hosted-platform equivalence or release eligibility."],
+    },
+    {
       change = "preserve-sometimes-diagnostic-observations",
       owner = "chaoscontrol-sdk",
       target_state = "experimental",

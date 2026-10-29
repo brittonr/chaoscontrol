@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "honor-optional-local-quality-observations",
+      "evidence_prerequisite": "Strict report observation/progress blockers and aggregate validation must follow admitted must-hit verdicts. Actual SDK optional no-hit reports must pass local quality without invented observations, while required/unknown no-hit sites, observed violations and inconsistent reports remain blocking or rejected.",
+      "non_claims": [
+        "Optional local quality semantics prove bounded instrumentation facts, not VM execution, replay, hosted-platform equivalence or release eligibility."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "experimental"
+    },
+    {
       "change": "preserve-sometimes-diagnostic-observations",
       "evidence_prerequisite": "SDK diagnostics must retain false sometimes observations without counting them as observed safety violations. Eventual-success, never-successful progress and real safety scenarios must retain raw counts and gaps; actual SDK-to-strict-report quality checks must accept eventual success and reject stalled progress and safety violations.",
       "non_claims": [

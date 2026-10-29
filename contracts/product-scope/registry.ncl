@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "isolate-sparse-assertion-sampling",
+      owner = "chaoscontrol-sdk",
+      target_state = "experimental",
+      evidence_prerequisite = "Distinct accepted fingerprints with colliding compact aliases must retain independent first pass/fail outcomes across stable and compatibility calls, with declarations and default per-hit behavior preserved.",
+      non_claims = ["Sparse instrumentation does not prove guest execution, replay, or hosted platform parity."],
+    },
+    {
       change = "preserve-assertion-must-hit-reports",
       owner = "chaoscontrol-explore",
       target_state = "experimental",

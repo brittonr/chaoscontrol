@@ -75,7 +75,11 @@ const-evaluable, as in 0.3.0. Antithesis 0.3.0 emits only a site's first
 pass and first fail; ChaosControl emits every hit by default so the oracle
 and explorer retain exact counts. The `sparse_emission` feature matches the
 upstream sampling policy, including raw assertions, when exact per-hit
-counts are not required. Antithesis numeric macros
+counts are not required. Sampling is keyed by accepted descriptor fingerprint,
+not the compact alias: different namespaces with colliding aliases keep
+independent first pass/fail observations. Stable and compatibility calls for
+the same identity share the sample state; unresolved calls cannot consume
+it, and catalog declarations remain unsampled. Antithesis numeric macros
 attach **guidance** (maximize/minimize watermarks).
 ChaosControl numeric macros merge `left`/`right` into the assertion details
 on every call, keeping caller-supplied keys and replacing only `left`/`right`.

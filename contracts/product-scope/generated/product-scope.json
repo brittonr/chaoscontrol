@@ -330,6 +330,15 @@
   ],
   "change_intents": [
     {
+      "change": "isolate-sparse-assertion-sampling",
+      "evidence_prerequisite": "Distinct accepted fingerprints with colliding compact aliases must retain independent first pass/fail outcomes across stable and compatibility calls, with declarations and default per-hit behavior preserved.",
+      "non_claims": [
+        "Sparse instrumentation does not prove guest execution, replay, or hosted platform parity."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "target_state": "experimental"
+    },
+    {
       "change": "preserve-assertion-must-hit-reports",
       "evidence_prerequisite": "Oracle-to-summary must-hit metadata, historical absence compatibility, Rust and Nickel verdict admission, and cross-seed conflict regressions must pass.",
       "non_claims": [

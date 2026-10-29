@@ -262,29 +262,35 @@ fn to_json_bytes<S: serde::Serialize + ?Sized>(details: &S) -> Option<Vec<u8>> {
 //  Core assertions (full mode)
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Decide whether a sampled assertion site should emit this evaluation.
+/// Decide whether an admitted assertion should emit this outcome.
+// r[impl chaoscontrol.sparse_sampling.identity]
+// r[impl chaoscontrol.sparse_sampling.outcomes]
 #[cfg(feature = "full")]
-fn should_emit(id: u32, kind: AssertionKind, condition: bool) -> bool {
+fn should_emit(
+    fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint,
+    condition: bool,
+) -> bool {
     if !cfg!(feature = "sparse_emission") {
         return true;
     }
+    use chaoscontrol_protocol::identity::AssertionFingerprint;
     use std::collections::BTreeMap;
     use std::sync::Mutex;
 
-    static TRACKING: Mutex<BTreeMap<(u32, u8), (u64, u64)>> = Mutex::new(BTreeMap::new());
+    static TRACKING: Mutex<BTreeMap<AssertionFingerprint, (bool, bool)>> =
+        Mutex::new(BTreeMap::new());
     let Ok(mut tracking) = TRACKING.lock() else {
         return true;
     };
-    let entry = tracking.entry((id, kind.to_catalog_kind())).or_default();
-    if condition {
-        let first = entry.0 == 0;
-        entry.0 += 1;
-        first
+    let entry = tracking.entry(fingerprint).or_default();
+    let seen = if condition {
+        &mut entry.0
     } else {
-        let first = entry.1 == 0;
-        entry.1 += 1;
-        first
-    }
+        &mut entry.1
+    };
+    let first = !*seen;
+    *seen = true;
+    first
 }
 
 #[cfg(feature = "full")]
@@ -296,7 +302,7 @@ pub fn emit_registered_assertion<S: serde::Serialize + ?Sized>(
     message: &str,
     details: &S,
 ) {
-    emit_registered_assertion_core(kind, cond, 0, id, message, details, true);
+    emit_registered_assertion_core(kind, cond, 0, id, message, details);
 }
 
 /// Emit an `always` assertion whose corresponding property tolerates never
@@ -316,7 +322,6 @@ pub fn emit_registered_always_or_unreachable<S: serde::Serialize + ?Sized>(
         id,
         message,
         details,
-        true,
     );
 }
 
@@ -330,21 +335,17 @@ pub fn assert_raw_with_key(
     message: &str,
     details: &serde_json::Value,
 ) {
-    #[cfg(feature = "sparse_emission")]
-    {
-        let sample_id = location_id(&format!("{namespace}:{key}"));
-        if !should_emit(sample_id, kind, cond) {
-            return;
-        }
-    }
     crate::internal::init();
     let flags = assertion_flags(kind, cond);
-    let Some(json_bytes) = to_json_bytes(details) else {
+    let Some(identity) = crate::assertion_catalog::resolve_stable(namespace, key, kind, message)
+    else {
         transport::hypercall_raw(kind.to_command(), flags, 0, &[]);
         return;
     };
-    let Some(identity) = crate::assertion_catalog::resolve_stable(namespace, key, kind, message)
-    else {
+    if !should_emit(identity.fingerprint, cond) {
+        return;
+    }
+    let Some(json_bytes) = to_json_bytes(details) else {
         transport::hypercall_raw(kind.to_command(), flags, 0, &[]);
         return;
     };
@@ -454,20 +455,19 @@ fn emit_registered_assertion_core<S: serde::Serialize + ?Sized>(
     id: u32,
     message: &str,
     details: &S,
-    sampled: bool,
 ) {
-    if sampled && !should_emit(id, kind, cond) {
-        return;
-    }
     // Match Antithesis: if the caller never invoked the init function, the
     // first assertion registers the catalog before emitting.
     crate::internal::init();
     let flags = assertion_flags(kind, cond) | extra_flags;
-    let Some(json_bytes) = to_json_bytes(details) else {
+    let Some(identity) = crate::assertion_catalog::resolve_compatibility(id, kind, message) else {
         transport::hypercall_raw(kind.to_command(), flags, id, &[]);
         return;
     };
-    let Some(identity) = crate::assertion_catalog::resolve_compatibility(id, kind, message) else {
+    if !should_emit(identity.fingerprint, cond) {
+        return;
+    }
+    let Some(json_bytes) = to_json_bytes(details) else {
         transport::hypercall_raw(kind.to_command(), flags, id, &[]);
         return;
     };

@@ -9,6 +9,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub mod control;
+pub mod observation;
 pub mod persistence;
 pub mod phenomena;
 pub mod retained;
@@ -562,6 +563,18 @@ pub fn validate_history(
             .or_default();
         if let Some(existing) = replica.get(&observation.command_index) {
             if observations_have_equal_facts(existing, observation) {
+                // r[impl chaoscontrol.smr_chain.duplicate_rollback]
+                if maximum_index
+                    .get(&observation.replica_id)
+                    .is_some_and(|maximum| observation.command_index < *maximum)
+                {
+                    violations.push(SafetyViolation {
+                        class: SafetyViolationClass::Rollback,
+                        replica_id: Some(observation.replica_id.clone()),
+                        command_index: observation.command_index,
+                        detail: "replica returned to an earlier observed command index".to_string(),
+                    });
+                }
                 exact_duplicates = exact_duplicates.saturating_add(1);
                 safety_prefixes.push(if violations.is_empty() {
                     SafetyVerdict::Pass
@@ -2177,12 +2190,26 @@ mod tests {
         );
 
         let mut repeated = valid.clone();
-        let mut exact_duplicate = repeated[0].clone();
+        let mut exact_duplicate = repeated.last().expect("latest observation").clone();
         exact_duplicate.event_sequence = repeated.last().expect("last").event_sequence + 1;
         repeated.push(exact_duplicate);
         let repeated_report = validate_history(&plan, &repeated).expect("exact duplicate");
         assert_eq!(repeated_report.exact_duplicates, 1);
         assert_eq!(repeated_report.verdict, SafetyVerdict::Pass);
+
+        // r[verify chaoscontrol.smr_chain.duplicate_rollback]
+        let mut duplicate_rollback = valid.clone();
+        let mut old_duplicate = duplicate_rollback[0].clone();
+        old_duplicate.event_sequence = duplicate_rollback.last().expect("last").event_sequence + 1;
+        duplicate_rollback.push(old_duplicate);
+        let report =
+            validate_history(&plan, &duplicate_rollback).expect("exact duplicate rollback");
+        assert_eq!(report.exact_duplicates, 1);
+        assert_eq!(report.verdict, SafetyVerdict::Fail);
+        assert!(report
+            .violations
+            .iter()
+            .any(|violation| violation.class == SafetyViolationClass::Rollback));
 
         let mut divergent = valid.clone();
         divergent[1].digest = digest(b"divergent");

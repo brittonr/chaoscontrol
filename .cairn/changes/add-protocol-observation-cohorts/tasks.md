@@ -4,15 +4,15 @@
 
 - [x] [serial] Record current free-form oracle events, process-local event hashing, first-party Raft protocol coverage, active storage, marker, role-protocol, history, benchmark, and Campaign boundaries. r[chaoscontrol.protocol_observation.profile] r[chaoscontrol.protocol_observation.novelty]
 - [ ] [serial] Define a typed Nickel profile for protocol, projection schema, producers, participants, logical boundaries, oracle adapter, novelty fields, markers, bounds, and non-claims. r[chaoscontrol.protocol_observation.profile]
-- [ ] [serial] Add pure domain types for opaque observations, canonical identities, cohort keys, completion rules, completeness results, novelty, and oracle handoff. r[chaoscontrol.protocol_observation.envelope] r[chaoscontrol.protocol_observation.cohort]
+- [x] [serial] Add pure domain types for opaque observations, canonical identities, cohort keys, completion rules, completeness results, novelty, and oracle handoff. r[chaoscontrol.protocol_observation.envelope] r[chaoscontrol.protocol_observation.cohort]
 - [ ] [parallel] Add valid profile fixtures plus negative unknown-field, stale-schema, malformed-ref, duplicate-participant, impossible-bound, and unsupported-adapter fixtures. r[chaoscontrol.protocol_observation.profile] r[chaoscontrol.protocol_observation.validation]
 
 ## Pure admission and cohort core
 
-- [ ] [serial] Implement canonical envelope admission and domain-separated BLAKE3 record identities without process-local hash dependence. r[chaoscontrol.protocol_observation.envelope]
-- [ ] [serial] Implement cohort assembly by exact protocol cohort and consumer-defined logical-boundary refs. r[chaoscontrol.protocol_observation.cohort]
-- [ ] [serial] Implement complete, incomplete, conflicting, and unsupported classifications over participants, generations, source sequences, losses, bounds, and final drain. r[chaoscontrol.protocol_observation.cohort]
-- [ ] [serial] Implement stable BLAKE3 novelty identities from profile-selected canonical fields or refs. r[chaoscontrol.protocol_observation.novelty]
+- [x] [serial] Implement canonical envelope admission and domain-separated BLAKE3 record identities without process-local hash dependence. r[chaoscontrol.protocol_observation.envelope]
+- [x] [serial] Implement cohort assembly by exact protocol cohort and consumer-defined logical-boundary refs. r[chaoscontrol.protocol_observation.cohort]
+- [x] [serial] Implement complete, incomplete, conflicting, and unsupported classifications over participants, generations, source sequences, losses, bounds, and final drain. r[chaoscontrol.protocol_observation.cohort]
+- [x] [serial] Implement stable BLAKE3 novelty identities from profile-selected canonical fields or refs. r[chaoscontrol.protocol_observation.novelty]
 - [ ] [parallel] Add positive complete-cohort tests and negative gap, overflow, generation-drift, duplicate-sequence, unknown-participant, conflicting-projection, failed-drain, and unstable-novelty tests. r[chaoscontrol.protocol_observation.envelope] r[chaoscontrol.protocol_observation.cohort] r[chaoscontrol.protocol_observation.novelty] r[chaoscontrol.protocol_observation.validation]
 
 ## SDK, VMM, and oracle boundary

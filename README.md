@@ -790,6 +790,13 @@ nix build .#checks.x86_64-linux.spacewasm-mvp-differential -L
 
 See [the SpaceWasm MVP differential guide](docs/spacewasm-mvp-differential.md) for the profile, command, evidence fields, and non-claims.
 
+`semantic-history-contract` exposes deterministic import/readback, register
+checking and proof validation with distinct valid/invalid/unknown reports; see
+[semantic history v2](docs/semantic-history-v2.md). Source-bound protocol-cohort
+schemas and real external multi-node guest intake hooks live in
+`chaoscontrol_smr::observation`; see [SMR chain workload](docs/smr-chain-workload.md).
+These provider contracts are not fabricated guest or replay execution receipts.
+
 ## Architecture
 
 ### VM Setup (`vm.rs`)

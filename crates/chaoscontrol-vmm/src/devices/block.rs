@@ -790,6 +790,7 @@ impl DeterministicBlock {
         self.failed_clean.clear();
     }
 
+    // r[impl chaoscontrol.storage_faults.flush_faults]
     /// Complete one deterministic flush attempt bound to the next fault.
     ///
     /// A failed flush leaves volatile pages unpublished and marks them
@@ -853,6 +854,7 @@ impl DeterministicBlock {
         self.flush_supported = is_supported;
     }
 
+    // r[impl chaoscontrol.storage_faults.cache_recovery_modes]
     /// Apply one deterministic restart profile to volatile device state.
     pub fn recover_after_restart(&mut self, mode: CacheRecoveryMode) {
         match mode {
@@ -2129,6 +2131,7 @@ mod tests {
 
     // ── flush semantics ────────────────────────────────────────
 
+    // r[verify chaoscontrol.storage_faults.validation]
     #[test]
     fn successful_flush_commits_volatile_pages_and_reports_durability() {
         let mut block = DeterministicBlock::new(4096);
@@ -2208,6 +2211,7 @@ mod tests {
         assert_eq!(block.failed_clean_page_count(), 0);
     }
 
+    // r[verify chaoscontrol.storage_faults.flush_faults]
     #[test]
     fn lying_flush_acknowledges_without_committing_volatile_pages() {
         let mut block = DeterministicBlock::new(4096);
@@ -2225,6 +2229,7 @@ mod tests {
         ));
     }
 
+    // r[verify chaoscontrol.storage_faults.cache_recovery_modes]
     #[test]
     fn restart_profiles_distinguish_retained_cache_eviction_and_reboot() {
         for (mode, expected_volatile, expected_pending) in [

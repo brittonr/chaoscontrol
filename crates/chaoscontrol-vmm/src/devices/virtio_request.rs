@@ -100,6 +100,7 @@ pub fn plan_chunked_scratch(
     Ok((requested, maximum))
 }
 
+// r[impl chaoscontrol.storage_faults.virtio_flush]
 pub fn plan_block_request(
     chain: &DescriptorChainPlan,
     header: BlockRequestHeader,

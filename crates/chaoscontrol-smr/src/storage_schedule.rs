@@ -687,6 +687,7 @@ mod tests {
         assert_eq!(report.schedule_observations.len(), 1);
     }
 
+    // r[verify chaoscontrol.smr_storage_recovery.validation]
     #[test]
     fn peer_repair_campaign_passes() {
         let mut facts = progress_for("node-0", false);
@@ -707,6 +708,7 @@ mod tests {
         assert_eq!(report.progress[0].issue, RecoveryProgressIssue::PeerRepair);
     }
 
+    // r[verify chaoscontrol.smr_storage_recovery.validation]
     #[test]
     fn unnecessary_and_missed_repair_campaigns_fail() {
         let mut unnecessary = progress_for("node-0", true);

@@ -881,6 +881,13 @@ let ProductScope = import "product-scope.ncl" in
       evidence_prerequisite = "After lineage repair, paired runs must match per-branch and per-round digests, frontier selections, and bug identities for one exact workload cohort without operational exclusions.",
       non_claims = ["Watchdog, discarded, or failed branches cannot certify repeatability.", "No claim beyond the recorded guest, configuration, artifacts, and host profile."],
     },
+    {
+      change = "prepare-public-production-release",
+      owner = "chaoscontrol-evidence",
+      target_state = "blocked",
+      evidence_prerequisite = "Native validation and traceability pass with no missing or dangling links, and every required portable, clean-candidate KVM, completion and public-source acquisition obligation is recorded against one immutable revision before any promotion.",
+      non_claims = ["Preparation repairs do not make the repository publicly installable while private or nonportable dependencies remain.", "No production, security, hosted-service, or universal-determinism claim follows from passing preparation checks."],
+    },
   ],
   prohibited_current_claims = [
     "hosted ChaosControl service is supported",

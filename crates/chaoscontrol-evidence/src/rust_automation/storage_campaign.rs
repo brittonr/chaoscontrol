@@ -34,8 +34,12 @@ pub struct StorageCampaignRequest {
     pub schedules: Vec<StorageRecoverySchedule>,
     pub safety: Vec<StorageRecoveryObservation>,
     pub progress: Vec<RecoveryProgressInput>,
-    #[serde(default)]
+    #[serde(default = "empty_writes")]
     pub writes: Vec<chaoscontrol_smr::storage_schedule::StorageRecoveryWrite>,
+}
+
+fn empty_writes() -> Vec<chaoscontrol_smr::storage_schedule::StorageRecoveryWrite> {
+    Vec::new()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

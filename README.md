@@ -4,8 +4,18 @@ A deterministic Virtual Machine Monitor (VMM) for x86_64 built with KVM
 and the rust-vmm crate ecosystem. Designed for simulation testing of
 distributed systems where reproducibility is essential.
 
+**Release status: not ready for public distribution or production use.**
+This is a local-machine Rust simulation and replay tool, not a hostile-guest
+sandbox or hosted service. The flake still has private/nonportable dependencies;
+a successful build from a populated developer cache does not prove public installation.
 
-This is just an experiment with Claude + Pi.dev. Use at your own risk
+See [release preparation and remaining prerequisites](docs/release-preparation.md),
+[security and reporting boundaries](SECURITY.md), and [licensing](docs/licensing.md).
+Current-source release checks must pass before any production claim; dated
+receipts below retain their original verdicts and are not current release approval.
+
+<details>
+<summary>Historical production-readiness evidence (2026-10-15 through 2026-10-25)</summary>
 
 Production readiness remains blocked. Native Cairn traceability now passes
 382/382 requirements with zero dangling references on
@@ -78,6 +88,8 @@ readiness still reports `fail` at MCP smoke. The selected original planted
 finding still lacks its exact historical initrd and accepted current-source
 replay. The computed overall verdict remains **blocked**; all 51 authorized
 corrective slots are consumed. No failed or historical source is relabeled.
+
+</details>
 
 <!-- product-scope-facts:start -->
 > **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
@@ -1030,7 +1042,7 @@ own guest binaries:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    chaoscontrol.url = "github:user/chaoscontrol";
+    chaoscontrol.url = "github:brittonr/chaoscontrol";
   };
 
   outputs = { self, nixpkgs, chaoscontrol, ... }:
@@ -1079,7 +1091,7 @@ Earlier Apache-2.0 grants remain valid for revisions published before this polic
 - [Bounded Tree](https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git) at `b0fd0103bc9eed2c1b6d852045959462d105d8f1` — bounded directory observation, revalidation, and copy mechanics used by kernel-bundle and OCI intake shells.
 - [VM Cohort](rad:z2QJLUqyAZnnHPiZQ1BFjLsX9ush3) at `ab123e3673b6dd616b3df5d044026b5e85755149` — product-neutral retained-base, private-overlay, KVM clone, lifecycle, cleanup, and conformance mechanics.
 - [NASA SpaceWasm](https://github.com/nasa/spacewasm) at `e24cf09355a90497148eb5029fdb8e3400bd63e3` — exact experimental core-MVP interpreter used by the bounded diagnostic rail.
-- [`../mantle/`](../mantle/) at `57fa0f5c2f8fb1edeed6d6113b57d32357612e34` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.
+- [Mantle](https://github.com/OnixResearch/mantle/tree/57fa0f5c2f8fb1edeed6d6113b57d32357612e34) at `57fa0f5c2f8fb1edeed6d6113b57d32357612e34` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.
 - [Wasmtime](https://github.com/bytecodealliance/wasmtime) — independent reference engine for normalized bounded observations; a match does not prove engine equivalence.
 - [Antithesis documentation index](docs/references/antithesis-documentation.md) — design reference for deterministic simulation, fault injection, assertions, exploration, replay, and debugging.
 - [WalTier](https://github.com/danthegoodman1/waltier/tree/d5dda89fb176d590d03c7812d047ced2712bba94) — bounded object-store DST reference for seeded faults, crash cycles, and oracle invariants.

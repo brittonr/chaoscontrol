@@ -1418,17 +1418,16 @@
       "locked": {
         "lastModified": 1783544280,
         "narHash": "sha256-WekhhPZd6ow+qhSJwd1xbCQXe+EIwuTSC8YtvRU+7co=",
-        "ref": "refs/heads/main",
+        "owner": "OnixResearch",
+        "repo": "octet",
         "rev": "9c7ba87bef2934d2b7b144167e13c8d18eac8958",
-        "revCount": 429,
-        "type": "git",
-        "url": "file:../octet"
+        "type": "github"
       },
       "original": {
-        "ref": "refs/heads/main",
+        "owner": "OnixResearch",
+        "repo": "octet",
         "rev": "9c7ba87bef2934d2b7b144167e13c8d18eac8958",
-        "type": "git",
-        "url": "file:../octet"
+        "type": "github"
       }
     },
     "octet_2": {

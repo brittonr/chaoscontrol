@@ -359,6 +359,8 @@ fn out_of_range_storage_gets_typed_error_completion() {
     assert_eq!(used_index(&mem), FIRST_AVAILABLE_INDEX);
 }
 
+// r[verify chaoscontrol.storage_faults.virtio_flush]
+// r[verify chaoscontrol.storage_faults.validation]
 #[test]
 fn supported_flush_commits_volatile_state_and_is_advertised() {
     let mem = memory();
@@ -385,6 +387,7 @@ fn supported_flush_commits_volatile_state_and_is_advertised() {
     assert_eq!(block_backend(&device).disk().volatile_page_count(), 0);
 }
 
+// r[verify chaoscontrol.storage_faults.validation]
 #[test]
 fn failed_flush_reports_ioerr_and_retains_volatile_state() {
     let mem = memory();

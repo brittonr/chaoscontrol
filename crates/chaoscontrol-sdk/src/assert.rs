@@ -2532,7 +2532,7 @@ macro_rules! cc_assert_sometimes_less_than_or_equal_to {
 /// The brace-bundle form matches Antithesis's `assert_always_some!`:
 /// `cc_assert_always_some!({name: cond, ...}, "message")` asserts the
 /// disjunction, evaluates every condition, and merges the named booleans
-/// into the details. [`cc_assert_always_any!`] is the unambiguous spelling
+/// into the details. [`crate::cc_assert_always_any!`] is the unambiguous spelling
 /// for that form.
 ///
 /// The expression form is a ChaosControl extension:

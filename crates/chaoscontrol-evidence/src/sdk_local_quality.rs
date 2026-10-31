@@ -88,8 +88,12 @@ struct CoverageEntry {
     failure_count: u64,
     adoption_tracks: Vec<String>,
     identity: Option<LocalReportIdentity>,
-    #[serde(default)]
+    #[serde(default = "no_must_hit")]
     must_hit: Option<bool>,
+}
+
+fn no_must_hit() -> Option<bool> {
+    None
 }
 
 pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFacts> {

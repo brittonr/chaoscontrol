@@ -9,7 +9,7 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
+    octet.url = "github:OnixResearch/octet/9c7ba87bef2934d2b7b144167e13c8d18eac8958";
     trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
     campaign-src = {
       url = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=796fe3844c91c3060da5ffc573a6f801a214aba7&allRefs=1";

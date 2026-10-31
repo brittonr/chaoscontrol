@@ -221,7 +221,7 @@ All device backends wrap deterministic storage/networking/entropy sources:
 - `DeterministicNet`: Explicit RX/TX packet queues
 - `DeterministicEntropy`: ChaCha20 PRNG with fixed seed
 
-This ensures that identical guest workloads produce identical I/O patterns across runs.
+Deterministic backends are one part of the declared replay cohort; identical workloads alone do not establish identical whole-VM execution across hosts or configurations.
 
 ### Performance
 This is a **correctness-first** implementation optimized for deterministic replay, not throughput:
@@ -229,12 +229,9 @@ This is a **correctness-first** implementation optimized for deterministic repla
 - Synchronous queue processing (no async workers)
 - Single-threaded (no parallel I/O)
 
-For production workloads, use KVM's vhost acceleration or Firecracker's virtio-vsock.
+These implementation choices do not establish production readiness or throughput guarantees.
 
 ### Security
-This implementation is **not hardened** against malicious guests:
-- No bounds checking on descriptor chains (can cause DoS)
-- No resource limits (guest can exhaust host memory)
-- No isolation (devices share process address space)
+Bounded descriptor planning validates chain shape, buffer direction, aggregate transfer limits and supported operations before backend execution. Runtime capacity planning admits selected device buffers and queue metadata; see [runtime capacity](runtime-capacity.md).
 
-Only use with trusted guest kernels in controlled environments.
+These checks are not a hostile-guest sandbox or complete process-wide resource bound. Device effects run in the VMM process, and this document makes no malicious-guest isolation claim. Use reviewed guest kernels and workloads on a dedicated test host in controlled environments. Follow the [security operating boundary](../SECURITY.md); passing malformed-input tests does not promote the VMM to a security boundary.

@@ -46,7 +46,10 @@ struct ReviewAssertion {
     guest: String,
     category: String,
     verdict: String,
-    #[serde(default, deserialize_with = "crate::non_null_option::deserialize")]
+    #[serde(
+        default = "no_must_hit",
+        deserialize_with = "crate::non_null_option::deserialize"
+    )]
     must_hit: Option<bool>,
     hit_count: u64,
     true_count: u64,
@@ -55,6 +58,10 @@ struct ReviewAssertion {
 }
 
 fn no_review_identity() -> Option<ReviewIdentity> {
+    None
+}
+
+fn no_must_hit() -> Option<bool> {
     None
 }
 

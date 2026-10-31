@@ -14,7 +14,7 @@
 
 - [x] [parallel] Add positive complete-descriptor coverage and the declared negative matrix. r[chaoscontrol.native_process_profile.validation]
   - Evidence: [native-process profile evidence](evidence/2026-10-28-native-process-profile.md); `cargo test -p chaoscontrol-protocol --lib --all-features` → 47 passed, including six native-process cases.
-- [x] [serial] Run formatting, strict Clippy, and Cairn validation.
+- [x] [serial] Run formatting, strict Clippy, and Cairn validation. r[chaoscontrol.native_process_profile.validation]
 
 ## Verification Coverage
 

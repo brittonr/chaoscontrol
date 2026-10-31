@@ -1161,6 +1161,16 @@
       ],
       "owner": "chaoscontrol-explore",
       "target_state": "experimental"
+    },
+    {
+      "change": "prepare-public-production-release",
+      "evidence_prerequisite": "Native validation and traceability pass with no missing or dangling links, and every required portable, clean-candidate KVM, completion and public-source acquisition obligation is recorded against one immutable revision before any promotion.",
+      "non_claims": [
+        "Preparation repairs do not make the repository publicly installable while private or nonportable dependencies remain.",
+        "No production, security, hosted-service, or universal-determinism claim follows from passing preparation checks."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "blocked"
     }
   ],
   "prohibited_current_claims": [

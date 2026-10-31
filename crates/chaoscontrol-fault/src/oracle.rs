@@ -95,7 +95,7 @@ pub struct AssertionRecord {
     )]
     pub compatibility_id: Option<u32>,
     /// Whether the property must be evaluated at least once to pass.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default = "no_must_hit", skip_serializing_if = "Option::is_none")]
     pub must_hit: Option<bool>,
     /// Catalog tokens that admitted this exact descriptor.
     #[serde(
@@ -317,6 +317,10 @@ fn no_admitted_assertion() -> Option<AdmittedAssertion> {
 }
 
 fn no_compatibility_id() -> Option<u32> {
+    None
+}
+
+fn no_must_hit() -> Option<bool> {
     None
 }
 

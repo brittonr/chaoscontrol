@@ -23,13 +23,14 @@ release, anonymously acquire every exact source in `flake.lock` and `Cargo.lock`
 from a new checkout with empty source caches and without sibling checkouts,
 credential helpers, SSH agents or private Radicle authorization.
 
-| Source boundary | Exact selected revision | Required action |
+| Source boundary | Exact selected revision | Observed anonymous availability and required action |
 | --- | --- | --- |
-| Root Octet | `9c7ba87bef2934d2b7b144167e13c8d18eac8958` | Now pinned to public GitHub rather than `file:../octet`; revision and NAR identity are preserved. Verify the complete transitive closure separately. |
-| Root Trellis | `46ab2d92b9cfd2cfc4e631a56f3e667ee7263685` | Still `file:../trellis`. The exact GitHub commit endpoint returned anonymous HTTP 404 during preparation. Its owner must publish the existing source or approve a public mirror before this locator can be migrated. |
-| VM Cohort | `ab123e3673b6dd616b3df5d044026b5e85755149` | `rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3` is documented as private in the source-acquisition contract. Owner-approved public acquisition is required for both Cargo and Nix. |
-| Transitive Octet | `09b2d863adf0b88b905f0ca62abf3e297e4988fa` | The lock retains `ssh://git@github.com/OnixResearch/octet.git`; audit the owning input and migrate through its supported update path, preserving exact content. |
-| Artifact source | `e41340bec587b6d049b5cc518ec7db925dde84be` | The lock retains `ssh://git@github.com/OnixResearch/onix-artifact.git`; establish anonymous access through the owning input. |
+| Root Octet | `9c7ba87bef2934d2b7b144167e13c8d18eac8958` | GitHub API returned the commit; the lock now pins public GitHub instead of `file:../octet` with the same NAR identity. Verify the complete transitive closure separately. |
+| Root Trellis | `46ab2d92b9cfd2cfc4e631a56f3e667ee7263685` | Still `file:../trellis`; the exact GitHub commit endpoint returned anonymous HTTP 404. Its owner must publish the existing source or approve a public mirror before this locator can be migrated. |
+| VM Cohort | `ab123e3673b6dd616b3df5d044026b5e85755149` | `rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3` is documented as private. `git ls-remote` against the public Radicle seed returned HTTP 500, so no public copy was observed. Owner-approved public acquisition is required for both Cargo and Nix. |
+| Campaign sources | `796fe3844c91c3060da5ffc573a6f801a214aba7`, `b3e08e19750f53bdbcae970cdf58a47a791ed20b` | Anonymous `git ls-remote` against the public seeds returned both exact revisions at HEAD; the Cargo transport contract still applies. |
+| Transitive Octet | `09b2d863adf0b88b905f0ca62abf3e297e4988fa` | The commit is publicly retrievable by API, but the lock retains `ssh://git@github.com/OnixResearch/octet.git`. Establish an anonymous locator through the owning input; do not hand-edit an owned lock node. |
+| Artifact source | `e41340bec587b6d049b5cc518ec7db925dde84be` | The commit is publicly retrievable by API, but the lock retains `ssh://git@github.com/OnixResearch/onix-artifact.git`. Establish anonymous access through the owning input. |
 | Artifact authentication source | `c932138d880ddf4c2967f4c024b489b5c0022bf1` | Same SSH-only locator boundary; source availability and authentication/authority remain distinct. |
 
 These rows identify concrete nonportable/private boundaries, not an exhaustive
@@ -95,12 +96,38 @@ promote `onix_release_ready=false` into a successful authenticated-release claim
 
 ## Preparation evidence and limits
 
-Baseline source: `1caeda2334f1d93e53ce22afbfa012b05458f606`.
-Preparation changes are uncommitted and are not a release-tested clean revision.
-The local command observations are under `target/release-preparation-20261029/`;
-that ignored path is a diagnostic locator, not a portable dependency or published
+Baseline source: `1caeda2334f1d93e53ce22afbfa012b05458f606`. Preparation commits
+`3db8a19c` and `fa6f3256` are local and are not a published release. The local
+command observations are under `target/release-preparation-20261029/`; that
+ignored path is a diagnostic locator, not a portable dependency or published
 evidence store. The tracked [preparation record](../.cairn/changes/prepare-public-production-release/evidence/verification.md)
 records exercised checks and outstanding prerequisites.
+
+On commit `3db8a19c`, `nix flake check -L --keep-going` evaluated 106 checks and
+failed four. Two were repaired and now pass on `fa6f3256`:
+
+- `evidence-contracts` and `replay-readiness` failed through
+  `check-accepted-dogfood-config`, which derived an empty repository root from the
+  default relative manifest path and then failed to canonicalize it. The root is
+  now the current directory for relative manifests, with a regression test.
+  Re-running both checks on `fa6f3256` succeeded.
+
+Two KVM checks still fail operationally, and the base revision fails the same
+snapshot rail:
+
+- `snapshot-replay-smoke` fails with `HostWatchdogTimeout { vcpu: 0 }` in
+  isolation. The same check on base `1caeda23` fails with `rc=124` and
+  `missing checkpoint.json after run`.
+- `local-multi-hypervisor-kvm-smoke` fails in isolation: the Raft attempt hits a
+  240-second `accepted-snapshot-verdict-dogfood` timeout and all six
+  Rust-workload attempts report `HostWatchdogTimeout { vcpu: 0 }`.
+
+These are operational watchdog/timeout outcomes in the KVM rails, not reproduced
+guest findings, and they match the previously documented blocker class. They are
+retained as failures; nothing is relabeled as passing. A clean-candidate KVM
+pass, genuine completion-producer results, public acquisition of the remaining
+private or SSH-only sources, and the maintainer's release decision are still
+required.
 
 Native baseline validation found an unlinked native-process validation task;
 traceability had ten dangling IDs. The repair synchronizes existing native-process,

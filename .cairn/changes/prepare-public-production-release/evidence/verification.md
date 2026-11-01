@@ -202,10 +202,46 @@ Rustdoc denied the unresolved `cc_assert_always_any!` link in the public
 `crates/chaoscontrol-sdk/src/assert.rs` measured BLAKE3 is
 `be264d41fb238bf14d83954740fb7265d9ace0732604a6f6eb63225b44275e80`.
 
-The following full local run uses `--keep-going` so independent check failures
-do not cancel the remaining evidence collection. It retains the same flake check
-set and disables only the broken host remote-builder hook for this invocation;
-no host configuration or repository gate is weakened.
+The following full local run used `--keep-going` so independent check failures
+would not cancel remaining evidence collection. It retained the same flake check
+set and disabled only the broken host remote-builder hook for this invocation;
+no host configuration or repository gate was weakened.
+
+## Clean-candidate full check and KVM attribution
+
+Commit `3db8a19c` was evaluated that way. The run listed 106 checks and failed
+four attributes:
+
+| Check | Failure | Status after repair |
+| --- | --- | --- |
+| `evidence-contracts` | `accepted-dogfood-config` I/O error per workload | Fixed; passes on `fa6f3256` |
+| `replay-readiness` | Same `accepted-dogfood-config` I/O error | Fixed; passes on `fa6f3256` |
+| `snapshot-replay-smoke` | `HostWatchdogTimeout { vcpu: 0 }` | Fails in isolation; base revision also fails |
+| `local-multi-hypervisor-kvm-smoke` | Raft 240 s dogfood timeout; six Rust-workload `HostWatchdogTimeout` attempts | Fails in isolation; documented blocker class |
+
+The shared cause of the first two was `repository_root_for_manifest` deriving an
+empty root from the default relative manifest
+`dogfood-results/accepted-workload-proofs.json`, which cannot be canonicalized.
+The root now falls back to the current directory;
+`relative_manifest_paths_resolve_the_current_directory` covers relative, bare, and
+absolute paths. The real CLI then reported
+`accepted-dogfood-config: 4 workload configs match; 0 historical identity artifact(s) are diagnostic-only and non-promoting`
+with exit zero, and
+`nix build .#checks.x86_64-linux.evidence-contracts .#checks.x86_64-linux.replay-readiness`
+succeeded on `fa6f3256`.
+
+KVM attribution used the same check on base `1caeda23` in an isolated worktree:
+`snapshot-replay-smoke` failed with `rc=124` and
+`missing checkpoint.json after run`. The candidate failed in isolation with
+`Exploration failed: Vm { source: HostWatchdogTimeout { vcpu: 0 } }`. The
+multi-hypervisor smoke, run explicitly with `--out`, retained one Raft attempt
+ending in `accepted-snapshot-verdict-dogfood timeout after 240s` and six
+Rust-workload attempts ending in `HostWatchdogTimeout { vcpu: 0 }`, with campaign
+status `failed` and zero passed runs. These are operational timeouts, not
+reproduced guest findings; both rails are retained as failures and are not
+relabeled. One earlier multi-hypervisor artifact was discarded because an
+accidental `--help` argument was forwarded into the nested runs; it is not used
+as evidence.
 
 The new active preparation change required a product-scope intent. The reviewed
 intent was added to `contracts/product-scope/registry.ncl` with a `blocked` target

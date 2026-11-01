@@ -271,6 +271,35 @@ Two private boundaries remain: the root Trellis input (`file:../trellis`, anonym
 commit 404) and VM Cohort (`rad://` private, public seed 500). Neither can be made
 public by this repository.
 
+### Merge with remote main
+
+Remote `main` advanced to `eb2eca64` (Molten provider contracts and protocol
+observation). Merging it produced one conflict in
+`.cairn/specs/smr-reliability-workload/spec.md`; both sides had appended different
+requirements, so both blocks were kept (remote's stale-duplicate rollback
+requirement first, then the storage-recovery requirements) with no requirement ID
+duplicated.
+
+Traceability on the merged tree is `465/465` referenced with six dangling IDs:
+`chaoscontrol.protocol_observation.{cohort,envelope,evidence,novelty,oracle_boundary,profile}`.
+The remote commit added `r[impl ...]` markers for those IDs in
+`crates/chaoscontrol-smr/src/observation*` and its adversarial tests, but the
+defining spec exists only in the still-active change
+`add-protocol-observation-cohorts` (16 open tasks), so the IDs are not accepted and
+coverage reports them as dangling. Remote `main` alone reports sixteen dangling
+IDs with the same six among them; this merge removes the other ten through the
+synchronized native-process, next-witness, and storage requirements.
+
+Accepting that delta early was measured and reverted: after `cairn sync` coverage
+became zero dangling but two missing (`snapshot_binding` is not implemented;
+`validation` has tests but no marker), which would overstate an in-flight change.
+The active change is left unsynchronized so its remaining work stays visible.
+
+`cargo fmt --all -- --check` and `cargo test -p chaoscontrol-smr -p chaoscontrol-evidence`
+pass on the merged tree. Native `validate --strict` is `valid=true`; policy
+freshness, product scope, and the merged crates' tests pass. The traceability gate
+remains red for the six in-flight IDs and is recorded, not suppressed.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

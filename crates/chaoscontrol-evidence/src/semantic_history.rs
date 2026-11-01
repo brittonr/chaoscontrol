@@ -9,6 +9,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+#[path = "semantic-contract.rs"]
+pub mod contract;
+
 pub const SEMANTIC_HISTORY_SCHEMA_VERSION: u64 = 2;
 pub const SEMANTIC_REPORT_SCHEMA_VERSION: u64 = 1;
 pub const JEPSEN_ADAPTER_SCHEMA_VERSION: u64 = 1;
@@ -1066,6 +1069,10 @@ fn check_with_decomposition(model: ModelKind, history: &AdmittedHistory) -> Sear
 /// r[impl chaoscontrol.semantic_history.linearizability]
 /// r[impl chaoscontrol.semantic_history.witness]
 pub fn check_linearizability(history: &SemanticHistory) -> SemanticResult<SemanticCheckReport> {
+    compute_report(history)
+}
+
+fn compute_report(history: &SemanticHistory) -> SemanticResult<SemanticCheckReport> {
     let admitted = admit_history(history)?;
     let completeness = history.completeness.clone();
     let pending_count = admitted
@@ -1144,7 +1151,7 @@ pub fn check_linearizability(history: &SemanticHistory) -> SemanticResult<Semant
             .map(|claim| (*claim).to_string())
             .collect(),
     };
-    validate_semantic_report(&report, history)?;
+    validate_report_shape(&report, history)?;
     Ok(report)
 }
 
@@ -1193,6 +1200,14 @@ pub fn validate_semantic_report(
     report: &SemanticCheckReport,
     history: &SemanticHistory,
 ) -> SemanticResult<()> {
+    validate_report_shape(report, history)?;
+    contract::validate_proof(report, &compute_report(history)?)
+}
+
+fn validate_report_shape(
+    report: &SemanticCheckReport,
+    history: &SemanticHistory,
+) -> SemanticResult<()> {
     let admitted = admit_history(history)?;
     require(
         report.schema_version == SEMANTIC_REPORT_SCHEMA_VERSION,
@@ -1210,9 +1225,7 @@ pub fn validate_semantic_report(
         "semantic report does not bind the admitted history, profile, or bounds",
     )?;
     let terminal_shape = match report.verdict {
-        LinearizabilityVerdict::Valid => {
-            report.invalid.is_none() && report.unknown.is_none() && !report.witness.is_empty()
-        }
+        LinearizabilityVerdict::Valid => report.invalid.is_none() && report.unknown.is_none(),
         LinearizabilityVerdict::Invalid => {
             report.invalid.is_some() && report.unknown.is_none() && report.witness.is_empty()
         }
@@ -1257,6 +1270,14 @@ pub struct LegacyHistoryEvidence {
 pub fn read_legacy_history_value(
     value: &serde_json::Value,
 ) -> SemanticResult<LegacyHistoryEvidence> {
+    require(
+        value
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            == Some(LEGACY_HISTORY_SCHEMA_VERSION),
+        SemanticErrorClass::Schema,
+        "legacy evidence requires exact schema version 1",
+    )?;
     let bytes = serde_json::to_vec(value).map_err(|error| {
         SemanticError::new(
             SemanticErrorClass::Schema,
@@ -1385,12 +1406,19 @@ pub fn validate_jepsen_compatible(history: &JepsenCompatibleHistory) -> Semantic
         SemanticErrorClass::Identity,
         "reference history must bind a v2 BLAKE3 history identity",
     )?;
+    let mut previous = None;
     for (expected, event) in history.events.iter().enumerate() {
         require(
             event.index >= expected,
             SemanticErrorClass::EventOrder,
             "reference events are not in source order",
         )?;
+        require(
+            previous.is_none_or(|index| event.index > index),
+            SemanticErrorClass::EventOrder,
+            "reference event indices must strictly increase",
+        )?;
+        previous = Some(event.index);
         require_nonempty(&event.attempt_id, "reference.attempt_id")?;
     }
     Ok(())
@@ -1453,6 +1481,7 @@ pub fn import_jepsen_compatible(
                             format!("reference completion value is malformed: {error}"),
                         )
                     })?;
+                contract::validate_reference_completion(&ordered, event)?;
                 events.push(SemanticEvent::Complete(CompletionEvent {
                     event_index,
                     attempt_id: event.attempt_id.clone(),

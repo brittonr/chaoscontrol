@@ -95,3 +95,40 @@ cargo run -p chaoscontrol-evidence --bin check-evidence-contracts -- --root .
 ```
 
 The workspace test and Nix rails provide broader regression evidence. KVM results remain scoped to the selected guest image, host capability, profile, and run receipt.
+
+## Source-bound protocol cohorts and real guest intake
+
+The `chaoscontrol_smr::observation` module adds protocol-observation schema v1
+and the typed review contract `contracts/evidence/protocol-observation-profile.ncl`.
+Profiles bind immutable source, participant, producer, generation, projection
+and finite collection bounds. `assemble_cohort` validates source continuity,
+exact boundary membership, sequence uniqueness, projection digests and final
+drains before classifying complete, incomplete, conflicting or unsupported
+collections. A final drain with lost events cannot become complete. These are
+opaque protocol facts, not a protocol-correctness oracle.
+
+`observation::guest::MultiNodeGuestIntake` is the integration hook for a real
+external multi-node execution. Its shell supplies retained `GuestSource`
+artifacts, execution identity, observations and drain records. The shell must
+verify actual retained artifact hashes and collect committed application values
+from actual guests; this trait is not an executor or attestation. An in-process
+model or an expected-record echo cannot satisfy this boundary.
+`validate_guest_history` rejects incomplete cohorts, then parses the admitted
+`ChainObservation` projections and runs the existing independent history checker.
+The projected replica ID is the participant BLAKE3 hex without its prefix and
+the event sequence is the producer source sequence.
+
+Marker policy is explicitly disabled. This implementation does not claim the
+entire active observation-cohort change, marker snapshots or replay promotion.
+Protocol-cohort and SMR-application evidence classes do not establish consensus
+correctness, snapshot-backed replay or production readiness. In particular,
+the archived application's duplicate path now still checks rollback: an
+identical old observation after a newer commit is not a harmless duplicate.
+Repeating the current committed index with identical state remains idempotent;
+the regression suite distinguishes that case from an old-index rollback.
+
+The execution owner runs `cargo test -p chaoscontrol-smr --test protocol-observation`
+and the archived SMR regression suite. The fixture covers actual intake-contract
+validation, not an actual guest campaign: retained multi-node guest execution
+and VMM artifact collection remain required before an execution receipt exists.
+

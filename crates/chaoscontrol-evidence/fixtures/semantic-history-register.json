@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "workload_profile": "synthetic-register-provider-contract",
+  "source_artifact": "blake3:synthetic-provider-contract-input-not-guest-evidence",
+  "profile": {
+    "profile_id": "register-provider-contract-v2",
+    "model": "register",
+    "independent_key_decomposition": false,
+    "bounds": {
+      "max_operations": 64,
+      "max_states": 50000,
+      "max_branches": 100000,
+      "max_depth": 64,
+      "max_memo_bytes": 8388608,
+      "max_reductions": 256
+    }
+  },
+  "completeness": {
+    "invocations": 1,
+    "completions": 1,
+    "pending": 0,
+    "applied_faults": 0,
+    "observed_faults": 0
+  },
+  "events": [
+    {
+      "kind": "invoke",
+      "event_index": 0,
+      "logical_operation_id": "initial-read",
+      "attempt_id": "initial-read-attempt",
+      "retry_of_attempt": null,
+      "process": "synthetic-client",
+      "object_key": "register",
+      "input": {"function": "read"},
+      "controller_time_ns": 10,
+      "source_artifact": "blake3:synthetic-provider-contract-input-not-guest-evidence"
+    },
+    {
+      "kind": "complete",
+      "event_index": 1,
+      "attempt_id": "initial-read-attempt",
+      "outcome": "ok",
+      "output": {"type": "null"},
+      "controller_time_ns": 20,
+      "finalization": null
+    }
+  ]
+}

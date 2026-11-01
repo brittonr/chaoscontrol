@@ -132,6 +132,13 @@ A throwaway local-link check exercised 55 Markdown file links across the changed
 public guidance and preparation record with zero missing targets. The preparation
 proposal/design/tasks gates passed. No permanent prose-copy tests were added.
 
+A later `nix flake check --no-build` on the final documentation commit failed
+because the store path
+`/nix/store/2xcwjdylcxvzcvnby1zjcl73rz1fdpk8-mantle-spacewasm-bundler-source.drv`
+was no longer valid. The same spacewasm check passed in the earlier full run, and
+no preparation commit touches that source; this is a garbage-collected input in
+the local store, not a repository verdict. It is recorded rather than suppressed.
+
 ## Retention and non-claims
 
 Local observations are under `target/release-preparation-20261029/`; pueue owns

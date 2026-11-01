@@ -41,6 +41,25 @@ approval, use sibling paths as a public fallback or treat a cached build as proo
 See [source acquisition](campaign-source-acquisition.md) for the required patched
 Cargo transport and current limitations.
 
+Re-audit the whole lock graph after any refresh; this reports every node that
+still needs SSH credentials, a sibling checkout, or a Radicle client:
+
+```sh
+python3 - <<'PY'
+import json
+nodes = json.load(open("flake.lock"))["nodes"]
+for name, node in nodes.items():
+    url = node.get("locked", {}).get("url", "")
+    if url.startswith(("ssh://", "file:")) or "rad://" in url:
+        print(name, node["locked"].get("rev"), url)
+PY
+```
+
+At preparation time this printed only `trellis` (`file:../trellis`) and
+`vm-cohort-src` (`rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3`) out of 127 nodes. Treat any
+new line as a release blocker until its owner supplies an anonymous locator for
+the same revision.
+
 ## Candidate checks
 
 Use the repository Nix development environment on x86_64 Linux. `/dev/kvm` must be

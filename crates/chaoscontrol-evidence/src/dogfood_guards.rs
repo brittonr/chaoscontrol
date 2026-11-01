@@ -78,6 +78,19 @@ pub fn check_dogfood_artifact_sizes(
     ))
 }
 
+/// Repository root implied by one accepted-proof manifest path.
+///
+/// The manifest lives at `<root>/dogfood-results/<name>.json`. A relative
+/// manifest therefore yields an empty grandparent; that must mean the current
+/// directory, not an empty path that cannot be canonicalized.
+fn repository_root_for_manifest(manifest_path: &Path) -> &Path {
+    manifest_path
+        .parent()
+        .and_then(Path::parent)
+        .filter(|root| !root.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
+}
+
 pub fn validate_accepted_dogfood_config(
     config_path: impl AsRef<Path>,
     expectations_path: impl AsRef<Path>,
@@ -265,10 +278,7 @@ pub fn validate_accepted_dogfood_config(
         }
     }
 
-    let repo_root = manifest_path
-        .parent()
-        .and_then(Path::parent)
-        .unwrap_or(Path::new("."));
+    let repo_root = repository_root_for_manifest(manifest_path);
     for proof in &manifest.proofs {
         if let Err(error) = admit_proof_frontier_policy(repo_root, proof) {
             errors.push(format!("{}: {error}", proof.workload));
@@ -607,6 +617,22 @@ mod tests {
     #[test]
     fn empty_dogfood_root_is_rejected() {
         assert!(check_dogfood_artifact_sizes("", 1_024).is_err());
+    }
+
+    #[test]
+    fn relative_manifest_paths_resolve_the_current_directory() {
+        for (manifest, expected) in [
+            ("dogfood-results/accepted-workload-proofs.json", "."),
+            ("./dogfood-results/accepted-workload-proofs.json", "."),
+            ("accepted-workload-proofs.json", "."),
+            ("/repo/dogfood-results/accepted-workload-proofs.json", "/repo"),
+        ] {
+            assert_eq!(
+                repository_root_for_manifest(Path::new(manifest)),
+                Path::new(expected),
+                "{manifest}"
+            );
+        }
     }
 
     #[test]

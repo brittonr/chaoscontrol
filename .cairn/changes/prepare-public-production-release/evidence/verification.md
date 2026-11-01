@@ -243,6 +243,27 @@ relabeled. One earlier multi-hypervisor artifact was discarded because an
 accidental `--help` argument was forwarded into the nested runs; it is not used
 as evidence.
 
+### Watchdog timing probe (diagnostic only)
+
+Two additional bounded probes used the same kernel, initrd, and arguments with the
+debug `chaoscontrol-explore` binary. Their purpose was attribution, not a verdict.
+
+- Default watchdog, outer bound `timeout -k 5 180`: the run was still making
+  progress at Raft tick `15600` when the outer bound fired (`rc=124`). No
+  `HostWatchdogTimeout` appeared, so the same workload needs more wall time than
+  that bound.
+- `CHAOSCONTROL_WATCHDOG_US=5000000` with the repository smoke script: the run
+  stalled after guest serial line `Serial: 8250/16550 driver` and did not complete;
+  the script's own `timeout 360` did not terminate it after several hours, so the
+  orchestrator was killed and the orphaned VMM processes were force-terminated.
+  This is an unfinished diagnostic, not a pass or a guest finding.
+
+These observations show the required KVM rails are wall-clock sensitive: the
+single-vCPU 100 ms no-exit watchdog can interrupt a runnable vCPU and become a
+permanent `HostWatchdogTimeout`, and the enclosing script bound did not reliably
+terminate the stalled process. Fixing that is a design decision about operational
+versus evidence bounds, so no bound, signal semantic, or check was changed here.
+
 The new active preparation change required a product-scope intent. The reviewed
 intent was added to `contracts/product-scope/registry.ncl` with a `blocked` target
 state and non-claims, the JSON projection was regenerated from the Nickel source,

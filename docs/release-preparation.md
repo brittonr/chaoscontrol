@@ -124,8 +124,15 @@ snapshot rail:
 
 These are operational watchdog/timeout outcomes in the KVM rails, not reproduced
 guest findings, and they match the previously documented blocker class. They are
-retained as failures; nothing is relabeled as passing. A clean-candidate KVM
-pass, genuine completion-producer results, public acquisition of the remaining
+retained as failures; nothing is relabeled as passing. A bounded timing probe
+showed the same Raft workload still progressing at tick `15600` when a 180-second
+outer bound fired, and a five-second watchdog interval variant stalled without
+completing. The rails are therefore wall-clock sensitive: the single-vCPU 100 ms
+no-exit watchdog can interrupt a runnable vCPU and become a permanent
+`HostWatchdogTimeout`, and the enclosing script bound did not reliably terminate a
+stalled process. Resolving that is a design decision about operational versus
+evidence bounds; no bound or signal semantic was changed here. A clean-candidate
+KVM pass, genuine completion-producer results, public acquisition of the remaining
 private or SSH-only sources, and the maintainer's release decision are still
 required.
 

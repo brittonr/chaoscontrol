@@ -250,6 +250,27 @@ relabeled. One earlier multi-hypervisor artifact was discarded because an
 accidental `--help` argument was forwarded into the nested runs; it is not used
 as evidence.
 
+### Transport cutover (public acquisition edges)
+
+The lock contained three `ssh://` transitive inputs and two `rad://` inputs. Root
+input overrides now pin the same revisions through anonymous public endpoints:
+
+- `trellis.inputs.octet` → `github:OnixResearch/octet/09b2d863…`
+- `mantle.inputs.artifactAuthSource` → `github:OnixResearch/onix-artifact/c932138d…`
+- `mantle.inputs.cairn.inputs.artifact` → `github:OnixResearch/onix-artifact/e41340be…`
+- `campaign-src`, `choregraph-history-src` → `git+https://seed.radicle.garden/<id>.git`
+
+After `nix flake lock`, the only changed nodes were those five, and each kept its
+exact `rev` and `narHash`; no other node changed. `nix eval --raw
+.#checks.x86_64-linux.fmt.drvPath` succeeded and that check built successfully with
+the rewired inputs. The source-tree formatting gate also exposed that the new
+guard regression test was not rustfmt-clean; `rustfmt` was applied and the gate
+passes.
+
+Two private boundaries remain: the root Trellis input (`file:../trellis`, anonymous
+commit 404) and VM Cohort (`rad://` private, public seed 500). Neither can be made
+public by this repository.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

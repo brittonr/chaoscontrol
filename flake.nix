@@ -10,13 +10,19 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     octet.url = "github:OnixResearch/octet/9c7ba87bef2934d2b7b144167e13c8d18eac8958";
-    trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
+    trellis = {
+      url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
+      # Trellis's own lock addresses this commit over SSH. Pin the same
+      # commit through the public GitHub endpoint so anonymous consumers can
+      # fetch exact content; the revision and NAR identity are unchanged.
+      inputs.octet.url = "github:OnixResearch/octet/09b2d863adf0b88b905f0ca62abf3e297e4988fa";
+    };
     campaign-src = {
-      url = "git+rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN?rev=796fe3844c91c3060da5ffc573a6f801a214aba7&allRefs=1";
+      url = "git+https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=796fe3844c91c3060da5ffc573a6f801a214aba7";
       flake = false;
     };
     choregraph-history-src = {
-      url = "git+rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b&allRefs=1";
+      url = "git+https://seed.radicle.garden/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b";
       flake = false;
     };
     vm-cohort-src = {
@@ -28,6 +34,11 @@
       inputs.crane.follows = "crane";
       inputs.octet.follows = "octet";
       inputs.tigerstyle.follows = "octet";
+      # Mantle's lock addresses these two revision-pinned sources over SSH.
+      # Same commits through the public GitHub endpoint; the resulting lock
+      # NAR identities must match the prior ones exactly.
+      inputs.artifactAuthSource.url = "github:OnixResearch/onix-artifact/c932138d880ddf4c2967f4c024b489b5c0022bf1";
+      inputs.cairn.inputs.artifact.url = "github:OnixResearch/onix-artifact/e41340bec587b6d049b5cc518ec7db925dde84be";
     };
     advisory-db = {
       url = "github:RustSec/advisory-db";

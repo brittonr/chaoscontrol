@@ -625,7 +625,10 @@ mod tests {
             ("dogfood-results/accepted-workload-proofs.json", "."),
             ("./dogfood-results/accepted-workload-proofs.json", "."),
             ("accepted-workload-proofs.json", "."),
-            ("/repo/dogfood-results/accepted-workload-proofs.json", "/repo"),
+            (
+                "/repo/dogfood-results/accepted-workload-proofs.json",
+                "/repo",
+            ),
         ] {
             assert_eq!(
                 repository_root_for_manifest(Path::new(manifest)),

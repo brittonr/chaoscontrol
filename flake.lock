@@ -21,16 +21,16 @@
       "locked": {
         "lastModified": 1785024816,
         "narHash": "sha256-2cM912L2YXVnVX9LquwhAPKyjPP/z/oFQRe7Qq9bHHE=",
-        "ref": "refs/heads/main",
+        "owner": "OnixResearch",
+        "repo": "onix-artifact",
         "rev": "e41340bec587b6d049b5cc518ec7db925dde84be",
-        "revCount": 13,
-        "type": "git",
-        "url": "ssh://git@github.com/OnixResearch/onix-artifact.git"
+        "type": "github"
       },
       "original": {
+        "owner": "OnixResearch",
+        "repo": "onix-artifact",
         "rev": "e41340bec587b6d049b5cc518ec7db925dde84be",
-        "type": "git",
-        "url": "ssh://git@github.com/OnixResearch/onix-artifact.git"
+        "type": "github"
       }
     },
     "artifactAuthSource": {
@@ -38,16 +38,16 @@
       "locked": {
         "lastModified": 1785173333,
         "narHash": "sha256-XGQLG60DNeY9FUYcOmn6cfYnhCIJzyqf+VW9yofDYFU=",
-        "ref": "refs/heads/main",
+        "owner": "OnixResearch",
+        "repo": "onix-artifact",
         "rev": "c932138d880ddf4c2967f4c024b489b5c0022bf1",
-        "revCount": 17,
-        "type": "git",
-        "url": "ssh://git@github.com/OnixResearch/onix-artifact.git"
+        "type": "github"
       },
       "original": {
+        "owner": "OnixResearch",
+        "repo": "onix-artifact",
         "rev": "c932138d880ddf4c2967f4c024b489b5c0022bf1",
-        "type": "git",
-        "url": "ssh://git@github.com/OnixResearch/onix-artifact.git"
+        "type": "github"
       }
     },
     "boundedTreeSource": {
@@ -261,39 +261,35 @@
     "campaign-src": {
       "flake": false,
       "locked": {
-        "allRefs": true,
         "lastModified": 1792915886,
         "narHash": "sha256-ZmWFr5fpGh65EpXWZCJo9ScNIWpEIqbgVVfCmpoX6lk=",
         "ref": "refs/heads/main",
         "rev": "796fe3844c91c3060da5ffc573a6f801a214aba7",
         "revCount": 115,
         "type": "git",
-        "url": "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN"
+        "url": "https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
       },
       "original": {
-        "allRefs": true,
         "rev": "796fe3844c91c3060da5ffc573a6f801a214aba7",
         "type": "git",
-        "url": "rad://z2scC9MCm3pxk9mX4FEidRKabQ5LN"
+        "url": "https://seed.radicle.garden/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
       }
     },
     "choregraph-history-src": {
       "flake": false,
       "locked": {
-        "allRefs": true,
         "lastModified": 1787243576,
         "narHash": "sha256-BO/AlwJBIuW+WXGRQgd2LymvGIYtK0fqd3YYMDtfGBw=",
         "ref": "refs/heads/main",
         "rev": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
         "revCount": 69,
         "type": "git",
-        "url": "rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF"
+        "url": "https://seed.radicle.garden/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"
       },
       "original": {
-        "allRefs": true,
         "rev": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
         "type": "git",
-        "url": "rad://zL2ncTUeASVYwcoGkEXv9JKgGbAF"
+        "url": "https://seed.radicle.garden/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"
       }
     },
     "crane": {
@@ -1442,15 +1438,16 @@
       "locked": {
         "lastModified": 1783451639,
         "narHash": "sha256-XJOG+iGHnYXxlrHY6WwvOnBaGZc9jLNhOokcPCe/M7c=",
-        "ref": "refs/heads/main",
+        "owner": "OnixResearch",
+        "repo": "octet",
         "rev": "09b2d863adf0b88b905f0ca62abf3e297e4988fa",
-        "revCount": 421,
-        "type": "git",
-        "url": "ssh://git@github.com/OnixResearch/octet.git"
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/OnixResearch/octet.git"
+        "owner": "OnixResearch",
+        "repo": "octet",
+        "rev": "09b2d863adf0b88b905f0ca62abf3e297e4988fa",
+        "type": "github"
       }
     },
     "onix-nixpkgs": {

@@ -28,10 +28,10 @@ credential helpers, SSH agents or private Radicle authorization.
 | Root Octet | `9c7ba87bef2934d2b7b144167e13c8d18eac8958` | GitHub API returned the commit; the lock now pins public GitHub instead of `file:../octet` with the same NAR identity. Verify the complete transitive closure separately. |
 | Root Trellis | `46ab2d92b9cfd2cfc4e631a56f3e667ee7263685` | Still `file:../trellis`; the exact GitHub commit endpoint returned anonymous HTTP 404. Its owner must publish the existing source or approve a public mirror before this locator can be migrated. |
 | VM Cohort | `ab123e3673b6dd616b3df5d044026b5e85755149` | `rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3` is documented as private. `git ls-remote` against the public Radicle seed returned HTTP 500, so no public copy was observed. Owner-approved public acquisition is required for both Cargo and Nix. |
-| Campaign sources | `796fe3844c91c3060da5ffc573a6f801a214aba7`, `b3e08e19750f53bdbcae970cdf58a47a791ed20b` | Anonymous `git ls-remote` against the public seeds returned both exact revisions at HEAD; the Cargo transport contract still applies. |
-| Transitive Octet | `09b2d863adf0b88b905f0ca62abf3e297e4988fa` | The commit is publicly retrievable by API, but the lock retains `ssh://git@github.com/OnixResearch/octet.git`. Establish an anonymous locator through the owning input; do not hand-edit an owned lock node. |
-| Artifact source | `e41340bec587b6d049b5cc518ec7db925dde84be` | The commit is publicly retrievable by API, but the lock retains `ssh://git@github.com/OnixResearch/onix-artifact.git`. Establish anonymous access through the owning input. |
-| Artifact authentication source | `c932138d880ddf4c2967f4c024b489b5c0022bf1` | Same SSH-only locator boundary; source availability and authentication/authority remain distinct. |
+| Campaign sources | `796fe3844c91c3060da5ffc573a6f801a214aba7`, `b3e08e19750f53bdbcae970cdf58a47a791ed20b` | Nix inputs now use `git+https://seed.radicle.garden/<id>.git` with the same revisions and NAR identities, so Nix acquisition no longer needs a Radicle client. Cargo still uses `rad://` for these crates; see the source-acquisition contract. |
+| Transitive Octet | `09b2d863adf0b88b905f0ca62abf3e297e4988fa` | Root-level input override now pins `github:OnixResearch/octet/<rev>`; the lock NAR identity is unchanged. |
+| Artifact source | `e41340bec587b6d049b5cc518ec7db925dde84be` | Root-level input override now pins `github:OnixResearch/onix-artifact/<rev>`; the lock NAR identity is unchanged. |
+| Artifact authentication source | `c932138d880ddf4c2967f4c024b489b5c0022bf1` | Same public override; the lock NAR identity is unchanged. Source availability and authentication/authority remain distinct. |
 
 These rows identify concrete nonportable/private boundaries, not an exhaustive
 public-acquisition verdict. Other Git/HTTP dependencies, recursive flake inputs,

@@ -318,6 +318,28 @@ Octet consumer check (`warning-only`, zero errors), policy freshness, and produc
 scope pass on the merged tree.
 
 
+### Watchdog retry and harness kill (after the merge)
+
+Two operational defects were repaired:
+
+- A runnable single-vCPU guest now retries across consecutive host watchdog
+  intervals instead of failing on the first `SIGALRM`. Only an uninterrupted
+  series with no intervening KVM exit (about five seconds at the 100 ms default,
+  `CHAOSCONTROL_WATCHDOG_US`) remains `HostWatchdogTimeout`. Retries change no
+  guest state, exit count, or virtual TSC. `cargo test -p chaoscontrol-vmm --lib`
+  passes 569 tests with the new bound.
+- `scripts/snapshot-replay-smoke.sh` now uses `timeout -k 10` and accepts the
+  killed status, because a blocked vCPU can ignore `SIGTERM` and outlive the
+  harness bound. This was observed directly: a raised-interval probe outlived its
+  `timeout 360` for hours.
+
+End-to-end rail verification is still pending. During this work the host load
+average measured 57–86 from unrelated processes (`rustfs`, streaming, Hegel
+workers), and the shared kernel build took over 40 minutes. A KVM rail run on a
+host in that state is not evidence about the change, so the smoke was not
+reported as passing or failing. Re-run both KVM checks on a quiescent host before
+any release claim.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

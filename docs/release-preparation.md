@@ -141,9 +141,15 @@ snapshot rail:
   240-second `accepted-snapshot-verdict-dogfood` timeout and all six
   Rust-workload attempts report `HostWatchdogTimeout { vcpu: 0 }`.
 
+A runnable single-vCPU guest now retries across consecutive host watchdog
+intervals; only an uninterrupted series with no KVM exit (about five seconds) is
+an operational timeout, and the smoke harness force-kills a blocked VMM after its
+bound. Both changes are unit-tested, but the KVM rails were not re-run to
+completion because the host was oversubscribed (load average 57–86 from unrelated
+processes). Re-run them on a quiescent host before any release claim.
+
 These are operational watchdog/timeout outcomes in the KVM rails, not reproduced
-guest findings, and they match the previously documented blocker class. They are
-retained as failures; nothing is relabeled as passing. A bounded timing probe
+guest findings. They are retained as failures; nothing is relabeled as passing. A bounded timing probe
 showed the same Raft workload still progressing at tick `15600` when a 180-second
 outer bound fired, and a five-second watchdog interval variant stalled without
 completing. The rails are therefore wall-clock sensitive: the single-vCPU 100 ms

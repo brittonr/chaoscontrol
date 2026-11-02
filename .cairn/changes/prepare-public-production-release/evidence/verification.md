@@ -333,12 +333,24 @@ Two operational defects were repaired:
   harness bound. This was observed directly: a raised-interval probe outlived its
   `timeout 360` for hours.
 
-End-to-end rail verification is still pending. During this work the host load
-average measured 57–86 from unrelated processes (`rustfs`, streaming, Hegel
-workers), and the shared kernel build took over 40 minutes. A KVM rail run on a
-host in that state is not evidence about the change, so the smoke was not
-reported as passing or failing. Re-run both KVM checks on a quiescent host before
-any release claim.
+End-to-end verification of the snapshot rail now passes. With a GC-rooted
+cached kernel (`d1gy1wcx…-chaoscontrol-vmlinux/vmlinux`) and a retained
+repository-built raft initrd (`vb6wpgml…-chaoscontrol-initrd-raft`), the repository
+smoke script completed in 387 seconds with exit zero:
+
+```text
+replay verdict artifact ok: run=replay-1793637619662 bug=2 assertion=3463273124 depth=1
+snapshot replay smoke ok: bug_2.json
+```
+
+The retained verdict records `replay_class=snapshot_backed_reproduced`,
+`reproduced=true`, `replay_parent_depth=1`. Before the retry change the same
+kernel/initrd combination failed with `HostWatchdogTimeout { vcpu: 0 }` (and the
+base revision failed with `rc=124`). The official `.#checks.x86_64-linux.snapshot-replay-smoke`
+was not re-run because rebuilding the current guest artifacts stayed queued
+behind unrelated daemon work; the manual run uses a retained initrd from the same
+repository lineage rather than the current derivation. The multi-hypervisor rail
+was not re-run for the same reason. Both remain required before any release claim.
 
 ### Cargo acquisition and build contention
 

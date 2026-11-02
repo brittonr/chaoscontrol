@@ -158,9 +158,12 @@ snapshot rail:
 A runnable single-vCPU guest now retries across consecutive host watchdog
 intervals; only an uninterrupted series with no KVM exit (about five seconds) is
 an operational timeout, and the smoke harness force-kills a blocked VMM after its
-bound. Both changes are unit-tested, but the KVM rails were not re-run to
-completion because the host was oversubscribed (load average 57–86 from unrelated
-processes). Re-run them on a quiescent host before any release claim.
+bound. With that change, the snapshot smoke completed with exit zero in 387
+seconds and validated a `snapshot_backed_reproduced` verdict at parent depth 1,
+using a GC-rooted cached kernel and a retained repository-built raft initrd. The
+official flake check and the multi-hypervisor rail still need a run with the
+current guest artifacts; rebuilding them stayed queued behind unrelated daemon
+work on this host.
 
 These are operational watchdog/timeout outcomes in the KVM rails, not reproduced
 guest findings. They are retained as failures; nothing is relabeled as passing. A bounded timing probe

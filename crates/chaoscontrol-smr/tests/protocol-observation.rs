@@ -156,6 +156,14 @@ fn fixture() -> (ProtocolProfile, SmrWorkloadPlan, Intake) {
     )
 }
 
+fn enable_declared_markers(profile: &mut ProtocolProfile, intake: &mut Intake) {
+    profile.marker_policy = MarkerPolicy::Declared;
+    let profile_ref = profile.admit().unwrap();
+    for record in &mut intake.records {
+        record.profile_ref = profile_ref.clone();
+    }
+}
+
 fn cohort(p: &ProtocolProfile, i: &Intake) -> CohortResult {
     assemble_cohort(p, &reference("boundary"), &i.records, &i.drains).unwrap()
 }
@@ -167,6 +175,7 @@ fn mutate_projection(record: &mut ProtocolObservation, f: impl FnOnce(&mut Chain
     record.projection = Some(bytes);
 }
 
+// r[verify chaoscontrol.protocol_observation.validation]
 #[test]
 fn complete_cohort_is_order_independent_but_not_semantic_proof() {
     let (p, plan, mut i) = fixture();
@@ -192,6 +201,7 @@ fn complete_cohort_is_order_independent_but_not_semantic_proof() {
     assert!(validate_claim(EvidenceClass::Instrumentation, "bounded-guest-observations").is_err());
 }
 
+// r[verify chaoscontrol.protocol_observation.validation]
 #[test]
 fn divergence_is_detected_even_when_runtime_claims_success() {
     let (p, plan, mut i) = fixture();
@@ -207,6 +217,7 @@ fn divergence_is_detected_even_when_runtime_claims_success() {
         .any(|v| v.class == SafetyViolationClass::Divergence));
 }
 
+// r[verify chaoscontrol.protocol_observation.validation]
 #[test]
 fn duplicate_gap_loss_and_drain_cannot_become_complete() {
     let (p, _, mut i) = fixture();
@@ -226,6 +237,7 @@ fn duplicate_gap_loss_and_drain_cannot_become_complete() {
     assert_eq!(cohort(&p, &i).completeness, Completeness::Incomplete);
 }
 
+// r[verify chaoscontrol.protocol_observation.validation]
 #[test]
 fn malformed_stale_unknown_and_overflow_are_not_pass() {
     let (p, _, mut i) = fixture();
@@ -246,8 +258,15 @@ fn malformed_stale_unknown_and_overflow_are_not_pass() {
     let mut json = serde_json::to_value(protocol()).unwrap();
     json["unknown"] = true.into();
     assert!(serde_json::from_value::<ProtocolProfile>(json).is_err());
+    let mut p = protocol();
+    p.oracle_adapter_ref = "adapter".into();
+    assert_eq!(p.admit().unwrap_err().class, "reference-digest");
+    let mut p = protocol();
+    p.oracle_adapter_ref = String::new();
+    assert!(p.admit().is_err());
 }
 
+// r[verify chaoscontrol.protocol_observation.validation]
 #[test]
 fn rollback_and_duplicate_application_remain_chain_failures() {
     let (p, plan, mut i) = fixture();
@@ -319,6 +338,7 @@ fn stable_quorum_stall_is_liveness_not_safety() {
     );
 }
 
+// r[verify chaoscontrol.protocol_observation.validation]
 #[test]
 fn malformed_chain_projection_and_forged_source_fail_before_oracle() {
     let (p, plan, mut i) = fixture();
@@ -346,4 +366,377 @@ fn malformed_chain_projection_and_forged_source_fail_before_oracle() {
     p = protocol();
     p.bounds.total_bytes = 0;
     assert_eq!(p.admit().unwrap_err().class, "bound");
+}
+
+// r[verify chaoscontrol.protocol_observation.snapshot_binding]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn marker_binding_binds_complete_cohort_state_without_widening_claims() {
+    let (mut profile, _, mut intake) = fixture();
+    enable_declared_markers(&mut profile, &mut intake);
+    let complete = cohort(&profile, &intake);
+    assert_eq!(complete.completeness, Completeness::Complete);
+    let binding = MarkerBinding::bind(
+        &profile,
+        &reference("declared-marker"),
+        &intake.records[0],
+        &complete,
+        &reference("restorable-parent"),
+    )
+    .unwrap();
+    assert_eq!(binding.cohort_completeness, Completeness::Complete);
+    assert!(binding.complete_protocol_state());
+    let identity = binding
+        .admit(&profile, &intake.records[0], &complete)
+        .unwrap();
+    assert!(identity.starts_with("blake3:"));
+
+    let (disabled, _, other) = fixture();
+    let other_cohort = cohort(&disabled, &other);
+    assert_eq!(
+        MarkerBinding::bind(
+            &disabled,
+            &reference("declared-marker"),
+            &other.records[0],
+            &other_cohort,
+            &reference("restorable-parent"),
+        )
+        .unwrap_err()
+        .class,
+        "unsupported"
+    );
+}
+
+// r[verify chaoscontrol.protocol_observation.snapshot_binding]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn marker_binding_never_completes_an_incomplete_cohort() {
+    let (mut profile, _, mut intake) = fixture();
+    enable_declared_markers(&mut profile, &mut intake);
+    intake.records.remove(0);
+    let incomplete = cohort(&profile, &intake);
+    assert_ne!(incomplete.completeness, Completeness::Complete);
+    let binding = MarkerBinding::bind(
+        &profile,
+        &reference("declared-marker"),
+        &intake.records[0],
+        &incomplete,
+        &reference("restorable-parent"),
+    )
+    .unwrap();
+    assert_eq!(binding.cohort_completeness, incomplete.completeness);
+    assert!(!binding.complete_protocol_state());
+
+    let mut upgraded = binding.clone();
+    upgraded.cohort_completeness = Completeness::Complete;
+    assert_eq!(
+        upgraded
+            .admit(&profile, &intake.records[0], &incomplete)
+            .unwrap_err()
+            .class,
+        "conflicting"
+    );
+}
+
+// r[verify chaoscontrol.protocol_observation.snapshot_binding]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn marker_binding_rejects_boundary_projection_snapshot_and_identity_drift() {
+    let (mut profile, _, mut intake) = fixture();
+    enable_declared_markers(&mut profile, &mut intake);
+    let complete = cohort(&profile, &intake);
+    let binding = MarkerBinding::bind(
+        &profile,
+        &reference("declared-marker"),
+        &intake.records[0],
+        &complete,
+        &reference("restorable-parent"),
+    )
+    .unwrap();
+    for mutate in [
+        |b: &mut MarkerBinding| b.boundary_ref = reference("other-boundary"),
+        |b: &mut MarkerBinding| b.projection_ref = reference("other-projection"),
+        |b: &mut MarkerBinding| b.cohort_ref = reference("other-cohort"),
+    ] {
+        let mut drifted = binding.clone();
+        mutate(&mut drifted);
+        assert_eq!(
+            drifted
+                .admit(&profile, &intake.records[0], &complete)
+                .unwrap_err()
+                .class,
+            "conflicting"
+        );
+    }
+    // Marker and snapshot refs are opaque consumer identities: a different
+    // well-formed digest is a different binding, not a cohort conflict.
+    let identity = binding
+        .admit(&profile, &intake.records[0], &complete)
+        .unwrap();
+    let mut rebound = binding.clone();
+    rebound.marker_ref = reference("other-marker");
+    rebound.parent_snapshot_ref = reference("other-snapshot");
+    assert_ne!(
+        rebound
+            .admit(&profile, &intake.records[0], &complete)
+            .unwrap(),
+        identity
+    );
+    for mutate in [
+        |b: &mut MarkerBinding| b.marker_ref = "not-a-digest".into(),
+        |b: &mut MarkerBinding| b.parent_snapshot_ref = "not-a-digest".into(),
+    ] {
+        let mut malformed = binding.clone();
+        mutate(&mut malformed);
+        assert_eq!(
+            malformed
+                .admit(&profile, &intake.records[0], &complete)
+                .unwrap_err()
+                .class,
+            "reference-digest"
+        );
+    }
+    assert!(MarkerBinding::bind(
+        &profile,
+        "not-a-digest",
+        &intake.records[0],
+        &complete,
+        &reference("restorable-parent"),
+    )
+    .is_err());
+    assert!(MarkerBinding::bind(
+        &profile,
+        &reference("declared-marker"),
+        &intake.records[0],
+        &complete,
+        "not-a-digest",
+    )
+    .is_err());
+    let mut elsewhere = intake.records[0].clone();
+    elsewhere.boundary_ref = reference("elsewhere");
+    assert_eq!(
+        MarkerBinding::bind(
+            &profile,
+            &reference("declared-marker"),
+            &elsewhere,
+            &complete,
+            &reference("restorable-parent"),
+        )
+        .unwrap_err()
+        .class,
+        "conflicting"
+    );
+}
+
+struct ConsumerOracle {
+    identity: String,
+    verdict: OracleVerdict,
+    calls: std::cell::Cell<usize>,
+}
+
+impl ConsumerOracle {
+    fn new(profile: &ProtocolProfile, verdict: OracleVerdict) -> Self {
+        Self {
+            identity: profile.independent_oracle_ref.clone(),
+            verdict,
+            calls: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl ProtocolOracle for ConsumerOracle {
+    fn identity(&self) -> &str {
+        &self.identity
+    }
+
+    fn evaluate(&self, cohort: &CohortResult) -> SmrResult<OracleResult> {
+        self.calls.set(self.calls.get() + 1);
+        Ok(OracleResult {
+            schema: ORACLE_RESULT_SCHEMA.into(),
+            oracle_ref: self.identity.clone(),
+            cohort_ref: cohort.cohort_ref.clone(),
+            verdict: self.verdict,
+            diagnostics: Vec::new(),
+        })
+    }
+}
+
+// r[verify chaoscontrol.protocol_observation.oracle_boundary]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn oracle_boundary_rejects_self_reports_and_never_invokes_partial_cohorts() {
+    let (profile, _, intake) = fixture();
+    let complete = cohort(&profile, &intake);
+    let oracle = ConsumerOracle::new(&profile, OracleVerdict::Pass);
+    let result = evaluate_oracle(&profile, &complete, &oracle).unwrap();
+    assert_eq!(result.verdict, OracleVerdict::Pass);
+    assert_eq!(oracle.calls.get(), 1);
+    assert!(result.admit(&profile, &complete).is_ok());
+
+    let mut self_oracle = ConsumerOracle::new(&profile, OracleVerdict::Pass);
+    self_oracle.identity = profile.oracle_adapter_ref.clone();
+    assert_eq!(
+        evaluate_oracle(&profile, &complete, &self_oracle)
+            .unwrap_err()
+            .class,
+        "unsupported"
+    );
+    assert_eq!(self_oracle.calls.get(), 0);
+
+    let (profile, _, mut intake) = fixture();
+    intake.records.remove(0);
+    let incomplete = cohort(&profile, &intake);
+    let oracle = ConsumerOracle::new(&profile, OracleVerdict::Pass);
+    let result = evaluate_oracle(&profile, &incomplete, &oracle).unwrap();
+    assert_eq!(result.verdict, OracleVerdict::Incomplete);
+    assert_eq!(
+        oracle.calls.get(),
+        0,
+        "partial facts must not reach the oracle"
+    );
+    assert!(
+        !result.admit(&profile, &complete).is_ok()
+            || incomplete.completeness != Completeness::Complete
+    );
+}
+
+// r[verify chaoscontrol.protocol_observation.evidence]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn receipts_bind_admitted_facts_and_refuse_incomplete_passes() {
+    let (profile, _, intake) = fixture();
+    let complete = cohort(&profile, &intake);
+    let oracle = ConsumerOracle::new(&profile, OracleVerdict::Pass);
+    let result = evaluate_oracle(&profile, &complete, &oracle).unwrap();
+    let receipt = ProtocolReceipt::build(
+        &profile,
+        &complete,
+        &result,
+        None,
+        vec![reference("scheduler")],
+        vec![reference("fault")],
+        vec![reference("replay")],
+    )
+    .unwrap();
+    assert!(receipt.passed());
+    let identity = receipt.admit(&profile, &complete).unwrap();
+    assert!(identity.starts_with("blake3:"));
+
+    let mut upgraded = receipt.clone();
+    upgraded.completeness = Completeness::Incomplete;
+    assert_eq!(
+        upgraded.admit(&profile, &complete).unwrap_err().class,
+        "conflicting"
+    );
+
+    let (profile, _, mut intake) = fixture();
+    intake.records.remove(0);
+    let incomplete = cohort(&profile, &intake);
+    let oracle = ConsumerOracle::new(&profile, OracleVerdict::Pass);
+    let result = evaluate_oracle(&profile, &incomplete, &oracle).unwrap();
+    let receipt = ProtocolReceipt::build(
+        &profile,
+        &incomplete,
+        &result,
+        None,
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(!receipt.passed());
+    let mut forged = receipt.clone();
+    forged.oracle_verdict = OracleVerdict::Pass;
+    assert_eq!(
+        forged.admit(&profile, &incomplete).unwrap_err().class,
+        "incomplete"
+    );
+
+    let mut missing = receipt.clone();
+    missing.non_claims.pop();
+    assert_eq!(
+        missing.admit(&profile, &incomplete).unwrap_err().class,
+        "claim"
+    );
+}
+
+// r[verify chaoscontrol.protocol_observation.snapshot_binding]
+// r[verify chaoscontrol.protocol_observation.evidence]
+#[test]
+fn marker_bindings_flow_into_receipts_without_upgrading_completeness() {
+    let (mut profile, _, mut intake) = fixture();
+    enable_declared_markers(&mut profile, &mut intake);
+    let complete = cohort(&profile, &intake);
+    let binding = MarkerBinding::bind(
+        &profile,
+        &reference("declared-marker"),
+        &intake.records[0],
+        &complete,
+        &reference("restorable-parent"),
+    )
+    .unwrap();
+    let oracle = ConsumerOracle::new(&profile, OracleVerdict::Fail);
+    let result = evaluate_oracle(&profile, &complete, &oracle).unwrap();
+    let receipt = ProtocolReceipt::build(
+        &profile,
+        &complete,
+        &result,
+        Some(&binding),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        receipt.marker_ref.as_deref(),
+        Some(binding.marker_ref.as_str())
+    );
+    assert_eq!(
+        receipt.parent_snapshot_ref.as_deref(),
+        Some(binding.parent_snapshot_ref.as_str())
+    );
+    assert!(!receipt.passed(), "a failing oracle result is never a pass");
+}
+
+// r[verify chaoscontrol.protocol_observation.cohort]
+// r[verify chaoscontrol.protocol_observation.novelty]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn unknown_participants_and_unstable_novelty_selection_are_not_pass() {
+    let (profile, _, mut intake) = fixture();
+    intake.records[0].participant_ref = reference("unknown-participant");
+    assert_eq!(
+        cohort(&profile, &intake).completeness,
+        Completeness::Unsupported
+    );
+
+    let (profile, _, intake) = fixture();
+    let baseline = cohort(&profile, &intake);
+    let mut drifted = intake.records[0].clone();
+    let bytes = b"different projection bytes".to_vec();
+    drifted.projection_ref = projection_ref(&bytes);
+    drifted.projection = Some(bytes);
+    let mut records = intake.records.clone();
+    records[0] = drifted;
+    let drifted_cohort =
+        assemble_cohort(&profile, &reference("boundary"), &records, &intake.drains).unwrap();
+    assert_eq!(drifted_cohort.completeness, Completeness::Complete);
+    assert_ne!(baseline.novelty_ref, drifted_cohort.novelty_ref);
+
+    let mut reselect = profile.clone();
+    reselect.novelty_selection_ref = reference("different-novelty-selection");
+    let reselect_ref = reselect.admit().unwrap();
+    let mut reselected = intake.records.clone();
+    for record in &mut reselected {
+        record.profile_ref = reselect_ref.clone();
+    }
+    let reselected_cohort = assemble_cohort(
+        &reselect,
+        &reference("boundary"),
+        &reselected,
+        &intake.drains,
+    )
+    .unwrap();
+    assert_eq!(reselected_cohort.completeness, Completeness::Complete);
+    assert_ne!(baseline.novelty_ref, reselected_cohort.novelty_ref);
 }

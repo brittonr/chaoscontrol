@@ -24,7 +24,7 @@ let Shape = {
   novelty_selection_ref | P.blake3,
   participants | Array Participant,
   bounds | Bounds,
-  marker_policy | P.exact_string "disabled",
+  marker_policy | P.closed_enum ["disabled", "declared"],
   non_claims | Array String,
 }
 

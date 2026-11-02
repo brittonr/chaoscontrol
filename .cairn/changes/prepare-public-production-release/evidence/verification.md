@@ -280,25 +280,43 @@ requirements, so both blocks were kept (remote's stale-duplicate rollback
 requirement first, then the storage-recovery requirements) with no requirement ID
 duplicated.
 
-Traceability on the merged tree is `465/465` referenced with six dangling IDs:
+Traceability immediately after the merge was `465/465` referenced with six
+dangling IDs:
 `chaoscontrol.protocol_observation.{cohort,envelope,evidence,novelty,oracle_boundary,profile}`.
-The remote commit added `r[impl ...]` markers for those IDs in
-`crates/chaoscontrol-smr/src/observation*` and its adversarial tests, but the
-defining spec exists only in the still-active change
-`add-protocol-observation-cohorts` (16 open tasks), so the IDs are not accepted and
-coverage reports them as dangling. Remote `main` alone reports sixteen dangling
-IDs with the same six among them; this merge removes the other ten through the
-synchronized native-process, next-witness, and storage requirements.
+Those markers existed in `crates/chaoscontrol-smr/src/observation*`, but their
+spec was still only an active delta, so the IDs were not accepted. Remote `main`
+alone reported sixteen dangling IDs with the same six among them; the merge
+removed the other ten through the synchronized native-process, next-witness, and
+storage requirements.
 
-Accepting that delta early was measured and reverted: after `cairn sync` coverage
-became zero dangling but two missing (`snapshot_binding` is not implemented;
-`validation` has tests but no marker), which would overstate an in-flight change.
-The active change is left unsynchronized so its remaining work stays visible.
+That gap is now closed by implementing the missing delta instead of narrowing it:
 
-`cargo fmt --all -- --check` and `cargo test -p chaoscontrol-smr -p chaoscontrol-evidence`
-pass on the merged tree. Native `validate --strict` is `valid=true`; policy
-freshness, product scope, and the merged crates' tests pass. The traceability gate
-remains red for the six in-flight IDs and is recorded, not suppressed.
+- `observation::marker::MarkerBinding` binds a declared marker to an admitted
+  record, logical boundary, projection, cohort, and restorable parent snapshot,
+  and retains (never upgrades) cohort completeness.
+- `observation::oracle` publishes the consumer-owned `ProtocolOracle` boundary,
+  typed `OracleResult`/`OracleVerdict`, and `evaluate_oracle`, which records an
+  incomplete cohort without invoking the oracle and rejects a runtime self-oracle.
+- `observation::receipt::ProtocolReceipt` binds profile, bounds, boundary, cohort,
+  completeness, record, novelty, oracle, marker, snapshot, scheduler, fault,
+  replay, and non-claim facts, and refuses identity drift, completeness upgrades,
+  a pass on an incomplete cohort, and missing non-claims.
+- The profile contract admits `marker_policy = "declared"`; `nickel typecheck`
+  passes. New positive and negative tests cover marker binding, oracle self-report
+  rejection, receipt binding, unknown participants, and novelty selection drift.
+
+`cairn sync add-protocol-observation-cohorts --execute` then accepted the delta.
+Traceability is `473/473` referenced with zero missing and zero dangling IDs, and
+`validate --strict` is `valid=true`. The change keeps five open shell-adoption
+tasks (SDK surface, VMM collection, explorer novelty guidance, downstream contract
+publication, operator status); the pure requirements and their evidence are
+complete.
+
+`cargo fmt --all -- --check`, `cargo clippy -p chaoscontrol-smr --all-targets -D warnings`,
+`cargo test --workspace --all-targets --locked --no-fail-fast` (230 suites), the
+Octet consumer check (`warning-only`, zero errors), policy freshness, and product
+scope pass on the merged tree.
+
 
 ### Watchdog timing probe (diagnostic only)
 

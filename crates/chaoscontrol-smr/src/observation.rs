@@ -5,7 +5,15 @@ use std::collections::BTreeSet;
 
 pub mod cohort;
 pub mod guest;
+pub mod marker;
+pub mod oracle;
+pub mod receipt;
 pub use cohort::{assemble_cohort, CohortResult, Completeness, Drain};
+pub use marker::{MarkerBinding, MARKER_BINDING_SCHEMA};
+pub use oracle::{
+    evaluate_oracle, OracleResult, OracleVerdict, ProtocolOracle, ORACLE_RESULT_SCHEMA,
+};
+pub use receipt::{ProtocolReceipt, RECEIPT_SCHEMA};
 
 pub const SCHEMA: &str = "chaoscontrol.protocol-observation.v1";
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.protocol-observation-profile.v1";
@@ -53,6 +61,7 @@ pub struct ProtocolProfile {
 #[serde(rename_all = "kebab-case")]
 pub enum MarkerPolicy {
     Disabled,
+    Declared,
 }
 
 pub const NON_CLAIMS: [&str; 5] = [

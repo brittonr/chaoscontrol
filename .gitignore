@@ -27,3 +27,6 @@ target/
 __pycache__/
 */__pycache__/
 .pi/
+# Local direnv state: flake profiles and store paths are machine-specific.
+.direnv/
+.envrc

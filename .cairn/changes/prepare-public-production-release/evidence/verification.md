@@ -340,6 +340,22 @@ host in that state is not evidence about the change, so the smoke was not
 reported as passing or failing. Re-run both KVM checks on a quiescent host before
 any release claim.
 
+### Cargo acquisition and build contention
+
+An empty-`CARGO_HOME` `cargo fetch --locked` in the development shell completed in
+six seconds, populating 504 crate archives and every locked Git source, including
+`rad://` Campaign/VM Cohort and `git.onix.computer` bounded-exec. This host has
+`git-remote-rad` installed, so it does not prove anonymous public acquisition; a
+host without that helper or private-repository access still fails. See the
+release runbook for the owner decision.
+
+End-to-end KVM verification remained blocked by the shared host. The Nix daemon
+was saturated by unrelated builds (one foreign job held most CPUs), so the
+kernel/initrd build for the rails stayed queued for over eight hours without
+starting work and was stopped. A second queue daemon had lost its configuration
+and state. No rail result is inferred from this condition; the retry semantics and
+harness kill remain covered by unit tests only.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

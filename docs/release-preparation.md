@@ -60,6 +60,20 @@ At preparation time this printed only `trellis` (`file:../trellis`) and
 new line as a release blocker until its owner supplies an anonymous locator for
 the same revision.
 
+### Cargo acquisition observation
+
+With the repository dev shell's patched Cargo and an empty `CARGO_HOME`,
+`cargo fetch --locked` completed in six seconds and populated 504 crate archives
+plus every locked Git source, including the `rad://` Campaign and VM Cohort
+entries and the `git.onix.computer` bounded-exec source. That observation ran on a
+host where `git-remote-rad` is installed.
+
+It does not establish anonymous public acquisition. A host without the Radicle
+Git helper, without SSH credentials, or without access to the private VM Cohort
+repository still cannot complete the same fetch. Migrating those Cargo sources to
+anonymous locators, or documenting the required helper as a prerequisite, is an
+owner decision and remains a public-release blocker.
+
 ## Candidate checks
 
 Use the repository Nix development environment on x86_64 Linux. `/dev/kvm` must be

@@ -26,7 +26,8 @@
   - Evidence: `observation::oracle` publishes `ProtocolOracle`, typed `OracleResult`/`OracleVerdict`, and `evaluate_oracle`; an incomplete cohort is recorded without invoking the oracle, and a runtime self-oracle is rejected before evaluation.
 - [x] [parallel] Add a first-party Raft adapter fixture and a deliberately false runtime self-oracle fixture. r[chaoscontrol.protocol_observation.oracle_boundary] r[chaoscontrol.protocol_observation.validation]
   - Evidence: `oracle_boundary_rejects_self_reports_and_never_invokes_partial_cohorts` uses the Raft chain fixture behind `ConsumerOracle`, records `oracle.calls`, and rejects the adapter-identity oracle as `unsupported`.
-- [ ] [serial] Map stable novelty identities into explorer guidance while retaining full identities in evidence. r[chaoscontrol.protocol_observation.novelty]
+- [x] [serial] Map stable novelty identities into explorer guidance while retaining full identities in evidence. r[chaoscontrol.protocol_observation.novelty]
+  - Evidence: `chaoscontrol_explore::protocol_novelty::ProtocolNoveltyIndex` maps each full BLAKE3 novelty ref to a deterministic `MAP_SIZE` slot and retains every full identity, so a slot collision never claims equal state; tests cover determinism, malformed refs, and collision retention.
 
 ## Markers, snapshots, and consumers
 
@@ -34,13 +35,15 @@
   - Evidence: `observation::marker::MarkerBinding` binds a declared marker to an admitted record, boundary, projection, cohort, and snapshot refs; it retains cohort completeness and exposes `complete_protocol_state()` without upgrading it.
 - [x] [parallel] Add positive marker replay and negative stale-marker, wrong-cohort, missing-snapshot, incomplete-cohort, and identity-drift fixtures. r[chaoscontrol.protocol_observation.snapshot_binding] r[chaoscontrol.protocol_observation.validation]
   - Evidence: `marker_binding_binds_complete_cohort_state_without_widening_claims`, `marker_binding_never_completes_an_incomplete_cohort`, `marker_binding_rejects_boundary_projection_snapshot_and_identity_drift`, and `marker_bindings_flow_into_receipts_without_upgrading_completeness` cover the positive and negative matrix.
-- [ ] [serial] Publish the immutable envelope and cohort contract for storage-recovery, projected role-protocol, Molten, and later Campaign adapters. r[chaoscontrol.protocol_observation.oracle_boundary] r[chaoscontrol.protocol_observation.evidence]
+- [x] [serial] Publish the immutable envelope and cohort contract for storage-recovery, projected role-protocol, Molten, and later Campaign adapters. r[chaoscontrol.protocol_observation.oracle_boundary] r[chaoscontrol.protocol_observation.evidence]
+  - Evidence: `docs/protocol-observation-cohorts.md` publishes the contract surface, invariants, adapter recipe, and non-claims, linked from `README.md`.
 
 ## Evidence and closeout
 
 - [x] [serial] Bind profile, producer, participant, schema, record, cohort, completeness, oracle, novelty, marker, snapshot, scheduler, fault, replay, bound, and non-claim refs into receipts. r[chaoscontrol.protocol_observation.evidence]
   - Evidence: `observation::receipt::ProtocolReceipt` binds the admitted facts and rejects identity drift, completeness upgrades, a pass on an incomplete cohort, and a missing required non-claim.
-- [ ] [parallel] Add bounded operator status for participant coverage, sequence gaps, cohort state, oracle result, novelty, marker reachability, and blockers. r[chaoscontrol.protocol_observation.evidence]
+- [x] [parallel] Add bounded operator status for participant coverage, sequence gaps, cohort state, oracle result, novelty, marker reachability, and blockers. r[chaoscontrol.protocol_observation.evidence]
+  - Evidence: `observation::status::protocol_status` returns bounded `CohortStatus` with participant coverage, missing participants, capped sequence gaps, blockers, novelty, oracle verdict, and marker reachability; tests cover complete, missing-participant, and gap cases.
 - [x] [serial] Run focused pure, SDK, VMM, explorer, oracle, replay, evidence, positive, and negative tests. r[chaoscontrol.protocol_observation.validation]
   - Evidence: `cargo test -p chaoscontrol-smr --test protocol-observation` passes 14 tests; the pure crate suite passes. SDK, VMM, and explorer adoption remain tracked below.
 - [x] [serial] Run formatting, Clippy, Octet, Cairn gates, and the smallest relevant KVM or Nix checks. r[chaoscontrol.protocol_observation.validation]

@@ -740,3 +740,48 @@ fn unknown_participants_and_unstable_novelty_selection_are_not_pass() {
     assert_eq!(reselected_cohort.completeness, Completeness::Complete);
     assert_ne!(baseline.novelty_ref, reselected_cohort.novelty_ref);
 }
+
+// r[verify chaoscontrol.protocol_observation.evidence]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn operator_status_reports_coverage_gaps_results_and_markers() {
+    let (profile, _, intake) = fixture();
+    let complete = cohort(&profile, &intake);
+    let oracle = ConsumerOracle::new(&profile, OracleVerdict::Pass);
+    let result = evaluate_oracle(&profile, &complete, &oracle).unwrap();
+    let status =
+        protocol_status(&profile, &complete, &intake.records, Some(&result), None).unwrap();
+    assert_eq!(status.completeness, Completeness::Complete);
+    assert_eq!(status.participants_required, 2);
+    assert_eq!(status.participants_present, 2);
+    assert!(status.missing_participants.is_empty());
+    assert!(status.sequence_gaps.is_empty());
+    assert_eq!(status.oracle_verdict, Some(OracleVerdict::Pass));
+    assert_eq!(status.marker_reachable, None);
+    assert_eq!(status.novelty_ref, complete.novelty_ref);
+
+    let (profile, _, mut intake) = fixture();
+    intake.records.remove(0);
+    let incomplete = cohort(&profile, &intake);
+    let status = protocol_status(&profile, &incomplete, &intake.records, None, None).unwrap();
+    assert_eq!(status.completeness, Completeness::Incomplete);
+    assert_eq!(status.participants_present, 1);
+    assert_eq!(status.missing_participants.len(), 1);
+    assert!(!status.blockers.is_empty());
+}
+
+// r[verify chaoscontrol.protocol_observation.cohort]
+// r[verify chaoscontrol.protocol_observation.validation]
+#[test]
+fn operator_status_lists_sequence_gaps_as_blockers() {
+    let (profile, _, mut intake) = fixture();
+    let mut gap = intake.records[0].clone();
+    gap.source_sequence = 3;
+    intake.records.push(gap);
+    let result = cohort(&profile, &intake);
+    assert_eq!(result.completeness, Completeness::Incomplete);
+    let status = protocol_status(&profile, &result, &intake.records, None, None).unwrap();
+    assert_eq!(status.sequence_gaps.len(), 1);
+    assert!(status.sequence_gaps[0].ends_with("#2"));
+    assert!(!status.gaps_truncated);
+}

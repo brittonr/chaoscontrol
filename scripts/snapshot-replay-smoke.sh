@@ -21,6 +21,9 @@ set -euo pipefail
 : "${DIAGNOSTIC_TAIL_LINES:=300}"
 
 readonly TIMEOUT_EXIT_STATUS=124
+# SIGKILL after the grace period: a wedged vCPU can ignore SIGTERM.
+readonly KILLED_EXIT_STATUS=137
+readonly TIMEOUT_GRACE_SECONDS=10
 readonly BUG_FOUND_EXIT_STATUS=1
 readonly MINIMUM_REPLAY_PARENT_DEPTH=1
 readonly MAXIMUM_EXPORTED_BUGS=1
@@ -43,7 +46,7 @@ show_run_diagnostics() {
 }
 
 set +e
-timeout "$RUN_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" run \
+timeout -k "$TIMEOUT_GRACE_SECONDS" "$RUN_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" run \
   --kernel "$KERNEL" \
   --initrd "$INITRD" \
   --output "$run_dir" \
@@ -60,7 +63,7 @@ timeout "$RUN_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" run \
 run_rc=$?
 set -e
 
-if [[ "$run_rc" != 0 && "$run_rc" != "$BUG_FOUND_EXIT_STATUS" && "$run_rc" != "$TIMEOUT_EXIT_STATUS" ]]; then
+if [[ "$run_rc" != 0 && "$run_rc" != "$BUG_FOUND_EXIT_STATUS" && "$run_rc" != "$TIMEOUT_EXIT_STATUS" && "$run_rc" != "$KILLED_EXIT_STATUS" ]]; then
   echo "snapshot replay smoke: run failed with rc=$run_rc" >&2
   show_run_diagnostics
   exit "$run_rc"
@@ -97,7 +100,7 @@ fi
 bug_path="${bug_files[0]}"
 
 set +e
-timeout "$REPRO_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" reproduce \
+timeout -k "$TIMEOUT_GRACE_SECONDS" "$REPRO_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" reproduce \
   --kernel "$KERNEL" \
   --initrd "$INITRD" \
   --bug "$bug_path" \

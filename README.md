@@ -138,6 +138,8 @@ Startup fails if the PMU, overflow delivery, or exact single-step capability is 
 PMU overflow signals target the execution thread with `F_SETOWN_EX` and `F_OWNER_TID`.
 
 `SIGALRM`, unrelated `VcpuExit::Intr`, and unrelated `EINTR` have no scheduling authority.
+A runnable single-vCPU guest is retried across consecutive host watchdog intervals, so ordinary compute without a VM exit does not fail. Only an uninterrupted run of host timer interrupts with no guest exit at all is an operational timeout (about five seconds at the default 100 ms interval).
+
 A watchdog timeout is an operational result. It does not prove a guest crash, deadlock, or deterministic replay result.
 
 `VmConfig::smp_schedule_journal_limit` sets the in-memory evidence bound. The value cannot exceed `DEFAULT_SCHEDULE_JOURNAL_LIMIT`.
@@ -807,6 +809,8 @@ checking and proof validation with distinct valid/invalid/unknown reports; see
 [semantic history v2](docs/semantic-history-v2.md). Source-bound protocol-cohort
 schemas and real external multi-node guest intake hooks live in
 `chaoscontrol_smr::observation`; see [SMR chain workload](docs/smr-chain-workload.md).
+Marker binding, the consumer oracle boundary, receipts, and operator status are
+published as the [protocol observation cohort contract](docs/protocol-observation-cohorts.md).
 These provider contracts are not fabricated guest or replay execution receipts.
 
 ## Architecture

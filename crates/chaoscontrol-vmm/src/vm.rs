@@ -200,6 +200,16 @@ const BSP_VCPU_INDEX: usize = 0;
 /// Single-vCPU operational watchdog interval in microseconds.
 const SINGLE_VCPU_WATCHDOG_MICROSECONDS: i64 = 100_000;
 
+/// Consecutive host-watchdog interrupts without an intervening KVM exit that
+/// still count as a runnable guest making progress.
+///
+/// A deterministic single-vCPU guest may compute for a long stretch without a
+/// VM exit, and a loaded host can stretch that wall-clock window further. Only
+/// an uninterrupted run of host timer interrupts with no guest exit at all is
+/// treated as an operational timeout: 50 intervals is about five seconds at the
+/// default 100 ms interval.
+const MAX_RUNNABLE_WATCHDOG_RETRIES: u32 = 50;
+
 /// KVM TSS address — must be set before create_irq_chip.
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
 const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
@@ -796,6 +806,8 @@ pub struct DeterministicVm {
     singlestep_active: bool,
     /// Operational host watchdog interval for one vCPU run.
     watchdog_microseconds: i64,
+    /// Consecutive host-watchdog interrupts with no intervening guest exit.
+    host_watchdog_retries: u32,
 
     // Execution statistics
     exit_count: u64,
@@ -1360,6 +1372,7 @@ impl DeterministicVm {
                 .and_then(|value| value.parse::<i64>().ok())
                 .filter(|value| *value > 0)
                 .unwrap_or(SINGLE_VCPU_WATCHDOG_MICROSECONDS),
+            host_watchdog_retries: 0,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
@@ -4173,6 +4186,9 @@ impl DeterministicVm {
                 | Ok(VcpuExit::Debug(_))
         );
         let exact_progress_boundary_missing = !interrupted && !guest_progress_observed;
+        if guest_progress_observed {
+            self.host_watchdog_retries = 0;
+        }
         if num_vcpus > 1 && exact_progress_boundary_missing {
             return Err(self.poison_after_possible_guest_progress(
                 reservation.take(),
@@ -4586,9 +4602,20 @@ impl DeterministicVm {
                         pending_explicit_wake = wake_vcpu;
                         Ok(halted)
                     } else {
-                        Err(VmError::HostWatchdogTimeout {
-                            vcpu: executed_vcpu,
-                        })
+                        // A runnable guest may compute without any KVM exit,
+                        // and host scheduling can stretch that window. Retry
+                        // the run; only an uninterrupted series of host timer
+                        // interrupts with no guest exit is an operational
+                        // timeout. Retries change no guest-visible state, exit
+                        // count, or virtual time.
+                        self.host_watchdog_retries = self.host_watchdog_retries.saturating_add(1);
+                        if self.host_watchdog_retries > MAX_RUNNABLE_WATCHDOG_RETRIES {
+                            Err(VmError::HostWatchdogTimeout {
+                                vcpu: executed_vcpu,
+                            })
+                        } else {
+                            Ok(false)
+                        }
                     }
                 } else {
                     // PMU overflow can produce an admitted deterministic

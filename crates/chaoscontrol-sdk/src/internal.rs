@@ -224,7 +224,10 @@ fn emit_sdk_info() {
             local_emit_value(&serde_json::json!({ "antithesis_sdk": details }));
         }
         TransportMode::VmVmcall { .. } | TransportMode::VmPortIo { .. } => {
-            crate::lifecycle::send_event_uninitialized("antithesis_sdk", &details);
+            crate::lifecycle::send_event_uninitialized(
+                chaoscontrol_protocol::SDK_METADATA_EVENT,
+                &details,
+            );
         }
         TransportMode::Noop => {}
     }

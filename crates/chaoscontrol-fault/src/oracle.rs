@@ -856,6 +856,12 @@ impl PropertyOracle {
         name: &str,
         details: serde_json::Value,
     ) -> Result<(), CatalogConflict> {
+        // SDK build metadata is not run-scoped. First-use initialization can
+        // emit it before any run begins; that must not poison assertion
+        // identity or block later catalog admission.
+        if name == chaoscontrol_protocol::SDK_METADATA_EVENT {
+            return Ok(());
+        }
         if name == chaoscontrol_protocol::MUST_HIT_METADATA_EVENT {
             if let Some(fingerprint) = details
                 .get("fingerprint")

@@ -467,3 +467,25 @@ fn strict_run_counter_overflow_has_no_partial_update() {
     );
     assert_eq!(records[&fingerprint].runs_hit, u32::MAX);
 }
+
+// r[verify chaoscontrol.assertion_reports.must_hit_verdict]
+#[test]
+fn sdk_metadata_before_a_run_does_not_poison_identity() {
+    let mut oracle = PropertyOracle::new();
+    oracle
+        .record_event(
+            chaoscontrol_protocol::SDK_METADATA_EVENT,
+            json!({"sdk": "chaoscontrol", "version": "1.0.0"}),
+        )
+        .expect("run-independent metadata is admitted");
+    let report = oracle.report();
+    assert!(report.identity_conflicts.is_empty());
+    assert_eq!(
+        report.catalog_status,
+        chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+    );
+    assert!(oracle
+        .record_event("chaoscontrol_branch_marker", json!({}))
+        .is_err());
+    assert!(!oracle.report().identity_conflicts.is_empty());
+}

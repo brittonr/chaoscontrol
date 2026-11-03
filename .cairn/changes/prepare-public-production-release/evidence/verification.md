@@ -368,28 +368,37 @@ starting work and was stopped. A second queue daemon had lost its configuration
 and state. No rail result is inferred from this condition; the retry semantics and
 harness kill remain covered by unit tests only.
 
-### Current-initrd catalog conflict (open defect)
+### Current-initrd catalog conflict (fixed)
 
 The official `snapshot-replay-smoke` check with the current `initrd-raft`
-derivation gets past the watchdog and then fails snapshot validation:
+derivation initially failed snapshot validation:
 
 ```text
 invalid VM 0 assertion snapshot: Status; catalog=FatalConflict accepted_catalog=false
 legacy=0 structured=0 conflicts=64
 conflict_samples=[NoActiveRun, AlreadyBegun, CatalogIncomplete, CatalogIncomplete]
-events=0 total_runs=0 active_run=false run_setup=false engine_setup=false
 ```
 
-The engine recorded a bound event before any run was active, which poisoned the
-catalog status; the following catalog admission then reported `AlreadyBegun` and
-`CatalogIncomplete` for the remaining descriptors. The exploration had already
-advanced past tick 40920 before the capture validation surfaced it, so assertions
-during that run were not admitted. The same command with a retained older raft
-initrd completed in 387 seconds with a valid `snapshot_backed_reproduced` verdict,
-so this is a distinct guest-catalog/run-ordering defect rather than the watchdog
-timeout. The diagnostic now retains up to four conflict samples to make the class
-visible. The harness run bound was raised from 360 to 600 seconds because the
-passing manual run needed 387 seconds in total on this host.
+The cause was the SDK's run-independent metadata event (`antithesis_sdk`)
+arriving during first-use initialization before any run was active. The oracle
+treated it as a bound event, marked `NoActiveRun` as a fatal identity conflict,
+and then rejected catalog admission as `AlreadyBegun`/`CatalogIncomplete`.
+`PropertyOracle::record_event` now admits `SDK_METADATA_EVENT` independent of run
+scope, and `sdk_metadata_before_a_run_does_not_poison_identity` covers the
+positive and negative behavior; a later unknown event without a run still marks a
+conflict.
+
+With that fix the repository smoke script passed with the current initrd in 355
+seconds and validated a `snapshot_backed_reproduced` verdict at parent depth 1.
+The official check then passed with its out-link:
+
+```text
+snapshot-replay-smoke-check> replay verdict artifact ok: run=replay-1793679699376 bug=1 assertion=3463273124 depth=1
+snapshot-replay-smoke-check> snapshot replay smoke ok: bug_1.json
+```
+
+The multi-hypervisor check requires a different kernel variant and is rebuilding
+it; its result is recorded when available.
 
 ### Watchdog timing probe (diagnostic only)
 

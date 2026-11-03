@@ -47,6 +47,9 @@ pub mod transport;
 /// Structured lifecycle event carrying per-descriptor must-hit metadata.
 pub const MUST_HIT_METADATA_EVENT: &str = "chaoscontrol_must_hit";
 
+/// Run-independent SDK metadata event emitted during first-use initialization.
+pub const SDK_METADATA_EVENT: &str = "antithesis_sdk";
+
 pub use memory::HypercallPage;
 pub use memory::{ALWAYS_OR_UNREACHABLE_FLAG_MASK, CONDITION_FLAG_MASK};
 pub use message::encode_payload;

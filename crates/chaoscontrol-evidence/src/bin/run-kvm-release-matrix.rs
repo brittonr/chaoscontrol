@@ -515,9 +515,27 @@ fn expand_argument(argument: &str, root: &Path, row_output: &Path) -> String {
     expanded
 }
 
+/// Read-only roots outside the row output whose symlink targets may be retained.
+///
+/// A row legitimately records `nix build --out-link` results, which resolve into
+/// the immutable store. Arbitrary filesystem escapes remain rejected.
+const ALLOWED_ARTIFACT_EXTERNAL_ROOTS: &[&str] = &["/nix/store"];
+
 fn collect_artifacts(
     row_output: &Path,
     row: &chaoscontrol_evidence::kvm_release::MatrixRow,
+) -> (Vec<ArtifactIdentity>, Option<String>) {
+    let allowed: Vec<std::path::PathBuf> = ALLOWED_ARTIFACT_EXTERNAL_ROOTS
+        .iter()
+        .map(std::path::PathBuf::from)
+        .collect();
+    collect_artifacts_with_roots(row_output, row, &allowed)
+}
+
+fn collect_artifacts_with_roots(
+    row_output: &Path,
+    row: &chaoscontrol_evidence::kvm_release::MatrixRow,
+    allowed_external: &[std::path::PathBuf],
 ) -> (Vec<ArtifactIdentity>, Option<String>) {
     let mut collector = ArtifactCollector {
         artifacts: Vec::new(),
@@ -553,6 +571,7 @@ fn collect_artifacts(
         row.limits.max_artifacts,
         row.limits.max_artifact_bytes,
         &mut collector,
+        allowed_external,
     );
     collector.artifacts.sort();
     (collector.artifacts, result.err())
@@ -582,6 +601,7 @@ fn collect_node(
     max_artifacts: usize,
     max_artifact_bytes: u64,
     collector: &mut ArtifactCollector,
+    allowed_external: &[std::path::PathBuf],
 ) -> Result<(), String> {
     if depth > MAX_ARTIFACT_SCAN_DEPTH {
         return Err(format!(
@@ -602,7 +622,11 @@ fn collect_node(
                 actual_path.display()
             )
         })?;
-        if !target.starts_with(root) {
+        if !target.starts_with(root)
+            && !allowed_external
+                .iter()
+                .any(|allowed| target.starts_with(allowed))
+        {
             return Err(format!(
                 "artifact symlink escapes row output: {}",
                 actual_path.display()
@@ -616,6 +640,7 @@ fn collect_node(
             max_artifacts,
             max_artifact_bytes,
             collector,
+            allowed_external,
         );
     }
     if link_metadata.is_dir() {
@@ -648,6 +673,7 @@ fn collect_node(
                 max_artifacts,
                 max_artifact_bytes,
                 collector,
+                allowed_external,
             )?;
         }
         return Ok(());
@@ -856,6 +882,36 @@ mod publication_tests {
         let (artifacts, error) = collect_artifacts(&row_output, &artifact_row());
         assert!(artifacts.is_empty());
         assert!(error.unwrap().contains("artifact root is a symlink"));
+    }
+
+    #[test]
+    fn artifact_scan_allows_store_out_links_but_rejects_other_escapes() {
+        let sandbox = tempfile::tempdir().unwrap();
+        let store = sandbox.path().join("store");
+        let outside = sandbox.path().join("outside");
+        fs::create_dir(&store).unwrap();
+        fs::create_dir(&outside).unwrap();
+        fs::write(store.join("built"), b"store artifact").unwrap();
+        fs::write(outside.join("private"), b"not retained").unwrap();
+
+        let row_output = sandbox.path().join("row");
+        fs::create_dir(&row_output).unwrap();
+        std::os::unix::fs::symlink(store.join("built"), row_output.join("built")).unwrap();
+        let allowed = vec![store.clone()];
+        let (artifacts, error) =
+            collect_artifacts_with_roots(&row_output, &artifact_row(), &allowed);
+        assert!(error.is_none(), "{error:?}");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].path, "built");
+        assert_eq!(artifacts[0].bytes, b"store artifact".len() as u64);
+
+        std::os::unix::fs::symlink(outside.join("private"), row_output.join("private")).unwrap();
+        let (restricted, error) =
+            collect_artifacts_with_roots(&row_output, &artifact_row(), &allowed);
+        assert!(restricted.is_empty() || error.is_some());
+        assert!(error
+            .unwrap()
+            .contains("artifact symlink escapes row output"));
     }
 
     #[test]

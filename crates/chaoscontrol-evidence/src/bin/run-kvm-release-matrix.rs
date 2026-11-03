@@ -563,16 +563,13 @@ fn collect_artifacts_with_roots(
             )
         }
     };
-    let result = collect_node(
-        &root,
-        row_output,
-        Path::new("."),
-        0,
-        row.limits.max_artifacts,
-        row.limits.max_artifact_bytes,
-        &mut collector,
+    let walk = ArtifactWalk {
+        root: &root,
+        max_artifacts: row.limits.max_artifacts,
+        max_artifact_bytes: row.limits.max_artifact_bytes,
         allowed_external,
-    );
+    };
+    let result = collect_node(&walk, row_output, Path::new("."), 0, &mut collector);
     collector.artifacts.sort();
     (collector.artifacts, result.err())
 }
@@ -593,15 +590,29 @@ fn list_artifact_entries(path: &Path) -> Result<Vec<std::fs::DirEntry>, String> 
     Ok(entries)
 }
 
+struct ArtifactWalk<'a> {
+    root: &'a Path,
+    max_artifacts: usize,
+    max_artifact_bytes: u64,
+    allowed_external: &'a [std::path::PathBuf],
+}
+
+impl ArtifactWalk<'_> {
+    fn admits(&self, path: &Path) -> bool {
+        path.starts_with(self.root)
+            || self
+                .allowed_external
+                .iter()
+                .any(|allowed| path.starts_with(allowed))
+    }
+}
+
 fn collect_node(
-    root: &Path,
+    walk: &ArtifactWalk<'_>,
     actual_path: &Path,
     logical_path: &Path,
     depth: usize,
-    max_artifacts: usize,
-    max_artifact_bytes: u64,
     collector: &mut ArtifactCollector,
-    allowed_external: &[std::path::PathBuf],
 ) -> Result<(), String> {
     if depth > MAX_ARTIFACT_SCAN_DEPTH {
         return Err(format!(
@@ -622,26 +633,13 @@ fn collect_node(
                 actual_path.display()
             )
         })?;
-        if !target.starts_with(root)
-            && !allowed_external
-                .iter()
-                .any(|allowed| target.starts_with(allowed))
-        {
+        if !walk.admits(&target) {
             return Err(format!(
                 "artifact symlink escapes row output: {}",
                 actual_path.display()
             ));
         }
-        return collect_node(
-            root,
-            &target,
-            logical_path,
-            depth + 1,
-            max_artifacts,
-            max_artifact_bytes,
-            collector,
-            allowed_external,
-        );
+        return collect_node(walk, &target, logical_path, depth + 1, collector);
     }
     if link_metadata.is_dir() {
         let canonical = fs::canonicalize(actual_path).map_err(|error| {
@@ -650,7 +648,7 @@ fn collect_node(
                 actual_path.display()
             )
         })?;
-        if !canonical.starts_with(root) {
+        if !walk.admits(&canonical) {
             return Err(format!(
                 "artifact directory escapes row output: {}",
                 actual_path.display()
@@ -666,14 +664,11 @@ fn collect_node(
         let entries = list_artifact_entries(actual_path)?;
         for entry in entries {
             collect_node(
-                root,
+                walk,
                 &entry.path(),
                 &logical_path.join(entry.file_name()),
                 depth + 1,
-                max_artifacts,
-                max_artifact_bytes,
                 collector,
-                allowed_external,
             )?;
         }
         return Ok(());
@@ -684,16 +679,20 @@ fn collect_node(
             actual_path.display()
         ));
     }
-    if collector.artifacts.len() >= max_artifacts {
-        return Err(format!("artifact count exceeds bound of {max_artifacts}"));
+    if collector.artifacts.len() >= walk.max_artifacts {
+        return Err(format!(
+            "artifact count exceeds bound of {}",
+            walk.max_artifacts
+        ));
     }
     let next_total = collector
         .total_bytes
         .checked_add(link_metadata.len())
         .ok_or_else(|| "artifact byte count overflowed".to_string())?;
-    if next_total > max_artifact_bytes {
+    if next_total > walk.max_artifact_bytes {
         return Err(format!(
-            "artifact bytes exceed bound of {max_artifact_bytes}"
+            "artifact bytes exceed bound of {}",
+            walk.max_artifact_bytes
         ));
     }
     collector.total_bytes = next_total;

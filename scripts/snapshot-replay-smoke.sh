@@ -6,7 +6,7 @@ set -euo pipefail
 : "${KERNEL:?KERNEL must point to vmlinux}"
 : "${INITRD:?INITRD must point to the Raft initrd}"
 : "${OUT:=}"
-: "${RUN_TIMEOUT_SECONDS:=360}"
+: "${RUN_TIMEOUT_SECONDS:=600}"
 : "${REPRO_TIMEOUT_SECONDS:=180}"
 : "${VM_COUNT:=3}"
 : "${RUN_ROUNDS:=3}"

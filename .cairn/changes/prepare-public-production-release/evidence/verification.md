@@ -368,6 +368,29 @@ starting work and was stopped. A second queue daemon had lost its configuration
 and state. No rail result is inferred from this condition; the retry semantics and
 harness kill remain covered by unit tests only.
 
+### Current-initrd catalog conflict (open defect)
+
+The official `snapshot-replay-smoke` check with the current `initrd-raft`
+derivation gets past the watchdog and then fails snapshot validation:
+
+```text
+invalid VM 0 assertion snapshot: Status; catalog=FatalConflict accepted_catalog=false
+legacy=0 structured=0 conflicts=64
+conflict_samples=[NoActiveRun, AlreadyBegun, CatalogIncomplete, CatalogIncomplete]
+events=0 total_runs=0 active_run=false run_setup=false engine_setup=false
+```
+
+The engine recorded a bound event before any run was active, which poisoned the
+catalog status; the following catalog admission then reported `AlreadyBegun` and
+`CatalogIncomplete` for the remaining descriptors. The exploration had already
+advanced past tick 40920 before the capture validation surfaced it, so assertions
+during that run were not admitted. The same command with a retained older raft
+initrd completed in 387 seconds with a valid `snapshot_backed_reproduced` verdict,
+so this is a distinct guest-catalog/run-ordering defect rather than the watchdog
+timeout. The diagnostic now retains up to four conflict samples to make the class
+visible. The harness run bound was raised from 360 to 600 seconds because the
+passing manual run needed 387 seconds in total on this host.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

@@ -268,13 +268,21 @@ pub fn validate_engine_snapshot(
 
 pub fn engine_snapshot_validation_diagnostic(snapshot: &EngineSnapshot) -> String {
     let run = snapshot.oracle.current_run.as_ref();
+    let samples: Vec<&str> = snapshot
+        .oracle
+        .identity_conflicts
+        .iter()
+        .take(4)
+        .map(String::as_str)
+        .collect();
     format!(
-        "catalog={:?} accepted_catalog={} legacy={} structured={} conflicts={} events={} total_runs={} active_run={} run_setup={} engine_setup={}",
+        "catalog={:?} accepted_catalog={} legacy={} structured={} conflicts={} conflict_samples={:?} events={} total_runs={} active_run={} run_setup={} engine_setup={}",
         snapshot.oracle.catalog_status,
         snapshot.oracle.accepted_catalog.is_some(),
         snapshot.oracle.assertions.len(),
         snapshot.oracle.structured_assertions.len(),
         snapshot.oracle.identity_conflicts.len(),
+        samples,
         snapshot.oracle.events.len(),
         snapshot.oracle.total_runs,
         run.is_some(),

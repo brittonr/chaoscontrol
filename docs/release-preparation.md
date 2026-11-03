@@ -160,10 +160,14 @@ intervals; only an uninterrupted series with no KVM exit (about five seconds) is
 an operational timeout, and the smoke harness force-kills a blocked VMM after its
 bound. With that change, the snapshot smoke completed with exit zero in 387
 seconds and validated a `snapshot_backed_reproduced` verdict at parent depth 1,
-using a GC-rooted cached kernel and a retained repository-built raft initrd. The
-official flake check and the multi-hypervisor rail still need a run with the
-current guest artifacts; rebuilding them stayed queued behind unrelated daemon
-work on this host.
+using a GC-rooted cached kernel and a retained repository-built raft initrd.
+
+The official check with the current raft initrd now gets past the watchdog but
+fails snapshot validation with a fatal assertion-catalog conflict
+(`NoActiveRun`, `AlreadyBegun`, then `CatalogIncomplete` samples). That is a
+separate guest-catalog/run-ordering defect: a bound event reaches the engine
+before any run is active and poisons catalog admission. It must be fixed before
+the KVM rails can pass; the retained-initrd run above is watchdog evidence only.
 
 These are operational watchdog/timeout outcomes in the KVM rails, not reproduced
 guest findings. They are retained as failures; nothing is relabeled as passing. A bounded timing probe

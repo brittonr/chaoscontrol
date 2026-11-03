@@ -127,6 +127,15 @@ format. Retain raw logs locally. Do not silently substitute a rebuilt initrd,
 increase watchdog bounds, relabel an operational timeout as a guest finding or
 promote `onix_release_ready=false` into a successful authenticated-release claim.
 
+The seven-row release matrix is at six of seven rows on clean `f03aa793`:
+`build-release-binaries`, `build-raft-guest`, `deterministic-smp`,
+`serialized-snapshot-replay`, `virtio-malformed-input`, and `admitted-drift`
+pass. `fresh-workload-replay` fails with
+`fault outcome transition failed: ApplicablePlanMismatch`, which reproduces on
+`3db8a19c` and is therefore independent of the watchdog, metadata, and
+artifact-policy changes. That fault-outcome restore defect must be resolved before
+a release-eligible matrix receipt exists.
+
 ## Preparation evidence and limits
 
 Baseline source: `1caeda2334f1d93e53ce22afbfa012b05458f606`. Preparation commits

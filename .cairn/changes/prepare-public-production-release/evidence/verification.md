@@ -411,6 +411,32 @@ local-multi-hypervisor-kvm-smoke-check> local multi-hypervisor KVM smoke artifac
 Both KVM rails are green on the current revision. The seven-row release matrix
 has not yet been run on this revision.
 
+### Seven-row release matrix (partial)
+
+`nix run .#kvm-release-matrix` ran on clean `f03aa793` with local builders. Five
+rows passed before the artifact-policy repair; after allowing read-only
+`/nix/store` out-link targets, both build rows retained their artifacts and
+passed, so six of seven rows pass:
+
+- passed: `build-release-binaries`, `build-raft-guest`, `deterministic-smp`,
+  `serialized-snapshot-replay`, `virtio-malformed-input`, `admitted-drift`
+- failed: `fresh-workload-replay`
+
+The fresh row runs `raft-accepted-verdict-dogfood --max-attempts 1 --start-seed 0`
+with probe `fail_after=1` and fails during exploration:
+
+```text
+Exploration failed: Vm { source: Snapshot { message: "fault outcome transition failed: ApplicablePlanMismatch" } }
+```
+
+The same command reproduces on `3db8a19c` with the retained raft initrd, so the
+mismatch predates the watchdog retry, the metadata admission fix, and the
+artifact-policy change. It is an unresolved fault-outcome restore defect: a
+captured "applicable" transition does not match the selected attempt when the
+orchestration snapshot is restored. The receipt also reports a source-revision
+mismatch because the invocation passed an incorrect expected SHA; that is an
+operator-input error separate from the row failures.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

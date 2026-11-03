@@ -858,8 +858,9 @@ impl PropertyOracle {
     ) -> Result<(), CatalogConflict> {
         // SDK build metadata is not run-scoped. First-use initialization can
         // emit it before any run begins; that must not poison assertion
-        // identity or block later catalog admission.
-        if name == chaoscontrol_protocol::SDK_METADATA_EVENT {
+        // identity or block later catalog admission. Inside a run it keeps its
+        // existing recorded-event behavior.
+        if name == chaoscontrol_protocol::SDK_METADATA_EVENT && self.current_run.is_none() {
             return Ok(());
         }
         if name == chaoscontrol_protocol::MUST_HIT_METADATA_EVENT {

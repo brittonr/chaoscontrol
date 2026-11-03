@@ -397,8 +397,19 @@ snapshot-replay-smoke-check> replay verdict artifact ok: run=replay-179367969937
 snapshot-replay-smoke-check> snapshot replay smoke ok: bug_1.json
 ```
 
-The multi-hypervisor check requires a different kernel variant and is rebuilding
-it; its result is recorded when available.
+The multi-hypervisor check then passed with its own kernel variant and out-link:
+
+```text
+local-multi-hypervisor-kvm-smoke-check> wrote .../1/campaign-receipt.json
+  (replay-readiness-local-multi-hypervisor-campaign status=recorded
+   campaign=local-kvm-smoke-0001 hypervisors=2 runs=2 passed=2
+   restart_persisted=true workloads=raft,rust-workload
+   fault_classes=block,network,scheduler,timer scope=bounded-local-multi-hypervisor)
+local-multi-hypervisor-kvm-smoke-check> local multi-hypervisor KVM smoke artifacts: .../1
+```
+
+Both KVM rails are green on the current revision. The seven-row release matrix
+has not yet been run on this revision.
 
 ### Watchdog timing probe (diagnostic only)
 

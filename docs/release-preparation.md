@@ -166,11 +166,11 @@ The official check with the current raft initrd initially failed snapshot
 validation with a fatal assertion-catalog conflict (`NoActiveRun`, `AlreadyBegun`,
 then `CatalogIncomplete`). The run-independent SDK metadata event was arriving
 before any run was active and poisoning catalog admission; that event is now
-admitted outside run scope, with a regression test. The repository smoke then
-passed with the current initrd in 355 seconds, and the official
-`snapshot-replay-smoke` check passes, validating a `snapshot_backed_reproduced`
-verdict at parent depth 1. The multi-hypervisor rail requires a different kernel
-variant and is still building.
+admitted outside run scope, with a regression test. Both KVM rails now pass on the
+current revision: `snapshot-replay-smoke` validates a
+`snapshot_backed_reproduced` verdict at parent depth 1, and
+`local-multi-hypervisor-kvm-smoke` records `runs=2 passed=2`. The seven-row
+release matrix has not yet been run on this revision.
 
 These are operational watchdog/timeout outcomes in the KVM rails, not reproduced
 guest findings. They are retained as failures; nothing is relabeled as passing. A bounded timing probe

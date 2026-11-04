@@ -445,6 +445,27 @@ stayed queued behind unrelated daemon builds for over 40 minutes without creatin
 its output directory. The six previously passing rows remain the current matrix
 evidence; the fresh row needs a rerun on a quiet host.
 
+On `aa44dcf2`, the three rows whose commands do not write the Nix store were
+rerun directly with the contract commands and passed:
+
+```text
+cargo test -q -p chaoscontrol-vmm --test deterministic_smp_kvm     3 passed
+cargo test -q -p chaoscontrol-vmm --test exact_snapshot_kvm        1 passed
+cargo test -q -p chaoscontrol-vmm --test virtio_kvm_smoke -- --ignored  1 passed
+```
+
+`/dev/kvm` was present and each run opened a real KVM vcpu. This is row-level
+command evidence, not a matrix receipt: the executor (`run-kvm-release-matrix`)
+still cannot complete because `build-release-binaries`, `build-raft-guest`,
+`admitted-drift`, and `fresh-workload-replay` require store writes. At the time of
+this check, every store write stalled in the daemon: `nix eval .#default.outPath`,
+`nix build .#default --dry-run`, and `nix build nixpkgs#hello --no-link` all blocked
+with `waiting for the big garbage collector lock...`, while read-only evaluation
+(`nix eval .#default.name`, `nix eval nixpkgs#hello.name`) returned immediately.
+The store had 91–96 GiB free against `min-free = 100 GiB`, and the client blocked in
+`unix_stream_read_generic` on the daemon socket. Clearing that lock needs the
+operator's root access to the Nix daemon.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

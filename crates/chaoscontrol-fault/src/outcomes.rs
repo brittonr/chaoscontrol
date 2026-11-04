@@ -3293,7 +3293,7 @@ mod tests {
 
     #[test]
     fn flush_error_plan_binds_its_selected_attempt() {
-        // r[verify chaoscontrol.fault_outcomes.validation.positive]
+        // r[verify chaoscontrol.fault_outcomes.validation]
         const DELAY_NS: u64 = 9_535_677;
         let attempt = attempt(Fault::DiskFlushError {
             target: 0,

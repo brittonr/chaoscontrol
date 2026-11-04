@@ -422,20 +422,28 @@ passed, so six of seven rows pass:
   `serialized-snapshot-replay`, `virtio-malformed-input`, `admitted-drift`
 - failed: `fresh-workload-replay`
 
-The fresh row runs `raft-accepted-verdict-dogfood --max-attempts 1 --start-seed 0`
-with probe `fail_after=1` and fails during exploration:
+The fresh row ran `raft-accepted-verdict-dogfood --max-attempts 1 --start-seed 0`
+with probe `fail_after=1` and failed during exploration with
+`fault outcome transition failed: ApplicablePlanMismatch`. Instrumenting the
+transition showed the selected attempt and planned effect agreed on every value
+but had no match arm:
 
 ```text
-Exploration failed: Vm { source: Snapshot { message: "fault outcome transition failed: ApplicablePlanMismatch" } }
+fault=DiskFlushError { target: 0, delay_ns: 9535677 }
+effect=BlockFlushError { target: 0, delay_ns: 9535677 }
 ```
 
-The same command reproduces on `3db8a19c` with the retained raft initrd, so the
-mismatch predates the watchdog retry, the metadata admission fix, and the
-artifact-policy change. It is an unresolved fault-outcome restore defect: a
-captured "applicable" transition does not match the selected attempt when the
-orchestration snapshot is restored. The receipt also reports a source-revision
-mismatch because the invocation passed an incorrect expected SHA; that is an
-operator-input error separate from the row failures.
+`plan_effect_matches_attempt` had no `DiskFlushError`/`BlockFlushError` arm, so any
+randomly selected flush error aborted the run. The arm is now present with a
+positive and negative regression test
+(`flush_error_plan_binds_its_selected_attempt`), and direct exploration with the
+same seed/probe completes and writes a checkpoint instead of failing.
+
+A full matrix rerun on the clean fix revision was not completed: Nix auto-GC
+blocked on another process's big-GC lock, and the subsequent local-builder run
+stayed queued behind unrelated daemon builds for over 40 minutes without creating
+its output directory. The six previously passing rows remain the current matrix
+evidence; the fresh row needs a rerun on a quiet host.
 
 ### Watchdog timing probe (diagnostic only)
 

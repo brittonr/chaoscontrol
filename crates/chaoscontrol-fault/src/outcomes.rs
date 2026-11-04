@@ -2450,6 +2450,16 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
             },
         ) => target(*fault_target) == Some(*planned_target),
         (
+            Fault::DiskFlushError {
+                target: fault_target,
+                delay_ns: fault_delay,
+            },
+            FaultPlanEffect::BlockFlushError {
+                target: planned_target,
+                delay_ns: planned_delay,
+            },
+        ) => target(*fault_target) == Some(*planned_target) && fault_delay == planned_delay,
+        (
             Fault::DiskSlow {
                 target: fault_target,
                 delay_ns: fault_delay,
@@ -3279,6 +3289,45 @@ mod tests {
         ));
         assert_eq!(selected.counters.applied, 0);
         assert_eq!(selected.events.len(), 1);
+    }
+
+    #[test]
+    fn flush_error_plan_binds_its_selected_attempt() {
+        // r[verify chaoscontrol.fault_outcomes.validation.positive]
+        const DELAY_NS: u64 = 9_535_677;
+        let attempt = attempt(Fault::DiskFlushError {
+            target: 0,
+            delay_ns: DELAY_NS,
+        });
+        let selected = select(&FaultOutcomeLedger::default(), &attempt).unwrap();
+        let applied = transition_fault_outcome(
+            &selected,
+            None,
+            attempt.id,
+            FaultStageKind::Applicable {
+                effect: FaultPlanEffect::BlockFlushError {
+                    target: 0,
+                    delay_ns: DELAY_NS,
+                },
+            },
+        )
+        .expect("flush effect matches its selected attempt");
+        assert_eq!(
+            applied.attempts.get(&attempt.id).unwrap().stage,
+            FaultAuthoritativeStage::Applicable
+        );
+        let mismatch = transition_fault_outcome(
+            &selected,
+            None,
+            attempt.id,
+            FaultStageKind::Applicable {
+                effect: FaultPlanEffect::BlockFlushError {
+                    target: 0,
+                    delay_ns: DELAY_NS + 1,
+                },
+            },
+        );
+        assert_eq!(mismatch, Err(FaultTransitionError::ApplicablePlanMismatch));
     }
 
     #[test]

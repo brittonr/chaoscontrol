@@ -130,11 +130,19 @@ promote `onix_release_ready=false` into a successful authenticated-release claim
 The seven-row release matrix is at six of seven rows on clean `f03aa793`:
 `build-release-binaries`, `build-raft-guest`, `deterministic-smp`,
 `serialized-snapshot-replay`, `virtio-malformed-input`, and `admitted-drift`
-pass. `fresh-workload-replay` fails with
-`fault outcome transition failed: ApplicablePlanMismatch`, which reproduces on
-`3db8a19c` and is therefore independent of the watchdog, metadata, and
-artifact-policy changes. That fault-outcome restore defect must be resolved before
-a release-eligible matrix receipt exists.
+pass. `fresh-workload-replay` failed with
+`fault outcome transition failed: ApplicablePlanMismatch`. The transition
+recorded `fault=DiskFlushError` and `effect=BlockFlushError` with equal targets and
+delays, and `plan_effect_matches_attempt` had no match arm pairing them, so any
+selected flush fault aborted exploration. The arm and a binding regression test
+landed in `bdf98b02`; direct exploration with the same seed and probe now writes a
+checkpoint instead of aborting.
+
+A full matrix rerun on a clean revision carrying that fix is still required before
+a release-eligible receipt exists. Two attempts stalled in the host Nix daemon
+(auto-GC waiting on another holder's big-GC lock, then a queued local build with no
+row output for over 40 minutes), so the current matrix evidence remains the six
+passing rows. Run the matrix on a host with uncontended Nix build capacity.
 
 ## Preparation evidence and limits
 

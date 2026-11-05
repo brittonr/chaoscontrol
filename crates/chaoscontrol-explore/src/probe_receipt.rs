@@ -32,6 +32,18 @@ pub struct ProbeReceiptBody {
     pub rounds_run: u64,
     /// Number of register interventions applied to the branch.
     pub intervention_count: u64,
+    /// Bug artifact name, when failure identity is bound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_artifact: Option<String>,
+    /// Recorded bug id, when failure identity is bound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_bug_id: Option<u64>,
+    /// Stored dedup key, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_dedup_key: Option<u64>,
+    /// Recorded failure tick, when failure identity is bound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_tick: Option<u64>,
     // r[impl chaoscontrol.agent_investigation.receipt_diagnostic_links]
     /// Sorted digests of diagnostic receipts linked to this candidate.
     pub diagnostic_receipt_digests: Vec<String>,
@@ -70,6 +82,8 @@ pub enum ProbeReceiptError {
     InvalidSeekOutcome,
     /// A linked diagnostic digest is not a `b3:` BLAKE3 value.
     InvalidDiagnosticDigest,
+    /// The failure artifact name is empty.
+    MissingFailureArtifact,
 }
 
 fn valid_hex_digest(value: &str) -> bool {
@@ -143,6 +157,10 @@ impl ProbeReceipt {
             rounds_run,
             intervention_count,
             diagnostic_receipt_digests: linked,
+            failure_artifact: None,
+            failure_bug_id: None,
+            failure_dedup_key: None,
+            failure_tick: None,
             repeat_runs,
             drift,
             expectation_matched,
@@ -153,6 +171,26 @@ impl ProbeReceipt {
             body,
             receipt_digest,
         })
+    }
+
+    // r[impl chaoscontrol.agent_investigation.receipt_failure_identity]
+    /// Bind the recorded failure identity and recompute the digest.
+    pub fn with_failure(
+        mut self,
+        artifact: &str,
+        bug_id: u64,
+        dedup_key: Option<u64>,
+        tick: u64,
+    ) -> Result<Self, ProbeReceiptError> {
+        if artifact.trim().is_empty() {
+            return Err(ProbeReceiptError::MissingFailureArtifact);
+        }
+        self.body.failure_artifact = Some(artifact.to_string());
+        self.body.failure_bug_id = Some(bug_id);
+        self.body.failure_dedup_key = dedup_key;
+        self.body.failure_tick = Some(tick);
+        self.receipt_digest = body_digest(&self.body)?;
+        Ok(self)
     }
 
     /// Verify the receipt digest against its body.
@@ -211,6 +249,18 @@ mod tests {
         assert_eq!(receipt.body.rounds_run, 3);
         assert_eq!(receipt.body.repeat_runs, 2);
         receipt.verify().unwrap();
+        let bound = receipt
+            .clone()
+            .with_failure("bug_0.json", 7, Some(9), 1181)
+            .unwrap();
+        assert_eq!(bound.body.failure_bug_id, Some(7));
+        assert_eq!(bound.body.failure_dedup_key, Some(9));
+        assert_eq!(bound.body.failure_tick, Some(1181));
+        bound.verify().unwrap();
+        assert_eq!(
+            receipt.clone().with_failure("", 1, None, 1),
+            Err(ProbeReceiptError::MissingFailureArtifact)
+        );
         let json = receipt.to_json().unwrap();
         let decoded: ProbeReceipt = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded, receipt);

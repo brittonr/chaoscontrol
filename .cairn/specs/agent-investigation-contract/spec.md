@@ -792,3 +792,22 @@ not prove the candidate fix or replay fidelity.
 - GIVEN a file that is not a valid diagnostic receipt
 - WHEN the candidate receipt is requested
 - THEN the command fails without writing a receipt
+
+### Requirement: Candidate receipts bind the original failure identity
+
+r[chaoscontrol.agent_investigation.receipt_failure_identity]
+
+A candidate receipt MUST optionally bind the recorded bug artifact, bug id, stored
+dedup key, and failure tick, recomputing its digest after binding. An empty artifact
+MUST be rejected. These facts identify the original failure the candidate was tested
+against; they do not prove the failure is fixed.
+
+#### Scenario: Failure identity bound
+- GIVEN a probe of a recorded failure
+- WHEN the receipt is written
+- THEN it names the artifact, bug id, dedup key, and failure tick
+
+#### Scenario: Empty artifact rejected
+- GIVEN an empty artifact name
+- WHEN failure identity is bound
+- THEN the typed rejection is returned

@@ -1507,6 +1507,18 @@ fn cmd_restore_probe(
                 std::process::exit(1);
             }
         };
+        let receipt = match receipt.with_failure(
+            record["artifact"].as_str().unwrap_or_default(),
+            record["bug_id"].as_u64().unwrap_or_default(),
+            record["dedup_key"].as_u64(),
+            record["simulation_tick"].as_u64().unwrap_or_default(),
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                eprintln!("Error: {error:?}");
+                std::process::exit(1);
+            }
+        };
         if let Err(error) = receipt.verify() {
             eprintln!("Error: {error:?}");
             std::process::exit(1);
@@ -1865,6 +1877,8 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         "checkpoint_index": loaded.checkpoint_index,
         "artifact": loaded.artifact,
         "bug_id": loaded.bug_id,
+        "assertion_id": loaded.assertion_id,
+        "dedup_key": loaded.dedup_key,
         "snapshot_digest": loaded.snapshot_digest,
         "simulation_tick": loaded.tick,
         "replay_parent_depth": loaded.replay_parent_depth,

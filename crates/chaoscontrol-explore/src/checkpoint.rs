@@ -2767,6 +2767,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             },
             RoundHistory {
                 round: 2,
@@ -2785,6 +2786,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             },
         ];
 
@@ -2861,6 +2863,7 @@ mod tests {
         let recorded = RoundHistory {
             host_watchdog_timeouts: 3,
             host_watchdog_discarded_branches: 1,
+            branch_digests: Vec::new(),
             ..history
         };
         let reparsed: RoundHistory =

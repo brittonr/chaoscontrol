@@ -1202,6 +1202,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             },
             RoundHistory {
                 round: 2,
@@ -1220,6 +1221,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             },
             RoundHistory {
                 round: 3,
@@ -1238,6 +1240,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             },
         ];
 
@@ -1320,6 +1323,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             })
             .collect();
 
@@ -1404,6 +1408,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: firings,
                 host_watchdog_discarded_branches: discards,
+                branch_digests: Vec::new(),
             }],
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,

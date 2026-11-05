@@ -792,6 +792,7 @@ impl Explorer {
                 wall_clock_seconds: round_elapsed,
                 host_watchdog_timeouts: round_report.watchdog.watchdog_firings,
                 host_watchdog_discarded_branches: round_report.watchdog.discarded_branches,
+                branch_digests: round_report.branch_digests.clone(),
             };
             self.round_history.push(history_entry.clone());
             self.emit_metrics_line(&MetricsLine::from_history(&history_entry));
@@ -1074,6 +1075,7 @@ impl Explorer {
                 return Ok(RoundRun::Completed(RoundReport {
                     branches_run: 0,
                     failed_branches: 0,
+                    branch_digests: Vec::new(),
                     new_coverage_edges: 0,
                     bugs_found: 0,
                     frontier_size: self.frontier.len(),
@@ -1408,6 +1410,7 @@ impl Explorer {
         let mut failed_branches = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found: usize = 0;
+        let mut branch_digests = Vec::new();
         let mut observation = RoundObservation::default();
 
         for (i, result, schedule) in results {
@@ -1415,6 +1418,7 @@ impl Explorer {
                 failed_branches += 1;
                 continue;
             }
+            branch_digests.push(result.canonical_digest());
             branches_run += 1;
             self.total_branches_run += 1;
             let slot = BranchSlot::Variant(branch_slot_index(i)?);
@@ -1489,6 +1493,7 @@ impl Explorer {
             RoundReport {
                 branches_run,
                 failed_branches,
+                branch_digests,
                 new_coverage_edges,
                 bugs_found,
                 frontier_size: 0,
@@ -1534,6 +1539,7 @@ impl Explorer {
         let mut timings = BranchTimings::default();
         let mut observation = RoundObservation::default();
         let mut watchdog = RoundWatchdogLedger::default();
+        let mut branch_digests = Vec::new();
 
         let (snapshot, base_schedule, parent_depth) = match authorized.selected() {
             Some(entry) => (
@@ -1556,6 +1562,7 @@ impl Explorer {
                 RoundReport {
                     branches_run,
                     failed_branches,
+                    branch_digests,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1571,6 +1578,7 @@ impl Explorer {
                 RoundReport {
                     branches_run,
                     failed_branches,
+                    branch_digests,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1601,6 +1609,7 @@ impl Explorer {
                 .ok_or_else(|| ExploreError::Config {
                     message: "input-tree bug count overflow".to_string(),
                 })?;
+        branch_digests.push(probe_result.canonical_digest());
         if !probe_bugs.is_empty() {
             warn!("Input tree probe found {} bugs!", probe_bugs.len());
         }
@@ -1657,6 +1666,7 @@ impl Explorer {
                 RoundReport {
                     branches_run,
                     failed_branches,
+                    branch_digests,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1685,6 +1695,7 @@ impl Explorer {
                 RoundReport {
                     branches_run,
                     failed_branches,
+                    branch_digests,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1729,6 +1740,7 @@ impl Explorer {
                 failed_branches += 1;
                 continue;
             }
+            branch_digests.push(result.canonical_digest());
             timings.restore_ms += result.timings.restore_ms;
             timings.run_ms += result.timings.run_ms;
             timings.snapshot_ms += result.timings.snapshot_ms;
@@ -1808,6 +1820,7 @@ impl Explorer {
             RoundReport {
                 branches_run,
                 failed_branches,
+                branch_digests,
                 new_coverage_edges,
                 bugs_found,
                 frontier_size: 0,
@@ -3347,12 +3360,38 @@ impl Clone for BranchResult {
     }
 }
 
+impl BranchResult {
+    /// Domain-separated digest over the branch's deterministic result facts.
+    ///
+    /// Coverage bytes, canonical oracle report, per-VM exit counts, total ticks,
+    /// and the halted flag are bound. Wall-clock timings are excluded.
+    pub fn canonical_digest(&self) -> String {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"chaoscontrol.branch_result.v1\0");
+        let coverage = self.coverage.as_slice();
+        hasher.update(&(coverage.len() as u64).to_le_bytes());
+        hasher.update(coverage);
+        let oracle = serde_json::to_vec(&self.oracle_report).unwrap_or_default();
+        hasher.update(&(oracle.len() as u64).to_le_bytes());
+        hasher.update(&oracle);
+        hasher.update(&(self.exit_counts.len() as u64).to_le_bytes());
+        for count in &self.exit_counts {
+            hasher.update(&count.to_le_bytes());
+        }
+        hasher.update(&self.total_ticks.to_le_bytes());
+        hasher.update(&[u8::from(self.halted)]);
+        format!("b3:{}", hasher.finalize().to_hex())
+    }
+}
+
 /// Result of a single exploration round.
 #[derive(Debug)]
 pub struct RoundReport {
     pub branches_run: usize,
     /// Branches that failed operationally and were excluded from totals.
     pub failed_branches: usize,
+    /// Canonical digests of admitted branches in execution order.
+    pub branch_digests: Vec<String>,
     pub new_coverage_edges: usize,
     pub bugs_found: usize,
     pub frontier_size: usize,
@@ -3410,6 +3449,9 @@ pub struct RoundHistory {
     /// A nonzero value means the exploration trajectory depended on host timing.
     #[serde(default)]
     pub host_watchdog_discarded_branches: usize,
+    /// Canonical branch digests in execution order. Empty for old checkpoints.
+    #[serde(default)]
+    pub branch_digests: Vec<String>,
 }
 
 /// Final exploration report.
@@ -4026,6 +4068,21 @@ mod tests {
             .expect("failed event records");
         oracle.end_run();
         oracle.report()
+    }
+
+    #[test]
+    fn branch_digest_binds_result_facts_and_ignores_timings() {
+        let mut first = branch_result(OracleReport::empty());
+        let second = first.clone();
+        assert_eq!(first.canonical_digest(), second.canonical_digest());
+        first.timings.run_ms += 10.0;
+        first.timings.snapshot_ms += 10.0;
+        assert_eq!(first.canonical_digest(), second.canonical_digest());
+        first.total_ticks += 1;
+        assert_ne!(first.canonical_digest(), second.canonical_digest());
+        let mut third = branch_result(OracleReport::empty());
+        third.exit_counts.push(4);
+        assert_ne!(third.canonical_digest(), second.canonical_digest());
     }
 
     fn branch_result(oracle_report: OracleReport) -> BranchResult {

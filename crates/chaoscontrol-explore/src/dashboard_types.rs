@@ -347,6 +347,7 @@ impl DashboardState {
             // Dashboard events do not carry watchdog counts; checkpoints and reports do.
             host_watchdog_timeouts: 0,
             host_watchdog_discarded_branches: 0,
+            branch_digests: Vec::new(),
         });
     }
 
@@ -542,6 +543,7 @@ mod tests {
                 wall_clock_seconds: 0.0,
                 host_watchdog_timeouts: 0,
                 host_watchdog_discarded_branches: 0,
+                branch_digests: Vec::new(),
             }]),
             seen_dedup_keys: None,
             scenario: None,

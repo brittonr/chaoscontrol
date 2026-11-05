@@ -104,6 +104,7 @@ pub mod probe_outcome;
 pub mod probe_receipt;
 pub mod profile;
 pub mod protocol_novelty;
+pub mod repeatability;
 pub mod replay_verdict;
 pub mod report;
 #[cfg(feature = "dashboard")]

@@ -466,6 +466,12 @@ running a VM:
 ```bash
 cargo run --release --bin chaoscontrol-explore -- inspect-bug \
   --checkpoint results/checkpoint.json --dedup-key <u64> --output inspection.json
+
+# Admit a retained checkpoint before using it: structure plus every unique
+# referenced snapshot artifact (digest and depth). Missing/invalid artifacts
+# make the verdict invalid; nothing is repaired. Exits nonzero when invalid.
+cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
+  --checkpoint results/checkpoint.json --output checkpoint-admission.json
 ```
 
 Output directory contains:

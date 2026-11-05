@@ -1468,6 +1468,93 @@ pub fn inspect_bug<P: AsRef<Path>>(
     }
 }
 
+/// One integrity problem found while admitting a retained checkpoint.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CheckpointVerificationIssue {
+    pub checkpoint_index: usize,
+    pub bug_id: u64,
+    pub reason: String,
+}
+
+/// Versioned integrity record for a retained checkpoint. It proves structural
+/// admission and referenced snapshot digests only; it is not a replay verdict.
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckpointVerification {
+    pub schema: &'static str,
+    pub checkpoint_digest: String,
+    pub bugs_total: usize,
+    pub bugs_with_snapshot_ref: usize,
+    pub snapshots_validated: usize,
+    pub issues: Vec<CheckpointVerificationIssue>,
+    pub valid: bool,
+    pub non_claims: Vec<&'static str>,
+}
+
+// r[impl chaoscontrol.agent_investigation.verify_checkpoint]
+pub fn verify_checkpoint<P: AsRef<Path>>(
+    checkpoint_path: P,
+) -> Result<CheckpointVerification, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
+    let bytes = crate::bounded_json::read_checkpoint(checkpoint_path)?;
+    let checkpoint_digest = format!("b3:{}", blake3::hash(bytes.as_bytes()).to_hex());
+    let checkpoint = load_checkpoint(checkpoint_path)?;
+    let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
+    let store = FileSnapshotStore::new(source_dir);
+
+    let mut issues = Vec::new();
+    let mut bugs_with_snapshot_ref = 0;
+    let mut snapshots_validated = 0;
+    // Bugs from the same branch share one snapshot artifact; validate each
+    // unique reference once instead of re-reading the bytes per bug.
+    let mut artifacts: std::collections::HashMap<&str, Result<u32, String>> =
+        std::collections::HashMap::new();
+    for (index, bug) in checkpoint.bugs.iter().enumerate() {
+        let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() else {
+            continue;
+        };
+        bugs_with_snapshot_ref += 1;
+        let stored = artifacts.entry(reference.path.as_str()).or_insert_with(|| {
+            store
+                .get_snapshot_artifact(reference)
+                .map(|artifact| artifact.replay_parent_depth)
+                .map_err(|error| error.to_string())
+        });
+        match stored {
+            Ok(depth) if *depth == bug.replay_parent_depth => {
+                snapshots_validated += 1;
+            }
+            Ok(depth) => issues.push(CheckpointVerificationIssue {
+                checkpoint_index: index,
+                bug_id: bug.bug_id,
+                reason: format!(
+                    "snapshot depth mismatch: artifact {depth} vs bug {}",
+                    bug.replay_parent_depth
+                ),
+            }),
+            Err(error) => issues.push(CheckpointVerificationIssue {
+                checkpoint_index: index,
+                bug_id: bug.bug_id,
+                reason: error.clone(),
+            }),
+        }
+    }
+
+    Ok(CheckpointVerification {
+        schema: "chaoscontrol.checkpoint_verification.v1",
+        checkpoint_digest,
+        bugs_total: checkpoint.bugs.len(),
+        bugs_with_snapshot_ref,
+        snapshots_validated,
+        valid: issues.is_empty(),
+        issues,
+        non_claims: vec![
+            "Admission proves structural validity and referenced snapshot digests only.",
+            "A valid checkpoint is not replay evidence, an accepted verdict, or workload proof.",
+            "Missing or invalid snapshot artifacts fail admission rather than being repaired.",
+        ],
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
     pub bugs_scanned: usize,
@@ -3068,6 +3155,50 @@ mod tests {
             ambiguous,
             CheckpointBugExportError::BugAmbiguous { matches: 2, .. }
         ));
+    }
+
+    #[test]
+    fn verify_checkpoint_admits_structurally_valid_sessions() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(2)]),
+        )
+        .unwrap();
+        let verification = verify_checkpoint(&checkpoint_path).unwrap();
+        assert_eq!(
+            verification.schema,
+            "chaoscontrol.checkpoint_verification.v1"
+        );
+        assert!(verification.valid);
+        assert_eq!(verification.bugs_total, 2);
+        assert_eq!(verification.bugs_with_snapshot_ref, 0);
+        assert_eq!(verification.snapshots_validated, 0);
+        assert!(verification.checkpoint_digest.starts_with("b3:"));
+        assert!(!verification.non_claims.is_empty());
+    }
+
+    #[test]
+    fn verify_checkpoint_reports_missing_snapshot_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut bug = minimal_bug(1);
+        bug.replay_parent_depth = 1;
+        bug.replay_parent_snapshot_ref = Some(ReplayParentSnapshotRef {
+            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            digest: format!("sha256:{}", "0".repeat(64)),
+            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            schema_version: 2,
+            path: format!("snapshots/{}.snapshot.bin", "0".repeat(64)),
+        });
+        save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();
+        let verification = verify_checkpoint(&checkpoint_path).unwrap();
+        assert!(!verification.valid);
+        assert_eq!(verification.bugs_with_snapshot_ref, 1);
+        assert_eq!(verification.snapshots_validated, 0);
+        assert_eq!(verification.issues.len(), 1);
+        assert_eq!(verification.issues[0].bug_id, 1);
     }
 
     #[test]

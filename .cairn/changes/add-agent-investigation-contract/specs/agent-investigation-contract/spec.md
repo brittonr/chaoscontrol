@@ -90,3 +90,25 @@ snapshot bytes, execute a VM, or claim replay evidence.
 - GIVEN no selector, both selectors, or a selector matching zero/two bugs
 - WHEN inspection runs
 - THEN it fails with the corresponding typed outcome and writes nothing
+
+
+### Requirement: Retained checkpoint admission is versioned and fails closed
+
+r[chaoscontrol.agent_investigation.verify_checkpoint]
+
+An admission operation MUST validate checkpoint structure and the referenced
+snapshot artifacts, returning a versioned record with a BLAKE3 checkpoint digest,
+bug counts, validated counts, per-bug issues, a verdict, and explicit non-claims.
+Each unique snapshot reference MUST be validated once; missing artifacts, digest
+mismatches, or depth mismatches MUST make the verdict invalid rather than being
+repaired or ignored. Admission MUST NOT execute a VM or claim replay evidence.
+
+#### Scenario: Admission with a missing artifact
+- GIVEN a checkpoint whose bug references an absent snapshot file
+- WHEN admission runs
+- THEN the verdict is invalid and the issue names the bug and reason
+
+#### Scenario: Shared snapshot reference
+- GIVEN several bugs referencing the same snapshot artifact
+- WHEN admission runs
+- THEN the artifact bytes are validated once and each matching bug counts as validated

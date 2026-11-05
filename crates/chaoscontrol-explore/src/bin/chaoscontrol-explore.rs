@@ -720,6 +720,17 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+
+    /// Validate a retained checkpoint and its referenced snapshot artifacts.
+    VerifyCheckpoint {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 fn main() {
@@ -971,6 +982,9 @@ fn main() {
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
         ),
+        Commands::VerifyCheckpoint { checkpoint, output } => {
+            cmd_verify_checkpoint(checkpoint, output)
+        }
         Commands::Resume {
             corpus,
             kernel,
@@ -1023,6 +1037,49 @@ fn main() {
             memory_mb,
             output,
         ),
+    }
+}
+
+fn cmd_verify_checkpoint(checkpoint: String, output: Option<String>) {
+    let checkpoint_path = Path::new(&checkpoint);
+    if !checkpoint_path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint);
+        std::process::exit(1);
+    }
+    let verification = match chaoscontrol_explore::verify_checkpoint(checkpoint_path) {
+        Ok(verification) => verification,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut json = match serde_json::to_string_pretty(&verification) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, &json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!(
+                "Checkpoint admission: valid={} bugs={} snapshots={}/{} to {}",
+                verification.valid,
+                verification.bugs_total,
+                verification.snapshots_validated,
+                verification.bugs_with_snapshot_ref,
+                path
+            );
+        }
+        None => print!("{json}"),
+    }
+    if !verification.valid {
+        std::process::exit(1);
     }
 }
 

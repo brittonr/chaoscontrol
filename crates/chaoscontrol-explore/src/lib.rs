@@ -117,9 +117,10 @@ pub use campaign::{
 pub use checkpoint::{
     export_checkpoint_bugs, export_checkpoint_bugs_with_filter, inspect_bug, list_bugs_with_filter,
     load_checkpoint, load_serializable_bug, load_serializable_bug_artifact, save_checkpoint,
-    BugInspection, BugListEntry, BugListFilter, BugSelector, CampaignJournalBinding,
-    CheckpointBugExportError, CheckpointBugExportFilter, CheckpointBugExportSummary,
-    CheckpointConfig, CheckpointError, ExplorationCheckpoint, SerializableBug, SerializableFault,
+    verify_checkpoint, BugInspection, BugListEntry, BugListFilter, BugSelector,
+    CampaignJournalBinding, CheckpointBugExportError, CheckpointBugExportFilter,
+    CheckpointBugExportSummary, CheckpointConfig, CheckpointError, CheckpointVerification,
+    CheckpointVerificationIssue, ExplorationCheckpoint, SerializableBug, SerializableFault,
     SerializableSchedule, SerializableScheduledFault,
 };
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};

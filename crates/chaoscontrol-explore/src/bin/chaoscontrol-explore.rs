@@ -794,6 +794,10 @@ enum Commands {
         #[arg(long, default_value_t = 16)]
         memory_length: usize,
 
+        /// Serial output tail bytes per VM (0 disables, max 4096).
+        #[arg(long, default_value_t = 0)]
+        serial_bytes: usize,
+
         /// Target VM for the diagnostic intervention (default 0).
         #[arg(long, default_value_t = 0)]
         vm_index: usize,
@@ -1269,6 +1273,7 @@ fn main() {
             until_tick,
             memory_address,
             memory_length,
+            serial_bytes,
             vm_index,
             vcpu,
             set_register,
@@ -1288,6 +1293,7 @@ fn main() {
                 until_tick,
                 memory_address,
                 memory_length,
+                serial_bytes,
                 vm_index,
                 vcpu,
                 set_register,
@@ -1434,6 +1440,7 @@ struct RestoreProbeOptions {
     until_tick: Option<u64>,
     memory_address: u64,
     memory_length: usize,
+    serial_bytes: usize,
     vm_index: usize,
     vcpu: usize,
     set_register: Option<String>,
@@ -1456,6 +1463,7 @@ fn cmd_restore_probe(
         until_tick,
         memory_address,
         memory_length,
+        serial_bytes,
         vm_index,
         vcpu,
         set_register,
@@ -1477,6 +1485,10 @@ fn cmd_restore_probe(
             std::process::exit(1);
         }
     };
+    if serial_bytes > 4096 {
+        eprintln!("Error: serial tail must be at most 4096 bytes");
+        std::process::exit(1);
+    }
     if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
         eprintln!("Error: {error}");
         std::process::exit(1);
@@ -1514,6 +1526,7 @@ fn cmd_restore_probe(
             until_tick,
             memory_address,
             memory_length,
+            serial_bytes,
             vm_index,
             vcpu,
             parsed_register,
@@ -1675,6 +1688,7 @@ struct ProbeRunRequest<'a> {
     until_tick: Option<u64>,
     memory_address: u64,
     memory_length: usize,
+    serial_bytes: usize,
     vm_index: usize,
     vcpu: usize,
     parsed_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
@@ -1689,6 +1703,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         until_tick,
         memory_address,
         memory_length,
+        serial_bytes,
         vm_index,
         vcpu,
         parsed_register,
@@ -1878,7 +1893,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
     }
     let mut vms = Vec::new();
     for index in 0..controller.num_vms() {
-        let Some(slot) = controller.vm_slot(index) else {
+        let Some(slot) = controller.vm_slot_mut(index) else {
             continue;
         };
         let registers = match slot.vm.read_vcpu_registers(0) {
@@ -1922,9 +1937,24 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
             };
             vcpu_states.push(serde_json::json!({ "index": vcpu_index, "registers": state }));
         }
+        // r[impl chaoscontrol.agent_investigation.restore_serial_tail]
+        let serial_tail = if serial_bytes == 0 {
+            serde_json::Value::Null
+        } else {
+            let output = slot.vm.take_serial_output();
+            let bytes = output.as_bytes();
+            let start = bytes.len().saturating_sub(serial_bytes);
+            serde_json::json!({
+                "bytes": bytes.len(),
+                "requested": serial_bytes,
+                "truncated": bytes.len() > serial_bytes,
+                "tail": String::from_utf8_lossy(&bytes[start..]),
+            })
+        };
         vms.push(serde_json::json!({
             "index": index,
             "status": format!("{:?}", slot.status),
+            "serial": serial_tail,
             "mp_states": slot.vm.vcpu_mp_states(),
             "vcpus": vcpu_states,
             "registers": registers,

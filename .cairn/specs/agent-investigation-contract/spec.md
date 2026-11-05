@@ -871,3 +871,23 @@ receipt.
 - GIVEN a run that exits 0 or 1 without producing a checkpoint
 - WHEN the receipt is built
 - THEN completion is false and the command exits non-zero
+
+### Requirement: Probes can expose a bounded serial tail per VM
+
+r[chaoscontrol.agent_investigation.restore_serial_tail]
+
+A probe MUST accept a serial-tail byte bound from zero to 4096 (zero disables), and
+when enabled MUST report each VM's total serial byte count, the requested bound,
+whether the tail was truncated, and the UTF-8 lossy tail. Draining serial output must
+not alter checkpoint or snapshot artifacts. The tail is bounded observation, not a
+complete log or replay evidence.
+
+#### Scenario: Serial tail reported
+- GIVEN a restored VM with serial output
+- WHEN a 256-byte tail is requested
+- THEN the record reports the byte count, bound, truncation, and tail text
+
+#### Scenario: Bound rejected
+- GIVEN a bound above 4096
+- WHEN the probe starts
+- THEN it fails before loading a snapshot

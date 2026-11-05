@@ -327,3 +327,24 @@ The record MUST state that restore is not execution, replay, or a verdict.
 - GIVEN an invalid or missing parent artifact
 - WHEN the probe runs
 - THEN it fails before reporting any restored state
+
+
+### Requirement: A restored parent can be sought forward by bounded rounds
+
+r[chaoscontrol.agent_investigation.restore_forward_seek]
+
+After restore, the probe MUST accept a bounded round count (capped at 1000), execute
+that many scheduling rounds through the controller, stop early when no VM is
+running, and report each round's tick, running VM count, and fired-fault count plus
+the final tick and state. It MUST surface execution errors and MUST NOT claim a
+replay verdict, workload correctness, or an accepted outcome.
+
+#### Scenario: Bounded forward seek
+- GIVEN a restored parent
+- WHEN the probe runs N rounds
+- THEN the record lists each executed round and the final tick/state
+
+#### Scenario: Early stop
+- GIVEN all VMs stop during the seek
+- WHEN a round reports no running VMs
+- THEN the probe stops and reports the partial round trace

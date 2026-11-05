@@ -758,6 +758,10 @@ enum Commands {
         #[arg(long)]
         dedup_key: Option<u64>,
 
+        /// Bounded scheduling rounds to seek forward after restore (capped at 1000).
+        #[arg(long, default_value = "0")]
+        rounds: u64,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1101,11 +1105,13 @@ fn main() {
             checkpoint,
             index,
             dedup_key,
+            rounds,
             output,
         } => cmd_restore_probe(
             checkpoint,
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
+            rounds,
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
@@ -1195,6 +1201,7 @@ fn cmd_restore_probe(
     checkpoint_path: String,
     output: Option<String>,
     selector: chaoscontrol_explore::BugSelector,
+    rounds: u64,
 ) {
     let path = Path::new(&checkpoint_path);
     if !path.exists() {
@@ -1240,6 +1247,28 @@ fn cmd_restore_probe(
         eprintln!("Error: {error}");
         std::process::exit(1);
     }
+    let restored_tick = controller.tick();
+    // r[impl chaoscontrol.agent_investigation.restore_forward_seek]
+    let rounds_requested = rounds.min(1000);
+    let mut round_trace = Vec::new();
+    for _ in 0..rounds_requested {
+        match controller.step_round() {
+            Ok(round) => {
+                round_trace.push(serde_json::json!({
+                    "tick": round.tick,
+                    "vms_running": round.vms_running,
+                    "faults_fired": round.faults_fired.len(),
+                }));
+                if round.vms_running == 0 {
+                    break;
+                }
+            }
+            Err(error) => {
+                eprintln!("Error while seeking forward: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
     let mut vms = Vec::new();
     for index in 0..controller.num_vms() {
         let Some(slot) = controller.vm_slot(index) else {
@@ -1280,7 +1309,11 @@ fn cmd_restore_probe(
         "snapshot_digest": loaded.snapshot_digest,
         "simulation_tick": loaded.tick,
         "replay_parent_depth": loaded.replay_parent_depth,
-        "restored_tick": controller.tick(),
+        "restored_tick": restored_tick,
+        "current_tick": controller.tick(),
+        "forward_rounds_requested": rounds,
+        "forward_rounds_run": round_trace.len(),
+        "forward_rounds": round_trace,
         "vm_count": controller.num_vms(),
         "vms": vms,
         "non_claims": [

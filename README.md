@@ -507,9 +507,12 @@ cargo run --release --bin chaoscontrol-explore -- restore-plan \
   --output restore-plan.json
 
 # Restore the parent into fresh VMs and report read-only live state (statuses,
-# registers, bounded memory probe). The guest is not executed after restore.
+# registers, bounded memory probe). Add --rounds N to seek forward by bounded
+# scheduling rounds (capped at 1000). Guest serial shares stdout; use --output for
+# machine-readable JSON.
 cargo run --release --bin chaoscontrol-explore -- restore-probe \
-  --checkpoint results/checkpoint.json --index 0 --output restore-probe.json
+  --checkpoint results/checkpoint.json --index 0 --rounds 2 \
+  --output restore-probe.json
 ```
 
 Output directory contains:

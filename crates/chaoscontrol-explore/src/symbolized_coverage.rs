@@ -203,6 +203,40 @@ pub struct SymbolizedCoverageReceipt {
     pub unaccounted_hits: u64,
     pub incomplete_modules: Vec<ModuleIdentity>,
     pub report_digest: [u8; 32],
+    /// Explicit boundaries retained with the mapping.
+    #[serde(default)]
+    pub non_claims: Vec<String>,
+}
+
+/// Maximum bytes in one retained non-claim.
+pub const MAX_CLAIM_BYTES: usize = 256;
+
+/// Boundaries retained with every symbolized mapping.
+pub const NON_CLAIMS: [&str; 4] = [
+    "Symbolized coverage reports observed hits at admitted source locations.",
+    "Differential rows are descriptive hit counts, not an explanation of a failure.",
+    "Catalogs and module loads do not establish module byte trust.",
+    "No replay, correctness, or release-eligibility promotion follows from one mapping.",
+];
+
+/// Reject a claim that promotes observation into causality or eligibility.
+pub fn validate_claim_text(claim: &str) -> Result<(), SymbolCoverageError> {
+    if claim.is_empty() || claim.len() > MAX_CLAIM_BYTES || claim.chars().any(char::is_control) {
+        return Err(SymbolCoverageError::InvalidText);
+    }
+    let lowered = claim.to_ascii_lowercase();
+    const PROHIBITED: [&str; 6] = [
+        "proves",
+        "guarantees",
+        "because of",
+        "root cause",
+        "therefore",
+        "release ready",
+    ];
+    if PROHIBITED.iter().any(|phrase| lowered.contains(phrase)) {
+        return Err(SymbolCoverageError::ClaimOverclaim);
+    }
+    Ok(())
 }
 
 /// Symbolized coverage failures.
@@ -224,6 +258,7 @@ pub enum SymbolCoverageError {
     CounterOverflow,
     ReportDigest,
     ReceiptDrift,
+    ClaimOverclaim,
 }
 
 impl core::fmt::Display for SymbolCoverageError {
@@ -245,6 +280,9 @@ impl core::fmt::Display for SymbolCoverageError {
             Self::CounterOverflow => "symbol coverage counter overflow",
             Self::ReportDigest => "symbolized report digest failed",
             Self::ReceiptDrift => "symbolized coverage receipt does not match the inputs",
+            Self::ClaimOverclaim => {
+                "symbolized coverage claim promotes observation into causality or eligibility"
+            }
         };
         formatter.write_str(message)
     }
@@ -487,6 +525,9 @@ pub fn validate_receipt(
     limits: &SymbolCoverageLimits,
 ) -> Result<(), SymbolCoverageError> {
     let coverage = map_coverage(catalogs, loads, observations, limits)?;
+    for claim in &receipt.non_claims {
+        validate_claim_text(claim)?;
+    }
     let expected = receipt_for(&coverage, catalogs, loads, observation_source, limits)?;
     if &expected != receipt {
         return Err(SymbolCoverageError::ReceiptDrift);
@@ -533,6 +574,10 @@ pub fn receipt_for(
         unaccounted_hits: coverage.unaccounted_hits,
         incomplete_modules,
         report_digest,
+        non_claims: NON_CLAIMS
+            .iter()
+            .map(|claim| (*claim).to_string())
+            .collect(),
     })
 }
 
@@ -992,6 +1037,52 @@ mod tests {
             )
             .unwrap_err(),
             SymbolCoverageError::ReceiptDrift
+        );
+    }
+
+    #[test]
+    fn causal_and_promotion_claims_are_rejected() {
+        for claim in NON_CLAIMS {
+            validate_claim_text(claim).expect("retained non-claim is admissible");
+        }
+        for claim in [
+            "the failing branch is slow because of function_10",
+            "this row proves the function is the root cause",
+            "symbolized coverage guarantees release ready evidence",
+            "therefore this is replay evidence",
+        ] {
+            assert_eq!(
+                validate_claim_text(claim).unwrap_err(),
+                SymbolCoverageError::ClaimOverclaim,
+                "{claim}"
+            );
+        }
+        assert_eq!(
+            validate_claim_text("").unwrap_err(),
+            SymbolCoverageError::InvalidText
+        );
+        assert_eq!(
+            validate_claim_text(&"a".repeat(MAX_CLAIM_BYTES + 1)).unwrap_err(),
+            SymbolCoverageError::InvalidText
+        );
+
+        let catalogs = vec![catalog(
+            1,
+            "src/lib.rs",
+            vec![location("src/lib.rs", 10, &[1])],
+        )];
+        let loads = vec![load(1, "src/lib.rs", 0)];
+        let observations = vec![observation(1, 1, 3)];
+        let limits = SymbolCoverageLimits::default();
+        let coverage = map_coverage(&catalogs, &loads, &observations, &limits).unwrap();
+        let mut receipt = receipt_for(&coverage, &catalogs, &loads, [4; 32], &limits).unwrap();
+        receipt
+            .non_claims
+            .push("differential coverage proves the root cause".to_string());
+        assert_eq!(
+            validate_receipt(&receipt, &catalogs, &loads, &observations, [4; 32], &limits)
+                .unwrap_err(),
+            SymbolCoverageError::ClaimOverclaim
         );
     }
 

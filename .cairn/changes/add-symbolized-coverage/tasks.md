@@ -24,9 +24,19 @@
 
 - [x] [serial] Emit the bounded receipt binding catalogs, module loads, observation sources, limits, accounting, and report digest. r[chaoscontrol.coverage_symbols.evidence]
 - [ ] [serial] Exercise one admitted KVM workload and report exact symbolized coverage plus unaccounted observations. r[chaoscontrol.coverage_symbols.module_identity] r[chaoscontrol.coverage_symbols.report]
-- [ ] [parallel] Add negative evidence fixtures for catalog drift, module drift, changed observation source, and causal overclaim. r[chaoscontrol.coverage_symbols.evidence] r[chaoscontrol.coverage_symbols.nonclaims]
+- [x] [parallel] Add negative evidence fixtures for catalog drift, module drift, changed observation source, and causal overclaim. r[chaoscontrol.coverage_symbols.evidence] r[chaoscontrol.coverage_symbols.nonclaims]
+  - Evidence: existing receipt tests already reject changed catalogs, changed module loads, changed observation source, altered limits, altered accounting, and altered report digest as `ReceiptDrift`. Receipts now retain an explicit `non_claims` list validated by `validate_claim_text`, which rejects causal and promotion phrasing with `ClaimOverclaim`; `causal_and_promotion_claims_are_rejected` covers every retained non-claim plus causal, proof, guarantee, and eligibility overclaims, and a receipt with an injected overclaim fails validation.
 
 ## Phase 5: Verification and evidence
 
 - [ ] [serial] Run focused build, SDK, VMM, explorer, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.coverage_symbols.fixtures]
 - [ ] [serial] Record the bounded KVM receipt, source and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.coverage_symbols.evidence] r[chaoscontrol.coverage_symbols.nonclaims]
+
+## Remaining blockers
+
+- Build-produced symbol catalogs for the admitted workload modules require the
+  guest build/package pipeline; no catalog emitter or built guest artifacts exist
+  locally.
+- Automatic module-load declarations depend on those catalogs and on a bootable
+  guest runtime; the KVM cohort exercise and receipt follow from the same
+  artifacts.

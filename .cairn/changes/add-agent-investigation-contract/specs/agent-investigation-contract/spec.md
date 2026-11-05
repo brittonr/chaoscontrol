@@ -710,3 +710,22 @@ structural agreement only; it does not prove SMP scheduling determinism.
 - GIVEN a snapshot whose vCPU count differs from the checkpoint declaration
 - WHEN restore validates topology
 - THEN it fails with the observed and expected counts
+
+### Requirement: Checkpoint vCPU declarations stay within supported bounds
+
+r[chaoscontrol.agent_investigation.checkpoint_smp_topology_bounds]
+
+Checkpoint admission MUST reject a declared vCPU count of zero or greater than the
+scheduler's supported maximum, and MUST accept counts within that range. This is a
+structural bound on the recorded topology, not proof that a run used or scheduled
+those vCPUs deterministically.
+
+#### Scenario: Out-of-range declarations rejected
+- GIVEN a checkpoint declaring zero or excess vCPUs
+- WHEN checkpoint admission runs
+- THEN it fails with an invalid-bounds error
+
+#### Scenario: Supported declaration admitted
+- GIVEN a checkpoint declaring two vCPUs
+- WHEN checkpoint admission runs
+- THEN it succeeds

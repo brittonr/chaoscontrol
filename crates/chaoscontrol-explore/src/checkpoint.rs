@@ -1198,6 +1198,14 @@ fn validate_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<(), Checkpo
             reason: "global coverage exceeds the bitmap size".to_string(),
         });
     }
+    // r[impl chaoscontrol.agent_investigation.checkpoint_smp_topology_bounds]
+    if checkpoint.config.num_vcpus == 0
+        || checkpoint.config.num_vcpus > chaoscontrol_vmm::scheduler::core::MAX_SCHEDULE_VCPUS
+    {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "vCPU count is outside the supported SMP range".to_string(),
+        });
+    }
     if checkpoint.bugs.len() > MAX_CHECKPOINT_BUGS {
         return Err(CheckpointError::InvalidBounds {
             reason: "bug count exceeds the checkpoint limit".to_string(),
@@ -3331,6 +3339,23 @@ mod tests {
     fn set_assertion_alias(bug: &mut SerializableBug, assertion_id: u64) {
         bug.assertion_id = assertion_id;
         bug.assertion_identity = Some(crate::test_support::assertion_identity(assertion_id));
+    }
+
+    #[test]
+    fn checkpoint_vcpu_count_is_bounded() {
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        checkpoint.config.num_vcpus = 0;
+        assert!(matches!(
+            validate_checkpoint(&checkpoint),
+            Err(CheckpointError::InvalidBounds { .. })
+        ));
+        checkpoint.config.num_vcpus = chaoscontrol_vmm::scheduler::core::MAX_SCHEDULE_VCPUS + 1;
+        assert!(matches!(
+            validate_checkpoint(&checkpoint),
+            Err(CheckpointError::InvalidBounds { .. })
+        ));
+        checkpoint.config.num_vcpus = 2;
+        validate_checkpoint(&checkpoint).expect("two vCPUs are admitted");
     }
 
     #[test]

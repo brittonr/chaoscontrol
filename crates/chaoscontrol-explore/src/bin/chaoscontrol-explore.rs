@@ -1350,6 +1350,9 @@ fn cmd_restore_probe(
             "vms_match": same_vms,
             "tick_match": same_tick,
             "drift": drifted,
+            "first_difference": chaoscontrol_explore::probe_drift::first_difference(
+                &record, first,
+            ),
         });
     }
     if let Some(object) = record.as_object_mut() {

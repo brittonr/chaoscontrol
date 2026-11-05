@@ -510,3 +510,23 @@ correctness or release eligibility.
 - GIVEN an empty revision or malformed checkpoint digest
 - WHEN the receipt is built
 - THEN the probe fails without writing a receipt
+
+### Requirement: Drift reports the first differing observation
+
+r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
+
+When repeated probe records differ, the drift report MUST name the first differing
+observation: the current tick, or the index and tick of the first differing round
+entry, or the index of the first differing final VM entry. Matched records MUST report
+no difference. The detail is diagnostic and MUST NOT claim a cause or a determinism
+verdict beyond the bounded comparison.
+
+#### Scenario: Round drift names the tick
+- GIVEN two records whose second round entry differs
+- WHEN drift is reported
+- THEN the detail names kind `round`, the index, and the round tick
+
+#### Scenario: Matched records
+- GIVEN two identical records
+- WHEN drift is reported
+- THEN the difference is absent

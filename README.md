@@ -14,6 +14,16 @@ See [release preparation and remaining prerequisites](docs/release-preparation.m
 Current-source release checks must pass before any production claim; dated
 receipts below retain their original verdicts and are not current release approval.
 
+The required KVM matrix has a passing receipt on clean
+`901b697ae601e686424c1635d7dc51c2fea4af37`: all seven rows passed with
+`ReleaseEligible`, and the independent validator agreed (`rows=7 positive=1
+negative=11`). The [receipt](dogfood-results/kvm-release-evidence-20261104/release-receipt.json)
+and [summary](dogfood-results/kvm-release-evidence-20261104/release-summary.md)
+are retained. That receipt proves only the recorded worker, commands, bounds, and
+artifact identities. Private/nonportable dependencies, MCP smoke applicability, the
+original planted-finding initrd, and the absent authenticated release profile still
+block public distribution and production use.
+
 <details>
 <summary>Historical production-readiness evidence (2026-10-15 through 2026-10-25)</summary>
 

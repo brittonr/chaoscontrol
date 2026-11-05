@@ -127,38 +127,41 @@ format. Retain raw logs locally. Do not silently substitute a rebuilt initrd,
 increase watchdog bounds, relabel an operational timeout as a guest finding or
 promote `onix_release_ready=false` into a successful authenticated-release claim.
 
-The seven-row release matrix is at six of seven rows on clean `f03aa793`:
-`build-release-binaries`, `build-raft-guest`, `deterministic-smp`,
-`serialized-snapshot-replay`, `virtio-malformed-input`, and `admitted-drift`
-pass. `fresh-workload-replay` failed with
-`fault outcome transition failed: ApplicablePlanMismatch`. The transition
-recorded `fault=DiskFlushError` and `effect=BlockFlushError` with equal targets and
-delays, and `plan_effect_matches_attempt` had no match arm pairing them, so any
-selected flush fault aborted exploration. The arm and a binding regression test
-landed in `bdf98b02`; direct exploration with the same seed and probe now writes a
-checkpoint instead of aborting.
+The seven-row release matrix failed on clean `f03aa793` with
+`fresh-workload-replay` reporting
+`fault outcome transition failed: ApplicablePlanMismatch`. The transition recorded
+`fault=DiskFlushError` and `effect=BlockFlushError` with equal targets and delays,
+and `plan_effect_matches_attempt` had no match arm pairing them, so any selected
+flush fault aborted exploration. The arm and a binding regression test landed in
+`bdf98b02`.
 
-A full matrix rerun on a clean revision carrying that fix is still required before
-a release-eligible receipt exists. Two attempts stalled in the host Nix daemon
-(auto-GC waiting on another holder's big-GC lock, then a queued local build with no
-row output for over 40 minutes), so the current matrix evidence remains the six
-passing rows. Run the matrix on a host with uncontended Nix build capacity.
+The full executor then passed all seven rows on clean
+`901b697ae601e686424c1635d7dc51c2fea4af37`, reporting
+`KVM release matrix: ReleaseEligible` with no blockers. The independent validator
+agreed: `KVM release matrix ok: profile=required-kvm-release-v1 rows=7 positive=1
+negative=11`. The receipt and summary are retained in
+`dogfood-results/kvm-release-evidence-20261104/`.
 
-Running the row command directly on `aa44dcf2` with Cargo release-profile binaries
-and the admitted bounds produced an accepted verdict:
-`reproduced: true`, `replay_class: snapshot_backed_reproduced`, schema 2, replay
-parent depth 1, for the cohort's `snapshot-replay-probe.v1` assertion. The same
-command with unoptimized binaries exceeded the 240 s run and 300 s export bounds
-and was not accepted, so use release binaries. This validates the row command under
-the recorded bounds, not the matrix executor or a receipt. Resolve artifact paths
-before passing them: out-link symlinks fail with `FilesystemLoop`.
+On this host the executor must force local builders. With the default
+`/etc/nix/machines` remote builders, four rows failed immediately with
+`unexpected EOF reading a line` from the build hook and a lock name containing the
+`grpc://` builder URI (`File name too long`). Running with
+`NIX_CONFIG=$'builders =\nmin-free = 0\nmax-free = 0'` fixed it. Earlier attempts
+also stalled while Nix auto-GC waited on another holder's big-GC lock; that is an
+operational state, not a row failure.
 
-The `admitted-drift` row command likewise passed directly on `aa44dcf2` with its
-flake-built plain kernel and rust-workload initrd: two `controller-3vm-2vcpu` runs
-produced identical fingerprints, and the gate reported every configuration
-deterministic. Five of seven row commands are therefore exercised on this
-revision; only the two `nix build` rows and the matrix executor remain blocked by
-the store-write stall.
+Row-level diagnostics on `aa44dcf2` while the executor was blocked also passed:
+the three store-free cargo rows, the `fresh-workload-replay` command with Cargo
+release binaries (`reproduced: true`, `replay_class: snapshot_backed_reproduced`,
+schema 2, parent depth 1, assertion 3463273124), and the `admitted-drift` command
+with its flake-built kernel and initrd (identical two-run fingerprints). Use
+release binaries for replay rows; unoptimized binaries exceeded the 240 s run and
+300 s export bounds. Resolve artifact paths before passing them: out-link symlinks
+fail with `FilesystemLoop`.
+
+A passing matrix receipt still does not establish production readiness. MCP smoke
+applicability, the exact historical planted-finding initrd, private dependency
+publication, and the authenticated release profile remain open.
 
 ## Preparation evidence and limits
 

@@ -408,10 +408,49 @@ local-multi-hypervisor-kvm-smoke-check> wrote .../1/campaign-receipt.json
 local-multi-hypervisor-kvm-smoke-check> local multi-hypervisor KVM smoke artifacts: .../1
 ```
 
-Both KVM rails are green on the current revision. The seven-row release matrix
-has not yet been run on this revision.
+Both KVM rails are green. The seven-row release matrix then ran on a later
+revision, recorded below.
 
-### Seven-row release matrix (partial)
+### Seven-row release matrix
+
+The full executor ran on clean `901b697ae601e686424c1635d7dc51c2fea4af37`:
+
+```text
+run-kvm-release-matrix --root . --matrix contracts/kvm-release/matrix.json \
+  --out target/release-preparation-20261029/kvm-matrix8 --expected-revision 901b697a…
+```
+
+with `NIX_CONFIG` forcing local builders (`builders =`, `min-free = 0`,
+`max-free = 0`). It reported `KVM release matrix: ReleaseEligible`; all seven rows
+passed (`build-release-binaries` 88 artifacts, `build-raft-guest` 3,
+`deterministic-smp` 2, `serialized-snapshot-replay` 2, `virtio-malformed-input` 2,
+`admitted-drift` 9, `fresh-workload-replay` 103) with no blockers. The independent
+validator agreed:
+
+```text
+check-kvm-release-matrix --root . --receipt …/release-receipt.json \
+  --expected-revision 901b697a…
+KVM release matrix ok: profile=required-kvm-release-v1 rows=7 positive=1 negative=11
+```
+
+The receipt and summary are retained in
+`dogfood-results/kvm-release-evidence-20261104/`. The claim stays bounded to the
+recorded worker, commands, bounds, and artifact identities; it does not prove
+worker integrity, host equivalence, universal determinism, workload correctness, or
+production availability.
+
+An earlier run on `901b697a` failed four rows instantly because the spawned `nix`
+clients inherited the system remote builders from `/etc/nix/machines`:
+
+```text
+error: opening lock file "/nix/var/nix/current-load/grpc:__aspen1.local:50051?…": File name too long
+error: … while reading the response from the build hook
+```
+
+Forcing local builders fixed it. Any operator rerun must set `builders =` explicitly
+on this host.
+
+#### Earlier attempt on `f03aa793` (history)
 
 `nix run .#kvm-release-matrix` ran on clean `f03aa793` with local builders. Five
 rows passed before the artifact-policy repair; after allowing read-only
@@ -439,11 +478,10 @@ positive and negative regression test
 (`flush_error_plan_binds_its_selected_attempt`), and direct exploration with the
 same seed/probe completes and writes a checkpoint instead of failing.
 
-A full matrix rerun on the clean fix revision was not completed: Nix auto-GC
-blocked on another process's big-GC lock, and the subsequent local-builder run
-stayed queued behind unrelated daemon builds for over 40 minutes without creating
-its output directory. The six previously passing rows remain the current matrix
-evidence; the fresh row needs a rerun on a quiet host.
+A full matrix rerun on the clean fix revision was initially blocked: Nix auto-GC
+waited on another process's big-GC lock, and a local-builder run stayed queued
+behind unrelated daemon builds for over 40 minutes without creating its output
+directory. Store writes recovered later, and the completed run is recorded above.
 
 On `aa44dcf2`, the three rows whose commands do not write the Nix store were
 rerun directly with the contract commands and passed:
@@ -454,17 +492,18 @@ cargo test -q -p chaoscontrol-vmm --test exact_snapshot_kvm        1 passed
 cargo test -q -p chaoscontrol-vmm --test virtio_kvm_smoke -- --ignored  1 passed
 ```
 
-`/dev/kvm` was present and each run opened a real KVM vcpu. This is row-level
-command evidence, not a matrix receipt: the executor (`run-kvm-release-matrix`)
-still cannot complete because `build-release-binaries`, `build-raft-guest`,
-`admitted-drift`, and `fresh-workload-replay` require store writes. At the time of
-this check, every store write stalled in the daemon: `nix eval .#default.outPath`,
+`/dev/kvm` was present and each run opened a real KVM vcpu. This was row-level
+command evidence taken while the executor could not run; the blocked
+`build-release-binaries`, `build-raft-guest`, `admitted-drift`, and
+`fresh-workload-replay` rows needed store writes, and at that moment every store
+write stalled in the daemon: `nix eval .#default.outPath`,
 `nix build .#default --dry-run`, and `nix build nixpkgs#hello --no-link` all blocked
 with `waiting for the big garbage collector lock...`, while read-only evaluation
 (`nix eval .#default.name`, `nix eval nixpkgs#hello.name`) returned immediately.
 The store had 91–96 GiB free against `min-free = 100 GiB`, and the client blocked in
-`unix_stream_read_generic` on the daemon socket. Clearing that lock
-needs the operator's root access to the Nix daemon.
+`unix_stream_read_generic` on the daemon socket. Clearing that lock needed the
+operator's root access to the Nix daemon; the later successful run above replaced
+this state.
 
 The `fresh-workload-replay` command was reproduced directly on `aa44dcf2` with the
 debug `accepted-snapshot-verdict-dogfood` and `chaoscontrol-explore` builds, the
@@ -502,8 +541,10 @@ assertion, with assertion identity and a snapshot reference; the other 75 export
 findings were not selected for acceptance. The verdict is
 `target/release-preparation-20261029/fresh-row-release/fresh/replay-verdict-bug1.json`.
 These binaries are plain Cargo release-profile builds, not the flake `chaoscontrol`
-package the matrix row resolves, so this proves the row command and the fixed
-fault-plan binding under the admitted bounds — not a matrix receipt.
+package the matrix row resolves, so this proved the row command and the fixed
+fault-plan binding under the admitted bounds while the executor was blocked. The
+later full executor run on `901b697a` produced the accepted row with the flake
+artifacts.
 
 The `admitted-drift` row command also ran directly with its flake-built artifacts
 (plain kernel `5aya7zv…-chaoscontrol-vmlinux`, initrd
@@ -518,9 +559,9 @@ determinism_stress <kernel>/vmlinux <initrd> 2 --single-clock-profile hide-tsc \
 Both runs of `controller-3vm-2vcpu` passed with identical fingerprints
 (`tick: 10`, `vm_exits: [50000, 50000, 50000]`, `vm_vtscs: [50000000, 50000000,
 50000000]`, empty stripped serials); the gate printed
-`ALL CONFIGURATIONS DETERMINISTIC (2 runs each)`. This covers five of the seven
-rows' commands on `aa44dcf2`. The two `nix build` rows and the executor remain
-blocked by the daemon write stall.
+`ALL CONFIGURATIONS DETERMINISTIC (2 runs each)`. That covered five of the seven
+rows' commands on `aa44dcf2` while the two `nix build` rows and the executor were
+blocked; the full executor later passed all seven rows on `901b697a`.
 
 ### Watchdog timing probe (diagnostic only)
 

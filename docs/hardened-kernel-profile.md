@@ -108,7 +108,8 @@ the cause is not yet investigated.
 comparisons. The rust-workload initrd still reaches `Run /init` but does not exit
 under the minimal kernel. Debug logging shows the guest halting and being woken by
 PIT deadlines repeatedly (181 HLT deadline wakes in 20 s), so the VMM keeps honoring
-a periodic timer instead of stopping. ACPI/HPET additions did not change it. That
+a periodic timer instead of stopping. ACPI/PCI/POWER_RESET, HPET/HPET_EMULATE_RTC,
+and ACPI_PROCESSOR/ACPI_SLEEP/X86_PM_TIMER additions did not change it. That
 workload follow-up is tracked in
 [#10](https://github.com/brittonr/chaoscontrol/issues/10).
 

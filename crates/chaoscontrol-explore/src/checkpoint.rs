@@ -1824,6 +1824,14 @@ pub struct SnapshotInspection {
     pub snapshot_digest: String,
     pub tick: u64,
     pub vm_count: usize,
+    /// Declared vCPUs per VM in the checkpoint.
+    pub declared_vcpus: usize,
+    /// Observed vCPUs in the first stored VM, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_vcpus: Option<usize>,
+    /// Whether observed and declared vCPU counts agree; absent when no VM exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_match: Option<bool>,
     pub vcpu_stall_entries: usize,
     pub cpu_throttle_entries: usize,
     pub clock_freeze_entries: usize,
@@ -1843,6 +1851,7 @@ pub fn inspect_snapshot<P: AsRef<Path>>(
         "b3:{}",
         blake3::hash(crate::bounded_json::read_checkpoint(checkpoint_path)?.as_bytes()).to_hex()
     );
+    let checkpoint = load_checkpoint(checkpoint_path)?;
     let inspection = inspect_bug(checkpoint_path, selector)?;
     let reference = inspection
         .bug
@@ -1864,13 +1873,22 @@ pub fn inspect_snapshot<P: AsRef<Path>>(
     }
     let snapshot = artifact.snapshot;
     Ok(SnapshotInspection {
-        schema: "chaoscontrol.snapshot_inspection.v1",
+        schema: "chaoscontrol.snapshot_inspection.v2",
         checkpoint_digest,
         checkpoint_index: inspection.checkpoint_index,
         artifact: inspection.artifact,
         snapshot_digest: reference.digest.clone(),
         tick: snapshot.tick,
         vm_count: snapshot.vm_snapshots.len(),
+        declared_vcpus: checkpoint.config.num_vcpus,
+        observed_vcpus: snapshot
+            .vm_snapshots
+            .first()
+            .map(|vm| vm.0.vcpu_snapshots.len()),
+        topology_match: snapshot
+            .vm_snapshots
+            .first()
+            .map(|vm| vm.0.vcpu_snapshots.len() == checkpoint.config.num_vcpus),
         vcpu_stall_entries: snapshot.vcpu_stall_until.len(),
         cpu_throttle_entries: snapshot.cpu_throttle.len(),
         clock_freeze_entries: snapshot.clock_freeze.len(),
@@ -1961,6 +1979,7 @@ pub fn list_snapshot_references<P: AsRef<Path>>(
     })
 }
 
+// r[impl chaoscontrol.agent_investigation.restore_plan_topology_surface]
 /// Read-only plan for restoring one failure's parent. It checks declared inputs and
 /// the snapshot artifact path; it does not execute a VM or prove replay.
 #[derive(Debug, Clone, Serialize)]
@@ -1982,6 +2001,11 @@ pub struct RestorePlan {
     /// Deterministic disposable-branch identity binding the session digest and
     /// selected parent. Identity only; it does not create or isolate a branch.
     pub branch_id: String,
+    /// Declared vCPUs per VM for the run that produced the snapshot.
+    pub num_vcpus: usize,
+    /// Declared extra guest cmdline for the run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra_cmdline: Option<String>,
     pub kernel_path: String,
     pub kernel_present: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2103,7 +2127,7 @@ pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
         inspection.bug.replay_parent_depth,
     );
     Ok(RestorePlan {
-        schema: "chaoscontrol.restore_plan.v1",
+        schema: "chaoscontrol.restore_plan.v2",
         checkpoint_digest,
         checkpoint_index: inspection.checkpoint_index,
         artifact: inspection.artifact,
@@ -2116,6 +2140,8 @@ pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
         snapshot_present,
         snapshot_verified,
         branch_id,
+        num_vcpus: checkpoint.config.num_vcpus,
+        extra_cmdline: checkpoint.config.extra_cmdline.clone(),
         kernel_path: checkpoint.config.kernel_path.clone(),
         kernel_present,
         initrd_path: checkpoint.config.initrd_path.clone(),
@@ -4176,7 +4202,9 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(plan.schema, "chaoscontrol.restore_plan.v1");
+        assert_eq!(plan.schema, "chaoscontrol.restore_plan.v2");
+        assert_eq!(plan.num_vcpus, 1);
+        assert!(plan.extra_cmdline.is_none());
         assert!(plan.ready);
         assert!(plan.snapshot_present);
         assert!(plan.kernel_present);
@@ -4471,7 +4499,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(inspection.schema, "chaoscontrol.snapshot_inspection.v1");
+        assert_eq!(inspection.schema, "chaoscontrol.snapshot_inspection.v2");
+        assert_eq!(inspection.declared_vcpus, 1);
+        assert!(inspection.observed_vcpus.is_none());
+        assert!(inspection.topology_match.is_none());
         assert_eq!(inspection.tick, 750);
         assert_eq!(inspection.snapshot_digest, reference.digest);
         assert_eq!(inspection.vm_count, 0);

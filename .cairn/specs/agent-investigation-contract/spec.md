@@ -714,3 +714,23 @@ those vCPUs deterministically.
 - GIVEN a checkpoint declaring two vCPUs
 - WHEN checkpoint admission runs
 - THEN it succeeds
+
+### Requirement: Restore plans and snapshot inspections expose SMP topology
+
+r[chaoscontrol.agent_investigation.restore_plan_topology_surface]
+
+A restore plan MUST report the declared vCPU count and any extra guest cmdline. A
+snapshot inspection MUST report the declared vCPU count, the first stored VM's
+observed vCPU count when one exists, and whether they match. Absent observations MUST
+be distinguishable from mismatches. These are structural facts; they do not prove
+SMP scheduling determinism or replay admissibility.
+
+#### Scenario: SMP plan and inspection
+- GIVEN a checkpoint declaring two vCPUs and a cmdline
+- WHEN the plan and inspection are emitted
+- THEN both report two vCPUs and the inspection reports a match
+
+#### Scenario: Empty snapshot surface
+- GIVEN an inspection with no stored VM
+- WHEN it is emitted
+- THEN observed count and match are absent rather than false

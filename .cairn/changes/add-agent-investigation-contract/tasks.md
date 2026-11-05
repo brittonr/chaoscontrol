@@ -27,6 +27,7 @@
 - [x] [serial] Resolve a single failure by exact assertion fingerprint in inspect, moment, and probe commands. r[chaoscontrol.agent_investigation.selector_assertion_fingerprint]
 - [x] [serial] Record SMP topology and extra cmdline in checkpoints and validate them on restore. r[chaoscontrol.agent_investigation.restore_smp_topology_admission]
 - [x] [serial] Bound the recorded vCPU declaration against the scheduler maximum. r[chaoscontrol.agent_investigation.checkpoint_smp_topology_bounds]
+- [x] [serial] Expose declared and observed SMP topology in restore plans and snapshot inspections. r[chaoscontrol.agent_investigation.restore_plan_topology_surface]
 - [x] [serial] Name the first differing tick, round, or VM observation in drift reports. r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
 - [x] [serial] Expose per-vCPU state and select the vCPU for register intervention and expectation. r[chaoscontrol.agent_investigation.restore_smp_observations]
 - [x] [serial] Bind moment references to a deterministic branch identity and declared tick granularity. r[chaoscontrol.agent_investigation.moment_reference_branch_granularity]

@@ -830,3 +830,24 @@ prove a build, boot, or fix and that a fresh run is required.
 - GIVEN an unreadable or absent required path
 - WHEN identities are requested
 - THEN the command fails without emitting a partial record
+
+### Requirement: A fresh bounded campaign validates candidate artifacts
+
+r[chaoscontrol.agent_investigation.candidate_validation_campaign]
+
+An explicit operation MUST bind an original failure, fresh candidate artifact
+identities, and a bounded profile (seed, rounds, ticks, vCPUs) to a fresh exploration
+run under a separate output directory, then emit a digest-verified receipt recording
+the process exit, completion, and observed bug count. Exit codes 0 and 1 (completed,
+with or without findings) MUST count as completed; other codes MUST not. The receipt
+MUST NOT claim the original failure is fixed or that the old snapshot replayed.
+
+#### Scenario: Candidate run completes with findings
+- GIVEN readable candidate artifacts and a bounded profile
+- WHEN validation runs
+- THEN a fresh checkpoint is produced and the receipt records completion and bug count
+
+#### Scenario: Run failure
+- GIVEN a fresh run that exits outside 0/1
+- WHEN the receipt is emitted
+- THEN completed is false and the command exits non-zero

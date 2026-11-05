@@ -888,6 +888,61 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// Run a fresh bounded validation campaign for candidate artifacts.
+    ValidateCandidate {
+        /// Original failure checkpoint.
+        #[arg(long)]
+        checkpoint: String,
+
+        /// Original failure bug index.
+        #[arg(long, conflicts_with = "dedup_key")]
+        index: Option<usize>,
+
+        /// Original failure dedup key.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+
+        /// Candidate kernel path.
+        #[arg(long)]
+        kernel: String,
+
+        /// Candidate initrd path.
+        #[arg(long)]
+        initrd: Option<String>,
+
+        /// Candidate disk image path.
+        #[arg(long)]
+        disk_image: Option<String>,
+
+        /// Extra guest cmdline for the fresh run.
+        #[arg(long)]
+        extra_cmdline: Option<String>,
+
+        /// Fresh-run seed.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+
+        /// Fresh-run rounds (bounded by the receipt profile).
+        #[arg(long, default_value_t = 1)]
+        rounds: u64,
+
+        /// Fresh-run ticks per branch.
+        #[arg(long, default_value_t = 100)]
+        ticks: u64,
+
+        /// Fresh-run vCPUs per VM.
+        #[arg(long, default_value_t = 1)]
+        vcpus: usize,
+
+        /// Fresh-run output directory.
+        #[arg(long)]
+        run_output: String,
+
+        /// Write the candidate-validation receipt to this path.
+        #[arg(long)]
+        receipt: String,
+    },
+
     /// Emit content identities for candidate guest artifacts.
     CandidateIdentity {
         /// Candidate kernel path.
@@ -1276,6 +1331,35 @@ fn main() {
             };
             cmd_bind_moment(checkpoint, output, selector, tick)
         }
+        #[allow(clippy::too_many_arguments)]
+        Commands::ValidateCandidate {
+            checkpoint,
+            index,
+            dedup_key,
+            kernel,
+            initrd,
+            disk_image,
+            extra_cmdline,
+            seed,
+            rounds,
+            ticks,
+            vcpus,
+            run_output,
+            receipt,
+        } => cmd_validate_candidate(
+            checkpoint,
+            chaoscontrol_explore::BugSelector { index, dedup_key },
+            kernel,
+            initrd,
+            disk_image,
+            extra_cmdline,
+            seed,
+            rounds,
+            ticks,
+            vcpus,
+            run_output,
+            receipt,
+        ),
         Commands::CandidateIdentity {
             kernel,
             initrd,
@@ -2107,6 +2191,166 @@ fn cmd_bind_moment(
             eprintln!("Wrote moment reference to {}", path);
         }
         None => print!("{json}"),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_validate_candidate(
+    checkpoint_path: String,
+    selector: chaoscontrol_explore::BugSelector,
+    kernel: String,
+    initrd: Option<String>,
+    disk_image: Option<String>,
+    extra_cmdline: Option<String>,
+    seed: u64,
+    rounds: u64,
+    ticks: u64,
+    vcpus: usize,
+    run_output: String,
+    receipt_path: String,
+) {
+    let inspection = match chaoscontrol_explore::inspect_bug(&checkpoint_path, selector) {
+        Ok(inspection) => inspection,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let checkpoint_digest = match file_digest(std::path::Path::new(&checkpoint_path)) {
+        Ok(digest) => format!("b3:{digest}"),
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut candidate = Vec::new();
+    for (kind, path) in [
+        ("kernel", Some(kernel.clone())),
+        ("initrd", initrd.clone()),
+        ("disk_image", disk_image.clone()),
+    ] {
+        let Some(path) = path else { continue };
+        let metadata = match std::fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                eprintln!("Error: {path}: {error}");
+                std::process::exit(1);
+            }
+        };
+        let digest = match file_digest(std::path::Path::new(&path)) {
+            Ok(digest) => digest,
+            Err(error) => {
+                eprintln!("Error: {path}: {error}");
+                std::process::exit(1);
+            }
+        };
+        candidate.push(
+            chaoscontrol_explore::candidate_validation::CandidateArtifact {
+                kind: kind.to_string(),
+                digest: format!("b3:{digest}"),
+                size: metadata.len(),
+            },
+        );
+    }
+    let current = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut command = std::process::Command::new(current);
+    command
+        .arg("run")
+        .arg("--kernel")
+        .arg(&kernel)
+        .arg("--vms")
+        .arg("1")
+        .arg("--branches")
+        .arg("1")
+        .arg("--vcpus")
+        .arg(vcpus.to_string())
+        .arg("--seed")
+        .arg(seed.to_string())
+        .arg("--rounds")
+        .arg(rounds.to_string())
+        .arg("--ticks")
+        .arg(ticks.to_string())
+        .arg("--output")
+        .arg(&run_output);
+    if let Some(initrd) = initrd.as_deref() {
+        command.arg("--initrd").arg(initrd);
+    }
+    if let Some(disk_image) = disk_image.as_deref() {
+        command.arg("--disk-image").arg(disk_image);
+    }
+    if let Some(extra_cmdline) = extra_cmdline.as_deref() {
+        command.arg("--extra-cmdline").arg(extra_cmdline);
+    }
+    let status = match command.status() {
+        Ok(status) => status,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let checkpoint_out = std::path::Path::new(&run_output).join("checkpoint.json");
+    let bugs_found = if checkpoint_out.exists() {
+        chaoscontrol_explore::load_checkpoint(&checkpoint_out)
+            .ok()
+            .map(|checkpoint| checkpoint.bugs.len())
+    } else {
+        None
+    };
+    let exit_code = status.code();
+    let completed = matches!(exit_code, Some(0 | 1));
+    let outcome = chaoscontrol_explore::candidate_validation::ValidationOutcome {
+        exit_code,
+        completed,
+        bugs_found,
+    };
+    let receipt =
+        match chaoscontrol_explore::candidate_validation::CandidateValidationReceipt::build(
+            chaoscontrol_explore::candidate_validation::OriginalFailure {
+                checkpoint_digest,
+                artifact: inspection.artifact,
+                bug_id: inspection.bug.bug_id,
+                dedup_key: inspection.bug.dedup_key,
+                tick: inspection.bug.tick,
+            },
+            candidate,
+            chaoscontrol_explore::candidate_validation::ValidationProfile {
+                seed,
+                rounds,
+                ticks,
+                vcpus,
+            },
+            outcome,
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                eprintln!("Error: {error:?}");
+                std::process::exit(1);
+            }
+        };
+    if let Err(error) = receipt.verify() {
+        eprintln!("Error: {error:?}");
+        std::process::exit(1);
+    }
+    let json = match receipt.to_json() {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error:?}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(error) = std::fs::write(&receipt_path, json) {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
+    eprintln!("Wrote candidate validation receipt to {}", receipt_path);
+    if !completed {
+        std::process::exit(1);
     }
 }
 

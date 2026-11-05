@@ -84,6 +84,7 @@ pub mod branch_recovery;
 pub mod bug;
 pub mod campaign;
 pub mod campaign_adapter;
+pub mod candidate_validation;
 pub mod checkpoint;
 pub mod corpus;
 pub mod coverage;

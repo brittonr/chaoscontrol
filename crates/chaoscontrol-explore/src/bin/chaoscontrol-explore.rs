@@ -1558,9 +1558,23 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         );
         std::process::exit(1);
     }
+    if let Err((actual, expected)) = chaoscontrol_explore::validate_snapshot_vcpu_count(
+        &loaded.snapshot,
+        checkpoint.config.num_vcpus,
+    ) {
+        eprintln!(
+            "Error: snapshot vCPU count {actual} does not match the declared topology {expected}"
+        );
+        std::process::exit(1);
+    }
+    let vm_config = chaoscontrol_vmm::vm::VmConfig {
+        num_vcpus: checkpoint.config.num_vcpus,
+        extra_cmdline: checkpoint.config.extra_cmdline.clone(),
+        ..chaoscontrol_vmm::vm::VmConfig::default()
+    };
     let config = chaoscontrol_vmm::controller::SimulationConfig {
         num_vms: checkpoint.config.num_vms,
-        vm_config: chaoscontrol_vmm::vm::VmConfig::default(),
+        vm_config,
         kernel_path: checkpoint.config.kernel_path.clone(),
         initrd_path: checkpoint.config.initrd_path.clone(),
         seed: checkpoint.seed,

@@ -477,6 +477,8 @@ mod tests {
         let mut checkpoint = ExplorationCheckpoint {
             config: crate::checkpoint::CheckpointConfig {
                 num_vms: 3,
+                num_vcpus: 1,
+                extra_cmdline: None,
                 kernel_path: "/path/to/kernel".to_string(),
                 initrd_path: Some("/path/to/initrd".to_string()),
                 seed: 42,

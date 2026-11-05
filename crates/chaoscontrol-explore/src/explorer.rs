@@ -3010,8 +3010,10 @@ impl Explorer {
     ) -> Result<ExplorationCheckpoint, CheckpointError> {
         let config = CheckpointConfig {
             num_vms: self.config.num_vms,
+            num_vcpus: self.config.vm_config.num_vcpus,
             kernel_path: self.config.kernel_path.clone(),
             initrd_path: self.config.initrd_path.clone(),
+            extra_cmdline: self.config.vm_config.extra_cmdline.clone(),
             seed: self.config.seed,
             branch_factor: self.config.branch_factor,
             ticks_per_branch: self.config.ticks_per_branch,

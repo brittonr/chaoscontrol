@@ -149,8 +149,14 @@ fn lower_hex_value(character: u8) -> Result<u8, CheckpointError> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckpointConfig {
     pub num_vms: usize,
+    /// vCPUs per VM (defaults to 1 for checkpoints written before SMP runs).
+    #[serde(default = "default_num_vcpus")]
+    pub num_vcpus: usize,
     pub kernel_path: String,
     pub initrd_path: Option<String>,
+    /// Extra guest kernel command-line parameters (defaults to none).
+    #[serde(default)]
+    pub extra_cmdline: Option<String>,
     pub seed: u64,
     pub branch_factor: usize,
     pub ticks_per_branch: u64,
@@ -193,6 +199,10 @@ pub struct CheckpointConfig {
     /// so an opt-out is recorded as an explicit `false`.
     #[serde(default = "legacy_random_faults")]
     pub random_faults: bool,
+}
+
+fn default_num_vcpus() -> usize {
+    1
 }
 
 fn default_bootstrap_budget() -> u64 {
@@ -2272,6 +2282,21 @@ pub fn validate_snapshot_vm_count(
     }
 }
 
+// r[impl chaoscontrol.agent_investigation.restore_smp_topology_admission]
+/// Validate that every VM in the snapshot carries the declared vCPU count.
+pub fn validate_snapshot_vcpu_count(
+    snapshot: &chaoscontrol_vmm::controller::SimulationSnapshot,
+    expected: usize,
+) -> Result<(), (usize, usize)> {
+    for vm in &snapshot.vm_snapshots {
+        let actual = vm.0.vcpu_snapshots.len();
+        if actual != expected {
+            return Err((actual, expected));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
     pub bugs_scanned: usize,
@@ -2566,6 +2591,8 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
+                num_vcpus: 1,
+                extra_cmdline: None,
                 kernel_path: "/path/to/kernel".to_string(),
                 initrd_path: Some("/path/to/initrd".to_string()),
                 seed: 42,
@@ -2622,8 +2649,10 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 3,
+                num_vcpus: 1,
                 kernel_path: "kernel".to_string(),
                 initrd_path: None,
+                extra_cmdline: None,
                 seed: 123,
                 branch_factor: 4,
                 ticks_per_branch: 500,
@@ -2714,8 +2743,10 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
+                num_vcpus: 1,
                 kernel_path: "k".to_string(),
                 initrd_path: None,
+                extra_cmdline: None,
                 seed: 1,
                 branch_factor: 8,
                 ticks_per_branch: 1000,
@@ -2830,8 +2861,10 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 3,
+                num_vcpus: 1,
                 kernel_path: "k".to_string(),
                 initrd_path: None,
+                extra_cmdline: None,
                 seed: 42,
                 branch_factor: 8,
                 ticks_per_branch: 1000,
@@ -3226,8 +3259,10 @@ mod tests {
         ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
+                num_vcpus: 1,
                 kernel_path: "k".to_string(),
                 initrd_path: None,
+                extra_cmdline: None,
                 seed: 1,
                 branch_factor: 8,
                 ticks_per_branch: 1000,
@@ -3674,6 +3709,35 @@ mod tests {
         assert_eq!(empty.bugs_written, 0);
         assert!(!empty_out.join("bug_0.json").exists());
         assert!(!empty_out.join("bug_1.json").exists());
+    }
+
+    #[test]
+    fn checkpoint_records_smp_topology_and_cmdline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        checkpoint.config.num_vcpus = 2;
+        checkpoint.config.extra_cmdline = Some("clocksource=tsc tsc=reliable".to_string());
+        save_checkpoint(&path, &checkpoint).unwrap();
+        let loaded = load_checkpoint(&path).unwrap();
+        assert_eq!(loaded.config.num_vcpus, 2);
+        assert_eq!(
+            loaded.config.extra_cmdline.as_deref(),
+            Some("clocksource=tsc tsc=reliable")
+        );
+
+        let mut legacy = serde_json::to_value(&checkpoint).unwrap();
+        legacy["config"]
+            .as_object_mut()
+            .unwrap()
+            .remove("num_vcpus");
+        legacy["config"]
+            .as_object_mut()
+            .unwrap()
+            .remove("extra_cmdline");
+        let legacy: ExplorationCheckpoint = serde_json::from_value(legacy).unwrap();
+        assert_eq!(legacy.config.num_vcpus, 1);
+        assert!(legacy.config.extra_cmdline.is_none());
     }
 
     #[test]

@@ -675,3 +675,23 @@ artifacts, select a replay verdict, or authorize a branch.
 - GIVEN zero or several bugs carry the fingerprint
 - WHEN a command selects by it
 - THEN the matching distinct error is returned
+
+### Requirement: Checkpoints record SMP topology and restore validates it
+
+r[chaoscontrol.agent_investigation.restore_smp_topology_admission]
+
+A checkpoint MUST record the vCPU count per VM and any extra guest cmdline used by
+the run, defaulting to one vCPU and no extra cmdline for older checkpoints. Restore
+MUST rebuild VMs with that topology, pass the recorded cmdline, and reject a snapshot
+whose per-VM vCPU count differs from the declared topology. The admission checks
+structural agreement only; it does not prove SMP scheduling determinism.
+
+#### Scenario: SMP checkpoint restores
+- GIVEN a checkpoint written with two vCPUs and an extra cmdline
+- WHEN the probe restores it
+- THEN the VM is built with two vCPUs and the recorded cmdline
+
+#### Scenario: Mismatched snapshot rejected
+- GIVEN a snapshot whose vCPU count differs from the checkpoint declaration
+- WHEN restore validates topology
+- THEN it fails with the observed and expected counts

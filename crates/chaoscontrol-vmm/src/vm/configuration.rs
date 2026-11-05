@@ -72,9 +72,11 @@ fn assert_cpu(cpu: CpuConfig, expected_seed: u64, expected_hide_tsc: bool) {
         fixed_frequency_mhz,
         seed,
         tsc_advance_per_tick,
+        tsc_mode,
     } = cpu;
     assert_eq!(tsc_khz, crate::cpu::DEFAULT_TSC_KHZ);
     assert_eq!(tsc_advance_per_tick, crate::cpu::DEFAULT_TSC_ADVANCE);
+    assert_eq!(tsc_mode, crate::cpu::TscAdvanceMode::PerExit);
     assert_eq!(seed, expected_seed);
     assert_eq!(hide_tsc, expected_hide_tsc);
     assert!(hide_hypervisor);

@@ -418,6 +418,7 @@ impl VmConfig {
                 fixed_frequency_mhz: None,
                 seed,
                 tsc_advance_per_tick: crate::cpu::DEFAULT_TSC_ADVANCE,
+                tsc_mode: crate::cpu::TscAdvanceMode::PerExit,
             },
             // Deterministic boot parameters:
             // clocksource=tsc tsc=reliable: use our pinned TSC as main clock

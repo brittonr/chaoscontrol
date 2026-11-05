@@ -210,6 +210,54 @@ pub enum CpuError {
 /// Every field has a safe default (see [`CpuConfig::default`]).  Two VMs
 /// created with the same `CpuConfig` and the same guest image will
 /// execute identically at the CPU instruction level.
+/// Guest-time advancement mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TscAdvanceMode {
+    /// Advance the virtual TSC per VM exit or scheduling quantum (default).
+    #[default]
+    PerExit,
+    /// Advance from admitted guest retired-instruction progress.
+    InstructionProgress,
+}
+
+impl TscAdvanceMode {
+    /// Parse a profile wire name.
+    pub fn parse(value: &str) -> Result<Self, TscModeError> {
+        match value {
+            "per-exit" => Ok(Self::PerExit),
+            "instruction-progress" => Ok(Self::InstructionProgress),
+            other => Err(TscModeError::UnknownMode {
+                found: other.to_string(),
+            }),
+        }
+    }
+
+    /// Stable wire name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PerExit => "per-exit",
+            Self::InstructionProgress => "instruction-progress",
+        }
+    }
+}
+
+/// Rejection class for guest-time mode selection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TscModeError {
+    /// The profile name is not a known mode.
+    UnknownMode {
+        /// Name found in the profile.
+        found: String,
+    },
+    /// The PMU prerequisite still reports no support.
+    PmuUnadmitted,
+    /// The mode's runtime implementation is not admitted yet.
+    ModeUnavailable,
+}
+
+/// Whether instruction-progress TSC advancement is implemented or admitted.
+pub const INSTRUCTION_PROGRESS_TSC_ADMITTED: bool = false;
+
 #[derive(Debug, Clone)]
 pub struct CpuConfig {
     /// TSC frequency exposed to the guest, in kHz.
@@ -217,6 +265,13 @@ pub struct CpuConfig {
     /// KVM scales host TSC reads to this rate. Matching rates do not make
     /// hardware RDTSC reads deterministic: elapsed host time still matters.
     pub tsc_khz: u32,
+
+    /// Admitted guest-time advancement mode.
+    ///
+    /// The default advances per VM exit or scheduling quantum. The
+    /// instruction-progress mode remains unavailable until its PMU evidence and
+    /// runtime implementation are admitted.
+    pub tsc_mode: TscAdvanceMode,
 
     /// Allow the guest to use AVX2 (256-bit integer SIMD).
     ///
@@ -290,7 +345,121 @@ impl Default for CpuConfig {
             fixed_frequency_mhz: None,
             seed: 0,
             tsc_advance_per_tick: DEFAULT_TSC_ADVANCE,
+            tsc_mode: TscAdvanceMode::PerExit,
         }
+    }
+}
+
+impl CpuConfig {
+    // r[impl chaoscontrol.tsc_progress.mode_gate]
+    /// Admit the configured guest-time mode for the supplied PMU evidence.
+    ///
+    /// The instruction-progress mode is rejected while PMU support is
+    /// unadmitted and while its runtime implementation is not admitted.
+    pub fn admit_tsc_mode(&self, claims_pmu_support: bool) -> Result<TscAdvanceMode, TscModeError> {
+        match self.tsc_mode {
+            TscAdvanceMode::PerExit => Ok(TscAdvanceMode::PerExit),
+            TscAdvanceMode::InstructionProgress => {
+                if !claims_pmu_support {
+                    return Err(TscModeError::PmuUnadmitted);
+                }
+                if !INSTRUCTION_PROGRESS_TSC_ADMITTED {
+                    return Err(TscModeError::ModeUnavailable);
+                }
+                Ok(TscAdvanceMode::InstructionProgress)
+            }
+        }
+    }
+}
+
+/// Pure model of progress-mode TSC snapshot state.
+///
+/// This records the mapping parameters and the last admitted retired count so a
+/// restore can reject a cross-mode snapshot or resume the same mapping. It does
+/// not advance the runtime TSC, handle HLT deadlines, or program the PIT.
+// r[impl chaoscontrol.tsc_progress.snapshot_consistency]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TscProgressSnapshot {
+    /// Mode under which the snapshot was taken.
+    pub mode: TscAdvanceMode,
+    /// TSC value at the last admitted boundary.
+    pub base: u64,
+    /// TSC counts per retired instruction.
+    pub scale: u64,
+    /// Last admitted guest retired instruction count.
+    pub last_retired: u64,
+}
+
+/// Rejection class for pure progress-mode snapshot operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TscProgressError {
+    /// The scale is zero.
+    ScaleZero,
+    /// The snapshot mode differs from the selected mode.
+    CrossMode {
+        /// Mode recorded in the snapshot.
+        recorded: TscAdvanceMode,
+        /// Mode selected for restore.
+        selected: TscAdvanceMode,
+    },
+    /// A continuation reported fewer retired instructions than recorded.
+    RetiredCountRegressed {
+        /// Last recorded count.
+        recorded: u64,
+        /// Observed count.
+        observed: u64,
+    },
+}
+
+impl TscProgressSnapshot {
+    /// Create a snapshot at the given mapping parameters.
+    pub fn new(
+        mode: TscAdvanceMode,
+        base: u64,
+        scale: u64,
+        last_retired: u64,
+    ) -> Result<Self, TscProgressError> {
+        if scale == 0 {
+            return Err(TscProgressError::ScaleZero);
+        }
+        Ok(Self {
+            mode,
+            base,
+            scale,
+            last_retired,
+        })
+    }
+
+    /// Resume this snapshot under the selected mode.
+    pub fn restore(selected: TscAdvanceMode, snapshot: Self) -> Result<Self, TscProgressError> {
+        if snapshot.mode != selected {
+            return Err(TscProgressError::CrossMode {
+                recorded: snapshot.mode,
+                selected,
+            });
+        }
+        if snapshot.scale == 0 {
+            return Err(TscProgressError::ScaleZero);
+        }
+        Ok(snapshot)
+    }
+
+    /// Advance to a later retired-instruction boundary.
+    ///
+    /// The TSC is `base + scale * (retired - last_retired)`; the input is the
+    /// total retired count, not a delta. Counts may repeat, but not regress.
+    pub fn advance(&mut self, retired_total: u64) -> Result<u64, TscProgressError> {
+        if retired_total < self.last_retired {
+            return Err(TscProgressError::RetiredCountRegressed {
+                recorded: self.last_retired,
+                observed: retired_total,
+            });
+        }
+        let delta = retired_total - self.last_retired;
+        let advance = self.scale.saturating_mul(delta);
+        self.base = self.base.saturating_add(advance);
+        self.last_retired = retired_total;
+        Ok(self.base)
     }
 }
 
@@ -918,6 +1087,68 @@ mod tests {
         assert!(c.fixed_stepping.is_none());
         assert!(c.fixed_frequency_mhz.is_none());
         assert_eq!(c.seed, 0);
+    }
+
+    #[test]
+    fn tsc_mode_default_and_gate() {
+        let config = CpuConfig::default();
+        assert_eq!(config.tsc_mode, TscAdvanceMode::PerExit);
+        assert_eq!(config.admit_tsc_mode(false), Ok(TscAdvanceMode::PerExit));
+        let progress = CpuConfig {
+            tsc_mode: TscAdvanceMode::InstructionProgress,
+            ..CpuConfig::default()
+        };
+        assert_eq!(
+            progress.admit_tsc_mode(false),
+            Err(TscModeError::PmuUnadmitted)
+        );
+        assert_eq!(
+            progress.admit_tsc_mode(true),
+            Err(TscModeError::ModeUnavailable)
+        );
+        assert_eq!(
+            TscAdvanceMode::parse("per-exit"),
+            Ok(TscAdvanceMode::PerExit)
+        );
+        assert_eq!(
+            TscAdvanceMode::parse("instruction-progress"),
+            Ok(TscAdvanceMode::InstructionProgress)
+        );
+        assert!(matches!(
+            TscAdvanceMode::parse("counter"),
+            Err(TscModeError::UnknownMode { .. })
+        ));
+        assert_eq!(TscAdvanceMode::PerExit.as_str(), "per-exit");
+    }
+
+    #[test]
+    fn progress_snapshot_rejects_cross_mode_and_regression() {
+        let snapshot =
+            TscProgressSnapshot::new(TscAdvanceMode::InstructionProgress, 1_000, 2, 10).unwrap();
+        assert_eq!(
+            TscProgressSnapshot::restore(TscAdvanceMode::PerExit, snapshot),
+            Err(TscProgressError::CrossMode {
+                recorded: TscAdvanceMode::InstructionProgress,
+                selected: TscAdvanceMode::PerExit,
+            })
+        );
+        let mut first =
+            TscProgressSnapshot::restore(TscAdvanceMode::InstructionProgress, snapshot).unwrap();
+        let mut second = first;
+        assert_eq!(first.advance(25).unwrap(), 1_030);
+        assert_eq!(second.advance(25).unwrap(), 1_030);
+        assert_eq!(first, second);
+        assert_eq!(
+            first.advance(24),
+            Err(TscProgressError::RetiredCountRegressed {
+                recorded: 25,
+                observed: 24,
+            })
+        );
+        assert_eq!(
+            TscProgressSnapshot::new(TscAdvanceMode::InstructionProgress, 0, 0, 0),
+            Err(TscProgressError::ScaleZero)
+        );
     }
 
     // -- VirtualTsc --

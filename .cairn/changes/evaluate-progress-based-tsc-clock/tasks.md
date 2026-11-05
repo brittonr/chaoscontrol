@@ -2,7 +2,7 @@
 
 - [x] [serial] Review the per-exit clock, PMU prerequisite, and guest determinism time boundary; record the gated design. r[chaoscontrol.tsc_progress.mode_gate]
 - [x] [serial] Model per-exit versus counter time on synthetic busy-loop and exit-frequency traces with controlled timeouts. r[chaoscontrol.tsc_progress.mode_gate]
-- [ ] [serial] Add the profile-selected mode to admission with rejection while PMU support is unadmitted; cover default and gated cases. r[chaoscontrol.tsc_progress.mode_gate]
+- [x] [serial] Add the profile-selected mode to admission with rejection while PMU support is unadmitted; cover default and gated cases. r[chaoscontrol.tsc_progress.mode_gate]
 - [ ] [serial] Bind mode, base, scale, and last retired count into snapshot state; reject cross-mode restore and prove same-mode continuation equality. r[chaoscontrol.tsc_progress.snapshot_consistency]
 - [ ] [serial] Define HLT deadline and PIT `tsc_khz` behavior for the mode and cover both with unit-level boundary tests. r[chaoscontrol.tsc_progress.snapshot_consistency]
 - [ ] [serial] Measure per-exit skid stability across snapshot repeats on an admitted host; reject the host profile if skid is unstable. r[chaoscontrol.tsc_progress.mode_gate]

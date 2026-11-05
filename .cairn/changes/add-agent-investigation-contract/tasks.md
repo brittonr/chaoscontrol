@@ -30,6 +30,7 @@
 - [x] [serial] Expose declared and observed SMP topology in restore plans and snapshot inspections. r[chaoscontrol.agent_investigation.restore_plan_topology_surface]
 - [x] [serial] Expose the exact admitted assertion fingerprint in failure listings. r[chaoscontrol.agent_investigation.list_bugs_identity_surface]
 - [x] [serial] Bind seek outcome and intervention count into candidate receipts. r[chaoscontrol.agent_investigation.receipt_seek_intervention_facts]
+- [x] [serial] Link admitted diagnostic receipt digests into candidate receipts. r[chaoscontrol.agent_investigation.receipt_diagnostic_links]
 - [x] [serial] Name the first differing tick, round, or VM observation in drift reports. r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
 - [x] [serial] Expose per-vCPU state and select the vCPU for register intervention and expectation. r[chaoscontrol.agent_investigation.restore_smp_observations]
 - [x] [serial] Bind moment references to a deterministic branch identity and declared tick granularity. r[chaoscontrol.agent_investigation.moment_reference_branch_granularity]

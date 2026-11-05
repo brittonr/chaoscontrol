@@ -822,6 +822,10 @@ enum Commands {
         #[arg(long)]
         receipt: Option<String>,
 
+        /// Link one diagnostic receipt file into the candidate receipt (repeatable).
+        #[arg(long = "diagnostic-receipt")]
+        diagnostic_receipt: Vec<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1198,6 +1202,7 @@ fn main() {
             repeat,
             candidate_revision,
             receipt,
+            diagnostic_receipt,
             output,
         } => cmd_restore_probe(
             checkpoint,
@@ -1216,6 +1221,7 @@ fn main() {
                 repeat,
                 candidate_revision,
                 receipt,
+                diagnostic_receipt,
             },
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
@@ -1326,6 +1332,7 @@ struct RestoreProbeOptions {
     repeat: u64,
     candidate_revision: Option<String>,
     receipt: Option<String>,
+    diagnostic_receipt: Vec<String>,
 }
 
 fn cmd_restore_probe(
@@ -1347,6 +1354,7 @@ fn cmd_restore_probe(
         repeat,
         candidate_revision,
         receipt,
+        diagnostic_receipt,
     } = options;
     let selector = match chaoscontrol_explore::resolve_bug_selector(
         &checkpoint_path,
@@ -1450,6 +1458,33 @@ fn cmd_restore_probe(
         let rounds_run = record["forward_rounds_run"].as_u64().unwrap_or(0);
         let drift = if repeats > 1 { Some(drifted) } else { None };
         let expectation_matched = record["expectation"]["matched"].as_bool();
+        let mut diagnostic_digests = Vec::new();
+        for path in &diagnostic_receipt {
+            let bytes = match std::fs::read(path) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    std::process::exit(1);
+                }
+            };
+            let decoded = match chaoscontrol_protocol::diagnostic::decode_receipt(&bytes) {
+                Ok(receipt) => receipt,
+                Err(error) => {
+                    eprintln!("Error: diagnostic receipt {path}: {error:?}");
+                    std::process::exit(1);
+                }
+            };
+            match chaoscontrol_protocol::diagnostic::receipt_digest(&decoded) {
+                Ok(digest) => diagnostic_digests.push(format!(
+                    "b3:{}",
+                    chaoscontrol_protocol::identity::encode_lower_hex(&digest)
+                )),
+                Err(error) => {
+                    eprintln!("Error: diagnostic receipt {path}: {error:?}");
+                    std::process::exit(1);
+                }
+            }
+        }
         let receipt = match chaoscontrol_explore::probe_receipt::ProbeReceipt::build(
             revision,
             &checkpoint_digest,
@@ -1461,6 +1496,7 @@ fn cmd_restore_probe(
             record["interventions"]
                 .as_array()
                 .map_or(0, |items| items.len() as u64),
+            &diagnostic_digests,
             repeats,
             drift,
             expectation_matched,

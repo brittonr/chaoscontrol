@@ -772,3 +772,23 @@ candidate correctness.
 - GIVEN an unknown seek-outcome label
 - WHEN a receipt is built
 - THEN the typed rejection is returned
+
+### Requirement: Candidate receipts link bounded diagnostic results
+
+r[chaoscontrol.agent_investigation.receipt_diagnostic_links]
+
+A candidate receipt MUST accept zero or more diagnostic receipt files, decode and
+admit each one, and bind their canonical receipt digests as sorted unique `b3:`
+values. Malformed diagnostic receipts or non-BLAKE3 digests MUST be rejected before a
+candidate receipt is written. The links identify bounded diagnostic results; they do
+not prove the candidate fix or replay fidelity.
+
+#### Scenario: Diagnostic result linked
+- GIVEN a valid diagnostic receipt file
+- WHEN the candidate receipt is written
+- THEN its digest appears in the candidate receipt's link list
+
+#### Scenario: Malformed link rejected
+- GIVEN a file that is not a valid diagnostic receipt
+- WHEN the candidate receipt is requested
+- THEN the command fails without writing a receipt

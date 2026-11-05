@@ -32,6 +32,9 @@ pub struct ProbeReceiptBody {
     pub rounds_run: u64,
     /// Number of register interventions applied to the branch.
     pub intervention_count: u64,
+    // r[impl chaoscontrol.agent_investigation.receipt_diagnostic_links]
+    /// Sorted digests of diagnostic receipts linked to this candidate.
+    pub diagnostic_receipt_digests: Vec<String>,
     /// Number of probe runs compared.
     pub repeat_runs: u64,
     /// Whether compared runs drifted; `None` when only one run executed.
@@ -65,6 +68,8 @@ pub enum ProbeReceiptError {
     DigestMismatch,
     /// The seek outcome is not a known classification.
     InvalidSeekOutcome,
+    /// A linked diagnostic digest is not a `b3:` BLAKE3 value.
+    InvalidDiagnosticDigest,
 }
 
 fn valid_hex_digest(value: &str) -> bool {
@@ -87,6 +92,7 @@ impl ProbeReceipt {
         seek_outcome: &str,
         rounds_run: u64,
         intervention_count: u64,
+        diagnostic_receipt_digests: &[String],
         repeat_runs: u64,
         drift: Option<bool>,
         expectation_matched: Option<bool>,
@@ -106,6 +112,18 @@ impl ProbeReceipt {
         ) {
             return Err(ProbeReceiptError::InvalidSeekOutcome);
         }
+        if diagnostic_receipt_digests.iter().any(|digest| {
+            !digest.starts_with("b3:")
+                || digest.len() != 67
+                || !digest[3..]
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        }) {
+            return Err(ProbeReceiptError::InvalidDiagnosticDigest);
+        }
+        let mut linked = diagnostic_receipt_digests.to_vec();
+        linked.sort();
+        linked.dedup();
         let verdict = if drift == Some(true)
             || expectation_matched == Some(false)
             || (target_tick.is_some() && !seek_reached)
@@ -124,6 +142,7 @@ impl ProbeReceipt {
             seek_outcome: seek_outcome.to_string(),
             rounds_run,
             intervention_count,
+            diagnostic_receipt_digests: linked,
             repeat_runs,
             drift,
             expectation_matched,
@@ -177,6 +196,7 @@ mod tests {
             "reached",
             3,
             0,
+            &[],
             2,
             Some(false),
             Some(true),
@@ -208,6 +228,7 @@ mod tests {
             "round_cap",
             0,
             0,
+            &[],
             2,
             Some(true),
             None,
@@ -223,6 +244,7 @@ mod tests {
             "reached",
             1,
             0,
+            &[],
             1,
             None,
             Some(false),
@@ -242,6 +264,7 @@ mod tests {
             "round_cap",
             0,
             0,
+            &[],
             1,
             None,
             None,
@@ -257,6 +280,7 @@ mod tests {
             "no_target",
             0,
             0,
+            &[],
             1,
             None,
             None,
@@ -266,17 +290,95 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_links_are_sorted_and_validated() {
+        let first = format!("b3:{}", "a".repeat(64));
+        let second = format!("b3:{}", "b".repeat(64));
+        let receipt = ProbeReceipt::build(
+            "rev",
+            DIGEST,
+            None,
+            None,
+            false,
+            "no_target",
+            0,
+            0,
+            &[second.clone(), first.clone(), second.clone()],
+            1,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(receipt.body.diagnostic_receipt_digests, vec![first, second]);
+        assert_eq!(
+            ProbeReceipt::build(
+                "rev",
+                DIGEST,
+                None,
+                None,
+                false,
+                "no_target",
+                0,
+                0,
+                &["sha256:dead".to_string()],
+                1,
+                None,
+                None
+            ),
+            Err(ProbeReceiptError::InvalidDiagnosticDigest)
+        );
+    }
+
+    #[test]
     fn invalid_facts_are_rejected() {
         assert_eq!(
-            ProbeReceipt::build("", DIGEST, None, None, true, "reached", 1, 0, 1, None, None),
+            ProbeReceipt::build(
+                "",
+                DIGEST,
+                None,
+                None,
+                true,
+                "reached",
+                1,
+                0,
+                &[],
+                1,
+                None,
+                None
+            ),
             Err(ProbeReceiptError::MissingRevision)
         );
         assert_eq!(
-            ProbeReceipt::build("rev", "abcd", None, None, true, "reached", 1, 0, 1, None, None,),
+            ProbeReceipt::build(
+                "rev",
+                "abcd",
+                None,
+                None,
+                true,
+                "reached",
+                1,
+                0,
+                &[],
+                1,
+                None,
+                None,
+            ),
             Err(ProbeReceiptError::InvalidCheckpointDigest)
         );
         assert_eq!(
-            ProbeReceipt::build("rev", DIGEST, None, None, true, "reached", 1, 0, 4, None, None,),
+            ProbeReceipt::build(
+                "rev",
+                DIGEST,
+                None,
+                None,
+                true,
+                "reached",
+                1,
+                0,
+                &[],
+                4,
+                None,
+                None,
+            ),
             Err(ProbeReceiptError::InvalidRepeatCount)
         );
     }

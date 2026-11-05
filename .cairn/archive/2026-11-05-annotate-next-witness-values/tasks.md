@@ -2,7 +2,7 @@
 
 - [x] [serial] Review comparison/contracts, capture baseline and admit forward witness design. r[chaoscontrol.next_witness_value.annotation]
 - [x] [serial] Reproduce unsupported query and implement shared directional witness engine with behavioral regressions. r[chaoscontrol.next_witness_value.annotation]
-- [ ] [serial] Exercise CLI, update documentation/scope/evidence, pass scoped gates and synchronize requirement. r[chaoscontrol.next_witness_value.annotation]
+- [x] [serial] Exercise CLI, update documentation/scope/evidence, pass scoped gates and synchronize requirement. r[chaoscontrol.next_witness_value.annotation]
 
 ## Evidence
 

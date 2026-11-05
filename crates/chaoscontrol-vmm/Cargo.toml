@@ -13,6 +13,7 @@ profiling = ["dep:tracing"]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-sim-core = { path = "../chaoscontrol-sim-core" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
+chaoscontrol-smr = { path = "../chaoscontrol-smr" }
 regex = "1"
 kvm-ioctls = "0.19"
 kvm-bindings = { version = "0.10", features = ["fam-wrappers", "serde"] }
@@ -33,4 +34,5 @@ serde_json = "1"
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
 tempfile = "3"

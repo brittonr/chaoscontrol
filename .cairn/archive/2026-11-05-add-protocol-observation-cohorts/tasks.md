@@ -21,7 +21,8 @@
 ## SDK, VMM, and oracle boundary
 
 - [x] [serial] Add the bounded SDK protocol-observation surface with producer sequence and loss accounting. r[chaoscontrol.protocol_observation.envelope]
-- [ ] [serial] Add VMM collection and scheduler-position binding without parsing protocol projection meaning. r[chaoscontrol.protocol_observation.envelope] r[chaoscontrol.protocol_observation.cohort]
+- [x] [serial] Add VMM collection and scheduler-position binding without parsing protocol projection meaning. r[chaoscontrol.protocol_observation.envelope] r[chaoscontrol.protocol_observation.cohort]
+  - Evidence: `chaoscontrol_vmm::protocol_observation` retains bounded envelopes at the lifecycle hypercall, binds `blake3:` scheduler state identity, rejects producer scheduler claims, malformed/unknown envelopes, and record/byte bound overflow, and clears retained observations on full and incremental restore. `collect_hypercall` is invoked only after the oracle admits the event for an active run. `sdk_producer_envelopes_collect_with_one_based_sequences` proves the SDK producer envelope parses into the VMM record; projection bytes stay opaque. The SDK producer now starts source sequences at 1, matching the cohort contract's 1-based contiguous sequences.
 - [x] [serial] Add a narrow consumer-owned pure oracle adapter boundary over admitted cohorts. r[chaoscontrol.protocol_observation.oracle_boundary]
   - Evidence: `observation::oracle` publishes `ProtocolOracle`, typed `OracleResult`/`OracleVerdict`, and `evaluate_oracle`; an incomplete cohort is recorded without invoking the oracle, and a runtime self-oracle is rejected before evaluation.
 - [x] [parallel] Add a first-party Raft adapter fixture and a deliberately false runtime self-oracle fixture. r[chaoscontrol.protocol_observation.oracle_boundary] r[chaoscontrol.protocol_observation.validation]

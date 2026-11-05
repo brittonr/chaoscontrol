@@ -29,6 +29,7 @@ pub mod devices;
 pub mod dlog;
 pub mod memory;
 pub mod perf;
+pub mod protocol_observation;
 pub mod registers;
 pub mod scheduler;
 pub mod sim_adapter;

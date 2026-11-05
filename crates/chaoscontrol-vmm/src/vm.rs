@@ -42,8 +42,8 @@ use chaoscontrol_fault::engine::{
 };
 use chaoscontrol_protocol::{
     HypercallPage, CMD_ASSERT_ALWAYS, CMD_ASSERT_REACHABLE, CMD_ASSERT_SOMETIMES,
-    CMD_ASSERT_UNREACHABLE, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT,
-    HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
+    CMD_ASSERT_UNREACHABLE, CMD_LIFECYCLE_SEND_EVENT, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE,
+    COVERAGE_PORT, HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
 };
 use chaoscontrol_sim_core::{
     build_guest_determinism_profile, derive_boot_entropy_seed, encode_linux_rng_seed_setup_data,
@@ -838,6 +838,10 @@ pub struct DeterministicVm {
 
     /// Accepted assertion hits awaiting explorer collection.
     assertion_hits: Vec<AssertionHitRecord>,
+
+    /// Bounded protocol-observation envelopes with VMM-bound scheduler positions.
+    protocol_observations: crate::protocol_observation::ProtocolObservationCollector,
+
     /// Accepted assertion hits dropped because the VM-local queue was full.
     assertion_hit_overflow: u64,
     /// Whether assertion hits request a checkpoint stop at the next boundary.
@@ -1381,6 +1385,8 @@ impl DeterministicVm {
             panic_detected: false,
             panic_match_state: 0,
             assertion_hits: Vec::new(),
+            protocol_observations:
+                crate::protocol_observation::ProtocolObservationCollector::default(),
             assertion_hit_overflow: 0,
             assertion_checkpoint_stop: false,
             assertion_checkpoint_stop_limit: 0,
@@ -3238,6 +3244,7 @@ impl DeterministicVm {
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         self.assertion_hits.clear();
+        self.protocol_observations.reset();
         self.assertion_hit_overflow = 0;
         self.assertion_hit_stop_pending = false;
         self.validate_fault_engine_snapshot(snapshot)?;
@@ -3396,6 +3403,7 @@ impl DeterministicVm {
         base: &[u8],
     ) -> Result<(), VmError> {
         self.assertion_hits.clear();
+        self.protocol_observations.reset();
         self.assertion_hit_overflow = 0;
         self.assertion_hit_stop_pending = false;
         self.validate_fault_engine_snapshot(snapshot)?;
@@ -5078,6 +5086,26 @@ impl DeterministicVm {
         std::mem::take(&mut self.assertion_hits)
     }
 
+    /// Drain retained protocol observations in arrival order.
+    ///
+    /// Each record carries the scheduler position the VMM bound at arrival.
+    /// Protocol projection meaning and cohort completeness remain consumer-owned.
+    pub fn take_protocol_observations(
+        &mut self,
+    ) -> Vec<chaoscontrol_smr::observation::ProtocolObservation> {
+        self.protocol_observations.take_records()
+    }
+
+    /// Retained protocol-observation bytes and rejection counts.
+    pub fn protocol_observation_state(
+        &self,
+    ) -> crate::protocol_observation::ProtocolObservationState {
+        crate::protocol_observation::ProtocolObservationState {
+            retained_bytes: self.protocol_observations.retained_bytes(),
+            rejections: self.protocol_observations.rejections(),
+        }
+    }
+
     /// Number of accepted hits dropped because the VM-local queue was full.
     pub fn assertion_hit_overflow(&self) -> u64 {
         self.assertion_hit_overflow
@@ -5139,6 +5167,20 @@ impl DeterministicVm {
 
     // ─── Internal: SDK hypercall handler ─────────────────────────
 
+    /// Collect one opaque protocol-observation envelope from a lifecycle event.
+    ///
+    /// The VMM binds only the deterministic scheduler position. Event payloads
+    /// that are not protocol observations are left to the fault engine.
+    fn collect_protocol_observation(&mut self, page: &HypercallPage) {
+        let scheduler_ref =
+            crate::protocol_observation::scheduler_position_ref(&self.scheduler.state_id());
+        crate::protocol_observation::collect_hypercall(
+            &mut self.protocol_observations,
+            page,
+            &scheduler_ref,
+        );
+    }
+
     /// Handle an SDK hypercall triggered by `outb(0x510, 0)`.
     ///
     /// Reads the [`HypercallPage`] from guest memory at
@@ -5194,6 +5236,12 @@ impl DeterministicVm {
         } else {
             self.fault_engine.handle_hypercall(&page)
         };
+
+        // Retain only observations the oracle admitted for an active run.
+        // Scheduler position binding never widens the oracle's acceptance.
+        if page.command == CMD_LIFECYCLE_SEND_EVENT && status == chaoscontrol_protocol::STATUS_OK {
+            self.collect_protocol_observation(&page);
+        }
 
         if assertion_command {
             // The engine queues only admitted events. Failure statuses still

@@ -82,7 +82,7 @@ impl ProtocolObservationProducer {
             producer_ref: producer_ref.to_string(),
             guest_id,
             generation,
-            next_sequence: 0,
+            next_sequence: 1,
             dropped: 0,
         })
     }
@@ -103,6 +103,9 @@ impl ProtocolObservationProducer {
     }
 
     /// Build one envelope without emitting it.
+    ///
+    /// The envelope leaves `scheduler_ref` empty; the VMM binds the
+    /// deterministic scheduler position at collection time.
     #[allow(clippy::too_many_arguments)]
     pub fn envelope(
         &self,
@@ -138,6 +141,9 @@ impl ProtocolObservationProducer {
     }
 
     /// Emit one observation and return its assigned source sequence.
+    ///
+    /// Source sequences begin at 1 and increase by one per emitted envelope;
+    /// the cohort contract reserves 0 for "no observation".
     pub fn observe(
         &mut self,
         transition_class_ref: &str,
@@ -177,10 +183,10 @@ mod tests {
         let mut producer = producer();
         let first = producer.observe(REF, REF, Some(b"projection")).unwrap();
         let second = producer.observe(REF, REF, None).unwrap();
-        assert_eq!((first, second), (0, 1));
-        assert_eq!(producer.next_sequence(), 2);
-        let envelope = producer.envelope(REF, REF, Some(b"x"), 2).unwrap();
-        assert_eq!(envelope["source_sequence"], 2);
+        assert_eq!((first, second), (1, 2));
+        assert_eq!(producer.next_sequence(), 3);
+        let envelope = producer.envelope(REF, REF, Some(b"x"), 3).unwrap();
+        assert_eq!(envelope["source_sequence"], 3);
         assert_eq!(envelope["dropped"], 0);
         assert_eq!(
             envelope["projection_ref"],

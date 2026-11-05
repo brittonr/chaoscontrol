@@ -705,6 +705,10 @@ enum Commands {
         #[arg(long)]
         require_assertion_identity: bool,
 
+        /// Only bugs whose admitted assertion fingerprint matches this lower-hex value.
+        #[arg(long)]
+        assertion_fingerprint: Option<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1118,6 +1122,7 @@ fn main() {
             max_tick,
             process_instance,
             require_assertion_identity,
+            assertion_fingerprint,
             output,
         } => cmd_list_bugs(
             checkpoint,
@@ -1129,6 +1134,7 @@ fn main() {
                 max_tick,
                 process_instance,
                 require_assertion_identity,
+                assertion_fingerprint,
             },
         ),
         Commands::InspectBug {

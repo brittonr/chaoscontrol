@@ -1261,6 +1261,9 @@ pub enum CheckpointBugExportError {
     #[snafu(display("invalid tick range: min {min_tick} exceeds max {max_tick}"))]
     InvalidTickRange { min_tick: u64, max_tick: u64 },
 
+    #[snafu(display("invalid assertion fingerprint: {value}"))]
+    InvalidAssertionFingerprint { value: String },
+
     #[snafu(display("no checkpoint bug matches {selector}"))]
     BugNotFound { selector: String },
 
@@ -1342,6 +1345,8 @@ pub struct BugListFilter {
     pub process_instance: Option<String>,
     /// Only bugs carrying an admitted assertion identity.
     pub require_assertion_identity: bool,
+    /// Only bugs whose admitted assertion fingerprint matches this lower-hex value.
+    pub assertion_fingerprint: Option<String>,
 }
 
 impl BugListFilter {
@@ -1379,6 +1384,16 @@ impl BugListFilter {
         if self.require_assertion_identity && bug.assertion_identity.is_none() {
             return false;
         }
+        // r[impl chaoscontrol.agent_investigation.list_bugs_assertion_fingerprint_filter]
+        if let Some(expected) = self.assertion_fingerprint.as_deref() {
+            let actual = bug
+                .assertion_identity
+                .as_ref()
+                .map(|identity| identity.fingerprint.to_hex());
+            if actual.as_deref() != Some(expected) {
+                return false;
+            }
+        }
         true
     }
 }
@@ -1394,6 +1409,13 @@ pub fn list_bugs_with_filter<P: AsRef<Path>>(
         if min_tick > max_tick {
             return Err(CheckpointBugExportError::InvalidTickRange { min_tick, max_tick });
         }
+    }
+    if let Some(value) = filter.assertion_fingerprint.as_deref() {
+        chaoscontrol_protocol::identity::AssertionFingerprint::from_hex(value).map_err(|_| {
+            CheckpointBugExportError::InvalidAssertionFingerprint {
+                value: value.to_string(),
+            }
+        })?;
     }
     let checkpoint = load_checkpoint(checkpoint_path)?;
     validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref()).map_err(|error| {
@@ -3619,6 +3641,22 @@ mod tests {
             ..BugListFilter::default()
         };
         assert_eq!(identity.matches(&bug), bug.assertion_identity.is_some());
+        let fingerprint = bug
+            .assertion_identity
+            .as_ref()
+            .expect("minimal bug carries an identity")
+            .fingerprint
+            .to_hex();
+        let matching = BugListFilter {
+            assertion_fingerprint: Some(fingerprint),
+            ..BugListFilter::default()
+        };
+        assert!(matching.matches(&bug));
+        let mismatched = BugListFilter {
+            assertion_fingerprint: Some("00".repeat(32)),
+            ..BugListFilter::default()
+        };
+        assert!(!mismatched.matches(&bug));
     }
 
     #[test]
@@ -3693,6 +3731,27 @@ mod tests {
         assert_eq!(by_identity.len(), 2);
 
         assert!(!dir.path().join("bug_0.json").exists());
+    }
+
+    #[test]
+    fn list_bugs_rejects_invalid_assertion_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1)]),
+        )
+        .unwrap();
+        assert!(matches!(
+            list_bugs_with_filter(
+                &checkpoint_path,
+                BugListFilter {
+                    assertion_fingerprint: Some("not-hex".to_string()),
+                    ..BugListFilter::default()
+                },
+            ),
+            Err(CheckpointBugExportError::InvalidAssertionFingerprint { .. })
+        ));
     }
 
     #[test]

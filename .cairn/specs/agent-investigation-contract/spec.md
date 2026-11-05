@@ -595,3 +595,23 @@ Filters combine conjunctively and do not write artifacts.
 - GIVEN a mix of identity-admitted and legacy bugs
 - WHEN identity-required is set
 - THEN only bugs with an admitted identity are returned
+
+### Requirement: Failure listing filters by exact assertion fingerprint
+
+r[chaoscontrol.agent_investigation.list_bugs_assertion_fingerprint_filter]
+
+Failure listing MUST accept an exact admitted assertion fingerprint as lower hex and
+MUST reject malformed values before loading results. A fingerprint filter MUST match
+only bugs whose admitted identity carries exactly that fingerprint and MUST exclude
+legacy identity-less bugs. The filter identifies assertion evidence; it does not
+select a replay verdict or authorize a branch.
+
+#### Scenario: Fingerprint selects recorded failures
+- GIVEN failures with admitted assertion identities
+- WHEN listing filters by one fingerprint
+- THEN only bugs carrying that exact fingerprint are returned
+
+#### Scenario: Malformed fingerprint rejected
+- GIVEN a value that is not a valid fingerprint hex string
+- WHEN listing filters by it
+- THEN the typed rejection is returned

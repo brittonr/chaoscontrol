@@ -463,6 +463,46 @@ impl TscProgressSnapshot {
     }
 }
 
+/// Result of a halted-vCPU deadline decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HaltDecision {
+    /// TSC value the halted vCPU advances to.
+    pub target_tsc: u64,
+    /// Whether the jump is a declared bound rather than retired progress.
+    pub declared_progress_bound: bool,
+}
+
+/// Decide how a halted vCPU reaches a PIT deadline under the selected mode.
+///
+/// Per-exit mode keeps the existing jump to the PIT deadline. Instruction-progress
+/// mode also advances to that deadline but marks the jump as a declared bound,
+/// because a halted vCPU retires nothing. A deadline already behind the current
+/// TSC produces no backward jump.
+pub fn halt_deadline(
+    mode: TscAdvanceMode,
+    current_tsc: u64,
+    pit_deadline_tsc: u64,
+) -> HaltDecision {
+    HaltDecision {
+        target_tsc: pit_deadline_tsc.max(current_tsc),
+        declared_progress_bound: mode == TscAdvanceMode::InstructionProgress,
+    }
+}
+
+/// PIT frequency consistent with the selected TSC mapping.
+///
+/// Both modes program the PIT from the same configured `tsc_khz`; progress mode
+/// must not introduce a second clock. A zero frequency is rejected.
+pub fn pit_tsc_khz(mode: TscAdvanceMode, tsc_khz: u32) -> Result<u32, TscModeError> {
+    let _ = mode;
+    if tsc_khz == 0 {
+        return Err(TscModeError::UnknownMode {
+            found: "zero-tsc-khz".to_string(),
+        });
+    }
+    Ok(tsc_khz)
+}
+
 // ─── Public API ──────────────────────────────────────────────────────
 
 /// Build a deterministic CPUID table from the host's supported features.
@@ -1149,6 +1189,24 @@ mod tests {
             TscProgressSnapshot::new(TscAdvanceMode::InstructionProgress, 0, 0, 0),
             Err(TscProgressError::ScaleZero)
         );
+    }
+
+    #[test]
+    fn halt_and_pit_definitions_are_bounded() {
+        let per_exit = halt_deadline(TscAdvanceMode::PerExit, 100, 500);
+        assert_eq!(per_exit.target_tsc, 500);
+        assert!(!per_exit.declared_progress_bound);
+        let progress = halt_deadline(TscAdvanceMode::InstructionProgress, 100, 500);
+        assert_eq!(progress.target_tsc, 500);
+        assert!(progress.declared_progress_bound);
+        let behind = halt_deadline(TscAdvanceMode::InstructionProgress, 700, 500);
+        assert_eq!(behind.target_tsc, 700);
+        assert_eq!(pit_tsc_khz(TscAdvanceMode::PerExit, 1_000), Ok(1_000));
+        assert_eq!(
+            pit_tsc_khz(TscAdvanceMode::InstructionProgress, 1_000),
+            Ok(1_000)
+        );
+        assert!(pit_tsc_khz(TscAdvanceMode::InstructionProgress, 0).is_err());
     }
 
     // -- VirtualTsc --

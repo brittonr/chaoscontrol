@@ -4,7 +4,7 @@
 - [x] [serial] Model per-exit versus counter time on synthetic busy-loop and exit-frequency traces with controlled timeouts. r[chaoscontrol.tsc_progress.mode_gate]
 - [x] [serial] Add the profile-selected mode to admission with rejection while PMU support is unadmitted; cover default and gated cases. r[chaoscontrol.tsc_progress.mode_gate]
 - [ ] [serial] Bind mode, base, scale, and last retired count into snapshot state; reject cross-mode restore and prove same-mode continuation equality. r[chaoscontrol.tsc_progress.snapshot_consistency]
-- [ ] [serial] Define HLT deadline and PIT `tsc_khz` behavior for the mode and cover both with unit-level boundary tests. r[chaoscontrol.tsc_progress.snapshot_consistency]
+- [x] [serial] Define HLT deadline and PIT `tsc_khz` behavior for the mode and cover both with unit-level boundary tests. r[chaoscontrol.tsc_progress.snapshot_consistency]
 - [ ] [serial] Measure per-exit skid stability across snapshot repeats on an admitted host; reject the host profile if skid is unstable. r[chaoscontrol.tsc_progress.mode_gate]
 - [ ] [serial] Build the busy-loop TSC-timeout fixture, record per-exit versus progress outcomes, and admit the mode only on bit-exact repeat expiry. r[chaoscontrol.tsc_progress.mode_gate]
 - [ ] [serial] Update clock documentation and the product-scope intent for the evaluated mode without promoting PMU support. r[chaoscontrol.tsc_progress.mode_gate]

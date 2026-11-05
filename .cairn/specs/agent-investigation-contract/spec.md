@@ -753,3 +753,22 @@ identity for addressing; it does not admit replay or a verdict.
 - GIVEN a bug without an admitted identity
 - WHEN it is listed
 - THEN no fingerprint field is emitted
+
+### Requirement: Candidate receipts bind seek outcome and intervention count
+
+r[chaoscontrol.agent_investigation.receipt_seek_intervention_facts]
+
+A candidate receipt MUST record the classified seek outcome and the number of applied
+register interventions, and MUST reject unknown seek-outcome labels. These facts bind
+the bounded branch behavior the receipt describes; they do not prove replay or
+candidate correctness.
+
+#### Scenario: Receipt binds branch facts
+- GIVEN a probe with no seek target and one applied intervention
+- WHEN a receipt is written
+- THEN it reports `no_target` and an intervention count of one
+
+#### Scenario: Unknown outcome rejected
+- GIVEN an unknown seek-outcome label
+- WHEN a receipt is built
+- THEN the typed rejection is returned

@@ -1456,7 +1456,11 @@ fn cmd_restore_probe(
             Some(record["branch_id"].as_str().unwrap_or_default()),
             until_tick,
             seek_reached,
+            record["seek_outcome"].as_str().unwrap_or("no_target"),
             rounds_run,
+            record["interventions"]
+                .as_array()
+                .map_or(0, |items| items.len() as u64),
             repeats,
             drift,
             expectation_matched,

@@ -25,8 +25,13 @@ pub struct ProbeReceiptBody {
     pub target_tick: Option<u64>,
     /// Whether the seek reached its target tick.
     pub seek_reached: bool,
+    // r[impl chaoscontrol.agent_investigation.receipt_seek_intervention_facts]
+    /// Classified seek stop reason.
+    pub seek_outcome: String,
     /// Number of executed seek rounds.
     pub rounds_run: u64,
+    /// Number of register interventions applied to the branch.
+    pub intervention_count: u64,
     /// Number of probe runs compared.
     pub repeat_runs: u64,
     /// Whether compared runs drifted; `None` when only one run executed.
@@ -58,6 +63,8 @@ pub enum ProbeReceiptError {
     InvalidRepeatCount,
     /// The receipt digest does not match the body.
     DigestMismatch,
+    /// The seek outcome is not a known classification.
+    InvalidSeekOutcome,
 }
 
 fn valid_hex_digest(value: &str) -> bool {
@@ -77,7 +84,9 @@ impl ProbeReceipt {
         branch_id: Option<&str>,
         target_tick: Option<u64>,
         seek_reached: bool,
+        seek_outcome: &str,
         rounds_run: u64,
+        intervention_count: u64,
         repeat_runs: u64,
         drift: Option<bool>,
         expectation_matched: Option<bool>,
@@ -90,6 +99,12 @@ impl ProbeReceipt {
         }
         if !(1..=3).contains(&repeat_runs) {
             return Err(ProbeReceiptError::InvalidRepeatCount);
+        }
+        if !matches!(
+            seek_outcome,
+            "reached" | "no_target" | "round_cap" | "all_vms_stopped"
+        ) {
+            return Err(ProbeReceiptError::InvalidSeekOutcome);
         }
         let verdict = if drift == Some(true)
             || expectation_matched == Some(false)
@@ -106,7 +121,9 @@ impl ProbeReceipt {
             branch_id: branch_id.map(str::to_string),
             target_tick,
             seek_reached,
+            seek_outcome: seek_outcome.to_string(),
             rounds_run,
+            intervention_count,
             repeat_runs,
             drift,
             expectation_matched,
@@ -157,7 +174,9 @@ mod tests {
             None,
             Some(1181),
             true,
+            "reached",
             3,
+            0,
             2,
             Some(false),
             Some(true),
@@ -180,37 +199,84 @@ mod tests {
 
     #[test]
     fn drift_or_mismatch_fails_the_verdict() {
-        let drifted =
-            ProbeReceipt::build("rev", DIGEST, None, None, false, 0, 2, Some(true), None).unwrap();
+        let drifted = ProbeReceipt::build(
+            "rev",
+            DIGEST,
+            None,
+            None,
+            false,
+            "round_cap",
+            0,
+            0,
+            2,
+            Some(true),
+            None,
+        )
+        .unwrap();
         assert_eq!(drifted.body.verdict, "fail");
-        let mismatched =
-            ProbeReceipt::build("rev", DIGEST, None, Some(5), true, 1, 1, None, Some(false))
-                .unwrap();
+        let mismatched = ProbeReceipt::build(
+            "rev",
+            DIGEST,
+            None,
+            Some(5),
+            true,
+            "reached",
+            1,
+            0,
+            1,
+            None,
+            Some(false),
+        )
+        .unwrap();
         assert_eq!(mismatched.body.verdict, "fail");
     }
 
     #[test]
     fn unreached_target_fails_the_verdict() {
-        let receipt =
-            ProbeReceipt::build("rev", DIGEST, None, Some(1181), false, 0, 1, None, None).unwrap();
+        let receipt = ProbeReceipt::build(
+            "rev",
+            DIGEST,
+            None,
+            Some(1181),
+            false,
+            "round_cap",
+            0,
+            0,
+            1,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(receipt.body.verdict, "fail");
-        let absent =
-            ProbeReceipt::build("rev", DIGEST, None, None, false, 0, 1, None, None).unwrap();
+        let absent = ProbeReceipt::build(
+            "rev",
+            DIGEST,
+            None,
+            None,
+            false,
+            "no_target",
+            0,
+            0,
+            1,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(absent.body.verdict, "pass");
     }
 
     #[test]
     fn invalid_facts_are_rejected() {
         assert_eq!(
-            ProbeReceipt::build("", DIGEST, None, None, true, 1, 1, None, None),
+            ProbeReceipt::build("", DIGEST, None, None, true, "reached", 1, 0, 1, None, None),
             Err(ProbeReceiptError::MissingRevision)
         );
         assert_eq!(
-            ProbeReceipt::build("rev", "abcd", None, None, true, 1, 1, None, None),
+            ProbeReceipt::build("rev", "abcd", None, None, true, "reached", 1, 0, 1, None, None,),
             Err(ProbeReceiptError::InvalidCheckpointDigest)
         );
         assert_eq!(
-            ProbeReceipt::build("rev", DIGEST, None, None, true, 1, 4, None, None),
+            ProbeReceipt::build("rev", DIGEST, None, None, true, "reached", 1, 0, 4, None, None,),
             Err(ProbeReceiptError::InvalidRepeatCount)
         );
     }

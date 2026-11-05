@@ -1332,15 +1332,20 @@ pub struct BugListEntry {
     pub process_instances: std::collections::BTreeSet<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BugListFilter {
     pub assertion_id: Option<u64>,
     pub dedup_key: Option<u64>,
     pub min_tick: Option<u64>,
     pub max_tick: Option<u64>,
+    /// Only bugs whose runtime owner scope includes this process instance.
+    pub process_instance: Option<String>,
+    /// Only bugs carrying an admitted assertion identity.
+    pub require_assertion_identity: bool,
 }
 
 impl BugListFilter {
+    // r[impl chaoscontrol.agent_investigation.list_bugs_owner_identity_filter]
     fn matches(&self, bug: &SerializableBug) -> bool {
         if let Some(assertion_id) = self.assertion_id {
             if bug.assertion_id != assertion_id {
@@ -1361,6 +1366,18 @@ impl BugListFilter {
             if bug.tick > max_tick {
                 return false;
             }
+        }
+        if let Some(process_instance) = self.process_instance.as_deref() {
+            if !bug
+                .process_instances
+                .iter()
+                .any(|owner| owner == process_instance)
+            {
+                return false;
+            }
+        }
+        if self.require_assertion_identity && bug.assertion_identity.is_none() {
+            return false;
         }
         true
     }
@@ -3584,6 +3601,27 @@ mod tests {
     }
 
     #[test]
+    fn bug_list_filter_matches_process_scope_and_identity() {
+        let mut bug = minimal_bug(7);
+        bug.process_instances = ["worker-2".to_string()].into_iter().collect();
+        let matches = BugListFilter {
+            process_instance: Some("worker-2".to_string()),
+            ..BugListFilter::default()
+        };
+        assert!(matches.matches(&bug));
+        let other = BugListFilter {
+            process_instance: Some("worker-1".to_string()),
+            ..BugListFilter::default()
+        };
+        assert!(!other.matches(&bug));
+        let identity = BugListFilter {
+            require_assertion_identity: true,
+            ..BugListFilter::default()
+        };
+        assert_eq!(identity.matches(&bug), bug.assertion_identity.is_some());
+    }
+
+    #[test]
     fn list_bugs_filters_without_writing_artifacts() {
         let dir = tempfile::tempdir().unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
@@ -3634,6 +3672,25 @@ mod tests {
         .unwrap();
         assert_eq!(by_assertion.len(), 1);
         assert_eq!(by_assertion[0].bug_id, 1);
+
+        let by_process = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                process_instance: Some("worker-1".to_string()),
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap();
+        assert!(by_process.is_empty());
+        let by_identity = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                require_assertion_identity: true,
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_identity.len(), 2);
 
         assert!(!dir.path().join("bug_0.json").exists());
     }

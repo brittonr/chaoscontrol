@@ -697,6 +697,14 @@ enum Commands {
         #[arg(long)]
         max_tick: Option<u64>,
 
+        /// Only bugs whose runtime owner scope includes this process instance.
+        #[arg(long)]
+        process_instance: Option<String>,
+
+        /// Only bugs carrying an admitted assertion identity.
+        #[arg(long)]
+        require_assertion_identity: bool,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1108,6 +1116,8 @@ fn main() {
             dedup_key,
             min_tick,
             max_tick,
+            process_instance,
+            require_assertion_identity,
             output,
         } => cmd_list_bugs(
             checkpoint,
@@ -1117,6 +1127,8 @@ fn main() {
                 dedup_key,
                 min_tick,
                 max_tick,
+                process_instance,
+                require_assertion_identity,
             },
         ),
         Commands::InspectBug {

@@ -590,3 +590,23 @@ replay one.
 - GIVEN the same checkpoint and selector
 - WHEN a moment reference and a probe record are produced
 - THEN both branch identities are equal
+
+### Requirement: Failure listing filters by owner scope and identity admission
+
+r[chaoscontrol.agent_investigation.list_bugs_owner_identity_filter]
+
+Failure listing MUST accept an exact runtime owner process instance and an
+identity-required flag in addition to assertion id, dedup key, and bounded tick range.
+An owner filter MUST match only bugs whose owner set contains the exact instance, and
+identity-required MUST match only bugs carrying an admitted assertion identity.
+Filters combine conjunctively and do not write artifacts.
+
+#### Scenario: Owner filter selects one bug
+- GIVEN bugs with different runtime owner sets
+- WHEN listing filters by one process instance
+- THEN only bugs owned by that instance are returned
+
+#### Scenario: Identity filter excludes legacy bugs
+- GIVEN a mix of identity-admitted and legacy bugs
+- WHEN identity-required is set
+- THEN only bugs with an admitted identity are returned

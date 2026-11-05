@@ -478,6 +478,15 @@ pub struct Explorer {
     inherits_diagnostic_rounds: bool,
     /// Bootstrap state used to replace a controller poisoned by a branch watchdog.
     recovery: Option<RecoverySnapshot>,
+    /// Campaign assertion fingerprints satisfied by at least one branch.
+    campaign_satisfied: BTreeSet<chaoscontrol_protocol::identity::AssertionFingerprint>,
+    /// Campaign `sometimes`/`reachable` records not yet satisfied.
+    campaign_liveness: BTreeMap<
+        chaoscontrol_protocol::identity::AssertionFingerprint,
+        crate::findings::CampaignLivenessGap,
+    >,
+    /// Distinct assertion fingerprints that produced safety bug records.
+    distinct_safety_failures: BTreeSet<chaoscontrol_protocol::identity::AssertionFingerprint>,
 }
 
 impl Explorer {
@@ -529,6 +538,9 @@ impl Explorer {
             resumed_journal: None,
             inherits_diagnostic_rounds: false,
             recovery: None,
+            campaign_satisfied: BTreeSet::new(),
+            campaign_liveness: BTreeMap::new(),
+            distinct_safety_failures: BTreeSet::new(),
         }
     }
 
@@ -2304,19 +2316,18 @@ impl Explorer {
                 });
             }
         }
+        self.record_campaign_findings(&result.oracle_report);
         let mut bugs = Vec::new();
-        let has_failed_assertion =
+        let has_safety_violation =
             result
                 .oracle_report
                 .structured_assertions
                 .values()
                 .any(|record| {
-                    matches!(
-                        record.verdict(),
-                        chaoscontrol_fault::oracle::Verdict::Failed
-                    )
+                    crate::findings::classify(record)
+                        == crate::findings::BranchFinding::SafetyViolation
                 });
-        if !has_failed_assertion {
+        if !has_safety_violation {
             return Ok(bugs);
         }
         let report_facts = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(
@@ -2328,10 +2339,8 @@ impl Explorer {
         let bug_index_base = self.all_bugs().count();
 
         for (assertion_fingerprint, record) in &result.oracle_report.structured_assertions {
-            if matches!(
-                record.verdict(),
-                chaoscontrol_fault::oracle::Verdict::Failed
-            ) {
+            if crate::findings::classify(record) == crate::findings::BranchFinding::SafetyViolation
+            {
                 let assertion_id = record.compatibility_id.unwrap_or_default();
                 let admitted = record
                     .identity
@@ -2412,11 +2421,52 @@ impl Explorer {
                     from_seed: None,
                 });
 
+                self.distinct_safety_failures.insert(*assertion_fingerprint);
                 bugs.push(bug);
             }
         }
 
         Ok(bugs)
+    }
+
+    /// Campaign `sometimes`/`reachable` records no branch satisfied.
+    pub fn campaign_liveness_gaps(&self) -> Vec<&crate::findings::CampaignLivenessGap> {
+        self.campaign_liveness
+            .iter()
+            .filter(|(fingerprint, _)| !self.campaign_satisfied.contains(*fingerprint))
+            .map(|(_, gap)| gap)
+            .collect()
+    }
+
+    /// Distinct assertion fingerprints that produced safety bug records.
+    pub fn distinct_failing_assertions(&self) -> usize {
+        self.distinct_safety_failures.len()
+    }
+
+    fn record_campaign_findings(&mut self, report: &OracleReport) {
+        for (fingerprint, record) in &report.structured_assertions {
+            match crate::findings::classify(record) {
+                crate::findings::BranchFinding::Satisfied => {
+                    self.campaign_satisfied.insert(*fingerprint);
+                    self.campaign_liveness.remove(fingerprint);
+                }
+                crate::findings::BranchFinding::LivenessCandidate => {
+                    if self.campaign_satisfied.contains(fingerprint) {
+                        continue;
+                    }
+                    self.campaign_liveness
+                        .entry(*fingerprint)
+                        .or_insert_with(|| crate::findings::CampaignLivenessGap {
+                            fingerprint: *fingerprint,
+                            kind: record.kind,
+                            message: record.message.clone(),
+                            hit_count: record.hit_count,
+                        });
+                }
+                crate::findings::BranchFinding::SafetyViolation
+                | crate::findings::BranchFinding::Unexercised => {}
+            }
+        }
     }
 
     /// Recycle corpus entries into the frontier when it empties.
@@ -3258,6 +3308,9 @@ impl Explorer {
             resumed_journal: checkpoint.campaign_journal.clone(),
             inherits_diagnostic_rounds: !checkpoint.release_eligible,
             recovery: None,
+            campaign_satisfied: BTreeSet::new(),
+            campaign_liveness: BTreeMap::new(),
+            distinct_safety_failures: BTreeSet::new(),
         };
         if let Some(state) = &checkpoint.assertion_checkpoint_selector {
             explorer
@@ -4068,6 +4121,44 @@ mod tests {
             .expect("failed event records");
         oracle.end_run();
         oracle.report()
+    }
+
+    #[test]
+    fn campaign_liveness_and_distinct_safety_counts() {
+        use chaoscontrol_protocol::identity::AssertionKind;
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let unsatisfied = branch_result(crate::test_support::assertion_report_of(
+            7,
+            AssertionKind::Sometimes,
+            false,
+        ));
+        assert!(explorer
+            .extract_bugs(&unsatisfied, &FaultSchedule::new(), None, 0, None)
+            .expect("extract liveness")
+            .is_empty());
+        assert_eq!(explorer.campaign_liveness_gaps().len(), 1);
+
+        let satisfied = branch_result(crate::test_support::assertion_report_of(
+            7,
+            AssertionKind::Sometimes,
+            true,
+        ));
+        assert!(explorer
+            .extract_bugs(&satisfied, &FaultSchedule::new(), None, 0, None)
+            .expect("extract satisfied")
+            .is_empty());
+        assert!(explorer.campaign_liveness_gaps().is_empty());
+
+        let violation = branch_result(crate::test_support::assertion_report_of(
+            9,
+            AssertionKind::Always,
+            false,
+        ));
+        let bugs = explorer
+            .extract_bugs(&violation, &FaultSchedule::new(), None, 0, None)
+            .expect("extract violation");
+        assert_eq!(bugs.len(), 1);
+        assert_eq!(explorer.distinct_failing_assertions(), 1);
     }
 
     #[test]

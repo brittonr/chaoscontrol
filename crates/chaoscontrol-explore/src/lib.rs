@@ -90,6 +90,7 @@ pub mod corpus;
 pub mod coverage;
 pub mod dashboard_types;
 pub mod explorer;
+pub mod findings;
 pub mod frontier;
 pub mod input_tree;
 pub mod investigation;

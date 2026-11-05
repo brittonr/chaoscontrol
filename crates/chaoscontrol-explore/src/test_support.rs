@@ -6,6 +6,10 @@ use chaoscontrol_protocol::identity::{
 };
 
 pub(crate) fn assertion_identity(alias: u64) -> AssertionEvidenceIdentity {
+    assertion_identity_of(alias, AssertionKind::Always)
+}
+
+pub(crate) fn assertion_identity_of(alias: u64, kind: AssertionKind) -> AssertionEvidenceIdentity {
     let compatibility_id = u32::try_from(alias).expect("test alias fits u32");
     let descriptor = AssertionDescriptor {
         identity_version: ASSERTION_IDENTITY_VERSION,
@@ -13,7 +17,7 @@ pub(crate) fn assertion_identity(alias: u64) -> AssertionEvidenceIdentity {
         logical_key: AssertionLogicalKey::Stable {
             key: format!("assertion-{alias}"),
         },
-        kind: AssertionKind::Always,
+        kind,
         message: format!("assertion {alias}"),
         source_file: "src/test.rs".to_string(),
         source_line: 1,
@@ -38,7 +42,15 @@ pub(crate) fn assertion_report(
     alias: u64,
     observation: bool,
 ) -> chaoscontrol_fault::oracle::OracleReport {
-    let identity = assertion_identity(alias);
+    assertion_report_of(alias, AssertionKind::Always, observation)
+}
+
+pub(crate) fn assertion_report_of(
+    alias: u64,
+    kind: AssertionKind,
+    observation: bool,
+) -> chaoscontrol_fault::oracle::OracleReport {
+    let identity = assertion_identity_of(alias, kind);
     let mut builder = CatalogBuilder::begin(1).expect("catalog begins");
     builder
         .insert(identity.descriptor.clone())

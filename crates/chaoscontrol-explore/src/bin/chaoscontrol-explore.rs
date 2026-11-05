@@ -759,8 +759,12 @@ enum Commands {
         dedup_key: Option<u64>,
 
         /// Bounded scheduling rounds to seek forward after restore (capped at 1000).
-        #[arg(long, default_value = "0")]
+        #[arg(long, default_value = "0", conflicts_with = "until_tick")]
         rounds: u64,
+
+        /// Seek forward until this simulation tick is reached (capped at 1000 rounds).
+        #[arg(long)]
+        until_tick: Option<u64>,
 
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
@@ -1106,12 +1110,14 @@ fn main() {
             index,
             dedup_key,
             rounds,
+            until_tick,
             output,
         } => cmd_restore_probe(
             checkpoint,
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
             rounds,
+            until_tick,
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
@@ -1202,6 +1208,7 @@ fn cmd_restore_probe(
     output: Option<String>,
     selector: chaoscontrol_explore::BugSelector,
     rounds: u64,
+    until_tick: Option<u64>,
 ) {
     let path = Path::new(&checkpoint_path);
     if !path.exists() {
@@ -1249,9 +1256,20 @@ fn cmd_restore_probe(
     }
     let restored_tick = controller.tick();
     // r[impl chaoscontrol.agent_investigation.restore_forward_seek]
+    // r[impl chaoscontrol.agent_investigation.restore_seek_tick]
     let rounds_requested = rounds.min(1000);
     let mut round_trace = Vec::new();
-    for _ in 0..rounds_requested {
+    let max_rounds = if until_tick.is_some() {
+        1000
+    } else {
+        rounds_requested
+    };
+    for _ in 0..max_rounds {
+        if let Some(target) = until_tick {
+            if controller.tick() >= target {
+                break;
+            }
+        }
         match controller.step_round() {
             Ok(round) => {
                 round_trace.push(serde_json::json!({
@@ -1312,6 +1330,8 @@ fn cmd_restore_probe(
         "restored_tick": restored_tick,
         "current_tick": controller.tick(),
         "forward_rounds_requested": rounds,
+        "seek_target_tick": until_tick,
+        "seek_reached": until_tick.map(|target| controller.tick() >= target),
         "forward_rounds_run": round_trace.len(),
         "forward_rounds": round_trace,
         "vm_count": controller.num_vms(),

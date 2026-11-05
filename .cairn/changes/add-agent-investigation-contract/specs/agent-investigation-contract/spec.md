@@ -348,3 +348,24 @@ replay verdict, workload correctness, or an accepted outcome.
 - GIVEN all VMs stop during the seek
 - WHEN a round reports no running VMs
 - THEN the probe stops and reports the partial round trace
+
+
+### Requirement: A restored parent can be sought to a target tick
+
+r[chaoscontrol.agent_investigation.restore_seek_tick]
+
+The probe MUST accept a target simulation tick and execute bounded rounds until the
+current tick reaches or passes it (capped at 1000 rounds), stopping early when no VM
+runs. It MUST report the target, whether it was reached, the executed round trace,
+and the final tick/state. A request that cannot reach the target within the cap MUST
+report reached=false rather than looping or claiming success.
+
+#### Scenario: Target reached
+- GIVEN a restored parent below the target tick
+- WHEN the probe seeks to the target
+- THEN it stops at or after the target and reports reached=true with the trace
+
+#### Scenario: Cap or early stop
+- GIVEN a target beyond the round cap or a stopped simulation
+- WHEN the probe seeks
+- THEN it stops and reports reached=false or the partial trace

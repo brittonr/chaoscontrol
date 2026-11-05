@@ -797,6 +797,14 @@ cargo run --release --bin chaoscontrol-explore -- reproduce \
 
 ### Replay & Debugging
 
+Inspect a recorded session at a tick as bounded JSON (recording digest, session
+config, inclusive event window, nearest checkpoint, serial tail, non-claims):
+
+```bash
+cargo run --release --bin chaoscontrol-replay -- debug \
+  --recording results/session.json --tick 150 --format json
+```
+
 ```bash
 # Replay a recorded session
 cargo run --release --bin chaoscontrol-replay -- replay \

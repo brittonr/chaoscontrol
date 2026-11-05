@@ -1,6 +1,6 @@
 //! ChaosControl Replay CLI — time-travel debugging and bug triage
 
-use chaoscontrol_replay::recording::RecordedEvent;
+use chaoscontrol_replay::recording::{RecordedEvent, Recording};
 use chaoscontrol_replay::replay::{RealSimulationRunner, ReplayEngine, ReplayError};
 use chaoscontrol_replay::serialize::{
     format_triage_markdown, load_recording, save_triage_json, save_triage_report, SerializeError,
@@ -105,6 +105,10 @@ enum Commands {
         /// Tick to examine
         #[arg(short, long)]
         tick: u64,
+
+        /// Output format (text or bounded JSON)
+        #[arg(short, long, value_enum, default_value = "text")]
+        format: DebugFormat,
     },
 
     /// Interactive debugger with memory/register inspection and modification
@@ -155,6 +159,12 @@ enum DlogCommands {
     },
 }
 
+#[derive(Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
+enum DebugFormat {
+    Text,
+    Json,
+}
+
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum OutputFormat {
     Markdown,
@@ -192,7 +202,11 @@ fn main() {
             from,
             to,
         } => cmd_events(recording, filter, from, to),
-        Commands::Debug { recording, tick } => cmd_debug(recording, tick),
+        Commands::Debug {
+            recording,
+            tick,
+            format,
+        } => cmd_debug(recording, tick, format),
         Commands::Inspect { recording } => cmd_inspect(recording),
         Commands::Dlog { cmd } => match cmd {
             DlogCommands::Dump { file, from, count } => cmd_dlog_dump(file, from, count),
@@ -402,8 +416,70 @@ fn cmd_events(
     Ok(())
 }
 
-fn cmd_debug(recording_path: PathBuf, tick: u64) -> Result<(), CliError> {
+// r[impl chaoscontrol.agent_investigation.debug_state_json]
+fn debug_json(recording: &Recording, digest: &str, tick: u64) -> serde_json::Value {
+    let checkpoint = recording.checkpoints.at_or_before(tick);
+    let window = 50u64;
+    let start_tick = tick.saturating_sub(window);
+    let end_tick = tick.saturating_add(window);
+    let events: Vec<serde_json::Value> = recording
+        .events
+        .iter()
+        .filter(|event| {
+            let event_tick = event_tick(event);
+            event_tick >= start_tick && event_tick <= end_tick
+        })
+        .take(500)
+        .map(|event| {
+            serde_json::json!({
+                "tick": event_tick(event),
+                "description": format_event(event),
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "schema": "chaoscontrol.debug_state.v1",
+        "recording_digest": digest,
+        "session_id": recording.session_id,
+        "seed": recording.seed,
+        "fault_run_sequence": recording.fault_run_sequence,
+        "total_ticks": recording.total_ticks,
+        "config": {
+            "num_vms": recording.config.num_vms,
+            "vm_memory_size": recording.config.vm_memory_size,
+            "tsc_khz": recording.config.tsc_khz,
+            "kernel_path": recording.config.kernel_path,
+            "initrd_path": recording.config.initrd_path,
+            "quantum": recording.config.quantum,
+            "checkpoint_interval": recording.config.checkpoint_interval,
+            "random_faults": recording.config.random_faults,
+        },
+        "target_tick": tick,
+        "window": { "start_tick": start_tick, "end_tick": end_tick },
+        "nearest_checkpoint": checkpoint.map(|cp| serde_json::json!({
+            "id": cp.id,
+            "tick": cp.tick,
+            "distance_ticks": tick.saturating_sub(cp.tick),
+        })),
+        "events": events,
+        "serial_output": checkpoint.map(|cp| cp.serial_output.clone()).unwrap_or_default(),
+        "non_claims": [
+            "This inspects a recorded session; it is not a live VM or replay verdict.",
+            "Event text is a bounded projection around the requested tick, capped at 500 events.",
+            "A nearest checkpoint is not proof that the recording is replayable."
+        ],
+    })
+}
+
+fn cmd_debug(recording_path: PathBuf, tick: u64, format: DebugFormat) -> Result<(), CliError> {
     let recording = load_recording(&recording_path)?;
+    if format == DebugFormat::Json {
+        let bytes = std::fs::read(&recording_path)?;
+        let digest = format!("b3:{}", blake3::hash(&bytes).to_hex());
+        let json = debug_json(&recording, &digest, tick);
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
 
     println!("=== Debug State at Tick {} ===", tick);
 
@@ -576,4 +652,58 @@ fn cmd_dlog_dump(file: PathBuf, from: u64, count: u64) -> Result<(), CliError> {
 
     eprintln!("{printed} records");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chaoscontrol_fault::outcomes::fault_run_id;
+    use chaoscontrol_fault::schedule::FaultSchedule;
+    use chaoscontrol_replay::checkpoint::CheckpointStore;
+    use chaoscontrol_replay::recording::RecordingConfig;
+
+    fn test_recording() -> Recording {
+        Recording {
+            session_id: "test_session".to_string(),
+            timestamp: 1_234_567_890,
+            config: RecordingConfig {
+                num_vms: 2,
+                vm_memory_size: 256 * 1024 * 1024,
+                tsc_khz: 3_000_000,
+                kernel_path: "/test/vmlinux".to_string(),
+                initrd_path: Some("/test/initrd".to_string()),
+                quantum: 100,
+                checkpoint_interval: 1000,
+                disk_image_path: None,
+                random_faults: false,
+            },
+            checkpoints: CheckpointStore::new(),
+            schedule: FaultSchedule::new(),
+            seed: 42,
+            fault_run_sequence: 1,
+            fault_run_id: fault_run_id(42, 1, FaultSchedule::new().identity()),
+            events: Vec::new(),
+            fault_stage_events: Vec::new(),
+            fault_round_deltas: Vec::new(),
+            fault_outcome_ledger: Default::default(),
+            schedule_rounds: Vec::new(),
+            oracle_report: None,
+            total_ticks: 5000,
+        }
+    }
+
+    #[test]
+    fn debug_json_has_stable_schema_window_and_non_claims() {
+        let value = debug_json(&test_recording(), "b3:00", 150);
+        assert_eq!(value["schema"], "chaoscontrol.debug_state.v1");
+        assert_eq!(value["target_tick"], 150);
+        assert_eq!(value["window"]["start_tick"], 100);
+        assert_eq!(value["window"]["end_tick"], 200);
+        assert_eq!(value["session_id"], "test_session");
+        assert_eq!(value["total_ticks"], 5000);
+        assert!(value["nearest_checkpoint"].is_null());
+        assert!(value["events"].as_array().expect("events array").is_empty());
+        assert!(!value["non_claims"].as_array().expect("claims").is_empty());
+        assert_eq!(value["config"]["num_vms"], 2);
+    }
 }

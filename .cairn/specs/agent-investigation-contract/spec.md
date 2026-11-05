@@ -156,3 +156,24 @@ the recorded failure tick, not an arbitrary seek position.
 - GIVEN a requested tick different from the stored failure tick
 - WHEN the reference is requested
 - THEN it fails with a typed tick-mismatch error
+
+### Requirement: Recorded sessions expose bounded JSON seek/inspect
+
+r[chaoscontrol.agent_investigation.debug_state_json]
+
+A debug command MUST support a versioned JSON output that binds the recording
+BLAKE3 digest, session id, seed, configuration summary, total ticks, target tick,
+inclusive event window, nearest checkpoint (with distance) or null, bounded event
+projections, checkpoint serial output, and explicit non-claims. Event projections
+MUST be capped, and the record MUST NOT claim a live VM, replay verdict, or that the
+nearest checkpoint is replayable.
+
+#### Scenario: Seek within a recording
+- GIVEN a recorded session
+- WHEN debug runs with JSON output at a tick
+- THEN the digest, window bounds, nearest checkpoint, and bounded events are returned together
+
+#### Scenario: Missing checkpoint
+- GIVEN a tick before any checkpoint
+- WHEN debug runs with JSON output
+- THEN the nearest checkpoint is null and the rest of the bounded record is still returned

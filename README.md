@@ -136,6 +136,8 @@ no-switch recommendation and a reusable harness.
 [`docs/isop-evaluation.md`](docs/isop-evaluation.md) records the controlled ISOP
 fault-cover experiment, its independent checker, and the no-go decision for an
 operator surface while branch-local outcomes remain unverified.
+[`docs/guest-seccomp-evaluation.md`](docs/guest-seccomp-evaluation.md) records the
+gated evaluation of uid-map and syscall admission for lowered OCI bundles.
 
 ## Features
 

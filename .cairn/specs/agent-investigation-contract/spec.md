@@ -734,3 +734,22 @@ SMP scheduling determinism or replay admissibility.
 - GIVEN an inspection with no stored VM
 - WHEN it is emitted
 - THEN observed count and match are absent rather than false
+
+### Requirement: Failure listings expose the exact assertion fingerprint
+
+r[chaoscontrol.agent_investigation.list_bugs_identity_surface]
+
+Each listed failure MUST include its admitted assertion fingerprint as lower hex when
+an identity is present, and MUST omit the field for legacy identity-less bugs. The
+fingerprint MUST match the value accepted by exact-identity selection. Listing exposes
+identity for addressing; it does not admit replay or a verdict.
+
+#### Scenario: Identity-bearing failure
+- GIVEN a bug with an admitted assertion identity
+- WHEN it is listed
+- THEN its fingerprint is present and selectable by the same value
+
+#### Scenario: Legacy failure
+- GIVEN a bug without an admitted identity
+- WHEN it is listed
+- THEN no fingerprint field is emitted

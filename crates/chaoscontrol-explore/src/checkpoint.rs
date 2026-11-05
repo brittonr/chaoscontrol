@@ -1350,6 +1350,10 @@ pub struct BugListEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_parent_snapshot_digest: Option<String>,
     pub has_assertion_identity: bool,
+    // r[impl chaoscontrol.agent_investigation.list_bugs_identity_surface]
+    /// Admitted assertion fingerprint (lower hex) when an identity is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assertion_fingerprint: Option<String>,
     pub assertion_location: String,
     #[serde(skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub process_instances: std::collections::BTreeSet<String>,
@@ -1462,6 +1466,10 @@ pub fn list_bugs_with_filter<P: AsRef<Path>>(
                 .as_ref()
                 .map(|reference| reference.digest.clone()),
             has_assertion_identity: bug.assertion_identity.is_some(),
+            assertion_fingerprint: bug
+                .assertion_identity
+                .as_ref()
+                .map(|identity| identity.fingerprint.to_hex()),
             assertion_location: bug.assertion_location.clone(),
             process_instances: bug.process_instances.clone(),
         })
@@ -3925,6 +3933,7 @@ mod tests {
         .unwrap();
         assert_eq!(by_assertion.len(), 1);
         assert_eq!(by_assertion[0].bug_id, 1);
+        assert!(by_assertion[0].assertion_fingerprint.is_some());
 
         let by_process = list_bugs_with_filter(
             &checkpoint_path,

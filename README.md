@@ -524,6 +524,39 @@ cargo run --release --bin chaoscontrol-explore -- restore-probe \
   --output restore-probe.json
 ```
 
+Machine-readable investigation helpers:
+
+```bash
+# Address one failure exactly: index, dedup key, or admitted assertion fingerprint.
+# The same --assertion-fingerprint selector is accepted by inspect-bug, bind-moment,
+# and restore-probe; ambiguous or missing matches fail distinctly.
+cargo run --release --bin chaoscontrol-explore -- inspect-bug \
+  --checkpoint results/checkpoint.json \
+  --assertion-fingerprint 0a70d7c53160be2a08cf7fe5b5ec6bd4901e27b5429aabb65f433eee81aad540
+
+# Filter failures without writing artifacts. Identity listings include the exact
+# admitted fingerprint; --process-instance and --require-assertion-identity compose
+# with assertion id, dedup key, and tick bounds.
+cargo run --release --bin chaoscontrol-explore -- list-bugs \
+  --checkpoint results/checkpoint.json --require-assertion-identity --min-tick 100
+
+# Identify candidate artifacts before any claim.
+cargo run --release --bin chaoscontrol-explore -- candidate-identity \
+  --kernel candidate/vmlinux --initrd candidate/initrd --output candidate-identity.json
+
+# Run a fresh bounded campaign for candidate artifacts and write a failure-bound
+# receipt. Exit 1 from the exploration means bugs were found, not that validation
+# failed; completion additionally requires a fresh checkpoint.
+cargo run --release --bin chaoscontrol-explore -- validate-candidate \
+  --checkpoint results/checkpoint.json --index 0 \
+  --kernel candidate/vmlinux --initrd candidate/initrd \
+  --seed 5 --rounds 1 --ticks 100 --vcpus 2 \
+  --run-output candidate-run --receipt candidate-receipt.json
+```
+
+`restore-probe --serial-bytes N` adds a bounded (0-4096) per-VM serial tail;
+`--repeat` compares the full per-vCPU observations plus round, tick, and serial state.
+
 Output directory contains:
 - `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history

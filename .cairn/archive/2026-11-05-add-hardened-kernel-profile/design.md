@@ -67,3 +67,17 @@ The profile reduces some kernel surface; it does not sandbox a guest or make the
 VMM a security boundary. `nix flake check` verifies config values, not runtime
 behavior. Boot smoke proves only that this kernel/initrd pair booted under the
 recorded bounds.
+
+## Selection decision
+
+The additive hardened profile stays opt-in. No default kernel, matrix row, or
+workload profile selects it automatically. Workload compatibility evidence is the
+bounded boot smoke with the rust-workload initrd: `hardened-vmlinux` sha256
+`753efb21…a7a80` with initrd sha256 `385e16af…5fea9` reached `Run /init as init
+process` and exited normally after 118,927 exits at virtual TSC 13,472,902,427.
+The `allnoconfig` minimal variant remains excluded because its workload boot did not
+exit within the smoke bound; the busybox marker smoke is not workload admission.
+
+A future default or matrix selection requires a new decision with broader workload
+compatibility runs, not just this smoke. Until then the profile is a caller-chosen
+kernel surface, not a support promotion.

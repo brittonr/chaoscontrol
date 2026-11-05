@@ -4,7 +4,7 @@
 - [x] [serial] Expose `hardened-vmlinux` and `hardened-kernel-config` and add the config-value check. r[chaoscontrol.hardened_kernel.profile]
 - [x] [serial] Verify the config check; retain the boot-smoke evidence and limits. r[chaoscontrol.hardened_kernel.profile]
 - [x] [serial] Build an `allnoconfig` base with an explicit required-symbols list for module/debugfs/kallsyms/BPF/io_uring/legacy-ABI removals. r[chaoscontrol.hardened_kernel.allnoconfig_gate]
-- [ ] [serial] Add a matrix/profile selection decision and workload compatibility evidence before any default use. r[chaoscontrol.hardened_kernel.profile]
+- [x] [serial] Add a matrix/profile selection decision and workload compatibility evidence before any default use. r[chaoscontrol.hardened_kernel.profile]
 
 ## Evidence
 

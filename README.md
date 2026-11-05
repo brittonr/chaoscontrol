@@ -350,6 +350,7 @@ nix build .#initrd-rust-workload
 nix build .#net-vmlinux       # virtio-net enabled
 nix build .#kcov-vmlinux      # KCOV coverage
 nix build .#kcov-net-vmlinux  # both
+nix build .#hardened-vmlinux  # opt-in hardening profile; default unchanged
 
 # Boot a kernel
 cargo run --bin boot -- <kernel-path> [initrd-path]
@@ -366,7 +367,8 @@ FUZZ_SECONDS=10 nix run .#fuzz-smoke
 ```
 
 See [guest-boundary fuzzing](docs/fuzzing.md) for targets, invariants, corpora,
-and non-claims.
+and non-claims, and [the hardened kernel profile](docs/hardened-kernel-profile.md)
+for its pinned options, exclusions, and trade-offs.
 
 ## Kernel-bundle compatibility smoke
 

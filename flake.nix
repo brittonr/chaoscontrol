@@ -610,11 +610,45 @@
 
           # --- Kernel builder ---
 
-          mkChaosKernel =
+          # Opt-in hardening allowlist for the guest kernel. The default kernel
+          # keeps the upstream/defconfig surface; this profile follows the
+          # reviewed Capsem comparison (docs/capsem-comparison.md) without
+          # changing any existing kernel or check.
+          hardenedKernelBase =
+            with pkgs.lib.kernel;
+            {
+              # Additive hardening that does not fight the nixpkgs common
+              # config. Whole-subsystem removals (MODULES, BPF/IO_URING,
+              # debugfs, kallsyms, legacy ABI) need an allnoconfig base, which
+              # is tracked separately and deliberately not attempted here.
+              MAGIC_SYSRQ = no;
+              LEGACY_PTYS = no;
+              DEVPORT = no;
+              INIT_ON_ALLOC_DEFAULT_ON = yes;
+              SLAB_FREELIST_RANDOM = yes;
+              SLAB_FREELIST_HARDENED = yes;
+              SHUFFLE_PAGE_ALLOCATOR = yes;
+              HARDENED_USERCOPY = yes;
+              STRICT_KERNEL_RWX = yes;
+              VMAP_STACK = yes;
+              RANDOMIZE_BASE = yes;
+              STACKPROTECTOR = yes;
+              STACKPROTECTOR_STRONG = yes;
+            }
+            // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isx86_64 {
+              MITIGATION_PAGE_TABLE_ISOLATION = yes;
+              MITIGATION_RETPOLINE = yes;
+              RANDOMIZE_MEMORY = yes;
+            };
+
+          hardenedKernelConfig = pkgs.lib.mapAttrs (_: value: pkgs.lib.mkForce value) hardenedKernelBase;
+
+          mkKernel =
             {
               virtioBlk ? true,
               virtioNet ? false,
               kcov ? false,
+              hardening ? false,
               extraConfig ? { },
             }:
             let
@@ -638,6 +672,7 @@
                   KCOV_ENABLE_COMPARISONS = yes;
                   DEBUG_FS = yes;
                 })
+                // (pkgs.lib.optionalAttrs hardening hardenedKernelConfig)
                 // extraConfig;
               kernel = pkgs.linuxPackages_latest.kernel.override (original: {
                 structuredExtraConfig = cfg;
@@ -652,6 +687,21 @@
                   }
                 ];
               });
+            in
+            kernel;
+
+          mkChaosKernel =
+            {
+              virtioBlk ? true,
+              virtioNet ? false,
+              kcov ? false,
+              hardening ? false,
+              extraConfig ? { },
+            }:
+            let
+              kernel = mkKernel {
+                inherit virtioBlk virtioNet kcov hardening extraConfig;
+              };
             in
             pkgs.runCommand "chaoscontrol-vmlinux" { } ''
               mkdir -p $out
@@ -1575,6 +1625,8 @@
               virtioNet = true;
               kcov = true;
             };
+            hardened-vmlinux = mkChaosKernel { hardening = true; };
+            hardened-kernel-config = (mkKernel { hardening = true; }).configfile;
 
             raft-sim = mkChaosTest {
               name = "raft-sim";
@@ -1685,6 +1737,31 @@
 
             # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
             vm-cohort-dependency = vmCohortDependencyCheck;
+            # Opt-in guest-kernel hardening profile. The default kernel and all
+            # existing checks are unchanged; selecting this profile is a caller
+            # decision, not a release promotion.
+            hardened-kernel-config =
+              let
+                cfg = (mkKernel { hardening = true; }).configfile;
+              in
+              pkgs.runCommand "chaoscontrol-hardened-kernel-config-check"
+                {
+                  nativeBuildInputs = [ pkgs.gnugrep ];
+                }
+                ''
+                  grep -q '^# CONFIG_MAGIC_SYSRQ is not set$' ${cfg}
+                  grep -q '^# CONFIG_LEGACY_PTYS is not set$' ${cfg}
+                  grep -q '^# CONFIG_DEVPORT is not set$' ${cfg}
+                  grep -q '^CONFIG_INIT_ON_ALLOC_DEFAULT_ON=y$' ${cfg}
+                  grep -q '^CONFIG_HARDENED_USERCOPY=y$' ${cfg}
+                  grep -q '^CONFIG_STRICT_KERNEL_RWX=y$' ${cfg}
+                  grep -q '^CONFIG_VMAP_STACK=y$' ${cfg}
+                  grep -q '^CONFIG_RANDOMIZE_BASE=y$' ${cfg}
+                  grep -q '^CONFIG_VIRTIO_BLK=y$' ${cfg}
+                  grep -q '^CONFIG_EXT4_FS=y$' ${cfg}
+                  touch $out
+                '';
+
             vm-cohort-packaged-build = craneLib.cargoTest (
               commonArgs
               // {

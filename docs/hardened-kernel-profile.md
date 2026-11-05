@@ -1,0 +1,94 @@
+# Hardened guest-kernel profile
+
+Opt-in kernel hardening for ChaosControl guests. The default kernel and every
+existing check, matrix row, and workload are unchanged; this profile is a caller
+decision.
+
+Follow-up to the [Capsem comparison](capsem-comparison.md) and issue
+[#7](https://github.com/brittonr/chaoscontrol/issues/7).
+
+## Use
+
+```bash
+nix build .#hardened-vmlinux        # -> result/vmlinux
+nix build .#hardened-kernel-config  # -> result (the generated .config)
+nix build .#checks.x86_64-linux.hardened-kernel-config
+```
+
+`mkChaosKernel { hardening = true; }` is the underlying option. Pass it to a
+workload profile only when that workload has been exercised with it; nothing
+selects it by default.
+
+## Profile contents
+
+Additive hardening (already supported by the nixpkgs common config):
+
+| Option | Effect |
+|---|---|
+| `INIT_ON_ALLOC_DEFAULT_ON` | Zero heap allocations |
+| `SLAB_FREELIST_RANDOM`, `SLAB_FREELIST_HARDENED` | Randomize and validate slab freelists |
+| `SHUFFLE_PAGE_ALLOCATOR` | Randomize page allocation order |
+| `HARDENED_USERCOPY` | Bound `copy_to_user`/`copy_from_user` |
+| `STRICT_KERNEL_RWX` | W^X kernel memory |
+| `VMAP_STACK` | Guard-paged kernel stacks |
+| `RANDOMIZE_BASE`, `RANDOMIZE_MEMORY` | KASLR for kernel image and memory |
+| `STACKPROTECTOR_STRONG` | Stack canaries |
+| `MITIGATION_PAGE_TABLE_ISOLATION`, `MITIGATION_RETPOLINE` (x86_64) | Meltdown/Spectre mitigations |
+
+Safe removals that do not fight the common config:
+
+- `MAGIC_SYSRQ` (emergency keyboard commands)
+- `LEGACY_PTYS` (legacy tty surface)
+- `DEVPORT` (userspace port I/O)
+
+The flake check asserts these values together with `CONFIG_VIRTIO_BLK=y` and
+`CONFIG_EXT4_FS=y`.
+
+## Deliberately excluded
+
+`MODULES`, `DEBUG_FS`, `KALLSYMS`, `IO_URING`, `USERFAULTFD`, `BPF_SYSCALL`, and
+legacy ABI symbols (`COMPAT`, `IA32_EMULATION`, vsyscall/LDT/ioperm) are **not**
+disabled by this profile. Forcing them off over the nixpkgs common config fails
+config generation or stays enabled because other selected options depend on them:
+
+```text
+error: option not set correctly: DEBUG_FS (wanted 'n', got 'y')
+error: option not set correctly: IO_URING (wanted 'n', got 'y')
+error: option not set correctly: KALLSYMS (wanted 'n', got 'y')
+repeated question: BFQ I/O scheduler (with MODULES=n)
+```
+
+Removing whole subsystems needs an `allnoconfig` base plus an explicit
+required-symbols list, as Capsem does. That is a separate change; this profile does
+not pretend the removals happened.
+
+## Trade-offs
+
+- More page-zeroing and allocator randomization cost some throughput, mainly on
+  allocation-heavy workloads.
+- `MAGIC_SYSRQ`, legacy PTY, and port access are unavailable in the guest; debug
+  tooling that relies on them will not work.
+- The kernel is still built from the nixpkgs common config, so the module and
+  tracing surface remains; this is not a minimal kernel.
+- `hardening` and `kcov` are not combined: KCOV needs `DEBUG_FS`, and the KCOV
+  kernels stay the debugging profile.
+
+## Evidence
+
+`nix build .#hardened-kernel-config` produced the pinned config and
+`checks.hardened-kernel-config` passes. `nix build .#hardened-vmlinux` produced a
+kernel with SHA-256 `753efb21f1c337e6232c7e8de421947e36662159a4a54fcba95993f5474a7a80`.
+
+A bounded boot smoke used that kernel with the rust-workload initrd
+(`385e16afa162712e0d42a5171145f754c00a0bb67382653070baebb62625fea9`). The serial log
+reached `Run /init as init process`; init reported `kcov: open failed ... kernel
+lacks CONFIG_KCOV?` (expected for this profile), and the VM exited normally after
+118,927 exits at virtual TSC 13,472,902,427. That smoke is not a matrix row, not a
+determinism result, and not release evidence.
+
+## Non-claims
+
+The profile reduces some kernel surface; it does not sandbox a guest, prove
+isolation, or make the VMM a security boundary. Config checks verify values, not
+runtime behavior. Boot smoke proves only that the recorded kernel and initrd
+booted within the recorded bounds.

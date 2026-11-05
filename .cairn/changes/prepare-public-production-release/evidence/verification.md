@@ -505,6 +505,23 @@ These binaries are plain Cargo release-profile builds, not the flake `chaoscontr
 package the matrix row resolves, so this proves the row command and the fixed
 fault-plan binding under the admitted bounds — not a matrix receipt.
 
+The `admitted-drift` row command also ran directly with its flake-built artifacts
+(plain kernel `5aya7zv…-chaoscontrol-vmlinux`, initrd
+`7kdxyqk5…-chaoscontrol-initrd-rust-workload`) and a Cargo release
+`determinism_stress`:
+
+```text
+determinism_stress <kernel>/vmlinux <initrd> 2 --single-clock-profile hide-tsc \
+  --receipt <out>/receipt.json --dlog-dir <out>/dlogs --case controller-3vm-2vcpu
+```
+
+Both runs of `controller-3vm-2vcpu` passed with identical fingerprints
+(`tick: 10`, `vm_exits: [50000, 50000, 50000]`, `vm_vtscs: [50000000, 50000000,
+50000000]`, empty stripped serials); the gate printed
+`ALL CONFIGURATIONS DETERMINISTIC (2 runs each)`. This covers five of the seven
+rows' commands on `aa44dcf2`. The two `nix build` rows and the executor remain
+blocked by the daemon write stall.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

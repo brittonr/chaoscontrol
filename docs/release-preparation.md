@@ -153,6 +153,13 @@ and was not accepted, so use release binaries. This validates the row command un
 the recorded bounds, not the matrix executor or a receipt. Resolve artifact paths
 before passing them: out-link symlinks fail with `FilesystemLoop`.
 
+The `admitted-drift` row command likewise passed directly on `aa44dcf2` with its
+flake-built plain kernel and rust-workload initrd: two `controller-3vm-2vcpu` runs
+produced identical fingerprints, and the gate reported every configuration
+deterministic. Five of seven row commands are therefore exercised on this
+revision; only the two `nix build` rows and the matrix executor remain blocked by
+the store-write stall.
+
 ## Preparation evidence and limits
 
 Baseline source: `1caeda2334f1d93e53ce22afbfa012b05458f606`. Preparation commits

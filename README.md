@@ -498,6 +498,11 @@ cargo run --release --bin chaoscontrol-explore -- inspect-snapshot \
 # artifacts; conflicting path/digest metadata is rejected.
 cargo run --release --bin chaoscontrol-explore -- list-snapshots \
   --checkpoint results/checkpoint.json --output snapshot-references.json
+
+# Plan a parent restore: check declared kernel/initrd/disk and the snapshot path
+# without executing a VM or verifying snapshot digests.
+cargo run --release --bin chaoscontrol-explore -- restore-plan \
+  --checkpoint results/checkpoint.json --index 0 --output restore-plan.json
 ```
 
 Output directory contains:

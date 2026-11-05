@@ -1837,6 +1837,109 @@ pub fn list_snapshot_references<P: AsRef<Path>>(
     })
 }
 
+/// Read-only plan for restoring one failure's parent. It checks declared inputs and
+/// the snapshot artifact path; it does not execute a VM or prove replay.
+#[derive(Debug, Clone, Serialize)]
+pub struct RestorePlan {
+    pub schema: &'static str,
+    pub checkpoint_digest: String,
+    pub checkpoint_index: usize,
+    pub artifact: String,
+    pub bug_id: u64,
+    pub assertion_id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dedup_key: Option<u64>,
+    pub tick: u64,
+    pub replay_parent_depth: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_digest: Option<String>,
+    pub snapshot_present: bool,
+    pub kernel_path: String,
+    pub kernel_present: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initrd_path: Option<String>,
+    pub initrd_present: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disk_image_path: Option<String>,
+    pub disk_image_present: Option<bool>,
+    pub ready: bool,
+    pub missing: Vec<String>,
+    pub non_claims: Vec<&'static str>,
+}
+
+// r[impl chaoscontrol.agent_investigation.restore_plan]
+pub fn plan_restore<P: AsRef<Path>>(
+    checkpoint_path: P,
+    selector: BugSelector,
+) -> Result<RestorePlan, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
+    let bytes = crate::bounded_json::read_checkpoint(checkpoint_path)?;
+    let checkpoint_digest = format!("b3:{}", blake3::hash(bytes.as_bytes()).to_hex());
+    let checkpoint = load_checkpoint(checkpoint_path)?;
+    let inspection = inspect_bug(checkpoint_path, selector)?;
+    let reference = inspection.bug.replay_parent_snapshot_ref.as_ref();
+    let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
+    let snapshot_present = reference
+        .map(|reference| source_dir.join(&reference.path).exists())
+        .unwrap_or(false);
+    let kernel_present = Path::new(&checkpoint.config.kernel_path).exists();
+    let initrd_present = checkpoint
+        .config
+        .initrd_path
+        .as_deref()
+        .map(|path| Path::new(path).exists());
+    let disk_image_present = checkpoint
+        .config
+        .disk_image_path
+        .as_deref()
+        .map(|path| Path::new(path).exists());
+
+    let mut missing = Vec::new();
+    match reference {
+        None => missing.push("snapshot reference".to_string()),
+        Some(reference) if !snapshot_present => {
+            missing.push(format!("snapshot {}", reference.path));
+        }
+        Some(_) => {}
+    }
+    if !kernel_present {
+        missing.push(format!("kernel {}", checkpoint.config.kernel_path));
+    }
+    if let (Some(path), Some(false)) = (&checkpoint.config.initrd_path, initrd_present) {
+        missing.push(format!("initrd {path}"));
+    }
+    if let (Some(path), Some(false)) = (&checkpoint.config.disk_image_path, disk_image_present) {
+        missing.push(format!("disk image {path}"));
+    }
+
+    Ok(RestorePlan {
+        schema: "chaoscontrol.restore_plan.v1",
+        checkpoint_digest,
+        checkpoint_index: inspection.checkpoint_index,
+        artifact: inspection.artifact,
+        bug_id: inspection.bug.bug_id,
+        assertion_id: inspection.bug.assertion_id,
+        dedup_key: inspection.bug.dedup_key,
+        tick: inspection.bug.tick,
+        replay_parent_depth: inspection.bug.replay_parent_depth,
+        snapshot_digest: reference.map(|reference| reference.digest.clone()),
+        snapshot_present,
+        kernel_path: checkpoint.config.kernel_path.clone(),
+        kernel_present,
+        initrd_path: checkpoint.config.initrd_path.clone(),
+        initrd_present,
+        disk_image_path: checkpoint.config.disk_image_path.clone(),
+        disk_image_present,
+        ready: missing.is_empty(),
+        missing,
+        non_claims: vec![
+            "A ready plan means the declared input paths exist; it does not execute a VM.",
+            "Path existence is not admission, replay evidence, or workload correctness.",
+            "Snapshot digest verification is not performed by the plan.",
+        ],
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
     pub bugs_scanned: usize,
@@ -3502,6 +3605,53 @@ mod tests {
             schema_version: 2,
             path: format!("snapshots/{path_suffix}.snapshot.bin"),
         }
+    }
+
+    #[test]
+    fn restore_plan_checks_declared_inputs_without_executing() {
+        let dir = tempfile::tempdir().unwrap();
+        let kernel = dir.path().join("vmlinux");
+        std::fs::write(&kernel, b"kernel").unwrap();
+        let snapshot_dir = dir.path().join("snapshots");
+        std::fs::create_dir_all(&snapshot_dir).unwrap();
+        let reference = snapshot_ref(&"4".repeat(64), &"4".repeat(64));
+        std::fs::write(dir.path().join(&reference.path), b"snapshot").unwrap();
+
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
+        checkpoint.config.kernel_path = kernel.display().to_string();
+        checkpoint.bugs[0].replay_parent_depth = 1;
+        checkpoint.bugs[0].replay_parent_snapshot_ref = Some(reference);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let plan = plan_restore(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.schema, "chaoscontrol.restore_plan.v1");
+        assert!(plan.ready);
+        assert!(plan.snapshot_present);
+        assert!(plan.kernel_present);
+        assert!(plan.missing.is_empty());
+
+        let missing_path = dir.path().join("missing.json");
+        let mut missing = checkpoint.clone();
+        missing.config.kernel_path = dir.path().join("nope").display().to_string();
+        save_checkpoint(&missing_path, &missing).unwrap();
+        let plan = plan_restore(
+            &missing_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+        )
+        .unwrap();
+        assert!(!plan.ready);
+        assert!(plan.missing.iter().any(|item| item.starts_with("kernel ")));
     }
 
     #[test]

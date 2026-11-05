@@ -239,3 +239,23 @@ state that presence is not admission or replay evidence.
 - GIVEN one path with two different digests
 - WHEN references are listed
 - THEN the listing fails with a conflict error
+
+### Requirement: A failure's restore inputs can be planned and checked
+
+r[chaoscontrol.agent_investigation.restore_plan]
+
+A planning operation MUST emit a versioned read-only restore plan for one selected
+failure, binding the checkpoint digest and bug identity to the snapshot reference/
+path presence, declared kernel/initrd/disk paths and their presence, and a readiness
+verdict with an explicit missing list. It MUST NOT execute a VM, verify snapshot
+digests, or claim admission, replay, or workload correctness.
+
+#### Scenario: All declared inputs present
+- GIVEN a failure whose snapshot file and declared kernel/initrd exist
+- WHEN the plan is requested
+- THEN it reports ready with an empty missing list
+
+#### Scenario: Missing input
+- GIVEN a declared kernel path that does not exist
+- WHEN the plan is requested
+- THEN readiness is false and the missing list names the kernel path

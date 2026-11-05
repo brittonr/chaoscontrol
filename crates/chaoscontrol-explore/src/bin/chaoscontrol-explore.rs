@@ -721,6 +721,25 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// Emit a read-only restore plan for one checkpoint failure.
+    RestorePlan {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Checkpoint bug index (matches bug_N.json).
+        #[arg(long, conflicts_with = "dedup_key")]
+        index: Option<usize>,
+
+        /// Stored failure dedup key.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     /// List unique replay-parent snapshot references without reading artifacts.
     ListSnapshots {
         /// Path to checkpoint.json.
@@ -1043,6 +1062,16 @@ fn main() {
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
         ),
+        Commands::RestorePlan {
+            checkpoint,
+            index,
+            dedup_key,
+            output,
+        } => cmd_restore_plan(
+            checkpoint,
+            output,
+            chaoscontrol_explore::BugSelector { index, dedup_key },
+        ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
             checkpoint,
@@ -1124,6 +1153,48 @@ fn main() {
             memory_mb,
             output,
         ),
+    }
+}
+
+fn cmd_restore_plan(
+    checkpoint: String,
+    output: Option<String>,
+    selector: chaoscontrol_explore::BugSelector,
+) {
+    let checkpoint_path = Path::new(&checkpoint);
+    if !checkpoint_path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint);
+        std::process::exit(1);
+    }
+    let plan = match chaoscontrol_explore::plan_restore(checkpoint_path, selector) {
+        Ok(plan) => plan,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut json = match serde_json::to_string_pretty(&plan) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!(
+                "Restore plan ready={} missing={} to {}",
+                plan.ready,
+                plan.missing.len(),
+                path
+            );
+        }
+        None => print!("{json}"),
     }
 }
 

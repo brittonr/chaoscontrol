@@ -472,6 +472,10 @@ cargo run --release --bin chaoscontrol-explore -- inspect-bug \
 # make the verdict invalid; nothing is repaired. Exits nonzero when invalid.
 cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
   --checkpoint results/checkpoint.json --output checkpoint-admission.json
+
+# Bind admission to an exact session digest before reading snapshots.
+cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
+  --checkpoint results/checkpoint.json --expected-digest b3:<digest>
 ```
 
 Output directory contains:

@@ -727,6 +727,10 @@ enum Commands {
         #[arg(short, long)]
         checkpoint: String,
 
+        /// Require this exact checkpoint digest (b3:...) before admitting.
+        #[arg(long)]
+        expected_digest: Option<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -982,9 +986,11 @@ fn main() {
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
         ),
-        Commands::VerifyCheckpoint { checkpoint, output } => {
-            cmd_verify_checkpoint(checkpoint, output)
-        }
+        Commands::VerifyCheckpoint {
+            checkpoint,
+            expected_digest,
+            output,
+        } => cmd_verify_checkpoint(checkpoint, expected_digest, output),
         Commands::Resume {
             corpus,
             kernel,
@@ -1040,13 +1046,20 @@ fn main() {
     }
 }
 
-fn cmd_verify_checkpoint(checkpoint: String, output: Option<String>) {
+fn cmd_verify_checkpoint(
+    checkpoint: String,
+    expected_digest: Option<String>,
+    output: Option<String>,
+) {
     let checkpoint_path = Path::new(&checkpoint);
     if !checkpoint_path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint);
         std::process::exit(1);
     }
-    let verification = match chaoscontrol_explore::verify_checkpoint(checkpoint_path) {
+    let verification = match chaoscontrol_explore::verify_checkpoint_with_digest(
+        checkpoint_path,
+        expected_digest.as_deref(),
+    ) {
         Ok(verification) => verification,
         Err(error) => {
             eprintln!("Error: {error}");

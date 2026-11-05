@@ -1269,6 +1269,9 @@ pub enum CheckpointBugExportError {
 
     #[snafu(display("exactly one of index or dedup key must be provided"))]
     BugSelector,
+
+    #[snafu(display("checkpoint digest mismatch: expected {expected}, got {actual}"))]
+    CheckpointDigestMismatch { expected: String, actual: String },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1494,9 +1497,25 @@ pub struct CheckpointVerification {
 pub fn verify_checkpoint<P: AsRef<Path>>(
     checkpoint_path: P,
 ) -> Result<CheckpointVerification, CheckpointBugExportError> {
+    verify_checkpoint_with_digest(checkpoint_path, None)
+}
+
+// r[impl chaoscontrol.agent_investigation.session_digest_binding]
+pub fn verify_checkpoint_with_digest<P: AsRef<Path>>(
+    checkpoint_path: P,
+    expected_digest: Option<&str>,
+) -> Result<CheckpointVerification, CheckpointBugExportError> {
     let checkpoint_path = checkpoint_path.as_ref();
     let bytes = crate::bounded_json::read_checkpoint(checkpoint_path)?;
     let checkpoint_digest = format!("b3:{}", blake3::hash(bytes.as_bytes()).to_hex());
+    if let Some(expected) = expected_digest {
+        if expected != checkpoint_digest {
+            return Err(CheckpointBugExportError::CheckpointDigestMismatch {
+                expected: expected.to_string(),
+                actual: checkpoint_digest,
+            });
+        }
+    }
     let checkpoint = load_checkpoint(checkpoint_path)?;
     let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
     let store = FileSnapshotStore::new(source_dir);
@@ -3177,6 +3196,30 @@ mod tests {
         assert_eq!(verification.snapshots_validated, 0);
         assert!(verification.checkpoint_digest.starts_with("b3:"));
         assert!(!verification.non_claims.is_empty());
+    }
+
+    #[test]
+    fn verify_checkpoint_binds_an_expected_session_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1)]),
+        )
+        .unwrap();
+        let admitted = verify_checkpoint(&checkpoint_path).unwrap();
+        let bound = verify_checkpoint_with_digest(
+            &checkpoint_path,
+            Some(admitted.checkpoint_digest.as_str()),
+        )
+        .unwrap();
+        assert_eq!(bound.checkpoint_digest, admitted.checkpoint_digest);
+
+        let wrong = verify_checkpoint_with_digest(&checkpoint_path, Some("b3:00")).unwrap_err();
+        assert!(matches!(
+            wrong,
+            CheckpointBugExportError::CheckpointDigestMismatch { .. }
+        ));
     }
 
     #[test]

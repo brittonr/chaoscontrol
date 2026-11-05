@@ -115,3 +115,22 @@ repaired or ignored. Admission MUST NOT execute a VM or claim replay evidence.
 - GIVEN several bugs referencing the same snapshot artifact
 - WHEN admission runs
 - THEN the artifact bytes are validated once and each matching bug counts as validated
+
+### Requirement: Admission can bind the expected session digest
+
+r[chaoscontrol.agent_investigation.session_digest_binding]
+
+Admission MUST accept an expected checkpoint digest and reject a mismatch before
+validating any snapshot artifact. The digest MUST be the BLAKE3 digest of the exact
+checkpoint bytes and MUST be reported in the admission record. A mismatch MUST be a
+distinct typed failure, not a warning, and MUST NOT fall back to the actual digest.
+
+#### Scenario: Bound digest matches
+- GIVEN a checkpoint and its reported BLAKE3 digest
+- WHEN admission runs with that digest
+- THEN it proceeds with artifact validation
+
+#### Scenario: Bound digest differs
+- GIVEN an expected digest that differs from the checkpoint bytes
+- WHEN admission runs
+- THEN it fails with a digest-mismatch error before reading snapshots

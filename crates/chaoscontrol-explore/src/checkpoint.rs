@@ -2063,6 +2063,21 @@ pub fn load_parent_snapshot<P: AsRef<Path>>(
     })
 }
 
+/// Validate that a decoded parent snapshot matches the declared topology before a
+/// restore attempt. Returns the actual VM count on mismatch.
+// r[impl chaoscontrol.agent_investigation.restore_shape_preflight]
+pub fn validate_snapshot_vm_count(
+    snapshot: &chaoscontrol_vmm::controller::SimulationSnapshot,
+    expected_vms: usize,
+) -> Result<(), (usize, usize)> {
+    let actual = snapshot.vm_snapshots.len();
+    if actual == expected_vms {
+        Ok(())
+    } else {
+        Err((actual, expected_vms))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
     pub bugs_scanned: usize,
@@ -3919,6 +3934,28 @@ mod tests {
             error,
             CheckpointBugExportError::SnapshotReferenceConflict { .. }
         ));
+    }
+
+    #[test]
+    fn snapshot_vm_count_preflight_matches_declared_topology() {
+        let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);
+        let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
+        let snapshot = chaoscontrol_vmm::controller::SimulationSnapshot {
+            tick: 10,
+            vm_snapshots: Vec::new(),
+            network_state,
+            fault_engine_snapshot: engine.snapshot(),
+            vcpu_stall_until: vec![],
+            cpu_throttle: vec![],
+            clock_freeze: vec![],
+            clock_jitter_bound: vec![],
+            memory_pressure: vec![],
+            process_fault_attempt: vec![],
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
+        };
+        assert_eq!(validate_snapshot_vm_count(&snapshot, 0), Ok(()));
+        assert_eq!(validate_snapshot_vm_count(&snapshot, 3), Err((0, 3)));
     }
 
     #[test]

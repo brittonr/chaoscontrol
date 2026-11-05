@@ -1229,6 +1229,15 @@ fn cmd_restore_probe(
             std::process::exit(1);
         }
     };
+    if let Err((actual, expected)) = chaoscontrol_explore::validate_snapshot_vm_count(
+        &loaded.snapshot,
+        checkpoint.config.num_vms,
+    ) {
+        eprintln!(
+            "Error: snapshot VM count {actual} does not match the declared topology {expected}"
+        );
+        std::process::exit(1);
+    }
     let config = chaoscontrol_vmm::controller::SimulationConfig {
         num_vms: checkpoint.config.num_vms,
         vm_config: chaoscontrol_vmm::vm::VmConfig::default(),

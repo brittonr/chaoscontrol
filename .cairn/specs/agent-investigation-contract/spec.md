@@ -360,3 +360,22 @@ report reached=false rather than looping or claiming success.
 - GIVEN a target beyond the round cap or a stopped simulation
 - WHEN the probe seeks
 - THEN it stops and reports reached=false or the partial trace
+
+### Requirement: Restore preflights the declared topology
+
+r[chaoscontrol.agent_investigation.restore_shape_preflight]
+
+Before creating VMs, a restore MUST compare the decoded snapshot's VM count with the
+checkpoint's declared `num_vms` and fail with a distinct message on mismatch rather
+than attempting a partial restore. The check MUST run before controller creation and
+MUST NOT be bypassed by snapshot verification mode.
+
+#### Scenario: Matching topology
+- GIVEN a snapshot whose VM count equals the declared topology
+- WHEN restore preflight runs
+- THEN it proceeds
+
+#### Scenario: Mismatched topology
+- GIVEN a snapshot whose VM count differs from the declared topology
+- WHEN restore preflight runs
+- THEN restore fails before any VM is created

@@ -6,3 +6,4 @@
 - [x] [serial] Queue admitted requests, record reported receipts, and preserve both across snapshots. r[chaoscontrol.guest_diagnostic.host_dispatch]
 - [x] [serial] Add the SDK poll/execute/report client with local-transport and error behavior tests. r[chaoscontrol.guest_diagnostic.guest_client]
 - [x] [serial] Record captured diagnostic streams as content-addressed artifacts. r[chaoscontrol.guest_diagnostic.diagnostic_artifacts]
+- [x] [serial] Label diagnostic receipts as counterfactual and reject unknown flag bytes. r[chaoscontrol.guest_diagnostic.receipt_counterfactual]

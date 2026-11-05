@@ -2561,6 +2561,7 @@ mod tests {
             status: chaoscontrol_protocol::diagnostic::DiagnosticReceiptStatus::Completed,
             exit_code: Some(0),
             truncated: false,
+            counterfactual: true,
             stdout_bytes: 2,
             stdout_digest: [0x22; 32],
             stderr_bytes: 0,

@@ -247,6 +247,7 @@ impl DiagnosticOutcome {
             },
             exit_code: self.exit_code,
             truncated: self.truncated,
+            counterfactual: true,
             stdout_bytes: self.stdout_bytes as u32,
             stdout_digest: self.stdout_digest,
             stderr_bytes: self.stderr_bytes as u32,
@@ -341,6 +342,7 @@ mod tests {
         );
         assert_eq!(receipt.request_digest, outcome.request_digest);
         assert_eq!(receipt.executable, request.executable);
+        assert!(receipt.counterfactual);
     }
 
     #[test]
@@ -367,6 +369,7 @@ mod tests {
             status: DiagnosticReceiptStatus::Completed,
             exit_code: Some(0),
             truncated: false,
+            counterfactual: true,
             stdout_bytes: 0,
             stdout_digest: [0; 32],
             stderr_bytes: 0,

@@ -120,3 +120,23 @@ written file.
 - GIVEN a stream with no bytes
 - WHEN the recording mode runs
 - THEN no file is written for that stream
+
+### Requirement: Diagnostic receipts label counterfactual execution
+
+r[chaoscontrol.guest_diagnostic.receipt_counterfactual]
+
+Every diagnostic receipt MUST carry an explicit counterfactual flag, and receipts
+produced by the supervisor runner MUST set it. The encoding MUST reject unknown flag
+bytes, and receipt versions that predate the flag MUST be rejected rather than
+assumed. The label distinguishes a guest-branch perturbation; it does not prove the
+original failure or the candidate.
+
+#### Scenario: Runner receipt is counterfactual
+- GIVEN an execution outcome
+- WHEN its receipt is built and encoded
+- THEN the decoded receipt reports counterfactual=true
+
+#### Scenario: Invalid flag rejected
+- GIVEN an encoding with an unknown counterfactual byte
+- WHEN it is decoded
+- THEN the typed rejection is returned

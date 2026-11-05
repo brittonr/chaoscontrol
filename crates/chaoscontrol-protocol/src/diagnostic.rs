@@ -263,7 +263,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<DiagnosticRequest, DiagnosticError
 }
 
 /// Version of the diagnostic receipt encoding.
-pub const DIAGNOSTIC_RECEIPT_VERSION: u16 = 1;
+pub const DIAGNOSTIC_RECEIPT_VERSION: u16 = 2;
 
 /// Termination class recorded in a diagnostic receipt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -290,6 +290,9 @@ pub struct DiagnosticReceipt {
     pub exit_code: Option<i32>,
     /// Whether either captured stream exceeded its bound.
     pub truncated: bool,
+    // r[impl chaoscontrol.guest_diagnostic.receipt_counterfactual]
+    /// Whether the execution is a counterfactual guest-branch perturbation.
+    pub counterfactual: bool,
     /// Captured stdout length.
     pub stdout_bytes: u32,
     /// BLAKE3 identity of captured stdout bytes.
@@ -323,6 +326,11 @@ pub enum DiagnosticReceiptError {
         /// Byte found in the receipt.
         found: u8,
     },
+    /// The counterfactual byte is not 0 or 1.
+    InvalidCounterfactual {
+        /// Byte found in the receipt.
+        found: u8,
+    },
     /// A captured output length exceeds the capture bound.
     OutputTooLarge {
         /// Length found in the receipt.
@@ -349,7 +357,7 @@ fn validate_receipt(receipt: &DiagnosticReceipt) -> Result<(), DiagnosticReceipt
 /// Encode one diagnostic receipt in canonical little-endian form.
 pub fn encode_receipt(receipt: &DiagnosticReceipt) -> Result<Vec<u8>, DiagnosticReceiptError> {
     validate_receipt(receipt)?;
-    let mut encoded = Vec::with_capacity(1 + 1 + 32 + 32 + 1 + 1 + 4 + 1 + 4 + 32 + 4 + 32);
+    let mut encoded = Vec::with_capacity(2 + 32 + 32 + 1 + 1 + 4 + 1 + 1 + 4 + 32 + 4 + 32);
     encoded.extend_from_slice(&receipt.version.to_le_bytes());
     encoded.extend_from_slice(&receipt.request_digest);
     encoded.extend_from_slice(&receipt.executable);
@@ -362,6 +370,7 @@ pub fn encode_receipt(receipt: &DiagnosticReceipt) -> Result<Vec<u8>, Diagnostic
         None => encoded.push(0),
     }
     encoded.push(u8::from(receipt.truncated));
+    encoded.push(u8::from(receipt.counterfactual));
     encoded.extend_from_slice(&receipt.stdout_bytes.to_le_bytes());
     encoded.extend_from_slice(&receipt.stdout_digest);
     encoded.extend_from_slice(&receipt.stderr_bytes.to_le_bytes());
@@ -371,7 +380,7 @@ pub fn encode_receipt(receipt: &DiagnosticReceipt) -> Result<Vec<u8>, Diagnostic
 
 /// Decode and validate one diagnostic receipt from canonical bytes.
 pub fn decode_receipt(bytes: &[u8]) -> Result<DiagnosticReceipt, DiagnosticReceiptError> {
-    if bytes.len() > 2 + 32 + 32 + 1 + (1 + 4) + 1 + 4 + 32 + 4 + 32 {
+    if bytes.len() > 2 + 32 + 32 + 1 + (1 + 4) + 1 + 1 + 4 + 32 + 4 + 32 {
         return Err(DiagnosticReceiptError::MalformedEncoding);
     }
     let mut cursor = 0;
@@ -413,6 +422,11 @@ pub fn decode_receipt(bytes: &[u8]) -> Result<DiagnosticReceipt, DiagnosticRecei
         1 => true,
         found => return Err(DiagnosticReceiptError::InvalidTruncated { found }),
     };
+    let counterfactual = match read(&mut cursor, 1)?[0] {
+        0 => false,
+        1 => true,
+        found => return Err(DiagnosticReceiptError::InvalidCounterfactual { found }),
+    };
     let stdout_bytes = u32::from_le_bytes(
         read(&mut cursor, 4)?
             .try_into()
@@ -437,6 +451,7 @@ pub fn decode_receipt(bytes: &[u8]) -> Result<DiagnosticReceipt, DiagnosticRecei
         status,
         exit_code,
         truncated,
+        counterfactual,
         stdout_bytes,
         stderr_bytes,
         stdout_digest,
@@ -555,6 +570,7 @@ mod tests {
             status: DiagnosticReceiptStatus::Completed,
             exit_code: Some(0),
             truncated: false,
+            counterfactual: true,
             stdout_bytes: 6,
             stdout_digest: [0x33; 32],
             stderr_bytes: 0,
@@ -575,10 +591,10 @@ mod tests {
     #[test]
     fn receipt_rejects_out_of_range_fields() {
         let mut value = receipt();
-        value.version = 2;
+        value.version = 3;
         assert_eq!(
             encode_receipt(&value),
-            Err(DiagnosticReceiptError::UnsupportedVersion { found: 2 })
+            Err(DiagnosticReceiptError::UnsupportedVersion { found: 3 })
         );
         value.version = DIAGNOSTIC_RECEIPT_VERSION;
         value.stdout_bytes = MAX_DIAGNOSTIC_CAPTURE_BYTES as u32 + 1;
@@ -591,6 +607,12 @@ mod tests {
         assert_eq!(
             decode_receipt(&encoded),
             Err(DiagnosticReceiptError::InvalidStatus { found: 2 })
+        );
+        let mut encoded = encode_receipt(&receipt()).unwrap();
+        encoded[2 + 32 + 32 + 1 + 1 + 4 + 1] = 2;
+        assert_eq!(
+            decode_receipt(&encoded),
+            Err(DiagnosticReceiptError::InvalidCounterfactual { found: 2 })
         );
     }
 

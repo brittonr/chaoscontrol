@@ -459,6 +459,15 @@ Each `list-bugs` record carries its checkpoint index and `bug_N.json` artifact n
 assertion id, dedup key, tick, replay parent depth and snapshot digest, identity
 presence, and process instances. It is a locator, not replay evidence.
 
+Inspect exactly one stored failure by index or dedup key; the result is a versioned
+record with the exact report and its non-claims, without loading snapshots or
+running a VM:
+
+```bash
+cargo run --release --bin chaoscontrol-explore -- inspect-bug \
+  --checkpoint results/checkpoint.json --dedup-key <u64> --output inspection.json
+```
+
 Output directory contains:
 - `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history

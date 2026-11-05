@@ -1260,6 +1260,15 @@ pub enum CheckpointBugExportError {
 
     #[snafu(display("invalid tick range: min {min_tick} exceeds max {max_tick}"))]
     InvalidTickRange { min_tick: u64, max_tick: u64 },
+
+    #[snafu(display("no checkpoint bug matches {selector}"))]
+    BugNotFound { selector: String },
+
+    #[snafu(display("{matches} checkpoint bugs match {selector}"))]
+    BugAmbiguous { selector: String, matches: usize },
+
+    #[snafu(display("exactly one of index or dedup key must be provided"))]
+    BugSelector,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1389,6 +1398,74 @@ pub fn list_bugs_with_filter<P: AsRef<Path>>(
             process_instances: bug.process_instances.clone(),
         })
         .collect())
+}
+
+/// Select exactly one checkpoint bug for read-only inspection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BugSelector {
+    pub index: Option<usize>,
+    pub dedup_key: Option<u64>,
+}
+
+/// Versioned read-only inspection record. It carries the validated bug report as
+/// stored; it is not replay evidence and does not imply the snapshot is replayable.
+#[derive(Debug, Clone, Serialize)]
+pub struct BugInspection {
+    pub schema: &'static str,
+    pub checkpoint_index: usize,
+    pub artifact: String,
+    pub bug: SerializableBug,
+    pub non_claims: Vec<&'static str>,
+}
+
+// r[impl chaoscontrol.agent_investigation.inspect_bug]
+pub fn inspect_bug<P: AsRef<Path>>(
+    checkpoint_path: P,
+    selector: BugSelector,
+) -> Result<BugInspection, CheckpointBugExportError> {
+    if selector.index.is_some() == selector.dedup_key.is_some() {
+        return Err(CheckpointBugExportError::BugSelector);
+    }
+    let checkpoint = load_checkpoint(checkpoint_path)?;
+    validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref()).map_err(|error| {
+        CheckpointBugExportError::InvalidAssertionIdentity {
+            bug_id: error.bug_id,
+            reason: error.source.to_string(),
+        }
+    })?;
+    let describe = match (selector.index, selector.dedup_key) {
+        (Some(index), _) => format!("index {index}"),
+        (None, Some(key)) => format!("dedup key {key}"),
+        (None, None) => "no selector".to_string(),
+    };
+    let matches: Vec<(usize, &SerializableBug)> = checkpoint
+        .bugs
+        .iter()
+        .enumerate()
+        .filter(|(index, bug)| match (selector.index, selector.dedup_key) {
+            (Some(wanted), _) => *index == wanted,
+            (None, Some(key)) => bug.dedup_key == Some(key),
+            (None, None) => false,
+        })
+        .collect();
+    match matches.as_slice() {
+        [] => Err(CheckpointBugExportError::BugNotFound { selector: describe }),
+        [(index, bug)] => Ok(BugInspection {
+            schema: "chaoscontrol.bug_inspection.v1",
+            checkpoint_index: *index,
+            artifact: format!("bug_{index}.json"),
+            bug: (*bug).clone(),
+            non_claims: vec![
+                "A stored bug report is not replay evidence or an accepted verdict.",
+                "Inspection does not prove the referenced snapshot is admissible or reproducible.",
+                "Schedule bytes are the recorded plan, not evidence that a run followed them.",
+            ],
+        }),
+        many => Err(CheckpointBugExportError::BugAmbiguous {
+            selector: describe,
+            matches: many.len(),
+        }),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2897,6 +2974,100 @@ mod tests {
         )
         .unwrap();
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn inspect_bug_selects_by_index_or_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(2)]),
+        )
+        .unwrap();
+
+        let by_index = inspect_bug(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(1),
+                dedup_key: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(by_index.schema, "chaoscontrol.bug_inspection.v1");
+        assert_eq!(by_index.checkpoint_index, 1);
+        assert_eq!(by_index.artifact, "bug_1.json");
+        assert_eq!(by_index.bug.bug_id, 2);
+
+        let by_key = inspect_bug(
+            &checkpoint_path,
+            BugSelector {
+                index: None,
+                dedup_key: Some(1),
+            },
+        )
+        .unwrap();
+        assert_eq!(by_key.checkpoint_index, 0);
+        assert_eq!(by_key.bug.bug_id, 1);
+        assert!(!by_key.non_claims.is_empty());
+    }
+
+    #[test]
+    fn inspect_bug_rejects_missing_ambiguous_and_empty_selectors() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(2)]),
+        )
+        .unwrap();
+
+        let missing = inspect_bug(
+            &checkpoint_path,
+            BugSelector {
+                index: None,
+                dedup_key: Some(99),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            missing,
+            CheckpointBugExportError::BugNotFound { .. }
+        ));
+
+        let empty = inspect_bug(&checkpoint_path, BugSelector::default()).unwrap_err();
+        assert!(matches!(empty, CheckpointBugExportError::BugSelector));
+
+        let both = inspect_bug(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: Some(1),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(both, CheckpointBugExportError::BugSelector));
+
+        let mut duplicate = minimal_bug(2);
+        duplicate.dedup_key = Some(1);
+        let ambiguous_path = dir.path().join("ambiguous.json");
+        save_checkpoint(
+            &ambiguous_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1), duplicate]),
+        )
+        .unwrap();
+        let ambiguous = inspect_bug(
+            &ambiguous_path,
+            BugSelector {
+                index: None,
+                dedup_key: Some(1),
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            ambiguous,
+            CheckpointBugExportError::BugAmbiguous { matches: 2, .. }
+        ));
     }
 
     #[test]

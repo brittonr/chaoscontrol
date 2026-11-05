@@ -68,3 +68,25 @@ key MUST NOT match a requested key.
 - GIVEN a minimum tick greater than the maximum
 - WHEN listing runs
 - THEN it fails with an explicit range error
+
+
+### Requirement: A single failure can be inspected as versioned read-only JSON
+
+r[chaoscontrol.agent_investigation.inspect_bug]
+
+An inspect operation MUST accept exactly one selector (checkpoint index or stored
+dedup key), validate the checkpoint bug set, and return a versioned record
+containing the checkpoint index, artifact name, the exact stored bug report, and
+explicit non-claims. Zero matches, ambiguous matches, and empty or dual selectors
+MUST fail with distinct typed outcomes. Inspection MUST NOT write artifacts, load
+snapshot bytes, execute a VM, or claim replay evidence.
+
+#### Scenario: Inspect by key
+- GIVEN a checkpoint with one bug for a dedup key
+- WHEN the operator inspects that key
+- THEN the exact stored report is returned with its artifact name and non-claims
+
+#### Scenario: Selector errors
+- GIVEN no selector, both selectors, or a selector matching zero/two bugs
+- WHEN inspection runs
+- THEN it fails with the corresponding typed outcome and writes nothing

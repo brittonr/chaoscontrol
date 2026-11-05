@@ -107,7 +107,7 @@ the cause is not yet investigated.
 `nix build .#minimal-boot-initrd` exposes the static initrd used for these
 comparisons. The rust-workload initrd still reaches `Run /init` but does not exit
 under the minimal kernel; that workload follow-up is tracked in
-[#9](https://github.com/brittonr/chaoscontrol/issues/9).
+[#10](https://github.com/brittonr/chaoscontrol/issues/10).
 
 ## Trade-offs
 

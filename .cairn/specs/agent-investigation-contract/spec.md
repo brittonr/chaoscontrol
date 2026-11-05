@@ -419,3 +419,17 @@ snapshot artifacts.
 - GIVEN an assignment naming an unsupported register
 - WHEN the probe starts
 - THEN it fails before loading a snapshot
+
+### Requirement: Seek traces align recorded fault events to ticks
+
+r[chaoscontrol.agent_investigation.restore_seek_event_alignment]
+
+Each executed seek round MUST report its tick, running VM count, fired-fault count,
+and up to 20 fired-fault descriptions. The record MUST therefore expose which
+recorded fault events occurred at which tick during the seek; it MUST NOT claim that
+these events are the complete run trace or a replay verdict.
+
+#### Scenario: Fault at a seek tick
+- GIVEN a restored parent with pending scheduled faults
+- WHEN the probe seeks across a fault tick
+- THEN that round's entry names the fired fault and tick

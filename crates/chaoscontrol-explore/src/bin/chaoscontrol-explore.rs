@@ -1372,6 +1372,7 @@ fn cmd_restore_probe(
     let restored_tick = controller.tick();
     // r[impl chaoscontrol.agent_investigation.restore_forward_seek]
     // r[impl chaoscontrol.agent_investigation.restore_seek_tick]
+    // r[impl chaoscontrol.agent_investigation.restore_seek_event_alignment]
     let rounds_requested = rounds.min(1000);
     let mut round_trace = Vec::new();
     let max_rounds = if until_tick.is_some() {
@@ -1391,6 +1392,12 @@ fn cmd_restore_probe(
                     "tick": round.tick,
                     "vms_running": round.vms_running,
                     "faults_fired": round.faults_fired.len(),
+                    "faults": round
+                        .faults_fired
+                        .iter()
+                        .take(20)
+                        .map(|fault| format!("{fault:?}"))
+                        .collect::<Vec<_>>(),
                 }));
                 if round.vms_running == 0 {
                     break;

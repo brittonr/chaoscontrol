@@ -18,11 +18,10 @@ admitted for workloads. A busybox-init smoke (`nix run .#minimal-boot-smoke`)
 reaches userspace, prints `minimal-boot-ok`, and observes the kernel's
 `System halted instead` disposition; the VMM does not stop on guest halt, so the
 smoke terminates it after the marker. Root cause of the minimal
-non-stop: `HIGH_RES_TIMERS=y` is required for the VMM to observe the halt; without it
-the kernel halted but the VMM kept running, and ACPI/HPET additions did not help. The
-rust-workload no-exit shows repeated PIT-deadline HLT wakes (181 in 20 s) and is
-tracked as issue #10; ACPI/PCI/POWER_RESET, HPET, and ACPI_PROCESSOR/ACPI_SLEEP/X86_PM_TIMER additions did
-not change it. `nix build .#hardened-vmlinux` produced vmlinux sha256
+non-stop: `NO_HZ_IDLE=y` (tickless idle) is required; with it the busybox init and
+rust-workload initrd both terminate and the VMM stops. Without it the halt was woken
+by PIT deadlines forever (181 in 20 s) and the rust workload never exited; ACPI/PCI,
+HPET, PM-timer, and high-res-timer additions did not fix the workload path. `nix build .#hardened-vmlinux` produced vmlinux sha256
 `753efb21…a7a80`; boot smoke with initrd sha256 `385e16af…5fea9` reached
 `Run /init as init process` (init reported KCOV absent, as expected) and the VM
 exited normally after 118,927 exits at virtual TSC 13,472,902,427. The

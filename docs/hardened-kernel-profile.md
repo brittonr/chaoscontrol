@@ -84,7 +84,7 @@ controllable, then disable `KALLSYMS`, `IO_URING`, `BPF_SYSCALL`, `DEBUG_FS`,
 the SDK's port-I/O hypercall transport).
 
 The minimal `vmlinux` builds to ~14 MB (versus ~409 MB for a defconfig-modules
-kernel; SHA-256 `efe997f792d2a87323a9c5d5d8519f58f7de0216e08b0b1c14b5f0d7fbdb575c`).
+kernel; SHA-256 `64d4082a6b17138996a842e50cce5282ca4dfa0030c8a3dd586feffd8b2b924b`).
 A self-contained smoke boots it with a static busybox initrd:
 
 ```bash
@@ -93,9 +93,10 @@ nix run .#minimal-boot-smoke
 
 The init mounts proc/sys/devtmpfs, prints `minimal-boot-ok`, and calls `poweroff -f`;
 the kernel reports `Power off not available: System halted instead`, then the VMM
-observes the halt and stops cleanly (`VM halted`). `HIGH_RES_TIMERS=y` is required
-for that: without it the minimal kernel halted but the VMM kept running, and adding
-ACPI/HPET did not help. The smoke reports `ok (init ran; VM halted instead of
+observes the halt and stops cleanly (`VM halted`). `NO_HZ_IDLE=y` (tickless idle) is
+required: with it both the busybox init and the rust-workload initrd terminate and
+the VMM stops; without it the minimal kernel's halt was woken by PIT deadlines
+forever, and ACPI/HPET/high-res additions did not fix the workload path. The smoke reports `ok (init ran; VM halted instead of
 powering off)` and requires the VMM to stop cleanly after the halt; it fails if the
 VMM keeps running.
 
@@ -105,13 +106,10 @@ keeps injecting serial IRQs; that variant is **not** admitted for workloads and
 the cause is not yet investigated.
 
 `nix build .#minimal-boot-initrd` exposes the static initrd used for these
-comparisons. The rust-workload initrd still reaches `Run /init` but does not exit
-under the minimal kernel. Debug logging shows the guest halting and being woken by
-PIT deadlines repeatedly (181 HLT deadline wakes in 20 s), so the VMM keeps honoring
-a periodic timer instead of stopping. ACPI/PCI/POWER_RESET, HPET/HPET_EMULATE_RTC,
-and ACPI_PROCESSOR/ACPI_SLEEP/X86_PM_TIMER additions did not change it. That
-workload follow-up is tracked in
-[#10](https://github.com/brittonr/chaoscontrol/issues/10).
+comparisons. With `NO_HZ_IDLE=y` the rust-workload initrd also reaches `Run /init` and exits
+cleanly (`VM halted`). Before tickless idle, debug logging showed the guest halting
+and being woken by PIT deadlines repeatedly (181 HLT deadline wakes in 20 s); ACPI,
+HPET, PM-timer, and high-res-timer additions did not fix the workload path.
 
 ## Trade-offs
 

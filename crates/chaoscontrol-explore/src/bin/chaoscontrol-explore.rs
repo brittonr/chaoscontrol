@@ -2892,7 +2892,10 @@ fn cmd_run(
         Ok(r) => r,
         Err(e) => {
             eprintln!();
-            eprintln!("Exploration failed: {e:?}");
+            eprintln!(
+                "Exploration failed: {}",
+                chaoscontrol_explore::outcomes::format_error_chain(&e)
+            );
             std::process::exit(EXIT_ERROR);
         }
     };
@@ -3228,7 +3231,10 @@ fn cmd_campaign(
             }
         }
         Err(e) => {
-            eprintln!("Campaign failed: {}", e);
+            eprintln!(
+                "Campaign failed: {}",
+                chaoscontrol_explore::outcomes::format_error_chain(&e)
+            );
             std::process::exit(2);
         }
     }
@@ -3836,7 +3842,10 @@ fn cmd_resume(
         Ok(r) => r,
         Err(e) => {
             eprintln!();
-            eprintln!("Exploration failed: {e:?}");
+            eprintln!(
+                "Exploration failed: {}",
+                chaoscontrol_explore::outcomes::format_error_chain(&e)
+            );
             std::process::exit(EXIT_ERROR);
         }
     };

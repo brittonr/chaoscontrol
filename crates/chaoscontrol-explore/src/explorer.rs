@@ -3321,6 +3321,7 @@ pub struct BranchResult {
     pub timings: BranchTimings,
     /// Exact assertion-hit checkpoints captured during the branch.
     pub assertion_checkpoints: Vec<chaoscontrol_vmm::controller::ControllerAssertionCheckpoint>,
+    // r[impl chaoscontrol.explorer_outcomes.failed_branches]
     /// True when the branch failed operationally and carries no trustworthy result.
     pub failed: bool,
 }

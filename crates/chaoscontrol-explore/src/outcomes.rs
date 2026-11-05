@@ -18,6 +18,7 @@ pub enum ExplorerOutcome {
 }
 
 impl ExplorerOutcome {
+    // r[impl chaoscontrol.explorer_outcomes.exit_status]
     /// Stable process exit status.
     pub const fn exit_status(self) -> i32 {
         match self {
@@ -29,9 +30,46 @@ impl ExplorerOutcome {
     }
 }
 
+/// Format an error and every available source cause as an indented chain.
+// r[impl chaoscontrol.explorer_outcomes.error_chain]
+pub fn format_error_chain(error: &dyn std::error::Error) -> String {
+    let mut output = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        output.push_str("\n  caused by: ");
+        output.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fmt;
+
+    #[derive(Debug)]
+    struct Outer(std::io::Error);
+
+    impl fmt::Display for Outer {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "outer")
+        }
+    }
+
+    impl std::error::Error for Outer {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
     use super::*;
+
+    #[test]
+    fn error_chain_names_every_cause() {
+        let error = Outer(std::io::Error::other("inner"));
+        let chain = format_error_chain(&error);
+        assert!(chain.starts_with("outer"));
+        assert!(chain.contains("caused by: inner"));
+    }
 
     #[test]
     fn outcomes_have_distinct_stable_statuses() {

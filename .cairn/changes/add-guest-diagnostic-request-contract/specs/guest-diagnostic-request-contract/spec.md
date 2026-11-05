@@ -1,6 +1,6 @@
 # guest-diagnostic-request-contract Specification
 
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Diagnostic requests are versioned and bounded
 

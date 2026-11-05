@@ -103,6 +103,12 @@ debugfs/KCOV unavailable, as expected) but the workload does not exit and the VM
 keeps injecting serial IRQs; that variant is **not** admitted for workloads and
 the cause is not yet investigated.
 
+The same busybox initrd under the additive hardened kernel halts and the VMM stops
+(`VM halted`), so the VMM can stop on guest halt; the minimal kernel prints the same
+`System halted instead` message but the VMM keeps running. Adding ACPI/PCI/POWER_RESET
+did not change that, so the difference is not ACPI poweroff support. `nix build
+.#minimal-boot-initrd` exposes the static initrd for this comparison.
+
 ## Trade-offs
 
 - More page-zeroing and allocator randomization cost some throughput, mainly on

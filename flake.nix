@@ -1726,6 +1726,7 @@
             hardened-vmlinux = mkChaosKernel { hardening = true; };
             hardened-kernel-config = (mkKernel { hardening = true; }).configfile;
             hardened-minimal-kernel-config = hardenedMinimalKernelConfig;
+            minimal-boot-initrd = minimalBootInitrd;
             hardened-minimal-vmlinux =
               pkgs.runCommand "chaoscontrol-hardened-minimal-vmlinux" { } ''
                 mkdir -p $out

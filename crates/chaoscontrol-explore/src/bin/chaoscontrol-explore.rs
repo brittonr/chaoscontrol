@@ -1616,6 +1616,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
     // r[impl chaoscontrol.agent_investigation.restore_register_expectation]
     // r[impl chaoscontrol.agent_investigation.restore_repeat_drift]
     let rounds_requested = rounds.min(1000);
+    let mut last_vms_running = controller.num_vms() as u32;
     let mut round_trace = Vec::new();
     let max_rounds = if until_tick.is_some() {
         1000
@@ -1630,6 +1631,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         }
         match controller.step_round() {
             Ok(round) => {
+                last_vms_running = round.vms_running as u32;
                 round_trace.push(serde_json::json!({
                     "tick": round.tick,
                     "vms_running": round.vms_running,
@@ -1771,6 +1773,14 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         "forward_rounds_requested": rounds,
         "seek_target_tick": until_tick,
         "seek_reached": until_tick.map(|target| controller.tick() >= target),
+        "seek_outcome": chaoscontrol_explore::probe_outcome::classify(
+            until_tick,
+            until_tick.map(|target| controller.tick() >= target).unwrap_or(false),
+            round_trace.len() as u64,
+            rounds_requested,
+            last_vms_running,
+        )
+        .as_str(),
         "forward_rounds_run": round_trace.len(),
         "forward_rounds": round_trace,
         "vm_count": controller.num_vms(),

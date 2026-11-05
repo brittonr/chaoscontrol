@@ -650,3 +650,23 @@ or isolate the branch.
 - GIVEN a subsequent seek
 - WHEN the record is inspected
 - THEN the intervention still reports the pre-seek boundary label
+
+### Requirement: Seek stops are classified distinctly
+
+r[chaoscontrol.agent_investigation.restore_seek_outcome]
+
+A probe record MUST classify why the seek stopped as one of `reached`, `no_target`,
+`round_cap`, or `all_vms_stopped`. A reached target MUST take precedence; a missing
+target MUST remain distinct from an exhausted round bound, and a stopped VM set MUST
+remain distinct from both. The classification describes the bounded seek and is not
+a replay or failure verdict.
+
+#### Scenario: Reached target
+- GIVEN a seek that reaches its requested tick
+- WHEN the record is produced
+- THEN the outcome is `reached`
+
+#### Scenario: Round cap and stopped VMs differ
+- GIVEN an unreached target with an exhausted cap or no running VM
+- WHEN the record is produced
+- THEN the outcome names the matching distinct class

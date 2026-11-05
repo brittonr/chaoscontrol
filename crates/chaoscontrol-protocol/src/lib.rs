@@ -28,6 +28,8 @@ pub mod branch_marker;
 #[cfg(feature = "std")]
 mod canonical;
 #[cfg(feature = "std")]
+pub mod diagnostic;
+#[cfg(feature = "std")]
 pub mod fallback;
 #[cfg(feature = "std")]
 pub mod guest_process;
@@ -188,6 +190,9 @@ pub const CMD_RESOURCE_MEMORY_CEILING: u8 = 0x40;
 
 /// Guest supervisor: poll one host-directed process fault command.
 pub const CMD_PROCESS_FAULT_POLL: u8 = 0x50;
+
+/// Guest supervisor: run one admitted diagnostic request.
+pub const CMD_DIAGNOSTIC_REQUEST: u8 = 0x60;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Status codes

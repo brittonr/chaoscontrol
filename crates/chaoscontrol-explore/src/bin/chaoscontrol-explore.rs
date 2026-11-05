@@ -2294,6 +2294,7 @@ fn cmd_validate_candidate(
             std::process::exit(1);
         }
     };
+    // r[impl chaoscontrol.agent_investigation.candidate_validation_checkpoint_gate]
     let checkpoint_out = std::path::Path::new(&run_output).join("checkpoint.json");
     let bugs_found = if checkpoint_out.exists() {
         chaoscontrol_explore::load_checkpoint(&checkpoint_out)
@@ -2303,7 +2304,7 @@ fn cmd_validate_candidate(
         None
     };
     let exit_code = status.code();
-    let completed = matches!(exit_code, Some(0 | 1));
+    let completed = matches!(exit_code, Some(0 | 1)) && checkpoint_out.exists();
     let outcome = chaoscontrol_explore::candidate_validation::ValidationOutcome {
         exit_code,
         completed,

@@ -866,3 +866,23 @@ MUST NOT claim the original failure is fixed or that the old snapshot replayed.
 - GIVEN a fresh run that exits outside 0/1
 - WHEN the receipt is emitted
 - THEN completed is false and the command exits non-zero
+
+### Requirement: Candidate validation requires a fresh checkpoint
+
+r[chaoscontrol.agent_investigation.candidate_validation_checkpoint_gate]
+
+A candidate validation run MUST count as completed only when the process exits with
+code 0 or 1 and a fresh checkpoint exists in its output directory. An exit code alone
+MUST NOT mark completion, and a missing checkpoint MUST leave the observed bug count
+absent. The command MUST exit non-zero for an incomplete run while still writing the
+receipt.
+
+#### Scenario: Fresh checkpoint present
+- GIVEN a run that exits 0 or 1 and writes a checkpoint
+- WHEN the receipt is built
+- THEN completion is true and the bug count is recorded
+
+#### Scenario: No checkpoint written
+- GIVEN a run that exits 0 or 1 without producing a checkpoint
+- WHEN the receipt is built
+- THEN completion is false and the command exits non-zero

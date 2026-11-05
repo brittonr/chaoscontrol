@@ -46,11 +46,13 @@
 - [x] [serial] Add versioned checkpoint admission that validates structure and unique referenced snapshot artifacts with a fail-closed verdict. r[chaoscontrol.agent_investigation.verify_checkpoint]
 - [x] [serial] Add a structure-only admission mode distinct from full snapshot validation. r[chaoscontrol.agent_investigation.admission_modes]
 - [x] [serial] Bind admission to an expected BLAKE3 session digest with a typed mismatch failure. r[chaoscontrol.agent_investigation.session_digest_binding]
-- [ ] [serial] Read-only investigation MVP: admit a retained session in a fresh process and expose locate/seek/inspect through versioned JSON requests. r[chaoscontrol.agent_investigation.bug_event_reference]
+- [x] [serial] Read-only investigation MVP: admit a retained session in a fresh process and expose locate/seek/inspect through versioned JSON requests. r[chaoscontrol.agent_investigation.bug_event_reference]
+  - Evidence: `chaoscontrol_explore::investigation` admits `chaoscontrol.investigation.request.v1` (bounded size, schema, path, tick range, and fingerprint checks) and executes exactly one `locate`, `seek`, or `inspect` operation against a retained checkpoint without executing a VM or writing artifacts. The `chaoscontrol-investigate` binary reads a request from a file or stdin and emits one bounded response or typed failure; `--request -` smoke runs produced exit 3 (missing checkpoint) and exit 2 (stale schema). Four module tests cover admission, locate/seek/inspect against a saved checkpoint fixture, response bounds, and filter mapping.
 - [ ] [serial] Branch creation and intervention recording with disposable branch identity and original-immutability tests. r[chaoscontrol.agent_investigation.bug_event_reference]
 - [ ] [serial] Opt-in guest diagnostic operation bound to the existing Rust guest supervisor, with admission, bounds, and artifact closure. r[chaoscontrol.agent_investigation.bug_event_reference]
 - [ ] [serial] Candidate-build validation campaign and reviewer receipt over original failure, replay, branch, and positive/negative candidates. r[chaoscontrol.agent_investigation.bug_event_reference]
-- [ ] [serial] Update the ChaosControl workflow skill and documentation for implemented operations only. r[chaoscontrol.agent_investigation.bug_event_reference]
+- [x] [serial] Update the ChaosControl workflow skill and documentation for implemented operations only. r[chaoscontrol.agent_investigation.bug_event_reference]
+  - Evidence: `docs/skills/chaoscontrol-workflow/references/triage.md` gains a read-only JSON investigation section limited to the implemented `locate`/`seek`/`inspect` operations and their non-claims; `README.md` documents the same runner, its versioned request, and exit codes. Live branch, diagnostic, and candidate operations are described as separate commands that still require parent artifacts.
 
 ## Evidence
 
@@ -62,3 +64,15 @@ creation, guest diagnostic execution, intervention persistence, candidate
 validation, receipts, or any MCP/HTTP adapter. A matching key is a correlation
 field; it does not prove run, VM, or history identity, snapshot admissibility, or
 replay reproduction.
+
+## Remaining phases and blockers
+
+- Branch creation and intervention recording exist in `restore-probe` (fresh
+  controller, branch identity, prior-value/boundary intervention records), but the
+  task's live immutability proof requires the recorded parent artifacts, which are
+  absent in this environment.
+- The guest diagnostic operation requires a bootable guest supervisor artifact;
+  no admitted guest bundle is present locally.
+- The candidate validation campaign and receipt exist behind `validate-candidate`,
+  but exercising positive and negative candidates requires real kernel/initrd
+  candidates and a completed fresh run.

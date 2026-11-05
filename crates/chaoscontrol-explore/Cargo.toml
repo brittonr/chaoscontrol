@@ -21,6 +21,10 @@ path = "src/bin/check-frontier-parity.rs"
 name = "symbolize-coverage"
 path = "src/bin/symbolize-coverage.rs"
 
+[[bin]]
+name = "chaoscontrol-investigate"
+path = "src/bin/chaoscontrol-investigate.rs"
+
 [features]
 default = []
 dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep:futures-core"]

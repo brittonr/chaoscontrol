@@ -557,6 +557,15 @@ cargo run --release --bin chaoscontrol-explore -- validate-candidate \
 `restore-probe --serial-bytes N` adds a bounded (0-4096) per-VM serial tail;
 `--repeat` compares the full per-vCPU observations plus round, tick, and serial state.
 
+# One read-only investigation step in a fresh process. Requests are versioned;
+# locate/seek/inspect never execute a VM or write artifacts. Request rejections
+# exit 2; operational failures exit 3 and emit a bounded JSON failure document.
+printf '%s' '{
+  "schema": "chaoscontrol.investigation.request.v1",
+  "checkpoint": "results/checkpoint.json",
+  "operation": {"kind": "locate", "filter": {"min_tick": 100}}
+}' | cargo run --release --bin chaoscontrol-investigate -- --request -
+
 Exploration commands use stable exit statuses: `0` clean, `1` bugs found,
 `2` operational failure, `3` assertion-exercise floor failure. `reproduce` keeps its
 separate verdict contract.

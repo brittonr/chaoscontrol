@@ -21,6 +21,31 @@ Read `docs/operator-triage-runbook.md` and the relevant replay sections in `READ
 
 Use pueue for reproduce or minimize commands that can run for a long time.
 
+## Read-only JSON investigation
+
+For an agent or script that needs one machine-readable step without a live VM, use
+`chaoscontrol-investigate`. It admits a retained checkpoint in a fresh process and
+performs exactly one versioned request:
+
+```bash
+printf '%s' '{
+  "schema": "chaoscontrol.investigation.request.v1",
+  "checkpoint": "results/checkpoint.json",
+  "operation": {"kind": "locate", "filter": {"min_tick": 100}}
+}' | cargo run --release --bin chaoscontrol-investigate -- --request -
+```
+
+Operations are `locate` (filtered failure listing), `seek` (bind one moment by
+index, dedup key, or assertion fingerprint, with an optional recorded tick), and
+`inspect` (stored report, parent snapshot summary when present, and read-only
+restore plan). Requests and responses are bounded; rejections are typed JSON
+documents with exit code 2 (request) or 3 (operational).
+
+The runner never executes a VM, writes artifacts, or promotes a response to replay
+or correctness evidence. Branch creation, interventions, guest diagnostic
+execution, and candidate validation remain separate live commands and still
+require the recorded parent artifacts.
+
 ## Evidence rules
 
 Separate observed facts from interpretation. Cite exact receipt fields, assertion details, virtual time, source paths, and artifact identities.

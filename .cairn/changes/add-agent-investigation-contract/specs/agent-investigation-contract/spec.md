@@ -409,3 +409,25 @@ window MUST remain 16 bytes at 0x1000.
 - GIVEN a zero/oversized length or an overflowing range
 - WHEN the probe starts
 - THEN it fails before creating VMs
+
+
+### Requirement: A disposable branch accepts an explicit typed register nudge
+
+r[chaoscontrol.agent_investigation.restore_intervention]
+
+After restore, the probe MUST accept an explicit `NAME=VALUE` register intervention
+limited to general-purpose registers, RSP, RIP, and RFLAGS; reject unknown names and
+invalid values before loading a snapshot; and apply it to one selected VM's vCPU 0.
+It MUST record the intervention, mark the record counterfactual, and expose the
+resulting register values. Applying an intervention MUST NOT alter the checkpoint or
+snapshot artifacts.
+
+#### Scenario: Register nudge recorded
+- GIVEN a restored parent and a valid register assignment
+- WHEN the probe applies it
+- THEN the record marks counterfactual=true, lists the intervention, and reports the new value
+
+#### Scenario: Unsupported register
+- GIVEN an assignment naming an unsupported register
+- WHEN the probe starts
+- THEN it fails before loading a snapshot

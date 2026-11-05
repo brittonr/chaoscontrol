@@ -774,6 +774,14 @@ enum Commands {
         #[arg(long, default_value_t = 16)]
         memory_length: usize,
 
+        /// Target VM for the diagnostic intervention (default 0).
+        #[arg(long, default_value_t = 0)]
+        vm_index: usize,
+
+        /// Diagnostic register intervention on the disposable branch, e.g. rax=0x2a.
+        #[arg(long)]
+        set_register: Option<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1121,15 +1129,21 @@ fn main() {
             until_tick,
             memory_address,
             memory_length,
+            vm_index,
+            set_register,
             output,
         } => cmd_restore_probe(
             checkpoint,
             output,
-            chaoscontrol_explore::BugSelector { index, dedup_key },
-            rounds,
-            until_tick,
-            memory_address,
-            memory_length,
+            RestoreProbeOptions {
+                selector: chaoscontrol_explore::BugSelector { index, dedup_key },
+                rounds,
+                until_tick,
+                memory_address,
+                memory_length,
+                vm_index,
+                set_register,
+            },
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
@@ -1215,19 +1229,45 @@ fn main() {
     }
 }
 
-fn cmd_restore_probe(
-    checkpoint_path: String,
-    output: Option<String>,
+struct RestoreProbeOptions {
     selector: chaoscontrol_explore::BugSelector,
     rounds: u64,
     until_tick: Option<u64>,
     memory_address: u64,
     memory_length: usize,
+    vm_index: usize,
+    set_register: Option<String>,
+}
+
+fn cmd_restore_probe(
+    checkpoint_path: String,
+    output: Option<String>,
+    options: RestoreProbeOptions,
 ) {
+    let RestoreProbeOptions {
+        selector,
+        rounds,
+        until_tick,
+        memory_address,
+        memory_length,
+        vm_index,
+        set_register,
+    } = options;
     if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
         eprintln!("Error: {error}");
         std::process::exit(1);
     }
+    let parsed_register = match set_register
+        .as_deref()
+        .map(chaoscontrol_explore::parse_register_assignment)
+    {
+        Some(Ok(parsed)) => Some(parsed),
+        Some(Err(error)) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+        None => None,
+    };
     let path = Path::new(&checkpoint_path);
     if !path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
@@ -1281,6 +1321,54 @@ fn cmd_restore_probe(
         eprintln!("Error: {error}");
         std::process::exit(1);
     }
+    let mut interventions = Vec::new();
+    if let Some((register, value)) = parsed_register {
+        if vm_index >= controller.num_vms() {
+            eprintln!("Error: vm index {vm_index} is out of range");
+            std::process::exit(1);
+        }
+        let slot = controller
+            .vm_slot_mut(vm_index)
+            .expect("vm index checked against num_vms");
+        // r[impl chaoscontrol.agent_investigation.restore_intervention]
+        let mut state = match slot.vm.read_vcpu_registers(0) {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        };
+        use chaoscontrol_explore::ProbeRegister;
+        match register {
+            ProbeRegister::Rip => state.rip = value,
+            ProbeRegister::Rsp => state.rsp = value,
+            ProbeRegister::Rax => state.rax = value,
+            ProbeRegister::Rbx => state.rbx = value,
+            ProbeRegister::Rcx => state.rcx = value,
+            ProbeRegister::Rdx => state.rdx = value,
+            ProbeRegister::Rsi => state.rsi = value,
+            ProbeRegister::Rdi => state.rdi = value,
+            ProbeRegister::Rbp => state.rbp = value,
+            ProbeRegister::R8 => state.r8 = value,
+            ProbeRegister::R9 => state.r9 = value,
+            ProbeRegister::R10 => state.r10 = value,
+            ProbeRegister::R11 => state.r11 = value,
+            ProbeRegister::R12 => state.r12 = value,
+            ProbeRegister::R13 => state.r13 = value,
+            ProbeRegister::R14 => state.r14 = value,
+            ProbeRegister::R15 => state.r15 = value,
+            ProbeRegister::Rflags => state.rflags = value,
+        }
+        if let Err(error) = slot.vm.set_vcpu_registers(0, &state) {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+        interventions.push(serde_json::json!({
+            "vm_index": vm_index,
+            "register": format!("{register:?}").to_lowercase(),
+            "value": value,
+        }));
+    }
     let restored_tick = controller.tick();
     // r[impl chaoscontrol.agent_investigation.restore_forward_seek]
     // r[impl chaoscontrol.agent_investigation.restore_seek_tick]
@@ -1324,6 +1412,10 @@ fn cmd_restore_probe(
                 "rip": registers.rip,
                 "rsp": registers.rsp,
                 "rflags": registers.rflags,
+                "rax": registers.rax,
+                "rbx": registers.rbx,
+                "rcx": registers.rcx,
+                "rdx": registers.rdx,
             }),
             Err(error) => serde_json::json!({ "error": error.to_string() }),
         };
@@ -1357,6 +1449,8 @@ fn cmd_restore_probe(
         "simulation_tick": loaded.tick,
         "replay_parent_depth": loaded.replay_parent_depth,
         "restored_tick": restored_tick,
+        "interventions": interventions,
+        "counterfactual": !interventions.is_empty(),
         "current_tick": controller.tick(),
         "forward_rounds_requested": rounds,
         "seek_target_tick": until_tick,

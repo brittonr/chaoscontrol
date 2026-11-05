@@ -17,6 +17,7 @@
 - [x] [serial] Seek to a target simulation tick with a bounded round cap and reached verdict. r[chaoscontrol.agent_investigation.restore_seek_tick]
 - [x] [serial] Preflight the decoded snapshot VM count against the declared topology before restore. r[chaoscontrol.agent_investigation.restore_shape_preflight]
 - [x] [serial] Add explicit bounded memory-probe address/length arguments with overflow checks. r[chaoscontrol.agent_investigation.restore_probe_memory_window]
+- [x] [serial] Apply an explicit typed register intervention to one restored VM and record it as counterfactual. r[chaoscontrol.agent_investigation.restore_intervention]
 - [x] [serial] Add versioned checkpoint admission that validates structure and unique referenced snapshot artifacts with a fail-closed verdict. r[chaoscontrol.agent_investigation.verify_checkpoint]
 - [x] [serial] Add a structure-only admission mode distinct from full snapshot validation. r[chaoscontrol.agent_investigation.admission_modes]
 - [x] [serial] Bind admission to an expected BLAKE3 session digest with a typed mismatch failure. r[chaoscontrol.agent_investigation.session_digest_binding]

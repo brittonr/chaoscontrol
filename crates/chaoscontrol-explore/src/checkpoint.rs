@@ -2063,6 +2063,69 @@ pub fn load_parent_snapshot<P: AsRef<Path>>(
     })
 }
 
+/// Register targets accepted by the bounded diagnostic intervention.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProbeRegister {
+    Rip,
+    Rsp,
+    Rax,
+    Rbx,
+    Rcx,
+    Rdx,
+    Rsi,
+    Rdi,
+    Rbp,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+    Rflags,
+}
+
+/// Parse `name=0xHEX` or `name=DEC` for one allowed general-purpose register.
+// r[impl chaoscontrol.agent_investigation.restore_intervention]
+pub fn parse_register_assignment(input: &str) -> Result<(ProbeRegister, u64), String> {
+    let (name, value) = input
+        .split_once('=')
+        .ok_or_else(|| "expected NAME=VALUE".to_string())?;
+    let register = match name.trim() {
+        "rip" => ProbeRegister::Rip,
+        "rsp" => ProbeRegister::Rsp,
+        "rax" => ProbeRegister::Rax,
+        "rbx" => ProbeRegister::Rbx,
+        "rcx" => ProbeRegister::Rcx,
+        "rdx" => ProbeRegister::Rdx,
+        "rsi" => ProbeRegister::Rsi,
+        "rdi" => ProbeRegister::Rdi,
+        "rbp" => ProbeRegister::Rbp,
+        "r8" => ProbeRegister::R8,
+        "r9" => ProbeRegister::R9,
+        "r10" => ProbeRegister::R10,
+        "r11" => ProbeRegister::R11,
+        "r12" => ProbeRegister::R12,
+        "r13" => ProbeRegister::R13,
+        "r14" => ProbeRegister::R14,
+        "r15" => ProbeRegister::R15,
+        "rflags" => ProbeRegister::Rflags,
+        other => return Err(format!("unsupported register {other}")),
+    };
+    let value = value.trim();
+    let parsed = if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16)
+    } else {
+        value.parse::<u64>()
+    }
+    .map_err(|_| format!("invalid value for {name}"))?;
+    Ok((register, parsed))
+}
+
 /// Validate a read-only memory-probe window: non-empty, at most 4096 bytes, and no
 /// address-plus-length overflow.
 // r[impl chaoscontrol.agent_investigation.restore_probe_memory_window]
@@ -3947,6 +4010,25 @@ mod tests {
             error,
             CheckpointBugExportError::SnapshotReferenceConflict { .. }
         ));
+    }
+
+    #[test]
+    fn register_assignment_parses_allowlisted_names_and_values() {
+        assert_eq!(
+            parse_register_assignment("rax=0x2a"),
+            Ok((ProbeRegister::Rax, 42))
+        );
+        assert_eq!(
+            parse_register_assignment("rip=4096"),
+            Ok((ProbeRegister::Rip, 4096))
+        );
+        assert_eq!(
+            parse_register_assignment("r15 = 0XFF"),
+            Ok((ProbeRegister::R15, 255))
+        );
+        assert!(parse_register_assignment("cr3=0x1").is_err());
+        assert!(parse_register_assignment("rax").is_err());
+        assert!(parse_register_assignment("rax=nope").is_err());
     }
 
     #[test]

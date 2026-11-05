@@ -1,0 +1,10 @@
+[package]
+name = "guest-admission-model"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Detached evaluation model for the guest uid-map/syscall admission contract in
+# docs/guest-seccomp-evaluation.md. Not a product dependency and not wired into
+# intake; the product-scope decision comes first.
+[workspace]

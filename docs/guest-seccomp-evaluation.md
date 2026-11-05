@@ -35,6 +35,28 @@ A pure admission core in `chaoscontrol-evidence` would accept or reject a declar
 - The intake shell rejects declarations it cannot enforce; the guest launcher
   applies them. The core never executes anything.
 
+## Evaluation model
+
+The bounded, pure part of this contract is implemented as a detached model in
+[`tools/guest-admission-model`](../tools/guest-admission-model) (not a product
+dependency and not wired into intake):
+
+```bash
+cd tools/guest-admission-model
+cargo test
+```
+
+It checks container id 0 only, rejects guest-root and below-floor host ids, zero or
+oversized maps, host-range overflow, and unknown policy ids, and collects every map
+error in one decision. The policy allowlist is a single reviewed id,
+`moby-default-v1`. Six tests cover the positive declaration, an empty declaration,
+root/floor rejection, bounds and overflow, policy resolution, and multi-error
+collection.
+
+This model proves the validation rules, not enforcement, isolation, or replay
+compatibility. Wiring it into a bundle needs the scope decision and replay binding
+below.
+
 ## Blocking questions
 
 1. **Product scope.** "No container runtime" is an explicit non-goal. Whether a

@@ -116,13 +116,14 @@ pub use campaign::{
 };
 pub use checkpoint::{
     bind_moment, export_checkpoint_bugs, export_checkpoint_bugs_with_filter, inspect_bug,
-    list_bugs_with_filter, load_checkpoint, load_serializable_bug, load_serializable_bug_artifact,
-    save_checkpoint, verify_checkpoint, verify_checkpoint_with_digest,
-    verify_checkpoint_with_options, BugInspection, BugListEntry, BugListFilter, BugSelector,
-    CampaignJournalBinding, CheckpointAdmissionMode, CheckpointBugExportError,
-    CheckpointBugExportFilter, CheckpointBugExportSummary, CheckpointConfig, CheckpointError,
-    CheckpointVerification, CheckpointVerificationIssue, ExplorationCheckpoint, MomentReference,
-    SerializableBug, SerializableFault, SerializableSchedule, SerializableScheduledFault,
+    inspect_snapshot, list_bugs_with_filter, load_checkpoint, load_serializable_bug,
+    load_serializable_bug_artifact, save_checkpoint, verify_checkpoint,
+    verify_checkpoint_with_digest, verify_checkpoint_with_options, BugInspection, BugListEntry,
+    BugListFilter, BugSelector, CampaignJournalBinding, CheckpointAdmissionMode,
+    CheckpointBugExportError, CheckpointBugExportFilter, CheckpointBugExportSummary,
+    CheckpointConfig, CheckpointError, CheckpointVerification, CheckpointVerificationIssue,
+    ExplorationCheckpoint, MomentReference, SerializableBug, SerializableFault,
+    SerializableSchedule, SerializableScheduledFault, SnapshotInspection,
 };
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
 pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};

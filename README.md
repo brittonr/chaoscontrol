@@ -488,6 +488,11 @@ cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
 # equal the recorded failure tick; a present snapshot reference is validated.
 cargo run --release --bin chaoscontrol-explore -- bind-moment \
   --checkpoint results/checkpoint.json --dedup-key <u64> --tick <recorded-tick>
+
+# Decode and summarize a failure's replay-parent snapshot. This proves identity
+# and shape, not VM execution or replay admissibility.
+cargo run --release --bin chaoscontrol-explore -- inspect-snapshot \
+  --checkpoint results/checkpoint.json --index 0 --output snapshot-summary.json
 ```
 
 Output directory contains:

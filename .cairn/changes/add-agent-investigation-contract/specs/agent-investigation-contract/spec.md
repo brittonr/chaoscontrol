@@ -199,3 +199,25 @@ evidence.
 - GIVEN the same checkpoint
 - WHEN full admission runs
 - THEN it reports the missing artifact and an invalid verdict
+
+
+### Requirement: A referenced parent snapshot can be decoded and summarized
+
+r[chaoscontrol.agent_investigation.inspect_snapshot]
+
+An inspection operation MUST decode the replay parent snapshot referenced by one
+selected checkpoint failure, validate its depth against the bug, and return a
+versioned summary bound to the checkpoint digest, snapshot digest, tick, VM count,
+per-device state entry counts, pending observation count, and fault operation
+sequence. It MUST fail when the bug has no reference or the artifact is invalid,
+and MUST NOT execute a VM or claim replay/admissibility.
+
+#### Scenario: Parent summary
+- GIVEN a bug with a valid snapshot reference
+- WHEN the snapshot is inspected
+- THEN the summary carries the snapshot digest and decoded shape fields
+
+#### Scenario: Missing reference
+- GIVEN a bug without a snapshot reference
+- WHEN inspection runs
+- THEN it fails with a distinct not-found outcome

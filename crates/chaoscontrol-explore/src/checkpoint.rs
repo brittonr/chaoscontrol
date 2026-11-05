@@ -1687,6 +1687,77 @@ pub fn bind_moment<P: AsRef<Path>>(
     })
 }
 
+/// Read-only summary of the replay parent snapshot referenced by one failure.
+#[derive(Debug, Clone, Serialize)]
+pub struct SnapshotInspection {
+    pub schema: &'static str,
+    pub checkpoint_digest: String,
+    pub checkpoint_index: usize,
+    pub artifact: String,
+    pub snapshot_digest: String,
+    pub tick: u64,
+    pub vm_count: usize,
+    pub vcpu_stall_entries: usize,
+    pub cpu_throttle_entries: usize,
+    pub clock_freeze_entries: usize,
+    pub memory_pressure_entries: usize,
+    pub pending_process_observations: usize,
+    pub fault_operation_sequence: u64,
+    pub non_claims: Vec<&'static str>,
+}
+
+// r[impl chaoscontrol.agent_investigation.inspect_snapshot]
+pub fn inspect_snapshot<P: AsRef<Path>>(
+    checkpoint_path: P,
+    selector: BugSelector,
+) -> Result<SnapshotInspection, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
+    let checkpoint_digest = format!(
+        "b3:{}",
+        blake3::hash(crate::bounded_json::read_checkpoint(checkpoint_path)?.as_bytes()).to_hex()
+    );
+    let inspection = inspect_bug(checkpoint_path, selector)?;
+    let reference = inspection
+        .bug
+        .replay_parent_snapshot_ref
+        .as_ref()
+        .ok_or_else(|| CheckpointBugExportError::BugNotFound {
+            selector: "a bug with a replay parent snapshot".to_string(),
+        })?;
+    let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
+    let artifact = FileSnapshotStore::new(source_dir)
+        .get_snapshot_artifact(reference)
+        .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
+    if artifact.replay_parent_depth != inspection.bug.replay_parent_depth {
+        return Err(CheckpointBugExportError::SnapshotStore {
+            source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                field: "replay_parent_depth",
+            },
+        });
+    }
+    let snapshot = artifact.snapshot;
+    Ok(SnapshotInspection {
+        schema: "chaoscontrol.snapshot_inspection.v1",
+        checkpoint_digest,
+        checkpoint_index: inspection.checkpoint_index,
+        artifact: inspection.artifact,
+        snapshot_digest: reference.digest.clone(),
+        tick: snapshot.tick,
+        vm_count: snapshot.vm_snapshots.len(),
+        vcpu_stall_entries: snapshot.vcpu_stall_until.len(),
+        cpu_throttle_entries: snapshot.cpu_throttle.len(),
+        clock_freeze_entries: snapshot.clock_freeze.len(),
+        memory_pressure_entries: snapshot.memory_pressure.len(),
+        pending_process_observations: snapshot.pending_process_observations.len(),
+        fault_operation_sequence: snapshot.fault_operation_sequence,
+        non_claims: vec![
+            "Decoding a snapshot artifact is not VM execution, replay, or an accepted verdict.",
+            "Snapshot summaries prove content identity and shape only.",
+            "A stored parent may still be inadmissible for a changed configuration or artifact set.",
+        ],
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
     pub bugs_scanned: usize,
@@ -3342,6 +3413,50 @@ mod tests {
         assert!(!full.valid);
         assert!(full.snapshots_checked);
         assert_eq!(full.issues.len(), 1);
+    }
+
+    #[test]
+    fn inspect_snapshot_summarizes_the_referenced_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);
+        let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
+        let snapshot = chaoscontrol_vmm::controller::SimulationSnapshot {
+            tick: 750,
+            vm_snapshots: Vec::new(),
+            network_state,
+            fault_engine_snapshot: engine.snapshot(),
+            vcpu_stall_until: vec![],
+            cpu_throttle: vec![],
+            clock_freeze: vec![],
+            clock_jitter_bound: vec![],
+            memory_pressure: vec![],
+            process_fault_attempt: vec![],
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 3,
+        };
+        let reference = FileSnapshotStore::new(dir.path())
+            .put_snapshot(&snapshot, 1)
+            .unwrap();
+        let mut bug = minimal_bug(1);
+        bug.replay_parent_depth = 1;
+        bug.replay_parent_snapshot_ref = Some(reference.clone());
+        save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();
+
+        let inspection = inspect_snapshot(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(inspection.schema, "chaoscontrol.snapshot_inspection.v1");
+        assert_eq!(inspection.tick, 750);
+        assert_eq!(inspection.snapshot_digest, reference.digest);
+        assert_eq!(inspection.vm_count, 0);
+        assert_eq!(inspection.fault_operation_sequence, 3);
+        assert!(inspection.checkpoint_digest.starts_with("b3:"));
     }
 
     #[test]

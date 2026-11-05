@@ -71,7 +71,7 @@ pub use frontier_policy::{
 /// Errors from the exploration engine.
 #[derive(Debug, Snafu)]
 pub enum ExploreError {
-    #[snafu(display("VM error"), context(false))]
+    #[snafu(display("VM error: {source}"), context(false))]
     Vm {
         source: chaoscontrol_vmm::vm::VmError,
     },

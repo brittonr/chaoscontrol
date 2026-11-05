@@ -97,6 +97,7 @@ pub mod memory;
 pub mod minimizer;
 pub mod mutator;
 mod non_null_option;
+pub mod outcomes;
 pub mod probe_drift;
 pub mod probe_outcome;
 pub mod probe_receipt;

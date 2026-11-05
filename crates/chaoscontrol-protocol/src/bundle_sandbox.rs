@@ -175,6 +175,41 @@ pub fn admit_bundle_sandbox(
     admit_seccomp(rules)
 }
 
+// r[impl chaoscontrol.bundle_sandbox.policy_identity]
+/// Deterministic BLAKE3 identity of an admitted sandbox policy.
+///
+/// The encoding is length-delimited and includes the map kind, every range, and
+/// every rule name and action. A caller can bind this identity into a run or replay
+/// profile so a changed policy is distinguishable without claiming enforcement.
+pub fn policy_digest(
+    uid: &[IdMapEntry],
+    gid: &[IdMapEntry],
+    rules: &[(&str, &str)],
+) -> Result<String, SandboxPolicyError> {
+    let admitted = admit_bundle_sandbox(uid, gid, rules)?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"chaoscontrol.bundle-sandbox-policy.v1");
+    for (kind, entries) in [("uid", uid), ("gid", gid)] {
+        hasher.update(kind.as_bytes());
+        hasher.update(&(entries.len() as u32).to_le_bytes());
+        for entry in entries {
+            hasher.update(&entry.inside.to_le_bytes());
+            hasher.update(&entry.outside.to_le_bytes());
+            hasher.update(&entry.length.to_le_bytes());
+        }
+    }
+    hasher.update(&(admitted.len() as u32).to_le_bytes());
+    for rule in &admitted {
+        hasher.update(&(rule.syscall.len() as u16).to_le_bytes());
+        hasher.update(rule.syscall.as_bytes());
+        hasher.update(&[match rule.action {
+            SeccompAction::Allow => 0,
+            SeccompAction::Errno => 1,
+        }]);
+    }
+    Ok(format!("b3:{}", hasher.finalize().to_hex()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,6 +303,25 @@ mod tests {
         assert_eq!(
             admit_id_maps(&too_many, &too_many),
             Err(SandboxPolicyError::TooManyEntries)
+        );
+    }
+
+    #[test]
+    fn policy_digest_is_stable_and_field_sensitive() {
+        let (uid, gid) = map();
+        let rules = [("read", "allow")];
+        let first = policy_digest(&uid, &gid, &rules).unwrap();
+        assert_eq!(policy_digest(&uid, &gid, &rules).unwrap(), first);
+        assert!(first.starts_with("b3:"));
+        let mut changed = rules;
+        changed[0].1 = "errno";
+        assert_ne!(policy_digest(&uid, &gid, &changed).unwrap(), first);
+        let (mut uid2, gid2) = map();
+        uid2[1].outside += 1;
+        assert_ne!(policy_digest(&uid2, &gid2, &rules).unwrap(), first);
+        assert_eq!(
+            policy_digest(&uid, &gid, &[("read", "kill")]),
+            Err(SandboxPolicyError::UnsupportedAction)
         );
     }
 

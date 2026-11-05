@@ -31,3 +31,24 @@ namespaces or filters, affect replay, or claim isolation.
 - GIVEN an empty, duplicate, or unsupported syscall rule
 - WHEN policy is admitted
 - THEN the matching typed rejection is returned
+
+### Requirement: Admitted sandbox policy carries a deterministic identity
+
+r[chaoscontrol.bundle_sandbox.policy_identity]
+
+An admitted sandbox policy MUST produce a BLAKE3 identity over a canonical,
+length-delimited encoding of the map kinds, every range, and every rule name and
+action. Identical policies MUST produce the same identity; changing any admitted
+field MUST change it. Unadmitted policies MUST be rejected. The identity can be bound
+into run or replay profiles; it does not install policy, prove enforcement, or make a
+run replayable.
+
+#### Scenario: Stable identity
+- GIVEN the same admitted maps and rules
+- WHEN the identity is computed twice
+- THEN both identities match
+
+#### Scenario: Field change changes identity
+- GIVEN a changed range or action
+- WHEN the identity is computed
+- THEN the identity differs

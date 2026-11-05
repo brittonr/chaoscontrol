@@ -79,13 +79,13 @@ pub enum ExploreError {
     #[snafu(display("Configuration error: {message}"))]
     Config { message: String },
 
-    #[snafu(display("checkpoint persistence failed"), context(false))]
+    #[snafu(display("checkpoint persistence failed: {source}"), context(false))]
     Checkpoint { source: CheckpointError },
 
     #[snafu(display("frontier policy failed: {source}"), context(false))]
     Frontier { source: FrontierError },
 
-    #[snafu(display("frontier trace write failed"))]
+    #[snafu(display("frontier trace write failed: {source}"))]
     Trace { source: std::io::Error },
 
     #[snafu(display(
@@ -93,7 +93,7 @@ pub enum ExploreError {
     ))]
     LegacyDiagnosticWithoutOutput,
 
-    #[snafu(display("frontier-policy.json receipt write failed"))]
+    #[snafu(display("frontier-policy.json receipt write failed: {source}"))]
     FrontierPolicyReceipt { source: std::io::Error },
 }
 

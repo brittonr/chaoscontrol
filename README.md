@@ -124,6 +124,14 @@ ratios and thresholds, global or explicitly keyed running match counts, numeric 
 intersection/difference, regex selection, temporal witness correlation and nearest earlier/later-witness value annotation with optional explicit key matching. See the [local event query guide](docs/local-event-query.md)
 for inputs, limits, receipt fields, and non-claims.
 
+## Design comparisons
+
+[`docs/capsem-comparison.md`](docs/capsem-comparison.md) compares Capsem's
+OCI-in-a-hardened-Linux-VM hypervisor with ChaosControl's device model, kernel
+hardening, bundle isolation, and determinism posture, at a pinned upstream commit.
+[`docs/fuzzing.md`](docs/fuzzing.md) covers the guest-boundary fuzz targets and
+their bounded smoke rail.
+
 ## Features
 
 ### Deterministic Execution

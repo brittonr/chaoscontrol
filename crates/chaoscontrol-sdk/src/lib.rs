@@ -107,6 +107,8 @@ pub mod guidance;
 pub mod compat;
 
 #[cfg(feature = "full")]
+pub mod diagnostic;
+#[cfg(feature = "full")]
 pub mod runtime;
 #[cfg(feature = "full")]
 pub mod supervisor;

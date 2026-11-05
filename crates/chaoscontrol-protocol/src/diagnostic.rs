@@ -4,7 +4,8 @@
 //! diagnostic operation inside the guest. Admission is lexical and bounded: an
 //! exact executable identity, a bounded argument vector, and a bounded timeout.
 //! The contract does not execute anything, authorize an executable, or claim
-//! that a request produced evidence.
+//! that a request produced evidence. The supervisor supplies the executable path
+//! from its admitted manifest and verifies it against ``executable`` before running.
 
 // r[impl chaoscontrol.guest_diagnostic.request_admission]
 /// Version of the diagnostic request encoding.

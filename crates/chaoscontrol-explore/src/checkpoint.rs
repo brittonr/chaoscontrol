@@ -1270,7 +1270,9 @@ pub enum CheckpointBugExportError {
     #[snafu(display("{matches} checkpoint bugs match {selector}"))]
     BugAmbiguous { selector: String, matches: usize },
 
-    #[snafu(display("exactly one of index or dedup key must be provided"))]
+    #[snafu(display(
+        "exactly one of index, dedup key, or assertion fingerprint must be provided"
+    ))]
     BugSelector,
 
     #[snafu(display("checkpoint digest mismatch: expected {expected}, got {actual}"))]
@@ -1453,6 +1455,58 @@ pub fn list_bugs_with_filter<P: AsRef<Path>>(
 pub struct BugSelector {
     pub index: Option<usize>,
     pub dedup_key: Option<u64>,
+}
+
+// r[impl chaoscontrol.agent_investigation.selector_assertion_fingerprint]
+/// Resolve exactly one failure from an index, dedup key, or exact assertion
+/// fingerprint. The resolver is read-only and does not write artifacts.
+pub fn resolve_bug_selector<P: AsRef<Path>>(
+    checkpoint_path: P,
+    index: Option<usize>,
+    dedup_key: Option<u64>,
+    assertion_fingerprint: Option<&str>,
+) -> Result<BugSelector, CheckpointBugExportError> {
+    let provided = usize::from(index.is_some())
+        + usize::from(dedup_key.is_some())
+        + usize::from(assertion_fingerprint.is_some());
+    if provided != 1 {
+        return Err(CheckpointBugExportError::BugSelector);
+    }
+    let checkpoint_path = checkpoint_path.as_ref();
+    if let Some(index) = index {
+        return Ok(BugSelector {
+            index: Some(index),
+            dedup_key: None,
+        });
+    }
+    if let Some(dedup_key) = dedup_key {
+        return Ok(BugSelector {
+            index: None,
+            dedup_key: Some(dedup_key),
+        });
+    }
+    let fingerprint = assertion_fingerprint.expect("exactly one selector is present");
+    let entries = list_bugs_with_filter(
+        checkpoint_path,
+        BugListFilter {
+            assertion_fingerprint: Some(fingerprint.to_string()),
+            require_assertion_identity: true,
+            ..BugListFilter::default()
+        },
+    )?;
+    match entries.as_slice() {
+        [entry] => Ok(BugSelector {
+            index: Some(entry.checkpoint_index),
+            dedup_key: None,
+        }),
+        [] => Err(CheckpointBugExportError::BugNotFound {
+            selector: format!("assertion fingerprint {fingerprint}"),
+        }),
+        _ => Err(CheckpointBugExportError::BugAmbiguous {
+            selector: format!("assertion fingerprint {fingerprint}"),
+            matches: entries.len(),
+        }),
+    }
 }
 
 /// Versioned read-only inspection record. It carries the validated bug report as
@@ -3620,6 +3674,52 @@ mod tests {
         assert_eq!(empty.bugs_written, 0);
         assert!(!empty_out.join("bug_0.json").exists());
         assert!(!empty_out.join("bug_1.json").exists());
+    }
+
+    #[test]
+    fn resolve_bug_selector_accepts_one_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let first = minimal_bug(1);
+        let mut second = minimal_bug(2);
+        second.assertion_identity = first.assertion_identity.clone();
+        second.assertion_id = first.assertion_id;
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![first.clone(), second]),
+        )
+        .unwrap();
+        let fingerprint = first
+            .assertion_identity
+            .as_ref()
+            .unwrap()
+            .fingerprint
+            .to_hex();
+        assert_eq!(
+            resolve_bug_selector(&checkpoint_path, None, None, Some(&fingerprint))
+                .unwrap_err()
+                .to_string(),
+            "2 checkpoint bugs match assertion fingerprint ".to_string() + &fingerprint
+        );
+        let singleton_path = dir.path().join("singleton.json");
+        save_checkpoint(
+            &singleton_path,
+            &minimal_checkpoint_with_bugs(vec![first.clone()]),
+        )
+        .unwrap();
+        let by_fingerprint =
+            resolve_bug_selector(&singleton_path, None, None, Some(&fingerprint)).unwrap();
+        assert_eq!(by_fingerprint.index, Some(0));
+        let unique = resolve_bug_selector(&checkpoint_path, Some(0), None, None).unwrap();
+        assert_eq!(unique.index, Some(0));
+        assert!(matches!(
+            resolve_bug_selector(&checkpoint_path, None, None, None),
+            Err(CheckpointBugExportError::BugSelector)
+        ));
+        assert!(matches!(
+            resolve_bug_selector(&checkpoint_path, Some(0), Some(1), None),
+            Err(CheckpointBugExportError::BugSelector)
+        ));
     }
 
     #[test]

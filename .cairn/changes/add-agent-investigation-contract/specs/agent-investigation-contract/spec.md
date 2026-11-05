@@ -670,3 +670,23 @@ a replay or failure verdict.
 - GIVEN an unreached target with an exhausted cap or no running VM
 - WHEN the record is produced
 - THEN the outcome names the matching distinct class
+
+### Requirement: One failure can be addressed by exact assertion fingerprint
+
+r[chaoscontrol.agent_investigation.selector_assertion_fingerprint]
+
+Inspect, moment-binding, and restore-probe commands MUST accept exactly one selector:
+index, dedup key, or exact admitted assertion fingerprint. A fingerprint selection
+MUST resolve to the single matching bug, reject malformed fingerprints, and return
+distinct not-found or ambiguous errors. Resolution is read-only and does not write
+artifacts, select a replay verdict, or authorize a branch.
+
+#### Scenario: Unique fingerprint resolves
+- GIVEN exactly one bug carries the fingerprint
+- WHEN a command selects by it
+- THEN the resolved checkpoint index is used
+
+#### Scenario: Ambiguous or missing fingerprint
+- GIVEN zero or several bugs carry the fingerprint
+- WHEN a command selects by it
+- THEN the matching distinct error is returned

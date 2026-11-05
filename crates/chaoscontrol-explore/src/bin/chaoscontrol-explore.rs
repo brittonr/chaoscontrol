@@ -728,6 +728,10 @@ enum Commands {
         #[arg(long)]
         dedup_key: Option<u64>,
 
+        /// Exact admitted assertion fingerprint (lower hex).
+        #[arg(long)]
+        assertion_fingerprint: Option<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -769,6 +773,10 @@ enum Commands {
         /// Stored failure dedup key.
         #[arg(long)]
         dedup_key: Option<u64>,
+
+        /// Exact admitted assertion fingerprint (lower hex).
+        #[arg(long)]
+        assertion_fingerprint: Option<String>,
 
         /// Bounded scheduling rounds to seek forward after restore (capped at 1000).
         #[arg(long, default_value = "0", conflicts_with = "until_tick")]
@@ -862,6 +870,10 @@ enum Commands {
         /// Stored failure dedup key.
         #[arg(long)]
         dedup_key: Option<u64>,
+
+        /// Exact admitted assertion fingerprint (lower hex).
+        #[arg(long)]
+        assertion_fingerprint: Option<String>,
 
         /// Require this recorded failure tick.
         #[arg(long)]
@@ -1141,12 +1153,23 @@ fn main() {
             checkpoint,
             index,
             dedup_key,
+            assertion_fingerprint,
             output,
-        } => cmd_inspect_bug(
-            checkpoint,
-            output,
-            chaoscontrol_explore::BugSelector { index, dedup_key },
-        ),
+        } => {
+            let selector = match chaoscontrol_explore::resolve_bug_selector(
+                &checkpoint,
+                index,
+                dedup_key,
+                assertion_fingerprint.as_deref(),
+            ) {
+                Ok(selector) => selector,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    std::process::exit(1);
+                }
+            };
+            cmd_inspect_bug(checkpoint, output, selector)
+        }
         Commands::RestorePlan {
             checkpoint,
             index,
@@ -1163,6 +1186,7 @@ fn main() {
             checkpoint,
             index,
             dedup_key,
+            assertion_fingerprint,
             rounds,
             until_tick,
             memory_address,
@@ -1180,6 +1204,7 @@ fn main() {
             output,
             RestoreProbeOptions {
                 selector: chaoscontrol_explore::BugSelector { index, dedup_key },
+                assertion_fingerprint,
                 rounds,
                 until_tick,
                 memory_address,
@@ -1208,14 +1233,24 @@ fn main() {
             checkpoint,
             index,
             dedup_key,
+            assertion_fingerprint,
             tick,
             output,
-        } => cmd_bind_moment(
-            checkpoint,
-            output,
-            chaoscontrol_explore::BugSelector { index, dedup_key },
-            tick,
-        ),
+        } => {
+            let selector = match chaoscontrol_explore::resolve_bug_selector(
+                &checkpoint,
+                index,
+                dedup_key,
+                assertion_fingerprint.as_deref(),
+            ) {
+                Ok(selector) => selector,
+                Err(error) => {
+                    eprintln!("Error: {error}");
+                    std::process::exit(1);
+                }
+            };
+            cmd_bind_moment(checkpoint, output, selector, tick)
+        }
         Commands::VerifyCheckpoint {
             checkpoint,
             expected_digest,
@@ -1279,6 +1314,7 @@ fn main() {
 
 struct RestoreProbeOptions {
     selector: chaoscontrol_explore::BugSelector,
+    assertion_fingerprint: Option<String>,
     rounds: u64,
     until_tick: Option<u64>,
     memory_address: u64,
@@ -1299,6 +1335,7 @@ fn cmd_restore_probe(
 ) {
     let RestoreProbeOptions {
         selector,
+        assertion_fingerprint,
         rounds,
         until_tick,
         memory_address,
@@ -1311,6 +1348,18 @@ fn cmd_restore_probe(
         candidate_revision,
         receipt,
     } = options;
+    let selector = match chaoscontrol_explore::resolve_bug_selector(
+        &checkpoint_path,
+        selector.index,
+        selector.dedup_key,
+        assertion_fingerprint.as_deref(),
+    ) {
+        Ok(selector) => selector,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
     if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
         eprintln!("Error: {error}");
         std::process::exit(1);

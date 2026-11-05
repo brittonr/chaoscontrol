@@ -24,6 +24,7 @@
 - [x] [serial] Filter failure listings by exact admitted assertion fingerprint. r[chaoscontrol.agent_investigation.list_bugs_assertion_fingerprint_filter]
 - [x] [serial] Record each intervention's prior value and exact pre-seek boundary. r[chaoscontrol.agent_investigation.restore_intervention_boundary]
 - [x] [serial] Classify seek stop reasons distinctly in the probe record. r[chaoscontrol.agent_investigation.restore_seek_outcome]
+- [x] [serial] Resolve a single failure by exact assertion fingerprint in inspect, moment, and probe commands. r[chaoscontrol.agent_investigation.selector_assertion_fingerprint]
 - [x] [serial] Name the first differing tick, round, or VM observation in drift reports. r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
 - [x] [serial] Expose per-vCPU state and select the vCPU for register intervention and expectation. r[chaoscontrol.agent_investigation.restore_smp_observations]
 - [x] [serial] Bind moment references to a deterministic branch identity and declared tick granularity. r[chaoscontrol.agent_investigation.moment_reference_branch_granularity]

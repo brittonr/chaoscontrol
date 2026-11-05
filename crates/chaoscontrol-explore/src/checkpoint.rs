@@ -2008,6 +2008,61 @@ pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
     })
 }
 
+/// Decoded parent snapshot bound to one checkpoint failure, for a fresh-process
+/// restore probe. Loading is not execution and does not prove replay.
+#[derive(Debug, Clone)]
+pub struct LoadedParentSnapshot {
+    pub checkpoint_digest: String,
+    pub checkpoint_index: usize,
+    pub artifact: String,
+    pub bug_id: u64,
+    pub tick: u64,
+    pub snapshot_digest: String,
+    pub replay_parent_depth: u32,
+    pub snapshot: chaoscontrol_vmm::controller::SimulationSnapshot,
+}
+
+// r[impl chaoscontrol.agent_investigation.restore_probe]
+pub fn load_parent_snapshot<P: AsRef<Path>>(
+    checkpoint_path: P,
+    selector: BugSelector,
+) -> Result<LoadedParentSnapshot, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
+    let checkpoint_digest = format!(
+        "b3:{}",
+        blake3::hash(crate::bounded_json::read_checkpoint(checkpoint_path)?.as_bytes()).to_hex()
+    );
+    let inspection = inspect_bug(checkpoint_path, selector)?;
+    let reference = inspection
+        .bug
+        .replay_parent_snapshot_ref
+        .as_ref()
+        .ok_or_else(|| CheckpointBugExportError::BugNotFound {
+            selector: "a bug with a replay parent snapshot".to_string(),
+        })?;
+    let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
+    let artifact = FileSnapshotStore::new(source_dir)
+        .get_snapshot_artifact(reference)
+        .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
+    if artifact.replay_parent_depth != inspection.bug.replay_parent_depth {
+        return Err(CheckpointBugExportError::SnapshotStore {
+            source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                field: "replay_parent_depth",
+            },
+        });
+    }
+    Ok(LoadedParentSnapshot {
+        checkpoint_digest,
+        checkpoint_index: inspection.checkpoint_index,
+        artifact: inspection.artifact,
+        bug_id: inspection.bug.bug_id,
+        tick: inspection.bug.tick,
+        snapshot_digest: reference.digest.clone(),
+        replay_parent_depth: inspection.bug.replay_parent_depth,
+        snapshot: artifact.snapshot,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
     pub bugs_scanned: usize,
@@ -3864,6 +3919,49 @@ mod tests {
             error,
             CheckpointBugExportError::SnapshotReferenceConflict { .. }
         ));
+    }
+
+    #[test]
+    fn load_parent_snapshot_returns_the_decoded_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);
+        let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
+        let snapshot = chaoscontrol_vmm::controller::SimulationSnapshot {
+            tick: 750,
+            vm_snapshots: Vec::new(),
+            network_state,
+            fault_engine_snapshot: engine.snapshot(),
+            vcpu_stall_until: vec![],
+            cpu_throttle: vec![],
+            clock_freeze: vec![],
+            clock_jitter_bound: vec![],
+            memory_pressure: vec![],
+            process_fault_attempt: vec![],
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
+        };
+        let reference = FileSnapshotStore::new(dir.path())
+            .put_snapshot(&snapshot, 1)
+            .unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut bug = minimal_bug(1);
+        bug.replay_parent_depth = 1;
+        bug.replay_parent_snapshot_ref = Some(reference.clone());
+        save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();
+
+        let loaded = load_parent_snapshot(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(loaded.snapshot.tick, 750);
+        assert_eq!(loaded.snapshot_digest, reference.digest);
+        assert_eq!(loaded.replay_parent_depth, 1);
+        assert_eq!(loaded.bug_id, 1);
+        assert!(loaded.checkpoint_digest.starts_with("b3:"));
     }
 
     #[test]

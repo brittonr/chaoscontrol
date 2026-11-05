@@ -305,3 +305,25 @@ executed branch, isolation proof, or replay evidence.
 - GIVEN the same session but a different tick or bug index
 - WHEN planning runs
 - THEN the branch identity differs
+
+
+### Requirement: A failure's parent can be restored in a fresh process
+
+r[chaoscontrol.agent_investigation.restore_probe]
+
+A restore probe MUST build fresh VMs from the checkpoint's declared configuration,
+restore the validated parent snapshot, and report the restored tick, VM statuses,
+vCPU MP states, general-purpose registers, and a bounded guest-memory probe without
+executing guest instructions afterward. It MUST fail on a missing reference, invalid
+artifact, depth mismatch, or controller/restore error rather than reporting state.
+The record MUST state that restore is not execution, replay, or a verdict.
+
+#### Scenario: Restore and inspect
+- GIVEN a valid checkpoint, kernel/initrd paths, and snapshot artifact
+- WHEN the probe runs
+- THEN fresh VMs restore the snapshot and report statuses, registers, and a bounded memory probe
+
+#### Scenario: Restore failure
+- GIVEN an invalid or missing parent artifact
+- WHEN the probe runs
+- THEN it fails before reporting any restored state

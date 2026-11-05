@@ -115,16 +115,17 @@ pub use campaign::{
     CampaignReport, CampaignRunner, SerializableCampaignConfig,
 };
 pub use checkpoint::{
-    bind_moment, export_checkpoint_bugs, export_checkpoint_bugs_with_filter, inspect_bug,
-    inspect_snapshot, list_bugs_with_filter, list_snapshot_references, load_checkpoint,
-    load_serializable_bug, load_serializable_bug_artifact, plan_restore,
-    plan_restore_with_snapshot_check, save_checkpoint, verify_checkpoint,
+    bind_moment, branch_identity, export_checkpoint_bugs, export_checkpoint_bugs_with_filter,
+    inspect_bug, inspect_snapshot, list_bugs_with_filter, list_snapshot_references,
+    load_checkpoint, load_parent_snapshot, load_serializable_bug, load_serializable_bug_artifact,
+    plan_restore, plan_restore_with_snapshot_check, save_checkpoint, verify_checkpoint,
     verify_checkpoint_with_digest, verify_checkpoint_with_options, BugInspection, BugListEntry,
     BugListFilter, BugSelector, CampaignJournalBinding, CheckpointAdmissionMode,
     CheckpointBugExportError, CheckpointBugExportFilter, CheckpointBugExportSummary,
     CheckpointConfig, CheckpointError, CheckpointVerification, CheckpointVerificationIssue,
-    ExplorationCheckpoint, MomentReference, SerializableBug, SerializableFault,
-    SerializableSchedule, SerializableScheduledFault, SnapshotInspection,
+    ExplorationCheckpoint, LoadedParentSnapshot, MomentReference, RestorePlan, SerializableBug,
+    SerializableFault, SerializableSchedule, SerializableScheduledFault, SnapshotInspection,
+    SnapshotReferenceList, SnapshotReferenceSummary,
 };
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
 pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};

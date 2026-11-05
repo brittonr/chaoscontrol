@@ -505,6 +505,11 @@ cargo run --release --bin chaoscontrol-explore -- list-snapshots \
 cargo run --release --bin chaoscontrol-explore -- restore-plan \
   --checkpoint results/checkpoint.json --index 0 --verify-snapshot \
   --output restore-plan.json
+
+# Restore the parent into fresh VMs and report read-only live state (statuses,
+# registers, bounded memory probe). The guest is not executed after restore.
+cargo run --release --bin chaoscontrol-explore -- restore-probe \
+  --checkpoint results/checkpoint.json --index 0 --output restore-probe.json
 ```
 
 Output directory contains:

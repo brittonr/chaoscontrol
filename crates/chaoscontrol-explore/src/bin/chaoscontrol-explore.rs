@@ -744,6 +744,25 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// Restore a failure's parent snapshot in fresh VMs and report live state.
+    RestoreProbe {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Checkpoint bug index (matches bug_N.json).
+        #[arg(long, conflicts_with = "dedup_key")]
+        index: Option<usize>,
+
+        /// Stored failure dedup key.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     /// List unique replay-parent snapshot references without reading artifacts.
     ListSnapshots {
         /// Path to checkpoint.json.
@@ -1078,6 +1097,16 @@ fn main() {
             chaoscontrol_explore::BugSelector { index, dedup_key },
             verify_snapshot,
         ),
+        Commands::RestoreProbe {
+            checkpoint,
+            index,
+            dedup_key,
+            output,
+        } => cmd_restore_probe(
+            checkpoint,
+            output,
+            chaoscontrol_explore::BugSelector { index, dedup_key },
+        ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
             checkpoint,
@@ -1159,6 +1188,124 @@ fn main() {
             memory_mb,
             output,
         ),
+    }
+}
+
+fn cmd_restore_probe(
+    checkpoint_path: String,
+    output: Option<String>,
+    selector: chaoscontrol_explore::BugSelector,
+) {
+    let path = Path::new(&checkpoint_path);
+    if !path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
+        std::process::exit(1);
+    }
+    let checkpoint = match chaoscontrol_explore::load_checkpoint(path) {
+        Ok(checkpoint) => checkpoint,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let loaded = match chaoscontrol_explore::load_parent_snapshot(path, selector) {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let config = chaoscontrol_vmm::controller::SimulationConfig {
+        num_vms: checkpoint.config.num_vms,
+        vm_config: chaoscontrol_vmm::vm::VmConfig::default(),
+        kernel_path: checkpoint.config.kernel_path.clone(),
+        initrd_path: checkpoint.config.initrd_path.clone(),
+        seed: checkpoint.seed,
+        quantum: checkpoint.config.quantum,
+        schedule: chaoscontrol_fault::schedule::FaultSchedule::new(),
+        disk_image_path: checkpoint.config.disk_image_path.clone(),
+        bootstrap_budget: Some(checkpoint.config.bootstrap_budget),
+        base_core: None,
+        dlog_dir: None,
+        random_faults: checkpoint.config.random_faults,
+    };
+    let mut controller = match chaoscontrol_vmm::controller::SimulationController::new(config) {
+        Ok(controller) => controller,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(error) = controller.restore_all(&loaded.snapshot) {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
+    let mut vms = Vec::new();
+    for index in 0..controller.num_vms() {
+        let Some(slot) = controller.vm_slot(index) else {
+            continue;
+        };
+        let registers = match slot.vm.read_vcpu_registers(0) {
+            Ok(registers) => serde_json::json!({
+                "rip": registers.rip,
+                "rsp": registers.rsp,
+                "rflags": registers.rflags,
+            }),
+            Err(error) => serde_json::json!({ "error": error.to_string() }),
+        };
+        let memory_probe = match slot.vm.read_guest_memory(0x1000, 16) {
+            Ok(bytes) => serde_json::json!({
+                "address": 0x1000u64,
+                "bytes_hex": bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+            }),
+            Err(error) => serde_json::json!({
+                "address": 0x1000u64,
+                "error": error.to_string(),
+            }),
+        };
+        vms.push(serde_json::json!({
+            "index": index,
+            "status": format!("{:?}", slot.status),
+            "mp_states": slot.vm.vcpu_mp_states(),
+            "registers": registers,
+            "memory_probe": memory_probe,
+        }));
+    }
+    let record = serde_json::json!({
+        "schema": "chaoscontrol.restore_probe.v1",
+        "checkpoint_digest": loaded.checkpoint_digest,
+        "checkpoint_index": loaded.checkpoint_index,
+        "artifact": loaded.artifact,
+        "bug_id": loaded.bug_id,
+        "snapshot_digest": loaded.snapshot_digest,
+        "simulation_tick": loaded.tick,
+        "replay_parent_depth": loaded.replay_parent_depth,
+        "restored_tick": controller.tick(),
+        "vm_count": controller.num_vms(),
+        "vms": vms,
+        "non_claims": [
+            "Restoring a parent snapshot is not guest execution, replay, or an accepted verdict.",
+            "Register and memory values are a read-only snapshot of the restored state.",
+            "A successful restore does not prove the workload reproduces or that a fix works."
+        ],
+    });
+    let mut json = match serde_json::to_string_pretty(&record) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!("Wrote restore probe to {}", path);
+        }
+        None => print!("{json}"),
     }
 }
 

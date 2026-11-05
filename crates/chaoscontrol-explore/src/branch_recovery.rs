@@ -23,6 +23,7 @@ use std::sync::Arc;
 /// single-vCPU host watchdog.
 pub const MAX_BRANCH_WATCHDOG_ATTEMPTS: u32 = 3;
 
+// r[impl chaoscontrol.branch_watchdog.isolation]
 /// Return the interrupted vCPU when `error` is a host watchdog timeout.
 pub fn host_watchdog_vcpu(error: &VmError) -> Option<usize> {
     match error {
@@ -48,6 +49,7 @@ pub enum WatchdogDecision {
     Discard,
 }
 
+// r[impl chaoscontrol.branch_watchdog.retry]
 /// Decide the next step after `attempts_made` watchdog-interrupted attempts.
 ///
 /// A branch without a parent snapshot started from mutable controller state
@@ -63,6 +65,7 @@ pub fn decide_after_watchdog(
     }
 }
 
+// r[impl chaoscontrol.branch_watchdog.discard]
 /// Final outcome of one branch after watchdog recovery.
 #[allow(
     clippy::large_enum_variant,
@@ -132,6 +135,7 @@ impl RoundWatchdogLedger {
         self.watchdog_firings = self.watchdog_firings.saturating_add(firings);
     }
 
+    // r[impl chaoscontrol.branch_watchdog.fail_closed]
     /// Fail closed when the round attempted branches but discarded all of them.
     pub fn ensure_admissible(&self) -> Result<(), VmError> {
         match self.last_discarded_vcpu {
@@ -143,6 +147,7 @@ impl RoundWatchdogLedger {
     }
 }
 
+// r[impl chaoscontrol.branch_watchdog.recovery]
 /// Bootstrap state retained so a poisoned controller can be replaced.
 ///
 /// Guest memory shares the incremental-snapshot base images, so retaining it
@@ -222,6 +227,7 @@ mod tests {
         }
     }
 
+    // r[verify chaoscontrol.branch_watchdog.isolation]
     #[test]
     fn only_host_watchdog_is_classified_as_timeout() {
         let watchdog = ExploreError::Vm {
@@ -245,6 +251,7 @@ mod tests {
         assert_eq!(explore_error_watchdog_vcpu(&config), None);
     }
 
+    // r[verify chaoscontrol.branch_watchdog.retry]
     #[test]
     fn retries_until_attempt_bound_then_discards() {
         for attempts in 1..MAX_BRANCH_WATCHDOG_ATTEMPTS {
@@ -259,11 +266,13 @@ mod tests {
         );
     }
 
+    // r[verify chaoscontrol.branch_watchdog.retry]
     #[test]
     fn branch_without_parent_snapshot_is_never_retried() {
         assert_eq!(decide_after_watchdog(1, false), WatchdogDecision::Discard);
     }
 
+    // r[verify chaoscontrol.branch_watchdog.discard]
     #[test]
     fn retried_completion_counts_firings_without_discard() {
         let mut ledger = RoundWatchdogLedger::default();
@@ -296,6 +305,7 @@ mod tests {
         assert!(ledger.ensure_admissible().is_ok());
     }
 
+    // r[verify chaoscontrol.branch_watchdog.fail_closed]
     #[test]
     fn all_discarded_round_fails_closed_with_watchdog() {
         let mut ledger = RoundWatchdogLedger::default();

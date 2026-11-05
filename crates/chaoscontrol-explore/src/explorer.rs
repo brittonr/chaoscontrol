@@ -1854,6 +1854,7 @@ impl Explorer {
     /// A watchdog timeout permanently poisons the controller, so every firing
     /// installs a replacement before the branch is retried or discarded. Other
     /// errors propagate unchanged.
+    // r[impl chaoscontrol.branch_watchdog.paths]
     fn run_branch_recovering(
         &mut self,
         snapshot: &Option<Arc<SimulationSnapshot>>,
@@ -3365,6 +3366,7 @@ pub struct RoundReport {
 /// Captured after each round completes, these records track coverage growth,
 /// bug discovery timing, and frontier evolution across the campaign.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+// r[impl chaoscontrol.branch_watchdog.evidence]
 pub struct RoundHistory {
     /// Round number (1-indexed).
     pub round: u64,

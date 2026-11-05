@@ -28,6 +28,7 @@ pub struct FrontierEntry {
     pub parent: Option<u64>,
     /// Guest-declared marker that created this branch opportunity.
     pub marker: Option<MarkerFrontierMetadata>,
+    // r[impl chaoscontrol.assertion_checkpoints.frontier]
     /// Exact assertion-hit provenance, when one created this opportunity.
     pub assertion: Option<crate::assertion_checkpoints::AssertionCheckpointMetadata>,
 }

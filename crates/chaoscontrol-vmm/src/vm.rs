@@ -5126,6 +5126,7 @@ impl DeterministicVm {
         std::mem::take(&mut self.assertion_hit_stop_pending)
     }
 
+    // r[impl chaoscontrol.assertion_checkpoints.observation]
     fn capture_assertion_hits(&mut self) {
         let hits = self.fault_engine.take_assertion_hits();
         for event in hits {

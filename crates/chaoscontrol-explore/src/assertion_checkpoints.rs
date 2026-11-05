@@ -67,6 +67,7 @@ impl AssertionCheckpointLimits {
     }
 }
 
+// r[impl chaoscontrol.assertion_checkpoints.observation]
 /// One catalog-bound assertion observation at a deterministic execution boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssertionHitObservation {
@@ -145,6 +146,7 @@ pub struct AssertionCheckpointSelection {
     pub truncated: bool,
 }
 
+// r[impl chaoscontrol.assertion_checkpoints.policy]
 /// Deterministic assertion-hit checkpoint selector.
 ///
 /// The selector persists campaign capture budget, prior hit counts, and exact
@@ -330,6 +332,7 @@ fn eligible(observation: &AssertionHitObservation) -> bool {
     }
 }
 
+// r[impl chaoscontrol.assertion_checkpoints.capture]
 /// Exact assertion-hit provenance retained with a checkpoint frontier entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -356,6 +359,7 @@ pub struct AssertionCheckpointMetadata {
     pub observed_tick: u64,
 }
 
+// r[impl chaoscontrol.assertion_checkpoints.evidence]
 /// Bounded receipt of assertion-hit checkpoint decisions.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AssertionCheckpointReceipt {
@@ -412,6 +416,7 @@ impl AssertionCheckpointReceipt {
         }
     }
 
+    // r[impl chaoscontrol.assertion_checkpoints.nonclaims]
     /// Validate schema, decision bounds, and counter consistency.
     pub fn validate(&self) -> Result<(), AssertionCheckpointReceiptError> {
         if self.schema != ASSERTION_CHECKPOINT_RECEIPT_SCHEMA {
@@ -529,6 +534,7 @@ impl core::fmt::Display for AssertionCheckpointError {
 
 impl std::error::Error for AssertionCheckpointError {}
 
+// r[verify chaoscontrol.assertion_checkpoints.fixtures]
 #[cfg(test)]
 mod tests {
     use super::*;

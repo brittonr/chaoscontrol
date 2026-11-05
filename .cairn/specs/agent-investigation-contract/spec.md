@@ -811,3 +811,22 @@ against; they do not prove the failure is fixed.
 - GIVEN an empty artifact name
 - WHEN failure identity is bound
 - THEN the typed rejection is returned
+
+### Requirement: Candidate guest artifacts receive fresh content identities
+
+r[chaoscontrol.agent_investigation.candidate_artifact_identity]
+
+An explicit operation MUST emit `b3:` BLAKE3 identities, byte sizes, and kinds for the
+supplied candidate kernel, initrd, and disk image, failing on unreadable paths and
+omitting absent optional artifacts. The output MUST state that identity alone does not
+prove a build, boot, or fix and that a fresh run is required.
+
+#### Scenario: Candidate identities emitted
+- GIVEN readable candidate kernel and initrd files
+- WHEN identities are requested
+- THEN both appear with `b3:` digests and sizes under one schema
+
+#### Scenario: Missing artifact rejected
+- GIVEN an unreadable or absent required path
+- WHEN identities are requested
+- THEN the command fails without emitting a partial record

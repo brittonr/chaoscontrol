@@ -888,6 +888,25 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// Emit content identities for candidate guest artifacts.
+    CandidateIdentity {
+        /// Candidate kernel path.
+        #[arg(long)]
+        kernel: String,
+
+        /// Candidate initrd path.
+        #[arg(long)]
+        initrd: Option<String>,
+
+        /// Candidate disk image path.
+        #[arg(long)]
+        disk_image: Option<String>,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     /// Validate a retained checkpoint and its referenced snapshot artifacts.
     VerifyCheckpoint {
         /// Path to checkpoint.json.
@@ -1257,6 +1276,12 @@ fn main() {
             };
             cmd_bind_moment(checkpoint, output, selector, tick)
         }
+        Commands::CandidateIdentity {
+            kernel,
+            initrd,
+            disk_image,
+            output,
+        } => cmd_candidate_identity(kernel, initrd, disk_image, output),
         Commands::VerifyCheckpoint {
             checkpoint,
             expected_digest,
@@ -2080,6 +2105,69 @@ fn cmd_bind_moment(
                 std::process::exit(1);
             }
             eprintln!("Wrote moment reference to {}", path);
+        }
+        None => print!("{json}"),
+    }
+}
+
+// r[impl chaoscontrol.agent_investigation.candidate_artifact_identity]
+fn cmd_candidate_identity(
+    kernel: String,
+    initrd: Option<String>,
+    disk_image: Option<String>,
+    output: Option<String>,
+) {
+    let mut artifacts = Vec::new();
+    for (kind, path) in [
+        ("kernel", Some(kernel)),
+        ("initrd", initrd),
+        ("disk_image", disk_image),
+    ] {
+        let Some(path) = path else { continue };
+        let metadata = match std::fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                eprintln!("Error: {path}: {error}");
+                std::process::exit(1);
+            }
+        };
+        let digest = match file_digest(std::path::Path::new(&path)) {
+            Ok(digest) => digest,
+            Err(error) => {
+                eprintln!("Error: {path}: {error}");
+                std::process::exit(1);
+            }
+        };
+        artifacts.push(serde_json::json!({
+            "kind": kind,
+            "path": path,
+            "size": metadata.len(),
+            "digest": format!("b3:{digest}"),
+        }));
+    }
+    let record = serde_json::json!({
+        "schema": "chaoscontrol.candidate_identity.v1",
+        "artifacts": artifacts,
+        "non_claims": [
+            "Content identity does not prove the artifact builds, boots, or fixes anything.",
+            "A fresh run with new identities is required before any candidate claim.",
+        ],
+    });
+    let mut json = match serde_json::to_string_pretty(&record) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!("Wrote candidate identity to {}", path);
         }
         None => print!("{json}"),
     }

@@ -1854,6 +1854,7 @@ pub struct RestorePlan {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot_digest: Option<String>,
     pub snapshot_present: bool,
+    pub snapshot_verified: bool,
     pub kernel_path: String,
     pub kernel_present: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1872,6 +1873,15 @@ pub fn plan_restore<P: AsRef<Path>>(
     checkpoint_path: P,
     selector: BugSelector,
 ) -> Result<RestorePlan, CheckpointBugExportError> {
+    plan_restore_with_snapshot_check(checkpoint_path, selector, false)
+}
+
+// r[impl chaoscontrol.agent_investigation.restore_plan_verification]
+pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
+    checkpoint_path: P,
+    selector: BugSelector,
+    verify_snapshot: bool,
+) -> Result<RestorePlan, CheckpointBugExportError> {
     let checkpoint_path = checkpoint_path.as_ref();
     let bytes = crate::bounded_json::read_checkpoint(checkpoint_path)?;
     let checkpoint_digest = format!("b3:{}", blake3::hash(bytes.as_bytes()).to_hex());
@@ -1882,6 +1892,23 @@ pub fn plan_restore<P: AsRef<Path>>(
     let snapshot_present = reference
         .map(|reference| source_dir.join(&reference.path).exists())
         .unwrap_or(false);
+    let mut snapshot_verified = false;
+    if verify_snapshot {
+        let reference = reference.ok_or_else(|| CheckpointBugExportError::BugNotFound {
+            selector: "a bug with a replay parent snapshot".to_string(),
+        })?;
+        let artifact = FileSnapshotStore::new(source_dir)
+            .get_snapshot_artifact(reference)
+            .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
+        if artifact.replay_parent_depth != inspection.bug.replay_parent_depth {
+            return Err(CheckpointBugExportError::SnapshotStore {
+                source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                    field: "replay_parent_depth",
+                },
+            });
+        }
+        snapshot_verified = true;
+    }
     let kernel_present = Path::new(&checkpoint.config.kernel_path).exists();
     let initrd_present = checkpoint
         .config
@@ -1924,6 +1951,7 @@ pub fn plan_restore<P: AsRef<Path>>(
         replay_parent_depth: inspection.bug.replay_parent_depth,
         snapshot_digest: reference.map(|reference| reference.digest.clone()),
         snapshot_present,
+        snapshot_verified,
         kernel_path: checkpoint.config.kernel_path.clone(),
         kernel_present,
         initrd_path: checkpoint.config.initrd_path.clone(),
@@ -1935,7 +1963,7 @@ pub fn plan_restore<P: AsRef<Path>>(
         non_claims: vec![
             "A ready plan means the declared input paths exist; it does not execute a VM.",
             "Path existence is not admission, replay evidence, or workload correctness.",
-            "Snapshot digest verification is not performed by the plan.",
+            "Snapshot digest verification runs only when explicitly requested.",
         ],
     })
 }
@@ -3637,6 +3665,16 @@ mod tests {
         assert!(plan.snapshot_present);
         assert!(plan.kernel_present);
         assert!(plan.missing.is_empty());
+        assert!(!plan.snapshot_verified);
+        assert!(plan_restore_with_snapshot_check(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+            true,
+        )
+        .is_err());
 
         let missing_path = dir.path().join("missing.json");
         let mut missing = checkpoint.clone();
@@ -3652,6 +3690,57 @@ mod tests {
         .unwrap();
         assert!(!plan.ready);
         assert!(plan.missing.iter().any(|item| item.starts_with("kernel ")));
+    }
+
+    #[test]
+    fn restore_plan_can_verify_a_stored_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let kernel = dir.path().join("vmlinux");
+        std::fs::write(&kernel, b"kernel").unwrap();
+        let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);
+        let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
+        let snapshot = chaoscontrol_vmm::controller::SimulationSnapshot {
+            tick: 321,
+            vm_snapshots: Vec::new(),
+            network_state,
+            fault_engine_snapshot: engine.snapshot(),
+            vcpu_stall_until: vec![],
+            cpu_throttle: vec![],
+            clock_freeze: vec![],
+            clock_jitter_bound: vec![],
+            memory_pressure: vec![],
+            process_fault_attempt: vec![],
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
+        };
+        let reference = FileSnapshotStore::new(dir.path())
+            .put_snapshot(&snapshot, 1)
+            .unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
+        checkpoint.config.kernel_path = kernel.display().to_string();
+        checkpoint.bugs[0].replay_parent_depth = 1;
+        checkpoint.bugs[0].replay_parent_snapshot_ref = Some(reference);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let plan = plan_restore_with_snapshot_check(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+            true,
+        )
+        .unwrap();
+        assert!(plan.ready);
+        assert!(plan.snapshot_verified);
+        assert_eq!(
+            plan.snapshot_digest,
+            checkpoint.bugs[0]
+                .replay_parent_snapshot_ref
+                .as_ref()
+                .map(|r| r.digest.clone())
+        );
     }
 
     #[test]

@@ -259,3 +259,22 @@ digests, or claim admission, replay, or workload correctness.
 - GIVEN a declared kernel path that does not exist
 - WHEN the plan is requested
 - THEN readiness is false and the missing list names the kernel path
+
+### Requirement: Restore planning can verify the snapshot on request
+
+r[chaoscontrol.agent_investigation.restore_plan_verification]
+
+Restore planning MUST support an explicit verification mode that validates the
+referenced snapshot artifact's digest and depth before reporting readiness, and MUST
+report whether verification ran. In the default mode the plan MUST NOT decode the
+artifact, and an invalid or missing artifact MUST NOT be reported as verified.
+
+#### Scenario: Verification requested
+- GIVEN a valid stored snapshot artifact
+- WHEN planning runs in verification mode
+- THEN the plan reports snapshot_verified=true and ready=true
+
+#### Scenario: Verification failure
+- GIVEN a missing or invalid artifact
+- WHEN planning runs in verification mode
+- THEN planning fails rather than reporting a ready, unverified plan

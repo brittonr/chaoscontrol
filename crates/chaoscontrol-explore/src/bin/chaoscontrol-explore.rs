@@ -735,6 +735,10 @@ enum Commands {
         #[arg(long)]
         dedup_key: Option<u64>,
 
+        /// Verify the snapshot artifact digest and depth (decodes bytes).
+        #[arg(long)]
+        verify_snapshot: bool,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1066,11 +1070,13 @@ fn main() {
             checkpoint,
             index,
             dedup_key,
+            verify_snapshot,
             output,
         } => cmd_restore_plan(
             checkpoint,
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
+            verify_snapshot,
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
@@ -1160,13 +1166,18 @@ fn cmd_restore_plan(
     checkpoint: String,
     output: Option<String>,
     selector: chaoscontrol_explore::BugSelector,
+    verify_snapshot: bool,
 ) {
     let checkpoint_path = Path::new(&checkpoint);
     if !checkpoint_path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint);
         std::process::exit(1);
     }
-    let plan = match chaoscontrol_explore::plan_restore(checkpoint_path, selector) {
+    let plan = match chaoscontrol_explore::plan_restore_with_snapshot_check(
+        checkpoint_path,
+        selector,
+        verify_snapshot,
+    ) {
         Ok(plan) => plan,
         Err(error) => {
             eprintln!("Error: {error}");

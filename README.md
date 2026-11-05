@@ -500,9 +500,11 @@ cargo run --release --bin chaoscontrol-explore -- list-snapshots \
   --checkpoint results/checkpoint.json --output snapshot-references.json
 
 # Plan a parent restore: check declared kernel/initrd/disk and the snapshot path
-# without executing a VM or verifying snapshot digests.
+# without executing a VM. Add --verify-snapshot to validate the artifact digest
+# and depth (this decodes the snapshot).
 cargo run --release --bin chaoscontrol-explore -- restore-plan \
-  --checkpoint results/checkpoint.json --index 0 --output restore-plan.json
+  --checkpoint results/checkpoint.json --index 0 --verify-snapshot \
+  --output restore-plan.json
 ```
 
 Output directory contains:

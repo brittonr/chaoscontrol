@@ -11,7 +11,8 @@
 `nix build .#hardened-kernel-config` succeeded and `checks.hardened-kernel-config`
 passes. The allnoconfig variant (`hardenedMinimalKernelConfig`,
 `checks.x86_64-linux.hardened-minimal-kernel-config`) removes modules, debugfs,
-kallsyms, BPF, io_uring, userfaultfd, and 32-bit emulation; its ~14 MB vmlinux
+kallsyms, BPF, io_uring, userfaultfd, and 32-bit emulation and keeps
+`X86_IOPL_IOPERM` for the port-I/O hypercall transport; its ~14 MB vmlinux
 booted to `Run /init` but the workload did not exit within 90 s, so it is not
 admitted for workloads. `nix build .#hardened-vmlinux` produced vmlinux sha256
 `753efb21…a7a80`; boot smoke with initrd sha256 `385e16af…5fea9` reached

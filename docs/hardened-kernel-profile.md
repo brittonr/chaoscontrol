@@ -80,10 +80,11 @@ block, EXT4, memory hardening), enable `EXPERT` so hidden defaults become
 controllable, then disable `KALLSYMS`, `IO_URING`, `BPF_SYSCALL`, `DEBUG_FS`,
 `COMPAT`, and `IA32_EMULATION`. The flake check asserts all of those absences plus
 `CONFIG_VIRTIO_BLK=y`, `CONFIG_EXT4_FS=y`, and
-`CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y`.
+`CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y`, and `CONFIG_X86_IOPL_IOPERM=y` (required by
+the SDK's port-I/O hypercall transport).
 
 The minimal `vmlinux` builds to ~14 MB (versus ~409 MB for a defconfig-modules
-kernel; SHA-256 `337e578c97632615ec9fdf90ba4d32535e1e09211a27a597125494fca7ed2a6d`)
+kernel; SHA-256 `d13700fedfec2c90990fac3b29072117316ce170c8b5b584f47e95603e5898d8`)
 and boots the rust-workload initrd to `Run /init as init process`; init
 reports debugfs/KCOV unavailable, as expected. In the recorded smoke the workload
 did not exit within a 90-second wall-clock bound and the VMM was killed, so this

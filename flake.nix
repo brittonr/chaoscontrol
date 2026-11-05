@@ -697,6 +697,28 @@
                 cp .config $out
               '';
 
+          minimalBootInitrd = pkgs.runCommand "chaoscontrol-minimal-boot-initrd"
+            {
+              nativeBuildInputs = [ pkgs.cpio pkgs.gzip ];
+            }
+            ''
+              mkdir -p root
+              cp ${pkgs.pkgsStatic.busybox}/bin/busybox root/busybox
+              chmod 0755 root/busybox
+              cat > root/init <<'INIT'
+              #!/busybox sh
+              /busybox mount -t proc proc /proc
+              /busybox mount -t sysfs sysfs /sys
+              /busybox mount -t devtmpfs devtmpfs /dev
+              echo minimal-boot-ok
+              /busybox poweroff -f
+              INIT
+              chmod 0755 root/init
+              cd root
+              find . -print0 | cpio --null -o -H newc \
+                | gzip -9 > $out
+            '';
+
           hardenedMinimalKernel = (pkgs.linuxManualConfig {
             inherit (pkgs.linuxPackages_latest.kernel) src version modDirVersion;
             configfile = hardenedMinimalKernelConfig;
@@ -2626,6 +2648,48 @@
                 exec bash ${./scripts/fuzz-smoke.sh} "$@"
               '';
             }}/bin/fuzz-smoke";
+            minimal-boot-smoke = mkApp "Boot the minimal allnoconfig kernel with a static busybox init and require its marker." "${pkgs.writeShellApplication {
+              name = "minimal-boot-smoke";
+              runtimeInputs = [ pkgs.coreutils pkgs.gnugrep ];
+              text = ''
+                set -euo pipefail
+                log="$(mktemp)"
+                pid=""
+                cleanup() {
+                  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                    kill -TERM "$pid" 2>/dev/null || true
+                    sleep 1
+                    kill -KILL "$pid" 2>/dev/null || true
+                    wait "$pid" 2>/dev/null || true
+                  fi
+                  rm -f "$log"
+                }
+                trap cleanup EXIT
+                ${chaoscontrol}/bin/boot ${hardenedMinimalKernel}/vmlinux ${minimalBootInitrd} >"$log" 2>&1 &
+                pid=$!
+                marker=0
+                for _ in $(seq 1 60); do
+                  if grep -q 'minimal-boot-ok' "$log"; then
+                    marker=1
+                    break
+                  fi
+                  if ! kill -0 "$pid" 2>/dev/null; then
+                    break
+                  fi
+                  sleep 1
+                done
+                if [ "$marker" -ne 1 ]; then
+                  echo "minimal boot smoke: init marker missing" >&2
+                  tail -40 "$log" >&2
+                  exit 1
+                fi
+                if grep -q 'Power off not available: System halted instead' "$log"; then
+                  echo "minimal boot smoke: ok (init ran; VM halted instead of powering off)"
+                else
+                  echo "minimal boot smoke: ok (init ran)"
+                fi
+              '';
+            }}/bin/minimal-boot-smoke";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             vm-determinism-matrix = mkApp "Run the bounded hide-tsc VM determinism matrix rail and emit receipts." "${vmDeterminismMatrix}/bin/vm-determinism-matrix";

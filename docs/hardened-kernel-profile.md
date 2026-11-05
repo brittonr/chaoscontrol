@@ -84,13 +84,24 @@ controllable, then disable `KALLSYMS`, `IO_URING`, `BPF_SYSCALL`, `DEBUG_FS`,
 the SDK's port-I/O hypercall transport).
 
 The minimal `vmlinux` builds to ~14 MB (versus ~409 MB for a defconfig-modules
-kernel; SHA-256 `d13700fedfec2c90990fac3b29072117316ce170c8b5b584f47e95603e5898d8`)
-and boots the rust-workload initrd to `Run /init as init process`; init
-reports debugfs/KCOV unavailable, as expected. In the recorded smoke the workload
-did not exit within a 90-second wall-clock bound and the VMM was killed, so this
-variant is **not** admitted for workloads and the cause is not yet investigated.
-It is a config/removal artifact plus a boot-progress observation, not a workload
-profile.
+kernel; SHA-256 `d13700fedfec2c90990fac3b29072117316ce170c8b5b584f47e95603e5898d8`).
+A self-contained smoke boots it with a static busybox initrd:
+
+```bash
+nix run .#minimal-boot-smoke
+```
+
+The init mounts proc/sys/devtmpfs, prints `minimal-boot-ok`, and calls `poweroff -f`;
+the kernel reports `Power off not available: System halted instead`, so the smoke
+treats the marker as success, terminates the VMM itself, and reports
+`ok (init ran; VM halted instead of powering off)`. This proves the minimal kernel
+reaches userspace and runs a static binary, not that the VMM can stop it on guest
+halt.
+
+With the rust-workload initrd the kernel reaches `Run /init` (init reports
+debugfs/KCOV unavailable, as expected) but the workload does not exit and the VMM
+keeps injecting serial IRQs; that variant is **not** admitted for workloads and
+the cause is not yet investigated.
 
 ## Trade-offs
 

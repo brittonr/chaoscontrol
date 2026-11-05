@@ -515,7 +515,8 @@ cargo run --release --bin chaoscontrol-explore -- restore-plan \
 # --set-register NAME=VALUE applies one typed nudge to the selected VM and marks
 # the record counterfactual; --expect-register NAME=VALUE checks the post-seek value
 # and exits non-zero on mismatch. --repeat 2-3 reruns the same probe and reports
-# round/VM/tick trace drift. Guest serial shares stdout; use --output for JSON.
+# round/VM/tick trace drift. --candidate-revision plus --receipt writes a digest-bound
+# candidate-validation receipt. Guest serial shares stdout; use --output for JSON.
 cargo run --release --bin chaoscontrol-explore -- restore-probe \
   --checkpoint results/checkpoint.json --index 0 --until-tick 1181 \
   --memory-address 0x1000 --memory-length 32 --set-register rax=0x2a \

@@ -18,6 +18,7 @@
 - [x] [serial] Align fired fault descriptions to seek-round ticks. r[chaoscontrol.agent_investigation.restore_seek_event_alignment]
 - [x] [serial] Check an expected post-seek register value with a non-zero mismatch exit. r[chaoscontrol.agent_investigation.restore_register_expectation]
 - [x] [serial] Repeat a probe and report round/VM/tick trace drift. r[chaoscontrol.agent_investigation.restore_repeat_drift]
+- [x] [serial] Emit a digest-bound candidate-validation receipt. r[chaoscontrol.agent_investigation.restore_candidate_receipt]
 - [x] [serial] Preflight the decoded snapshot VM count against the declared topology before restore. r[chaoscontrol.agent_investigation.restore_shape_preflight]
 - [x] [serial] Add explicit bounded memory-probe address/length arguments with overflow checks. r[chaoscontrol.agent_investigation.restore_probe_memory_window]
 - [x] [serial] Apply an explicit typed register intervention to one restored VM and record it as counterfactual. r[chaoscontrol.agent_investigation.restore_intervention]

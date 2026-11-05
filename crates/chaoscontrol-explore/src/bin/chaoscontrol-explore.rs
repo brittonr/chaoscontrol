@@ -790,6 +790,14 @@ enum Commands {
         #[arg(long, default_value_t = 1)]
         repeat: u64,
 
+        /// Candidate source revision to bind into the receipt.
+        #[arg(long)]
+        candidate_revision: Option<String>,
+
+        /// Write a candidate-validation receipt to this path.
+        #[arg(long)]
+        receipt: Option<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1141,6 +1149,8 @@ fn main() {
             set_register,
             expect_register,
             repeat,
+            candidate_revision,
+            receipt,
             output,
         } => cmd_restore_probe(
             checkpoint,
@@ -1155,6 +1165,8 @@ fn main() {
                 set_register,
                 expect_register,
                 repeat,
+                candidate_revision,
+                receipt,
             },
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
@@ -1251,6 +1263,8 @@ struct RestoreProbeOptions {
     set_register: Option<String>,
     expect_register: Option<String>,
     repeat: u64,
+    candidate_revision: Option<String>,
+    receipt: Option<String>,
 }
 
 fn cmd_restore_probe(
@@ -1268,6 +1282,8 @@ fn cmd_restore_probe(
         set_register,
         expect_register,
         repeat,
+        candidate_revision,
+        receipt,
     } = options;
     if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
         eprintln!("Error: {error}");
@@ -1338,6 +1354,55 @@ fn cmd_restore_probe(
     }
     if let Some(object) = record.as_object_mut() {
         object.insert("repeat".to_string(), drift);
+    }
+    if let Some(receipt_path) = receipt {
+        let Some(revision) = candidate_revision.as_deref() else {
+            eprintln!("Error: --receipt requires --candidate-revision");
+            std::process::exit(1);
+        };
+        let checkpoint_digest = match file_digest(std::path::Path::new(&checkpoint_path)) {
+            Ok(digest) => digest,
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        };
+        let seek_reached = record["seek_reached"].as_bool().unwrap_or(false);
+        let rounds_run = record["forward_rounds_run"].as_u64().unwrap_or(0);
+        let drift = if repeats > 1 { Some(drifted) } else { None };
+        let expectation_matched = record["expectation"]["matched"].as_bool();
+        let receipt = match chaoscontrol_explore::probe_receipt::ProbeReceipt::build(
+            revision,
+            &checkpoint_digest,
+            until_tick,
+            seek_reached,
+            rounds_run,
+            repeats,
+            drift,
+            expectation_matched,
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                eprintln!("Error: {error:?}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(error) = receipt.verify() {
+            eprintln!("Error: {error:?}");
+            std::process::exit(1);
+        }
+        let receipt_json = match receipt.to_json() {
+            Ok(json) => json,
+            Err(error) => {
+                eprintln!("Error: {error:?}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(error) = std::fs::write(&receipt_path, receipt_json) {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+        eprintln!("Wrote candidate receipt to {}", receipt_path);
     }
     let mut json = match serde_json::to_string_pretty(&record) {
         Ok(json) => json,
@@ -1629,6 +1694,21 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         ],
     });
     Ok((record, expectation_failed))
+}
+
+fn file_digest(path: &std::path::Path) -> Result<String, String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 fn cmd_restore_plan(

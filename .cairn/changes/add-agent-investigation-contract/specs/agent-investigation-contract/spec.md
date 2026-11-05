@@ -489,3 +489,24 @@ determinism.
 - GIVEN two repeat runs whose traces differ
 - WHEN the probe compares them
 - THEN the record marks drift and the command exits non-zero
+
+### Requirement: A probe can emit a candidate-validation receipt
+
+r[chaoscontrol.agent_investigation.restore_candidate_receipt]
+
+The probe MUST optionally emit a versioned receipt binding the candidate source
+revision, checkpoint content digest, seek verdict, executed rounds, repeat count and
+drift result, and expectation result under one BLAKE3 receipt digest, verified before
+writing. Missing revisions, malformed digest facts, invalid repeat counts, or digest
+mismatches MUST fail. The receipt records bounded observations; it does not prove
+correctness or release eligibility.
+
+#### Scenario: Receipt binds a passing probe
+- GIVEN a candidate revision and completed probe
+- WHEN a receipt is requested
+- THEN the receipt verifies and records the bound facts
+
+#### Scenario: Receipt fact rejected
+- GIVEN an empty revision or malformed checkpoint digest
+- WHEN the receipt is built
+- THEN the probe fails without writing a receipt

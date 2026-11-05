@@ -96,6 +96,7 @@ pub mod memory;
 pub mod minimizer;
 pub mod mutator;
 mod non_null_option;
+pub mod probe_receipt;
 pub mod profile;
 pub mod protocol_novelty;
 pub mod replay_verdict;

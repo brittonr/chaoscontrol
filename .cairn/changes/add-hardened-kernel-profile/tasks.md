@@ -19,7 +19,7 @@ reaches userspace, prints `minimal-boot-ok`, and observes the kernel's
 `System halted instead` disposition; the VMM does not stop on guest halt, so the
 smoke terminates it after the marker. The additive hardened kernel with the same
 busybox initrd halts and the VMM stops, so the difference is kernel-config dependent
-and not ACPI poweroff support; the minimal kernel's non-stop remains open. `nix build .#hardened-vmlinux` produced vmlinux sha256
+and not ACPI poweroff support; the minimal kernel's non-stop remains open and is tracked as issue #9. `nix build .#hardened-vmlinux` produced vmlinux sha256
 `753efb21…a7a80`; boot smoke with initrd sha256 `385e16af…5fea9` reached
 `Run /init as init process` (init reported KCOV absent, as expected) and the VM
 exited normally after 118,927 exits at virtual TSC 13,472,902,427. The

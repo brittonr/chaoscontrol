@@ -136,7 +136,7 @@ flush fault aborted exploration. The arm and a binding regression test landed in
 `bdf98b02`.
 
 The full executor then passed all seven rows on clean
-`901b697ae601e686424c1635d7dc51c2fea4af37`, reporting
+`3c90ca7832a14fd2c5d79e47cb16a19e8393db6b`, reporting
 `KVM release matrix: ReleaseEligible` with no blockers. The independent validator
 agreed: `KVM release matrix ok: profile=required-kvm-release-v1 rows=7 positive=1
 negative=11`. The receipt and summary are retained in

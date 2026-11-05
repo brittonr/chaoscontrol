@@ -413,11 +413,11 @@ revision, recorded below.
 
 ### Seven-row release matrix
 
-The full executor ran on clean `901b697ae601e686424c1635d7dc51c2fea4af37`:
+The full executor ran on clean `3c90ca7832a14fd2c5d79e47cb16a19e8393db6b`:
 
 ```text
 run-kvm-release-matrix --root . --matrix contracts/kvm-release/matrix.json \
-  --out target/release-preparation-20261029/kvm-matrix8 --expected-revision 901b697a…
+  --out target/release-preparation-20261029/kvm-matrix9 --expected-revision 3c90ca78…
 ```
 
 with `NIX_CONFIG` forcing local builders (`builders =`, `min-free = 0`,
@@ -429,7 +429,7 @@ validator agreed:
 
 ```text
 check-kvm-release-matrix --root . --receipt …/release-receipt.json \
-  --expected-revision 901b697a…
+  --expected-revision 3c90ca78…
 KVM release matrix ok: profile=required-kvm-release-v1 rows=7 positive=1 negative=11
 ```
 
@@ -439,7 +439,7 @@ recorded worker, commands, bounds, and artifact identities; it does not prove
 worker integrity, host equivalence, universal determinism, workload correctness, or
 production availability.
 
-An earlier run on `901b697a` failed four rows instantly because the spawned `nix`
+An earlier run failed four rows instantly because the spawned `nix`
 clients inherited the system remote builders from `/etc/nix/machines`:
 
 ```text
@@ -543,7 +543,7 @@ findings were not selected for acceptance. The verdict is
 These binaries are plain Cargo release-profile builds, not the flake `chaoscontrol`
 package the matrix row resolves, so this proved the row command and the fixed
 fault-plan binding under the admitted bounds while the executor was blocked. The
-later full executor run on `901b697a` produced the accepted row with the flake
+later full executor run produced the accepted row with the flake
 artifacts.
 
 The `admitted-drift` row command also ran directly with its flake-built artifacts
@@ -561,7 +561,8 @@ Both runs of `controller-3vm-2vcpu` passed with identical fingerprints
 50000000]`, empty stripped serials); the gate printed
 `ALL CONFIGURATIONS DETERMINISTIC (2 runs each)`. That covered five of the seven
 rows' commands on `aa44dcf2` while the two `nix build` rows and the executor were
-blocked; the full executor later passed all seven rows on `901b697a`.
+blocked; the full executor later passed all seven rows on the clean head
+`3c90ca78`, after an identical `ReleaseEligible` run on `901b697a`.
 
 ### Watchdog timing probe (diagnostic only)
 

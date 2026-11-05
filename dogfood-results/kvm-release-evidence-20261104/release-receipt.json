@@ -3,10 +3,10 @@
   "matrix_profile": "required-kvm-release-v1",
   "matrix_identity": "blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0",
   "source": {
-    "revision": "901b697ae601e686424c1635d7dc51c2fea4af37",
+    "revision": "3c90ca7832a14fd2c5d79e47cb16a19e8393db6b",
     "dirty": false
   },
-  "runner_revision": "chaoscontrol-evidence-0.1.0@901b697ae601e686424c1635d7dc51c2fea4af37",
+  "runner_revision": "chaoscontrol-evidence-0.1.0@3c90ca7832a14fd2c5d79e47cb16a19e8393db6b",
   "worker": {
     "architecture": "x86_64",
     "kernel_release": "6.18.50",
@@ -16,8 +16,8 @@
       "x86_64-linux"
     ]
   },
-  "started_unix_seconds": 1793838166,
-  "finished_unix_seconds": 1793838486,
+  "started_unix_seconds": 1793841255,
+  "finished_unix_seconds": 1793841668,
   "rows": [
     {
       "id": "build-release-binaries",
@@ -40,11 +40,11 @@
         "build",
         ".#default",
         "--out-link",
-        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix8/build-release-binaries/chaoscontrol"
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix9/build-release-binaries/chaoscontrol"
       ],
       "command_identity": "blake3:246ecdbd69c4797bf33ea25eca0cf1dc587894e37e40d05f87e132d12c7a6568",
-      "started_unix_seconds": 1793838166,
-      "finished_unix_seconds": 1793838266,
+      "started_unix_seconds": 1793841255,
+      "finished_unix_seconds": 1793841391,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
@@ -481,7 +481,7 @@
         {
           "path": "stderr.log",
           "bytes": 181,
-          "blake3": "blake3:4da8de7be25658cb507556bea4f7c9c846351fd71437c8c868f4ac1aa2364f31"
+          "blake3": "blake3:4f7946838d614eea0cbb6143e8fd444923f2fffe62bb8a98b11f2a9bf23155f2"
         },
         {
           "path": "stdout.log",
@@ -489,7 +489,7 @@
           "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         }
       ],
-      "artifact_set_identity": "blake3:00a6df895e41d3bcffba78b6d1cdb6dc4cd51169477d2fd3870352fe88665f02",
+      "artifact_set_identity": "blake3:8ab64efda35419cd3f787448100ef57d7f62b53b7602f2f810c42b55e32f33c0",
       "notes": []
     },
     {
@@ -513,23 +513,23 @@
         "build",
         ".#initrd-raft",
         "--out-link",
-        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix8/build-raft-guest/initrd-raft"
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix9/build-raft-guest/initrd-raft"
       ],
       "command_identity": "blake3:208aa832269fb3b1ee713827a00e73138eb5bb08194a90f4305f12fab9dc235d",
-      "started_unix_seconds": 1793838266,
-      "finished_unix_seconds": 1793838281,
+      "started_unix_seconds": 1793841391,
+      "finished_unix_seconds": 1793841415,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
         {
           "path": "initrd-raft",
-          "bytes": 484682,
-          "blake3": "blake3:081b150e6cba838f37d071be75d0101e95783f28cc16aab82984472c67732d80"
+          "bytes": 484710,
+          "blake3": "blake3:959b3d9b149e84da0e85f02e67429afd39e19c7127b39ecbce9bbe055b508001"
         },
         {
           "path": "stderr.log",
           "bytes": 369,
-          "blake3": "blake3:7d8fe8454e24f2b081b901ad0bbfc8326347469b194cde860302a300eb3379fd"
+          "blake3": "blake3:86d9929af81b078b0860b6a1d270ecfb79a8a779e602a74f1968a94c5547cdec"
         },
         {
           "path": "stdout.log",
@@ -537,7 +537,7 @@
           "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         }
       ],
-      "artifact_set_identity": "blake3:6ad147b53616c6fe7745921d917f11ba3aaa234204f8f49630b8202a6ddf4f78",
+      "artifact_set_identity": "blake3:989d60ba7b5f00ae529f43d6debc4305c66640e23f85b6e767aae8194cbf97f8",
       "notes": []
     },
     {
@@ -566,23 +566,23 @@
         "deterministic_smp_kvm"
       ],
       "command_identity": "blake3:cc65d089fc1e4fc8b5a735fe27e797e00f98374351099e5c256a6a5b1c7116ac",
-      "started_unix_seconds": 1793838281,
-      "finished_unix_seconds": 1793838281,
+      "started_unix_seconds": 1793841415,
+      "finished_unix_seconds": 1793841419,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
         {
           "path": "stderr.log",
-          "bytes": 198,
-          "blake3": "blake3:751075a025a8de8c22a0732c650cd5a1686758438a151041e8e09fd3857254b5"
+          "bytes": 252,
+          "blake3": "blake3:cc542552d4714713e4fb513d5190ee5a992630db723277dcf28ab008d0ce5744"
         },
         {
           "path": "stdout.log",
           "bytes": 339,
-          "blake3": "blake3:b9cda4eba14fae9106297683934462ff4efd02ee2303a25b47da9719dc0d8bc7"
+          "blake3": "blake3:6e08bcda7ed0572fa4d8bfe3d3d623fea6a90eec0a126f35d15e8ea72b6bed17"
         }
       ],
-      "artifact_set_identity": "blake3:031cf3f41004d73554d07681ae815c2ad41b8404136762c2ea9e13b858a2ef48",
+      "artifact_set_identity": "blake3:2721ea59b87d359e95bb93b4818be83f9ae36d1e164cb4d3003b03f57f926535",
       "notes": []
     },
     {
@@ -611,23 +611,23 @@
         "exact_snapshot_kvm"
       ],
       "command_identity": "blake3:0758db17baad94f711089936e5686f5e0a6e90fee0f3df0b5bc5645409d9e909",
-      "started_unix_seconds": 1793838281,
-      "finished_unix_seconds": 1793838281,
+      "started_unix_seconds": 1793841419,
+      "finished_unix_seconds": 1793841420,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
         {
           "path": "stderr.log",
           "bytes": 192,
-          "blake3": "blake3:18f9001f3791b39bbb81396587799c0ec2ce2c7705ff62013d1da60935f5d4eb"
+          "blake3": "blake3:b475004115c606fb386e1c154fd906b344272a1cc7026fbcece1c6a294147ca7"
         },
         {
           "path": "stdout.log",
           "bytes": 199,
-          "blake3": "blake3:15daff50e0e67bc59af96c223d2afed24bd182199591cf336980a4e049611fa3"
+          "blake3": "blake3:1d90a991c9bf86c73e56b4343c09161ac41b4db6ae7aeaa1a619c18477cb61ca"
         }
       ],
-      "artifact_set_identity": "blake3:3b09a0b7379724450ba6bfd6c69d3d3f126d4f18203bd763d531e7ac42e1e092",
+      "artifact_set_identity": "blake3:aec16fa5fe39aeb9f7ffb1851a2547db1ee8a61c9e7bf468730b9b8c518a0ec1",
       "notes": []
     },
     {
@@ -660,23 +660,23 @@
         "--ignored"
       ],
       "command_identity": "blake3:a2be7bc2ccc018d2221292347c0d85a536fe3c8c6b34ca3fa1bc36cd460db7fd",
-      "started_unix_seconds": 1793838281,
-      "finished_unix_seconds": 1793838281,
+      "started_unix_seconds": 1793841420,
+      "finished_unix_seconds": 1793841420,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
         {
           "path": "stderr.log",
-          "bytes": 292,
-          "blake3": "blake3:766f2780471a6ac3d526f21f4fb66d280dc99b91bbd7f0fdf372d91b9dc60a91"
+          "bytes": 188,
+          "blake3": "blake3:c685757e90cc2c08fc902b924f51508401122c97eba5d019498d826decb91dbc"
         },
         {
           "path": "stdout.log",
           "bytes": 197,
-          "blake3": "blake3:c52d78de24d7936cd2e49972b98b577621b5198f3300438dc0667b9d4b8191aa"
+          "blake3": "blake3:6cce1b9f5c061c1d51d75dca15bee4678d3768f4ecf7d3f60a6448034e931336"
         }
       ],
-      "artifact_set_identity": "blake3:b0d7605139caae1e8f2531ac4d932aace0604e4473877c794d5c2b5559b98c5a",
+      "artifact_set_identity": "blake3:5e772765e083f699405e3e12eb9d468ec39a43273413d54630963e86d4e02df7",
       "notes": []
     },
     {
@@ -707,7 +707,7 @@
         ".#vm-determinism-drift",
         "--",
         "--out",
-        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix8/admitted-drift/drift",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix9/admitted-drift/drift",
         "--runs",
         "2",
         "--",
@@ -715,8 +715,8 @@
         "controller-3vm-2vcpu"
       ],
       "command_identity": "blake3:8aa3dfc1614052336fa89878e7612af8d424e2532f52c5861d883fc7da3d9f45",
-      "started_unix_seconds": 1793838281,
-      "finished_unix_seconds": 1793838304,
+      "started_unix_seconds": 1793841420,
+      "finished_unix_seconds": 1793841455,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
@@ -753,20 +753,20 @@
         {
           "path": "drift/receipt.json",
           "bytes": 2233,
-          "blake3": "blake3:1df2f6cf2b1505e0a3e69fa16d74e0681b0e2e806f7322f075112cb8fcd0f452"
+          "blake3": "blake3:ff6137545fc67dc0e6e9db48367fff11cf8f58f4a0f1278af85595f5be70fd9d"
         },
         {
           "path": "stderr.log",
           "bytes": 559,
-          "blake3": "blake3:1ab4b1f8cc0d66453be0f01d8717f67e5a99996923c5e69439364588e13299b6"
+          "blake3": "blake3:d05e36f344b2b87bb04e84413a17ba29582f4ee675eb384082c57383efaa79c3"
         },
         {
           "path": "stdout.log",
           "bytes": 46138,
-          "blake3": "blake3:1e4db37bd07b0a1473c6e5313ca1358af1ed2bf33e885ac5bcb330767ea1f228"
+          "blake3": "blake3:b26293d8ac2aca67cd4c07f8c7f65c693faf7be3e69c3b21e44130fdae038591"
         }
       ],
-      "artifact_set_identity": "blake3:3a6e132de75933e5037dd82beaf705ef7d4a7321c9971f3d24e13bf53248c6ce",
+      "artifact_set_identity": "blake3:dea1f24704e34d96423edec0b22474e1c976ff644fe15f46c82532a5cf359b8e",
       "notes": []
     },
     {
@@ -796,15 +796,15 @@
         ".#raft-accepted-verdict-dogfood",
         "--",
         "--output",
-        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix8/fresh-workload-replay/fresh",
+        "/home/brittonr/git/OnixResearch/chaoscontrol/target/release-preparation-20261029/kvm-matrix9/fresh-workload-replay/fresh",
         "--max-attempts",
         "1",
         "--start-seed",
         "0"
       ],
       "command_identity": "blake3:fa364537ff1b194dc46564e542cbc8198cef636e1687487314598b9f56a57826",
-      "started_unix_seconds": 1793838304,
-      "finished_unix_seconds": 1793838486,
+      "started_unix_seconds": 1793841455,
+      "finished_unix_seconds": 1793841668,
       "status": "passed",
       "exit_code": 0,
       "artifacts": [
@@ -815,18 +815,18 @@
         },
         {
           "path": "fresh/assertions.json",
-          "bytes": 73872,
-          "blake3": "blake3:aa7d4fb52f0d7469acf447ad71fb5545c207c02adfcc4e0da7e7e651dc7f2314"
+          "bytes": 73894,
+          "blake3": "blake3:9cbe0c46657a5b7b33b99ea55b2f5304f7a7d529378b84c640580eda4bc2ceeb"
         },
         {
           "path": "fresh/attempts/attempt-01/assertion-checkpoints.json",
-          "bytes": 130331,
-          "blake3": "blake3:4717a388e2cea170f699d1644addf95b2312a7ffaa01a53da6a200ce4c5d4f80"
+          "bytes": 359913,
+          "blake3": "blake3:a0c398beaef8b387b3d33a6fbd8e52b7808111a74e7416ff3a8c6ffe08a0923e"
         },
         {
           "path": "fresh/attempts/attempt-01/assertions.json",
-          "bytes": 73872,
-          "blake3": "blake3:aa7d4fb52f0d7469acf447ad71fb5545c207c02adfcc4e0da7e7e651dc7f2314"
+          "bytes": 73894,
+          "blake3": "blake3:9cbe0c46657a5b7b33b99ea55b2f5304f7a7d529378b84c640580eda4bc2ceeb"
         },
         {
           "path": "fresh/attempts/attempt-01/branch-marker-coverage.json",
@@ -836,382 +836,382 @@
         {
           "path": "fresh/attempts/attempt-01/bug_0.json",
           "bytes": 4050,
-          "blake3": "blake3:f2e21a03895ddddf5f9c466dfbdd3ed3fdda38964582baf2efe25feee43649fe"
+          "blake3": "blake3:acda1dab114cd9f84465684117e814741b8b4675fde6ace556764c256a205a8c"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_1.json",
           "bytes": 4383,
-          "blake3": "blake3:52b01bf6644466be7c2581b79b8baf7288df370a1d955042715f486f355250bc"
+          "blake3": "blake3:8e2711654216e22db89cb3770c36452a8075388e4ecf3fefddc39b097f906b4a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_10.json",
           "bytes": 4212,
-          "blake3": "blake3:84f56e5931334236529882eb86da2600856ed67e78cdf653250b66f9eda72033"
+          "blake3": "blake3:8d105fb7dc93a0bab87664ae54d7d7e2fa7d5e4b99e2fb2538a5fc32f9decfa7"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_11.json",
           "bytes": 4015,
-          "blake3": "blake3:f2f19cbe3b9e6b203a6a74f2b0fd5873bdb976fb24f652a188063bc29d9b467e"
+          "blake3": "blake3:4e76c4b1a7b6c80bbe1fa659e8d24af259cb659e5dc698e935650ba39e23aab6"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_12.json",
           "bytes": 4119,
-          "blake3": "blake3:aa7040330b59a2ae909ad46261b8d81844fbe21d72948a773c588370fba1b3cc"
+          "blake3": "blake3:43c30ee4c47e7400233a4e1332b5d8a911244f14ade1b600aa5391ea08b65a22"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_13.json",
           "bytes": 4079,
-          "blake3": "blake3:8cd8332de8ef51c92d7b476c463e292d1eec05ae9e9442fd2a50872060815be7"
+          "blake3": "blake3:b00bcb8840421b3fb2ff02222aaa301799b5120d8150dc50f498adf8577ce6d5"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_14.json",
           "bytes": 4036,
-          "blake3": "blake3:cc7118af4e169eefa56ccf942ae6bc64b6ad9f61ed281f9a753381ff05f5e4f3"
+          "blake3": "blake3:bbcf9ba4db2df97732e6d7981f1941984e47d1aeb7874ff0ecb28bfc60a75eb4"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_15.json",
           "bytes": 4097,
-          "blake3": "blake3:a2879919f952e6f8be15830e2dad9b4aeb8face12eeb7d7fefb70dd6b0da560e"
+          "blake3": "blake3:28cb98c49daca8a76bb0cabb7166b21f3e9d2a1e365dd0769ba911e9a76a81bd"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_16.json",
           "bytes": 4063,
-          "blake3": "blake3:dada1393f72b4b6c0fc1dfc07d94c693496f7af11e6ce9f90508a607e0a021d9"
+          "blake3": "blake3:97fe05ef6b2fdc7513bbf85b69c99bde8c4e22aeb9f93e78dfe3994c0eab8415"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_17.json",
           "bytes": 4183,
-          "blake3": "blake3:c56de72c600f17794aaf1ec73676fc8d06194ec357786df70cb1319965bc37f9"
+          "blake3": "blake3:65d98370acf6052f3c756c5e0c06d8509f192d90904d9e5f25d0cff8bc1e7d1a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_18.json",
           "bytes": 4142,
-          "blake3": "blake3:e79d6f16dec6b173e2a50bd9e7dfae3c31eec920d743f3cd7e6217654bb50571"
+          "blake3": "blake3:532b8e820f96273d0f281daa6f9cb36253c8c973f14b9ac826f34b6de10ab1c9"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_19.json",
           "bytes": 4257,
-          "blake3": "blake3:34416a712207013d87edd1cfd59fcaed0b0ef3a88c73a89c5926d65542a26219"
+          "blake3": "blake3:d384c0ca4c11ae82b0ad10ab2b5d1bbe82bae85128f67713262b44dc8ecdbc34"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_2.json",
           "bytes": 4052,
-          "blake3": "blake3:a43e34ab3f40e7c31a534a6db90e770fba42d0fb2305e0a7181cad90f7fba6da"
+          "blake3": "blake3:1e197582d5b961abfe67246f33eb0db05ea3138fae6c70f2adadf307aab66f8a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_20.json",
           "bytes": 4049,
-          "blake3": "blake3:eb7276c6f08706d2431e1dbaee8b61d013a3948e7bf88271bc9cdc6e4be75a2f"
+          "blake3": "blake3:f8857e12d97f6416cfc690cc48e184b974db3d910f6045f06f48b68692c71ed0"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_21.json",
           "bytes": 4157,
-          "blake3": "blake3:ae413533446d34dafe20e2ddf222ca0c9d46d5dfd13992de35c0b76402152cb7"
+          "blake3": "blake3:18c8254c3d9ac7f9181f6c4f7e69d1165e483a7f0c5ba33c835d271f4c5a5ed0"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_22.json",
           "bytes": 4118,
-          "blake3": "blake3:58614f0d6d8580154fff7eafb7b4d5a955df1884dacb721e8c33fad981e89403"
+          "blake3": "blake3:b2aff45b7ce14abb1304e4e2bf0e1d1544f39a7963f17bdb1e80162c734f398a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_23.json",
           "bytes": 4235,
-          "blake3": "blake3:c0ffaac24f26d3db110d4100eab064cb5ff1c1ac5c44616bbe448c111077466d"
+          "blake3": "blake3:b8832067eceaa6782424b938492fc26dda58838a03a00dab04c1f46b22939945"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_24.json",
           "bytes": 4138,
-          "blake3": "blake3:74768d5bafe24c2e0939fab09464f42331991a812eb7f04cfeeeb369396bc136"
+          "blake3": "blake3:9ba85875657ad6ec95e508a7b8d2f22fd18381a64e97e4ec1a1fedeb05d96ff2"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_25.json",
           "bytes": 4055,
-          "blake3": "blake3:a3f2fc177e1e75a9a72cba01e26c1b034e5f1031a0467581acd4060ccabe0e72"
+          "blake3": "blake3:c7970bfd4ffca82ddf2c1c87201dfb5e6bdd2545116b8540ad6b489b9c2eb47b"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_26.json",
           "bytes": 4002,
-          "blake3": "blake3:a9100d87fbea780229320ee78ff5bd30cdc8d42af6850a60c657dbd60076dd28"
+          "blake3": "blake3:6d8a5912f97d19c3f70b51d0f450a0a9dc1188fb2636d9a6d2074f93a29e14e5"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_27.json",
           "bytes": 4366,
-          "blake3": "blake3:d333abf0a2b9c46070dd16d83b14255b91cf95892be23c25236c36dea1e736af"
+          "blake3": "blake3:5d057424017fae02f5ddb71dd44b459b6cb195fe2d50bd5a6bd15a7faffbbf43"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_28.json",
           "bytes": 4217,
-          "blake3": "blake3:15a48a8a3ae92a17ed06a7c6453fae9a178ae6d3e94210ae1d87e602cbc46b91"
+          "blake3": "blake3:d6fa1ba73cbb9497790135b7c52b9d4af7539de2832d6228085fa2ca773aa793"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_29.json",
           "bytes": 4322,
-          "blake3": "blake3:bea81759f421efb93b6e4cac643fd84bf89ed9155e3f0886dcd6c74b31282ebd"
+          "blake3": "blake3:8045f07214f4efb5db04a08922ea5b578e49cdf6296b6bdb6a2535a77c9da305"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_3.json",
           "bytes": 4368,
-          "blake3": "blake3:11a32cf2a1bec8750f84143810755ed2611c9cac1ded609dcc617a9c4a5653bb"
+          "blake3": "blake3:dab737a2076a0b2ddad36f74f3f0dba6645302bc9be2b0a81def42ce4f8eedd9"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_30.json",
           "bytes": 4154,
-          "blake3": "blake3:e5f9d7c84bae40c2fc8ad60f23aa155adf633c8b64ae0e99514868e27cef98f3"
+          "blake3": "blake3:da8115ae47daacdf763cf410c401245cf4cc22c2b97d03f266a7df83663a8e44"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_31.json",
           "bytes": 4167,
-          "blake3": "blake3:c4f37bad645074e11368c3b75c4847294c3f31287113088885daa01e6569799d"
+          "blake3": "blake3:680bc000c20b12a74be25c3aa8d5ff8bb984eac88b23f3901422dd8821cb5a13"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_32.json",
           "bytes": 4305,
-          "blake3": "blake3:5d6bde24c9ca9e036ba1901cf3c59bbf3b6e9aab9f56e4bc1d8ce66425c6afc4"
+          "blake3": "blake3:2b3c62da821153ecfba4955d38632e7128b31ecc113b30da239297d27fc3d254"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_33.json",
           "bytes": 4144,
-          "blake3": "blake3:9885bf8d3dcb276462c81587f6a8ab51cddb2646d86acf278254de68982eb14c"
+          "blake3": "blake3:9b866e6ee9b51a5ee5b0b2382785138dbd87212ca06ce1f332a0dfdf8f371edd"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_34.json",
           "bytes": 4066,
-          "blake3": "blake3:a3b03dbeffc853b948cb0ad85365126ff3f5715fb2a719ec3b135bb978b9dcd8"
+          "blake3": "blake3:c7d63a9ff7e665c3c2e462db3df8f88cbc493aac240e6a5e5eb4ddf5750bc229"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_35.json",
           "bytes": 4338,
-          "blake3": "blake3:0072dda7a65e4326a2a5c0e90eeda92e627c53b9bdea69d1693d4bc73f3991e4"
+          "blake3": "blake3:877fc7d534ead8dc32e5bb0aa2a6286c37b6a7eff3b4ea2832bca5945db3f4b2"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_36.json",
           "bytes": 4278,
-          "blake3": "blake3:ff77676647f705420e114dc99d64f18561d74ef1f717addbe59a8368c292b716"
+          "blake3": "blake3:5f3b96689dca0f7c76086fa8f996c635ede9f786cf7ffbced77f104422705650"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_37.json",
           "bytes": 4130,
-          "blake3": "blake3:0b21a1496889c6c1ea3b847bb69d6cab630b3b4769fe2cab53c408f458b167b6"
+          "blake3": "blake3:fe06fe2f59efab46e62c990473d797bb804a35c070fda499173748226c30faf2"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_38.json",
           "bytes": 3956,
-          "blake3": "blake3:59af4a211eea26712996e1ea6da9887064a66768c408105e4b85281c8ee85d05"
+          "blake3": "blake3:d4714885c544c45e64405fc7d66dc771b00d03ef94bbc2763b9eff91f72a8772"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_39.json",
           "bytes": 4290,
-          "blake3": "blake3:a2a1535f539cbc8983b3b6b16a1d74bcb365843a93b3c8885d77de17c10e7502"
+          "blake3": "blake3:3b522e2ee8716e5be3deff2e31d6840d9d2613e73869758a04a8e9ba44a14bd9"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_4.json",
           "bytes": 4039,
-          "blake3": "blake3:3c50e898404b08e9c7a715af71192f64c2cbe417c8924d1037077f0fd21a024c"
+          "blake3": "blake3:c4e7000d1d7f0f30fdbbbf2dc6772f2c1770070e1ff7ce3b734431b91904858e"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_40.json",
           "bytes": 3958,
-          "blake3": "blake3:87709ca16c72f81e92430dfd52265e898678ad984e7e123e4a600c2f0c0a791c"
+          "blake3": "blake3:ddd033f8424b697c562b3a368bd87d396a24f07af23e27c3b62d06076fd1b10f"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_41.json",
           "bytes": 4274,
-          "blake3": "blake3:a93e9980b3d531655ef45d054769c4d8044a10f0178f4cbf112572d08cc7195f"
+          "blake3": "blake3:296f94518df8613163d1c8ea39008489f3313d474a31a8c99735729d3c0f41be"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_42.json",
           "bytes": 3948,
-          "blake3": "blake3:ce323f5b5dc90c2aa9945ca2191c01a995f854b2ea7009553164c99f3260dad6"
+          "blake3": "blake3:eb3dee1a8916f9a63f3d1291393e0e74024e49bbbf6f65a41cb2a18baa85f47e"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_43.json",
           "bytes": 4049,
-          "blake3": "blake3:25961b5321945dabff72d9362660857eedcfbd42a00a43aebd615478f6980e50"
+          "blake3": "blake3:af34e42136050d25afc6d73b9b28581a70635da1cade34a727c9e21539bcdb6a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_44.json",
           "bytes": 3317,
-          "blake3": "blake3:dbea70db1fd956d564adf607f08b09041aa4be9f941ed6c0778b2087f8faa93d"
+          "blake3": "blake3:3c038504aca5a9c718322a006fd625a57a71cf2d23d65b056a0549127ad995ea"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_45.json",
           "bytes": 3984,
-          "blake3": "blake3:5208731600e45a8356dd582424d7b8aea4040d97ee6556755ee046f8d16227f9"
+          "blake3": "blake3:c1454c371cb1d01c7a85a871a88ea08264903fa74abf52eac0210361d8df70cd"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_46.json",
           "bytes": 3999,
-          "blake3": "blake3:fb3b9173653ad156b40bea8b8e3067e1bae7c4e99b1d13e3ad5d7f9ff191b32e"
+          "blake3": "blake3:8da75c3449fbdef44eb02d396e7c7b1760f8a218cbaf89babf831a5d5461e501"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_47.json",
           "bytes": 4184,
-          "blake3": "blake3:b5443d42ad9d5d0d2f58fbb9ac4548b46b5a580d0d6c36996944a7e386a42f50"
+          "blake3": "blake3:3ffec13dea59767cf426d4fa4a75d1101a65a39136cdba736d3217148bf414a9"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_48.json",
           "bytes": 4118,
-          "blake3": "blake3:6e80605628709bb0ad7c9015c03cfd0b8ab394fe9b75e08a33c516f8e5ef2332"
+          "blake3": "blake3:c84bd916648de97a0e79cabc4b1418557a36f15c00c091359b6d7b3865df91eb"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_49.json",
           "bytes": 3921,
-          "blake3": "blake3:e9f9e6bc3d7a2f6cfc34fcdfeb507583a98c7b7e52c5d30f1cc0632c7a2cf9dc"
+          "blake3": "blake3:0401865e64b1f0a8872eb3bad2cc6cd0f18e962e079c28cd4db309b0fd98a1bf"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_5.json",
           "bytes": 4141,
-          "blake3": "blake3:fcac4f15ba548b84a2e5787db744f4b1bc2c085b0d5666e29d385bdc52fbc9ea"
+          "blake3": "blake3:009f4ff7e3d2c2b27b1fc7558f094ce0d533edcb14a84e9ba291c89c16c93909"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_50.json",
           "bytes": 4025,
-          "blake3": "blake3:31f67aa23223844a13787f1af1f4a262b229273e1a1b0ddba6de4f2c3dea51f1"
+          "blake3": "blake3:b1b75c9e2c91f13b40cd16aca188c6792722e1b184166c53dece249a83d8ce48"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_51.json",
           "bytes": 3986,
-          "blake3": "blake3:8e68182f1d446395b91db0f02009d2ea57fe99559b321f3f37c6bfd77f7e81dc"
+          "blake3": "blake3:130fac2dfb790946e5f24d34ee716a93ac774afdb1ffa30b3a97728e0cc70d83"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_52.json",
           "bytes": 3942,
-          "blake3": "blake3:3f51d48e0c8720839894cfb21fe7ecac3ed909a3fb68bcc61bea7245f16cefaf"
+          "blake3": "blake3:6dc20c3177323d0c03c42b4342a06d9c8e85d084a949cbbcb3fae83fb9e47b42"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_53.json",
           "bytes": 4004,
-          "blake3": "blake3:738f64be6f547420f1f55b37417777f660016ff0d8510babe95575392bc759ea"
+          "blake3": "blake3:b0c03b132f0a3c35b3038df0440bf3009ece788337bd5bfd54597515940dabc0"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_54.json",
           "bytes": 3969,
-          "blake3": "blake3:908f79f29049fd67fd19712068ebc61e4ed0dd9fc87452b01040c5104887e6a2"
+          "blake3": "blake3:baf199eb095a54f89c1e5d5d2d728e18996c4d39779c7c80abcc3d5351e9cdce"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_55.json",
           "bytes": 4089,
-          "blake3": "blake3:9162b2bf6dc11246f74ffdeda6e9ceff31c2de8799d0873933d2864f3dd9f10e"
+          "blake3": "blake3:1a7743c0b7395371c350aa618e6a60004b0393b1b634c16264e91c8b3dd43cf3"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_56.json",
           "bytes": 4048,
-          "blake3": "blake3:43124c66d1aa988fa986477c961ad9b3e08a83a7583482cf14d2d32b38f3e71c"
+          "blake3": "blake3:e45f2744554ce56600faf61b436a1b50679f93c4f8e5a2947c6b2e9b04a56997"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_57.json",
           "bytes": 4162,
-          "blake3": "blake3:e8de40012930771ac3bdf4a5a53f516e41c8a52954daad728cb9509e91c6dd61"
+          "blake3": "blake3:7e75ebb5a50f0d5bd382600c59c51612db77381a7fd3067f76e316020a4a4176"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_58.json",
           "bytes": 3957,
-          "blake3": "blake3:a4781ca96d1beed5a9714c8998e4e638856255788a0d2d7f4308517bf5b4c98e"
+          "blake3": "blake3:3411172180c084d46348b43e6c76fa06cef0a44a1ec5abee8b74b58323009c86"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_59.json",
           "bytes": 4063,
-          "blake3": "blake3:5707f1e2c59ae69eefbafae23ba4fb9fec2aac45f6c864f33eb105412b31917d"
+          "blake3": "blake3:441ca67fd18c461c9d1a80683ed4746a110ce436e06395eede2430fb83a09a6a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_6.json",
           "bytes": 3411,
-          "blake3": "blake3:92300ba96abea1fa22c72547bd01c41ce6d342ef1b6e7606af141060d02aaffc"
+          "blake3": "blake3:8816ad90ad3cc161a15354a097a13417577f26fab6914c735daaf5f2d541fe10"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_60.json",
           "bytes": 4024,
-          "blake3": "blake3:c400580225971e85e3f34766a7eef606a1706f78c2e2e6393164a99c726b30f0"
+          "blake3": "blake3:0838733fa7c16a8fbd2faa3aa3a28d7e64371637d06823bac7a9655f4e864c46"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_61.json",
           "bytes": 4141,
-          "blake3": "blake3:5e91882fe0265e837ca4895401958764b1679b3452d6cbc0d5cf183a2daa3617"
+          "blake3": "blake3:2820a2f4cb227a35dcae7e43a54578e0d21dee7f7c9a9522d77b34d4be5c289b"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_62.json",
           "bytes": 4044,
-          "blake3": "blake3:441c93e4f2f8285a2ae2fc187d321962250ef54a4c8384d15c0504d93b04a017"
+          "blake3": "blake3:a9e96b9d5cfd5c5ec1a9c298f2b179a1dee6fcbd7704b9d579bdde3628a8e966"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_63.json",
           "bytes": 3961,
-          "blake3": "blake3:5d17e701c6f9a8dafbd0db1cad73a0ea757afaefa83f624f48ffd94496214f63"
+          "blake3": "blake3:294418c9ef3b79715b13ccc071ddf3dc17fa92a336225d96606439d89c88686c"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_64.json",
           "bytes": 3910,
-          "blake3": "blake3:ab6649dd70df94803e4e7c2c760b12c85aebb33e12d4c32e954de30443a6bb4d"
+          "blake3": "blake3:61cf0b92c9b413c12e64d8070228f6437ab3bdc655a24f7c30df514d6bab16ac"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_65.json",
           "bytes": 4272,
-          "blake3": "blake3:9450875c43957c8f6aff57c0de8879f5bb13ad137e6400eafa171a6f745daf77"
+          "blake3": "blake3:654aab172d8bf2f373108e19b89955b2d55a7190dc3b98849764d7f40e82f6e4"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_66.json",
           "bytes": 4123,
-          "blake3": "blake3:c8646deb4135bed095aa79f338d9a15f6cc92fd0a0371dc4b47774cfda664d48"
+          "blake3": "blake3:44dce4684326091d6d94a5f2cca7e1034f4c8046ed7dd7d3d952d8a41aa2b629"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_67.json",
           "bytes": 4229,
-          "blake3": "blake3:2e1197414eecab1be847a3523453f853184bb3425bc8684cdbd3824c82c56753"
+          "blake3": "blake3:8d7eb03c61192039309c8c7640253864680a56f92d92ee00e9a0197f5d024ea9"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_68.json",
           "bytes": 4060,
-          "blake3": "blake3:02e01cf8e0720504c4f6e16047f64d7c23de740d041bcaf7b44dc55c81a57ce3"
+          "blake3": "blake3:3da96e6677910c640fbd06fdef0539dd908a9111052757caa3caff5e1b5b074c"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_69.json",
           "bytes": 4073,
-          "blake3": "blake3:a0fc47356c452113873fa21557fff3c50b41cf07f3730d94d19a7c8433290e02"
+          "blake3": "blake3:c3fa6ec00634e50eb1184d671cad32238a4bdf39194097ffa7dd44974ab7f589"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_7.json",
           "bytes": 4078,
-          "blake3": "blake3:e6a365bcc79a6843f9f74a1f08baecfafceb995e17aff33681a760b77f365c7c"
+          "blake3": "blake3:f719b00226282834becadc66d007b788a8f814738356b311ec837156e118d494"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_70.json",
           "bytes": 4211,
-          "blake3": "blake3:d41c3bbbb73cbaaf7928f61f8213d41185d0da87aa48d924392ce8b37f2f43a7"
+          "blake3": "blake3:396f69521885001189e50856c1dea8950146fbf21db66c58ba999431773558e6"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_71.json",
           "bytes": 4050,
-          "blake3": "blake3:b2b01a4aa663a736a4c2610168bac2cdee9516c340a5a567b98f4bc2b578b88e"
+          "blake3": "blake3:7a5327d51553e74e43ed897ef985348cfc2a15ddc5635aa4f003ccf7920632f5"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_72.json",
           "bytes": 3973,
-          "blake3": "blake3:0a46550e355d63cd2bbaa901ec83ab846f969b4354976c0e2d18172c7cf5f337"
+          "blake3": "blake3:1cf96b76c893973aa852aa5571f6ac4b8f080c42ce2f1195c7eb02178f11ef2a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_73.json",
           "bytes": 4244,
-          "blake3": "blake3:545fb1b7cfb430ab84d777600e8503473cee6c2bf2ca460ea886e0f0f23088bc"
+          "blake3": "blake3:52e666ed5be900f794fc38d1d2522686317071150b1252aca15860e5a33ac534"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_74.json",
           "bytes": 4185,
-          "blake3": "blake3:2afe519698a44616784baabea0fbd25e648a632729c446b34f2a3146d10d9a77"
+          "blake3": "blake3:69c394caff8d6d03f25fd48c4e741d08b1324eba86f84cf84ea99368bddc326a"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_75.json",
           "bytes": 4035,
-          "blake3": "blake3:ee338acc51b1664d3d4fcd8485f6fb792e103f309cd0f139f4a2c2633bfdaa1f"
+          "blake3": "blake3:2a8627443a9315dd97c039d2cf0edb28340c0760ccad4a9cf5a537ef9597cf1b"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_8.json",
           "bytes": 4092,
-          "blake3": "blake3:e9e116eb3fa88df7d1fe42e743b17adebe823ad088cb288ed9e7e868929f2b64"
+          "blake3": "blake3:e321a62c1c7e4212f615cbdc07306c047cea67b8bcd3c6834430849b3455bd3c"
         },
         {
           "path": "fresh/attempts/attempt-01/bug_9.json",
           "bytes": 4276,
-          "blake3": "blake3:d8e48e9a960b0aebfba4f0e9d4ee5a7b78272dbc204c434bf099d9f9c405109d"
+          "blake3": "blake3:cca6580dfc75952597156acbcdde519308769dbe1ab3e33bb9a34a518de987bf"
         },
         {
           "path": "fresh/attempts/attempt-01/campaign-journal/LOCK",
@@ -1220,111 +1220,111 @@
         },
         {
           "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000000.cbor",
-          "bytes": 6168,
-          "blake3": "blake3:a7a233882d30fbe0251d0d338545e2ae779db6fdd4f62e4b46bdf8e730bf94c0"
+          "bytes": 6159,
+          "blake3": "blake3:de25a49d61135b80360ee545b9045e833e274a10502fd65c53ed9bce12d2c791"
         },
         {
           "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000001.cbor",
-          "bytes": 3395,
-          "blake3": "blake3:336fd01d841420e3eebf20ec1704003866746dfbd74df83c58839e086f989c08"
+          "bytes": 3407,
+          "blake3": "blake3:d2667874b25beefc631fd01fec3fba497ec208fdb002c7634f0ee6edddafae9a"
         },
         {
           "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000002.cbor",
-          "bytes": 27722,
-          "blake3": "blake3:13f7eaf3f55e54c9bdf7b7e688e596c27bbf341ee3dfe6ec3b58ab90df10afa0"
+          "bytes": 34294,
+          "blake3": "blake3:7e43bf3cac5d666b21f76efec42632bd6ee22cb301f51f772c1cdff0351b6d01"
         },
         {
           "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000003.cbor",
-          "bytes": 1017,
-          "blake3": "blake3:7e926cd83c888dacb2cd951c0956df4d8487a820efac428ddaf366fa8fea7078"
+          "bytes": 1009,
+          "blake3": "blake3:f2619859e5e798c638f4a842da13a4f3d10b94467feea0e2ba241117eca0c8bd"
         },
         {
           "path": "fresh/attempts/attempt-01/checkpoint.json",
-          "bytes": 1111195,
-          "blake3": "blake3:ab1aa4bddb2c06ca884ed150d989aa11139365850774769d91300865dfaffbce"
+          "bytes": 1111279,
+          "blake3": "blake3:fc4157ae6feee8b44864d801ff2e5e17810b0034540154e155f75c2c54b41da1"
         },
         {
           "path": "fresh/attempts/attempt-01/export-bugs.log",
           "bytes": 252,
-          "blake3": "blake3:4befab7a578a4cd3c063de6a8901e0de6c27fd60374914210e3a596c18bf0571"
+          "blake3": "blake3:b839579137bae3d5ab71f2b005c4e5e836b8e31868a6c723fabb0b3c00a33eba"
         },
         {
           "path": "fresh/attempts/attempt-01/frontier-trace.jsonl",
-          "bytes": 1655,
-          "blake3": "blake3:dbb5c067f8430b7e0afb3c8430b29c340ef86f629a8b94a9124fedfb60a30a91"
+          "bytes": 2608,
+          "blake3": "blake3:598e1f3686cf1bfb898e1317253268b023adc6173bdc648f0538d8ccfa88c58c"
         },
         {
           "path": "fresh/attempts/attempt-01/replay-verdict-bug1.json",
           "bytes": 5820,
-          "blake3": "blake3:514befcaa64dcbe3d8f03369ec3b7b0d0f941dd3d48b4eabf7081a280220487b"
+          "blake3": "blake3:862bf89ae6db2217898621ca2ee33aecc95f5b92b96a8b9068c0716e45095114"
         },
         {
           "path": "fresh/attempts/attempt-01/report.txt",
-          "bytes": 25824,
-          "blake3": "blake3:e02a6eb35a2f1b0426de4fb1a5399c0f46f8c6ddf46adcb555789156d3c5d340"
+          "bytes": 25838,
+          "blake3": "blake3:fcd9eb11a7a156aff66f88ce2d691af90c337a6a3557e4e05b4126b6b2b760eb"
         },
         {
           "path": "fresh/attempts/attempt-01/reproduce.log",
-          "bytes": 12116,
-          "blake3": "blake3:e3d17fed2c3c1cfe500b836d23970959aff958c28d9c0a1bc53e73ed35ea736d"
+          "bytes": 12371,
+          "blake3": "blake3:8c27360a6cf1672d911f7ffe3e5bd2de656d9e5c919a752c4aa179df2e2228ba"
         },
         {
           "path": "fresh/attempts/attempt-01/run.log",
-          "bytes": 82924,
-          "blake3": "blake3:ec8751707cfca3cf032775f8d28614c2e0d36f732d8321c23566e28845c66b44"
+          "bytes": 83424,
+          "blake3": "blake3:b47b2c51de4fdd6dd978687a7a891f2fe44059d47a070aa4b969e801ba750b21"
         },
         {
-          "path": "fresh/attempts/attempt-01/snapshots/27c49830a504fb4b1763e64cb2646351dfb7cf2e9e96a66fb9f101be90f62a76.snapshot.bin",
-          "bytes": 57631358,
-          "blake3": "blake3:065d4f1f690ea675a99660b34c0843ec8be6acab61b5e4d06d38aeffa6c64593"
+          "path": "fresh/attempts/attempt-01/snapshots/5fa21014456bb0e1571f18d62f35e4ae1764310072e985c3967f722cc8f32b12.snapshot.bin",
+          "bytes": 57627886,
+          "blake3": "blake3:36616c13d8c5e7853c51f6ea7fddae25013275c52e198564105d4e579e32a1ac"
         },
         {
           "path": "fresh/bug_1.json",
           "bytes": 4383,
-          "blake3": "blake3:52b01bf6644466be7c2581b79b8baf7288df370a1d955042715f486f355250bc"
+          "blake3": "blake3:8e2711654216e22db89cb3770c36452a8075388e4ecf3fefddc39b097f906b4a"
         },
         {
           "path": "fresh/proof-receipt.json",
           "bytes": 3196,
-          "blake3": "blake3:4febc5995f3e2b2e80fded85357d9ca84df3dbd9bd8cf7bd01ca910a1f9a81fa"
+          "blake3": "blake3:af62d44c36533d63a252d611b79f46504c3af1a0cc6411d71906d4be60994542"
         },
         {
           "path": "fresh/replay-verdict-bug1.json",
           "bytes": 5436,
-          "blake3": "blake3:fda9ae252a704557254891b5644d90cb276fa18607b611212d51e58cfe9939db"
+          "blake3": "blake3:64f40f9aba80adbff3447cff153b9327ca7eeb9941a1676d57c6425941d72b09"
         },
         {
-          "path": "fresh/snapshots/27c49830a504fb4b1763e64cb2646351dfb7cf2e9e96a66fb9f101be90f62a76.snapshot.bin.chunks.json",
+          "path": "fresh/snapshots/5fa21014456bb0e1571f18d62f35e4ae1764310072e985c3967f722cc8f32b12.snapshot.bin.chunks.json",
           "bytes": 958,
-          "blake3": "blake3:9516c90d5732f01bb00f7905f637ed99bd94cbf415d23dff42998397bd4a3736"
+          "blake3": "blake3:0b4ab57bb88cb34e086e6f483d95def5df33d67aff66c629992c051ab13c5832"
         },
         {
-          "path": "fresh/snapshots/27c49830a504fb4b1763e64cb2646351dfb7cf2e9e96a66fb9f101be90f62a76.snapshot.bin.part00",
+          "path": "fresh/snapshots/5fa21014456bb0e1571f18d62f35e4ae1764310072e985c3967f722cc8f32b12.snapshot.bin.part00",
           "bytes": 20971520,
-          "blake3": "blake3:3065bd56d2cd92a1f646f9edabe99c0d2c565b753ba38b4c4a557525b022b0c9"
+          "blake3": "blake3:da5a8b2edfaf9802373f594380cbb4b9e90fe934e6bc3f724422f2fdaf6105cf"
         },
         {
-          "path": "fresh/snapshots/27c49830a504fb4b1763e64cb2646351dfb7cf2e9e96a66fb9f101be90f62a76.snapshot.bin.part01",
+          "path": "fresh/snapshots/5fa21014456bb0e1571f18d62f35e4ae1764310072e985c3967f722cc8f32b12.snapshot.bin.part01",
           "bytes": 20971520,
-          "blake3": "blake3:82b9581742a1d574010eea73c0c897ff0da1cf22e65511b3f262a2d797a328cd"
+          "blake3": "blake3:6a21836f00a52fca4d1e4a701ad218a00d0e348701286fff6915f985e4ad5d41"
         },
         {
-          "path": "fresh/snapshots/27c49830a504fb4b1763e64cb2646351dfb7cf2e9e96a66fb9f101be90f62a76.snapshot.bin.part02",
-          "bytes": 15688318,
-          "blake3": "blake3:ecd17c6e05f2e58d5cb99dbd57e2927c721eb0757ad9404a54cce52e2fd251f3"
+          "path": "fresh/snapshots/5fa21014456bb0e1571f18d62f35e4ae1764310072e985c3967f722cc8f32b12.snapshot.bin.part02",
+          "bytes": 15684846,
+          "blake3": "blake3:1b1485796c2d13667a01807ebb9f068a0e60f833121cf93df23a6ab5a1e59115"
         },
         {
           "path": "stderr.log",
           "bytes": 203,
-          "blake3": "blake3:89a2377e5361b79bce9ae45cc8f309f0606ee5d968df13d7e8a7138d51b7702c"
+          "blake3": "blake3:3c5d1ec6e1ee4e0049c755c8c75fc7a37feb630f3abe13666b55b24a626c32c8"
         },
         {
           "path": "stdout.log",
           "bytes": 180,
-          "blake3": "blake3:f634676e435526b00916d010beedc00b3df17fb5df3e4b459af830977032ecae"
+          "blake3": "blake3:c4c7ea63c5aa1e94cb198c5067166b71a9a46e63a4cc2c52aee5cb45ae2380d5"
         }
       ],
-      "artifact_set_identity": "blake3:54a23e356d3eb70ca58b7707a98fc95bdaac4d10980701dc99c2d7e2224b63f2",
+      "artifact_set_identity": "blake3:85f1b5ea43027ee127f463f240240b7cd41e1b6417c25293336978bf12164c5e",
       "notes": []
     }
   ],

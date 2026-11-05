@@ -15,7 +15,7 @@ Current-source release checks must pass before any production claim; dated
 receipts below retain their original verdicts and are not current release approval.
 
 The required KVM matrix has a passing receipt on clean
-`901b697ae601e686424c1635d7dc51c2fea4af37`: all seven rows passed with
+`3c90ca7832a14fd2c5d79e47cb16a19e8393db6b`: all seven rows passed with
 `ReleaseEligible`, and the independent validator agreed (`rows=7 positive=1
 negative=11`). The [receipt](dogfood-results/kvm-release-evidence-20261104/release-receipt.json)
 and [summary](dogfood-results/kvm-release-evidence-20261104/release-summary.md)

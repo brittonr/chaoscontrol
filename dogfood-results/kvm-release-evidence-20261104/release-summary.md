@@ -1,7 +1,7 @@
 # KVM Release Matrix Summary
 
 - Terminal class: `ReleaseEligible`
-- Source revision: `901b697ae601e686424c1635d7dc51c2fea4af37`
+- Source revision: `3c90ca7832a14fd2c5d79e47cb16a19e8393db6b`
 - Matrix: `blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0`
 - Worker: `x86_64` / `6.18.50`
 

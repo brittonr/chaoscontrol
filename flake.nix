@@ -643,6 +643,81 @@
 
           hardenedKernelConfig = pkgs.lib.mapAttrs (_: value: pkgs.lib.mkForce value) hardenedKernelBase;
 
+          # Minimal allnoconfig-based kernel. Unlike the additive profile above,
+          # this starts from everything disabled and enables only the symbols the
+          # VMM boot path needs, so modules, debugfs, kallsyms, BPF, io_uring,
+          # userfaultfd and legacy ABI are genuinely absent.
+          hardenedMinimalKernelConfig =
+            pkgs.runCommand "chaoscontrol-minimal-kernel-config"
+              {
+                nativeBuildInputs = with pkgs; [
+                  bc
+                  bison
+                  flex
+                  openssl
+                  perl
+                  gnumake
+                  gcc
+                  binutils
+                  pkg-config
+                  gnutar
+                  xz
+                ];
+              }
+              ''
+                mkdir src
+                tar -xf ${pkgs.linuxPackages_latest.kernel.src} --strip-components=1 -C src
+                chmod -R u+w src
+                cd src
+                patchShebangs --build scripts
+                make -s ARCH=x86_64 allnoconfig
+                ./scripts/config --file .config \
+                  --enable 64BIT --enable X86_64 --enable SMP \
+                  --enable PRINTK --enable TTY --enable SERIAL_8250 \
+                  --enable SERIAL_8250_CONSOLE --enable SERIAL_CORE \
+                  --enable SERIAL_CORE_CONSOLE \
+                  --enable BLK_DEV_INITRD --enable RD_GZIP --enable RD_CPIO \
+                  --enable BINFMT_ELF --enable BINFMT_SCRIPT \
+                  --enable DEVTMPFS --enable DEVTMPFS_MOUNT --enable TMPFS \
+                  --enable PROC_FS --enable SYSFS --enable FUTEX \
+                  --enable EPOLL --enable EVENTFD --enable SIGNALFD \
+                  --enable UNIX --enable MULTIUSER \
+                  --enable VIRTIO_MENU --enable VIRTIO --enable VIRTIO_MMIO \
+                  --enable VIRTIO_MMIO_CMDLINE_DEVICES --enable VIRTIO_BLK \
+                  --enable EXT4_FS --enable CRC32 \
+                  --enable BLK_DEV --enable BLOCK \
+                  --enable EXPERT \
+                  --enable INIT_ON_ALLOC_DEFAULT_ON --enable VMAP_STACK \
+                  --enable RANDOMIZE_BASE --enable STRICT_KERNEL_RWX \
+                  --disable KALLSYMS --disable KALLSYMS_ALL \
+                  --disable IO_URING --disable BPF_SYSCALL \
+                  --disable DEBUG_FS --disable COMPAT --disable IA32_EMULATION
+                make -s ARCH=x86_64 olddefconfig
+                cp .config $out
+              '';
+
+          hardenedMinimalKernel = (pkgs.linuxManualConfig {
+            inherit (pkgs.linuxPackages_latest.kernel) src version modDirVersion;
+            configfile = hardenedMinimalKernelConfig;
+            allowImportFromDerivation = true;
+            kernelPatches = [
+              {
+                name = "runtime-tsc-capability";
+                patch = ./nix/linux-runtime-tsc-capability.patch;
+              }
+              {
+                name = "ftrace-offset-validation";
+                patch = ./nix/linux-ftrace-offset-validation.patch;
+              }
+            ];
+          }).overrideAttrs (old: {
+            # A non-modular manual kernel installs only bzImage; keep the ELF
+            # vmlinux that ChaosControl's loader needs.
+            postInstall = (old.postInstall or "") + ''
+              cp vmlinux $out/vmlinux
+            '';
+          });
+
           mkKernel =
             {
               virtioBlk ? true,
@@ -1627,6 +1702,13 @@
             };
             hardened-vmlinux = mkChaosKernel { hardening = true; };
             hardened-kernel-config = (mkKernel { hardening = true; }).configfile;
+            hardened-minimal-kernel-config = hardenedMinimalKernelConfig;
+            hardened-minimal-vmlinux =
+              pkgs.runCommand "chaoscontrol-hardened-minimal-vmlinux" { } ''
+                mkdir -p $out
+                cp --dereference ${hardenedMinimalKernel}/vmlinux $out/vmlinux
+                chmod 0444 $out/vmlinux
+              '';
 
             raft-sim = mkChaosTest {
               name = "raft-sim";
@@ -1737,6 +1819,31 @@
 
             # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
             vm-cohort-dependency = vmCohortDependencyCheck;
+            # Minimal allnoconfig-based kernel: modules, debugfs, kallsyms, BPF,
+            # io_uring, userfaultfd and legacy ABI are absent rather than
+            # overridden.
+            hardened-minimal-kernel-config =
+              let
+                cfg = hardenedMinimalKernelConfig;
+              in
+              pkgs.runCommand "chaoscontrol-hardened-minimal-kernel-config-check"
+                {
+                  nativeBuildInputs = [ pkgs.gnugrep ];
+                }
+                ''
+                  grep -q '^# CONFIG_MODULES is not set$' ${cfg}
+                  grep -q '^# CONFIG_DEBUG_FS is not set$' ${cfg}
+                  grep -q '^# CONFIG_KALLSYMS is not set$' ${cfg}
+                  grep -q '^# CONFIG_BPF_SYSCALL is not set$' ${cfg}
+                  grep -q '^# CONFIG_IO_URING is not set$' ${cfg}
+                  grep -q '^# CONFIG_USERFAULTFD is not set$' ${cfg}
+                  grep -q '^# CONFIG_IA32_EMULATION is not set$' ${cfg}
+                  grep -q '^CONFIG_VIRTIO_BLK=y$' ${cfg}
+                  grep -q '^CONFIG_EXT4_FS=y$' ${cfg}
+                  grep -q '^CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y$' ${cfg}
+                  touch $out
+                '';
+
             # Opt-in guest-kernel hardening profile. The default kernel and all
             # existing checks are unchanged; selecting this profile is a caller
             # decision, not a release promotion.

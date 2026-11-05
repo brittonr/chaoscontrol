@@ -353,6 +353,7 @@ nix build .#net-vmlinux       # virtio-net enabled
 nix build .#kcov-vmlinux      # KCOV coverage
 nix build .#kcov-net-vmlinux  # both
 nix build .#hardened-vmlinux  # opt-in hardening profile; default unchanged
+nix build .#hardened-minimal-vmlinux  # allnoconfig variant (experimental)
 
 # Boot a kernel
 cargo run --bin boot -- <kernel-path> [initrd-path]

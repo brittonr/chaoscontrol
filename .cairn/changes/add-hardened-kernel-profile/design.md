@@ -50,6 +50,17 @@ exposed together.
   sha256 `385e16afa162712e0d42a5171145f754c00a0bb67382653070baebb62625fea9`.
   This is bounded smoke evidence, not a matrix row or release claim.
 
+## Minimal allnoconfig variant
+
+`hardenedMinimalKernelConfig` generates a full config from `make allnoconfig` plus
+the boot-path symbols, then disables KALLSYMS/IO_URING/BPF_SYSCALL/DEBUG_FS/
+COMPAT/IA32_EMULATION with `EXPERT` enabled to make the hidden defaults
+controllable. `hardened-minimal-vmlinux` (~14 MB) produced a config check that
+asserts those absences plus virtio/EXT4 support. Boot smoke reached
+`Run /init as init process`; init reported debugfs/KCOV unavailable, and the
+workload did not exit within the 90-second bound (VMM killed). The variant is not
+admitted for workloads and the missing-subsystem cause is uninvestigated.
+
 ## Boundaries
 
 The profile reduces some kernel surface; it does not sandbox a guest or make the

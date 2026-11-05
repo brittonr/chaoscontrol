@@ -77,6 +77,8 @@ pub enum DiagnosticRunError {
     Wait(std::io::Error),
     /// The encoded request could not be identified.
     Encoding(DiagnosticError),
+    /// Captured output could not be recorded as an artifact.
+    Artifact(std::io::Error),
 }
 
 fn capture<R: Read>(mut reader: R) -> (Vec<u8>, bool) {
@@ -113,6 +115,29 @@ pub fn run_diagnostic(
     request: &DiagnosticRequest,
     executable_path: &std::path::Path,
 ) -> Result<DiagnosticOutcome, DiagnosticRunError> {
+    run_diagnostic_inner(request, executable_path, None).map(|(outcome, _)| outcome)
+}
+
+// r[impl chaoscontrol.guest_diagnostic.diagnostic_artifacts]
+/// Run one admitted request and record non-empty captured streams as
+/// content-addressed artifacts.
+///
+/// Files are named `blake3-<hex>.stdout` and `.stderr` under `artifact_dir`, which
+/// is created if missing. The returned paths identify the written bytes; the
+/// receipt still reports only bounded digests and lengths.
+pub fn run_diagnostic_with_artifacts(
+    request: &DiagnosticRequest,
+    executable_path: &std::path::Path,
+    artifact_dir: &std::path::Path,
+) -> Result<(DiagnosticOutcome, Vec<std::path::PathBuf>), DiagnosticRunError> {
+    run_diagnostic_inner(request, executable_path, Some(artifact_dir))
+}
+
+fn run_diagnostic_inner(
+    request: &DiagnosticRequest,
+    executable_path: &std::path::Path,
+    artifact_dir: Option<&std::path::Path>,
+) -> Result<(DiagnosticOutcome, Vec<std::path::PathBuf>), DiagnosticRunError> {
     admit(
         request.version,
         &request.executable,
@@ -176,21 +201,37 @@ pub fn run_diagnostic(
 
     let (stdout_bytes, stdout_truncated) = stdout_reader.join().unwrap_or_default();
     let (stderr_bytes, stderr_truncated) = stderr_reader.join().unwrap_or_default();
-    Ok(DiagnosticOutcome {
-        request_digest,
-        executable: request.executable,
-        status: if timed_out {
-            DiagnosticStatus::TimedOut
-        } else {
-            DiagnosticStatus::Completed
+    let mut artifacts = Vec::new();
+    if let Some(directory) = artifact_dir {
+        std::fs::create_dir_all(directory).map_err(DiagnosticRunError::Artifact)?;
+        for (suffix, bytes) in [("stdout", &stdout_bytes), ("stderr", &stderr_bytes)] {
+            if bytes.is_empty() {
+                continue;
+            }
+            let name = format!("blake3-{}.{}", blake3::hash(bytes).to_hex(), suffix);
+            let path = directory.join(name);
+            std::fs::write(&path, bytes).map_err(DiagnosticRunError::Artifact)?;
+            artifacts.push(path);
+        }
+    }
+    Ok((
+        DiagnosticOutcome {
+            request_digest,
+            executable: request.executable,
+            status: if timed_out {
+                DiagnosticStatus::TimedOut
+            } else {
+                DiagnosticStatus::Completed
+            },
+            exit_code: status.code(),
+            stdout_bytes: stdout_bytes.len(),
+            stdout_digest: *blake3::hash(&stdout_bytes).as_bytes(),
+            stderr_bytes: stderr_bytes.len(),
+            stderr_digest: *blake3::hash(&stderr_bytes).as_bytes(),
+            truncated: stdout_truncated || stderr_truncated,
         },
-        exit_code: status.code(),
-        stdout_bytes: stdout_bytes.len(),
-        stdout_digest: *blake3::hash(&stdout_bytes).as_bytes(),
-        stderr_bytes: stderr_bytes.len(),
-        stderr_digest: *blake3::hash(&stderr_bytes).as_bytes(),
-        truncated: stdout_truncated || stderr_truncated,
-    })
+        artifacts,
+    ))
 }
 
 impl DiagnosticOutcome {
@@ -332,6 +373,23 @@ mod tests {
             stderr_digest: [0; 32],
         };
         report_diagnostic_receipt(&receipt).unwrap();
+    }
+
+    #[test]
+    fn artifacts_are_content_addressed() {
+        let path = std::path::Path::new("/bin/echo");
+        if !path.exists() {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let request = request_for(path, &["artifact"], 1_000);
+        let (outcome, artifacts) =
+            run_diagnostic_with_artifacts(&request, path, dir.path()).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        let expected = format!("blake3-{}.stdout", blake3::hash(b"artifact\n").to_hex());
+        assert_eq!(artifacts[0].file_name().unwrap(), expected.as_str());
+        assert_eq!(std::fs::read(&artifacts[0]).unwrap(), b"artifact\n");
+        assert_eq!(outcome.stdout_bytes, 9);
     }
 
     #[test]

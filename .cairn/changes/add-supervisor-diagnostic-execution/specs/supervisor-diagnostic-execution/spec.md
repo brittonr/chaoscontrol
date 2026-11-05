@@ -95,3 +95,24 @@ a receipt or claim execution success.
 - GIVEN one queued admitted request and a matching executable
 - WHEN the client serves it
 - THEN it reports the canonical receipt and returns it
+
+### Requirement: Captured diagnostic output can be recorded as content-addressed artifacts
+
+r[chaoscontrol.guest_diagnostic.diagnostic_artifacts]
+
+The supervisor runner MUST offer an artifact-recording mode that writes each
+non-empty captured stream under a caller-supplied directory as
+`blake3-<hex>.stdout` or `.stderr`, creating the directory if missing and bounded by
+the capture limits. The receipt MUST continue to report only lengths and digests.
+Recording failures MUST surface as errors; no artifact identity is claimed without a
+written file.
+
+#### Scenario: Artifact recorded
+- GIVEN captured output and a writable directory
+- WHEN the recording mode runs
+- THEN the file name matches the stream digest and its contents equal the captured bytes
+
+#### Scenario: Empty stream writes nothing
+- GIVEN a stream with no bytes
+- WHEN the recording mode runs
+- THEN no file is written for that stream

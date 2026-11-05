@@ -656,6 +656,7 @@ dependencies = [
  "rand_core 0.9.5",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

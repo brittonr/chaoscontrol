@@ -686,7 +686,7 @@
                   --enable VIRTIO_MMIO_CMDLINE_DEVICES --enable VIRTIO_BLK \
                   --enable EXT4_FS --enable CRC32 \
                   --enable BLK_DEV --enable BLOCK \
-                  --enable X86_IOPL_IOPERM \
+                  --enable HIGH_RES_TIMERS --enable X86_IOPL_IOPERM \
                   --enable EXPERT \
                   --enable INIT_ON_ALLOC_DEFAULT_ON --enable VMAP_STACK \
                   --enable RANDOMIZE_BASE --enable STRICT_KERNEL_RWX \
@@ -1866,6 +1866,7 @@
                   grep -q '^CONFIG_EXT4_FS=y$' ${cfg}
                   grep -q '^CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y$' ${cfg}
                   grep -q '^CONFIG_X86_IOPL_IOPERM=y$' ${cfg}
+                  grep -q '^CONFIG_HIGH_RES_TIMERS=y$' ${cfg}
                   touch $out
                 '';
 

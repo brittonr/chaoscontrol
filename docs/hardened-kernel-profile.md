@@ -84,7 +84,7 @@ controllable, then disable `KALLSYMS`, `IO_URING`, `BPF_SYSCALL`, `DEBUG_FS`,
 the SDK's port-I/O hypercall transport).
 
 The minimal `vmlinux` builds to ~14 MB (versus ~409 MB for a defconfig-modules
-kernel; SHA-256 `d13700fedfec2c90990fac3b29072117316ce170c8b5b584f47e95603e5898d8`).
+kernel; SHA-256 `efe997f792d2a87323a9c5d5d8519f58f7de0216e08b0b1c14b5f0d7fbdb575c`).
 A self-contained smoke boots it with a static busybox initrd:
 
 ```bash
@@ -92,22 +92,21 @@ nix run .#minimal-boot-smoke
 ```
 
 The init mounts proc/sys/devtmpfs, prints `minimal-boot-ok`, and calls `poweroff -f`;
-the kernel reports `Power off not available: System halted instead`, so the smoke
-treats the marker as success, terminates the VMM itself, and reports
-`ok (init ran; VM halted instead of powering off)`. This proves the minimal kernel
-reaches userspace and runs a static binary, not that the VMM can stop it on guest
-halt.
+the kernel reports `Power off not available: System halted instead`, then the VMM
+observes the halt and stops cleanly (`VM halted`). `HIGH_RES_TIMERS=y` is required
+for that: without it the minimal kernel halted but the VMM kept running, and adding
+ACPI/HPET did not help. The smoke reports `ok (init ran; VM halted instead of
+powering off)`; it still terminates the VMM after the marker if a future kernel
+regresses.
 
 With the rust-workload initrd the kernel reaches `Run /init` (init reports
 debugfs/KCOV unavailable, as expected) but the workload does not exit and the VMM
 keeps injecting serial IRQs; that variant is **not** admitted for workloads and
 the cause is not yet investigated.
 
-The same busybox initrd under the additive hardened kernel halts and the VMM stops
-(`VM halted`), so the VMM can stop on guest halt; the minimal kernel prints the same
-`System halted instead` message but the VMM keeps running. Adding ACPI/PCI/POWER_RESET
-did not change that, so the difference is not ACPI poweroff support. `nix build .#minimal-boot-initrd` exposes the static initrd for this comparison.
-The remaining minimal-kernel halt/no-exit behavior is tracked in
+`nix build .#minimal-boot-initrd` exposes the static initrd used for these
+comparisons. The rust-workload initrd still reaches `Run /init` but does not exit
+under the minimal kernel; that workload follow-up is tracked in
 [#9](https://github.com/brittonr/chaoscontrol/issues/9).
 
 ## Trade-offs

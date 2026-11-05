@@ -2685,6 +2685,24 @@
                   tail -40 "$log" >&2
                   exit 1
                 fi
+                for _ in $(seq 1 20); do
+                  if ! kill -0 "$pid" 2>/dev/null; then
+                    break
+                  fi
+                  sleep 1
+                done
+                if kill -0 "$pid" 2>/dev/null; then
+                  echo "minimal boot smoke: VM did not stop after the init halt" >&2
+                  tail -20 "$log" >&2
+                  exit 1
+                fi
+                status=0
+                wait "$pid" || status=$?
+                if [ "$status" -ne 0 ]; then
+                  echo "minimal boot smoke: VM exited with status $status" >&2
+                  tail -20 "$log" >&2
+                  exit "$status"
+                fi
                 if grep -q 'Power off not available: System halted instead' "$log"; then
                   echo "minimal boot smoke: ok (init ran; VM halted instead of powering off)"
                 else

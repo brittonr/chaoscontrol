@@ -96,8 +96,8 @@ the kernel reports `Power off not available: System halted instead`, then the VM
 observes the halt and stops cleanly (`VM halted`). `HIGH_RES_TIMERS=y` is required
 for that: without it the minimal kernel halted but the VMM kept running, and adding
 ACPI/HPET did not help. The smoke reports `ok (init ran; VM halted instead of
-powering off)`; it still terminates the VMM after the marker if a future kernel
-regresses.
+powering off)` and requires the VMM to stop cleanly after the halt; it fails if the
+VMM keeps running.
 
 With the rust-workload initrd the kernel reaches `Run /init` (init reports
 debugfs/KCOV unavailable, as expected) but the workload does not exit and the VMM

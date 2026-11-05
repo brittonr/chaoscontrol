@@ -2358,6 +2358,8 @@ impl Explorer {
                     round: self.rounds_completed,
                     tick: result.total_ticks,
                     schedule_length: schedule.total(),
+                    dedup_key: bug.dedup_key,
+                    replay_parent_depth,
                     from_seed: None,
                 });
 
@@ -4670,8 +4672,15 @@ mod tests {
             .expect("failed assertion extracts");
         assert_eq!(bugs.len(), 1);
         match events.try_recv().expect("bug event") {
-            crate::dashboard_types::DashboardEvent::BugFound { bug_index, .. } => {
+            crate::dashboard_types::DashboardEvent::BugFound {
+                bug_index,
+                dedup_key,
+                replay_parent_depth,
+                ..
+            } => {
                 assert_eq!(bug_index, 0);
+                assert_eq!(dedup_key, bugs[0].dedup_key);
+                assert_eq!(replay_parent_depth, bugs[0].replay_parent_depth);
             }
             other => panic!("unexpected event: {other:?}"),
         }

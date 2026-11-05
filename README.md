@@ -781,6 +781,19 @@ The dashboard shows:
 
 Open `http://localhost:8080` in a browser while exploration runs.
 
+Mid-run `bug` events also carry `dedup_key` and `replay_parent_depth`, matching the
+checkpoint bug report for the same failure. That lets a subscriber correlate a live
+event with `checkpoint.json` and materialize only that record while the campaign
+continues:
+
+```bash
+cargo run --release --bin chaoscontrol-explore -- export-bugs \
+  --checkpoint results/checkpoint.json --output results/ --dedup-key <u64>
+```
+
+The key is a correlation field: it does not prove that two runs, VMs, or histories
+are identical, that a snapshot is admissible, or that a replay will reproduce.
+
 ### eBPF tracing
 
 ```console

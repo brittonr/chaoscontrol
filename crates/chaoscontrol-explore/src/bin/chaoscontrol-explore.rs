@@ -666,6 +666,10 @@ enum Commands {
         #[arg(long)]
         min_replay_parent_depth: Option<u32>,
 
+        /// Export only bugs whose stored failure dedup key equals this value.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+
         /// Stop after writing this many matching bug artifacts.
         #[arg(long)]
         max_bugs: Option<usize>,
@@ -881,6 +885,7 @@ fn main() {
             no_overwrite,
             assertion_id,
             min_replay_parent_depth,
+            dedup_key,
             max_bugs,
         } => cmd_export_bugs(
             checkpoint,
@@ -889,6 +894,7 @@ fn main() {
             CheckpointBugExportFilter {
                 assertion_id,
                 min_replay_parent_depth,
+                dedup_key,
                 max_bugs,
             },
         ),

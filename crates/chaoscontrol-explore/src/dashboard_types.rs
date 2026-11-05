@@ -55,6 +55,7 @@ pub enum DashboardEvent {
     },
 
     /// Emitted when a new bug is discovered.
+    // r[impl chaoscontrol.agent_investigation.bug_event_reference]
     BugFound {
         bug_index: usize,
         assertion_id: u64,
@@ -62,6 +63,12 @@ pub enum DashboardEvent {
         round: u64,
         tick: u64,
         schedule_length: usize,
+        /// Exact failure identity; equals the checkpoint bug report's dedup key.
+        #[serde(default)]
+        dedup_key: u64,
+        /// Replay parent depth required to replay this failure's branch.
+        #[serde(default)]
+        replay_parent_depth: u32,
         /// Which seed produced this event (campaign mode only).
         #[serde(skip_serializing_if = "Option::is_none")]
         from_seed: Option<u64>,
@@ -603,6 +610,8 @@ mod tests {
                 round: 5,
                 tick: 750,
                 schedule_length: 3,
+                dedup_key: 0xDEAD_BEEF,
+                replay_parent_depth: 2,
                 from_seed: None,
             },
             DashboardEvent::Finished {

@@ -1263,10 +1263,13 @@ pub enum CheckpointBugExportError {
 pub struct CheckpointBugExportFilter {
     pub assertion_id: Option<u64>,
     pub min_replay_parent_depth: Option<u32>,
+    /// Exact failure identity; legacy bugs without a stored key never match.
+    pub dedup_key: Option<u64>,
     pub max_bugs: Option<usize>,
 }
 
 impl CheckpointBugExportFilter {
+    // r[impl chaoscontrol.agent_investigation.export_by_dedup_key]
     fn matches(&self, bug: &SerializableBug) -> bool {
         if let Some(assertion_id) = self.assertion_id {
             if bug.assertion_id != assertion_id {
@@ -1275,6 +1278,11 @@ impl CheckpointBugExportFilter {
         }
         if let Some(min_depth) = self.min_replay_parent_depth {
             if bug.replay_parent_depth < min_depth {
+                return false;
+            }
+        }
+        if let Some(dedup_key) = self.dedup_key {
+            if bug.dedup_key != Some(dedup_key) {
                 return false;
             }
         }
@@ -2522,6 +2530,7 @@ mod tests {
             CheckpointBugExportFilter {
                 assertion_id: Some(TEST_EXPORT_ALIAS),
                 min_replay_parent_depth: Some(1),
+                dedup_key: None,
                 max_bugs: None,
             },
         )
@@ -2560,6 +2569,7 @@ mod tests {
             CheckpointBugExportFilter {
                 assertion_id: Some(TEST_EXPORT_ALIAS),
                 min_replay_parent_depth: None,
+                dedup_key: None,
                 max_bugs: None,
             },
         )
@@ -2595,6 +2605,7 @@ mod tests {
             CheckpointBugExportFilter {
                 assertion_id: Some(TEST_EXPORT_ALIAS),
                 min_replay_parent_depth: None,
+                dedup_key: None,
                 max_bugs: Some(1),
             },
         )
@@ -2605,6 +2616,82 @@ mod tests {
         assert_eq!(summary.bugs_written, 1);
         assert!(out.join("bug_0.json").exists());
         assert!(!out.join("bug_1.json").exists());
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_filter_selects_exact_dedup_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(2)]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let summary = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: None,
+                min_replay_parent_depth: None,
+                dedup_key: Some(2),
+                max_bugs: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.bugs_scanned, 2);
+        assert_eq!(summary.bugs_matched, 1);
+        assert_eq!(summary.bugs_written, 1);
+        assert!(!out.join("bug_0.json").exists());
+        assert!(out.join("bug_1.json").exists());
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_filter_ignores_legacy_missing_dedup_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let mut legacy = minimal_bug(1);
+        legacy.dedup_key = None;
+        let kept = minimal_bug(2);
+        let checkpoint = minimal_checkpoint_with_bugs(vec![legacy, kept]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let summary = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: None,
+                min_replay_parent_depth: None,
+                dedup_key: Some(2),
+                max_bugs: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(summary.bugs_scanned, 2);
+        assert_eq!(summary.bugs_matched, 1);
+        assert_eq!(summary.bugs_written, 1);
+        assert!(!out.join("bug_0.json").exists());
+        assert!(out.join("bug_1.json").exists());
+
+        let empty_out = dir.path().join("empty");
+        let empty = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &empty_out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: None,
+                min_replay_parent_depth: None,
+                dedup_key: Some(9),
+                max_bugs: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(empty.bugs_matched, 0);
+        assert_eq!(empty.bugs_written, 0);
+        assert!(!empty_out.join("bug_0.json").exists());
+        assert!(!empty_out.join("bug_1.json").exists());
     }
 
     #[test]
@@ -2625,6 +2712,7 @@ mod tests {
             CheckpointBugExportFilter {
                 assertion_id: None,
                 min_replay_parent_depth: None,
+                dedup_key: None,
                 max_bugs: Some(1),
             },
         )

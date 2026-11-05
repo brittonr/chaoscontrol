@@ -44,6 +44,23 @@ The host must provide the admitted KVM capabilities. A build-only result does no
 
 `contracts/guest-determinism/drift-receipt.ncl` validates the receipt shape. The contract requires agreement between `accepted` and the drift list. Positive and negative fixtures remain next to the contract.
 
+## Guest time model
+
+The default virtual TSC advances per VM exit or scheduling quantum. The scheduler's
+guest-only retired-instruction progress is a candidate alternative source, but that
+mode is not admitted: `CpuConfig::admit_tsc_mode` rejects
+`instruction-progress` while PMU support reports no claim and while the runtime is
+unimplemented. The pure snapshot model records mode, base, scale, and last retired
+count and rejects cross-mode restores and retired-count regression. HLT decisions
+keep the PIT-deadline jump and mark progress-mode jumps as declared bounds; PIT
+programming uses the same configured `tsc_khz` in both modes.
+
+Measured on 2026-11-05: AMD Ryzen 9 9950X3D, family 26 model 68 stepping 0, Linux
+6.18.50, `perf_event_paranoid=-1`. Five 500-exit continuations from one snapshot were
+1990/2000 bit-exact with p99 delta 0 and maximum absolute delta 6. The design gate
+rejects this host profile for instruction-progress mode, so the default remains
+unchanged and no PMU support is promoted.
+
 ## Claim limits
 
 The receipt proves only the compared snapshot continuations, profile, seed binding, and four observed surfaces. It does not prove:

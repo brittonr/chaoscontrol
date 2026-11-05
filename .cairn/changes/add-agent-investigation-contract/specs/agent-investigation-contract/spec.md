@@ -283,3 +283,25 @@ artifact, and an invalid or missing artifact MUST NOT be reported as verified.
 - GIVEN a missing or invalid artifact
 - WHEN planning runs in verification mode
 - THEN planning fails rather than reporting a ready, unverified plan
+
+
+### Requirement: A restore plan identifies a disposable branch
+
+r[chaoscontrol.agent_investigation.branch_identity]
+
+A restore plan MUST carry a deterministic branch identity derived with
+length-delimited BLAKE3 input from the checkpoint digest, snapshot digest (or an
+explicit absence marker), checkpoint index, recorded tick, dedup key (or absence),
+and replay parent depth. Repeating the same inputs MUST yield the same identity, and
+changing any bound field MUST change it. The identity MUST NOT be presented as an
+executed branch, isolation proof, or replay evidence.
+
+#### Scenario: Stable identity
+- GIVEN one failure moment
+- WHEN planning runs twice
+- THEN both plans carry the same branch identity
+
+#### Scenario: Field-bound identity
+- GIVEN the same session but a different tick or bug index
+- WHEN planning runs
+- THEN the branch identity differs

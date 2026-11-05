@@ -1855,6 +1855,9 @@ pub struct RestorePlan {
     pub snapshot_digest: Option<String>,
     pub snapshot_present: bool,
     pub snapshot_verified: bool,
+    /// Deterministic disposable-branch identity binding the session digest and
+    /// selected parent. Identity only; it does not create or isolate a branch.
+    pub branch_id: String,
     pub kernel_path: String,
     pub kernel_present: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1866,6 +1869,34 @@ pub struct RestorePlan {
     pub ready: bool,
     pub missing: Vec<String>,
     pub non_claims: Vec<&'static str>,
+}
+
+/// Deterministic identity for a disposable branch rooted at one failure moment.
+/// The encoding is length-delimited so distinct field tuples cannot collide.
+// r[impl chaoscontrol.agent_investigation.branch_identity]
+pub fn branch_identity(
+    checkpoint_digest: &str,
+    snapshot_digest: Option<&str>,
+    checkpoint_index: usize,
+    tick: u64,
+    dedup_key: Option<u64>,
+    replay_parent_depth: u32,
+) -> String {
+    let mut hasher = blake3::Hasher::new();
+    let fields = [
+        "chaoscontrol.branch_identity.v1".to_string(),
+        checkpoint_digest.to_string(),
+        snapshot_digest.unwrap_or("none").to_string(),
+        checkpoint_index.to_string(),
+        tick.to_string(),
+        dedup_key.map_or_else(|| "none".to_string(), |key| key.to_string()),
+        replay_parent_depth.to_string(),
+    ];
+    for field in fields {
+        hasher.update(&(field.len() as u64).to_le_bytes());
+        hasher.update(field.as_bytes());
+    }
+    format!("b3:{}", hasher.finalize().to_hex())
 }
 
 // r[impl chaoscontrol.agent_investigation.restore_plan]
@@ -1939,6 +1970,14 @@ pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
         missing.push(format!("disk image {path}"));
     }
 
+    let branch_id = branch_identity(
+        &checkpoint_digest,
+        reference.map(|reference| reference.digest.as_str()),
+        inspection.checkpoint_index,
+        inspection.bug.tick,
+        inspection.bug.dedup_key,
+        inspection.bug.replay_parent_depth,
+    );
     Ok(RestorePlan {
         schema: "chaoscontrol.restore_plan.v1",
         checkpoint_digest,
@@ -1952,6 +1991,7 @@ pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
         snapshot_digest: reference.map(|reference| reference.digest.clone()),
         snapshot_present,
         snapshot_verified,
+        branch_id,
         kernel_path: checkpoint.config.kernel_path.clone(),
         kernel_present,
         initrd_path: checkpoint.config.initrd_path.clone(),
@@ -3666,6 +3706,16 @@ mod tests {
         assert!(plan.kernel_present);
         assert!(plan.missing.is_empty());
         assert!(!plan.snapshot_verified);
+        let repeat = plan_restore(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.branch_id, repeat.branch_id);
+        assert!(plan.branch_id.starts_with("b3:"));
         assert!(plan_restore_with_snapshot_check(
             &checkpoint_path,
             BugSelector {
@@ -3690,6 +3740,25 @@ mod tests {
         .unwrap();
         assert!(!plan.ready);
         assert!(plan.missing.iter().any(|item| item.starts_with("kernel ")));
+    }
+
+    #[test]
+    fn branch_identity_is_length_delimited_and_input_bound() {
+        let first = branch_identity("b3:aa", Some("sha256:bb"), 0, 10, Some(1), 1);
+        let repeat = branch_identity("b3:aa", Some("sha256:bb"), 0, 10, Some(1), 1);
+        assert_eq!(first, repeat);
+        assert_ne!(
+            first,
+            branch_identity("b3:aa", Some("sha256:bb"), 0, 11, Some(1), 1)
+        );
+        assert_ne!(
+            first,
+            branch_identity("b3:aa", Some("sha256:bb"), 1, 10, Some(1), 1)
+        );
+        assert_ne!(
+            branch_identity("ab", Some("c"), 0, 0, None, 0),
+            branch_identity("a", Some("bc"), 0, 0, None, 0)
+        );
     }
 
     #[test]

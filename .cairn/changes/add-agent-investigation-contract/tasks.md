@@ -11,6 +11,7 @@
 - [x] [serial] List unique snapshot references and referencing bugs without decoding artifacts, rejecting path/digest conflicts. r[chaoscontrol.agent_investigation.list_snapshots]
 - [x] [serial] Report a read-only restore plan with declared-input and snapshot-path presence. r[chaoscontrol.agent_investigation.restore_plan]
 - [x] [serial] Add an explicit snapshot verification mode to restore planning. r[chaoscontrol.agent_investigation.restore_plan_verification]
+- [x] [serial] Add a deterministic disposable-branch identity to the restore plan. r[chaoscontrol.agent_investigation.branch_identity]
 - [x] [serial] Add versioned checkpoint admission that validates structure and unique referenced snapshot artifacts with a fail-closed verdict. r[chaoscontrol.agent_investigation.verify_checkpoint]
 - [x] [serial] Add a structure-only admission mode distinct from full snapshot validation. r[chaoscontrol.agent_investigation.admission_modes]
 - [x] [serial] Bind admission to an expected BLAKE3 session digest with a typed mismatch failure. r[chaoscontrol.agent_investigation.session_digest_binding]

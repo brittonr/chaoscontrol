@@ -530,3 +530,23 @@ verdict beyond the bounded comparison.
 - GIVEN two identical records
 - WHEN drift is reported
 - THEN the difference is absent
+
+### Requirement: Probes expose per-vCPU state and select the intervention target
+
+r[chaoscontrol.agent_investigation.restore_smp_observations]
+
+Every VM observation MUST list each vCPU's register state, and the register
+intervention and expectation MUST accept an explicit vCPU index validated against the
+selected VM. Invalid VM or vCPU indices MUST fail before recording a result. The
+observation is bounded state reporting for SMP runs; it does not prove scheduling
+determinism.
+
+#### Scenario: SMP state reported
+- GIVEN a restored VM with multiple vCPUs
+- WHEN the probe records observations
+- THEN each vCPU appears with its own register state
+
+#### Scenario: Invalid vCPU rejected
+- GIVEN a vCPU index at or beyond the VM's count
+- WHEN an intervention or expectation is requested
+- THEN the probe fails without recording a result

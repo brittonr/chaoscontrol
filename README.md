@@ -514,7 +514,8 @@ cargo run --release --bin chaoscontrol-explore -- restore-plan \
 # Each seek round lists its tick, running count, and fired-fault descriptions.
 # --set-register NAME=VALUE applies one typed nudge to the selected VM and marks
 # the record counterfactual; --expect-register NAME=VALUE checks the post-seek value
-# and exits non-zero on mismatch. --repeat 2-3 reruns the same probe and reports
+# and exits non-zero on mismatch. --vm-index/--vcpu select the target, and every VM
+# record lists per-vCPU registers. --repeat 2-3 reruns the same probe and reports
 # round/VM/tick trace drift. --candidate-revision plus --receipt writes a digest-bound
 # candidate-validation receipt. Guest serial shares stdout; use --output for JSON.
 cargo run --release --bin chaoscontrol-explore -- restore-probe \

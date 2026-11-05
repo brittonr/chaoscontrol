@@ -778,6 +778,10 @@ enum Commands {
         #[arg(long, default_value_t = 0)]
         vm_index: usize,
 
+        /// Target vCPU for register intervention and expectation (default 0).
+        #[arg(long, default_value_t = 0)]
+        vcpu: usize,
+
         /// Diagnostic register intervention on the disposable branch, e.g. rax=0x2a.
         #[arg(long)]
         set_register: Option<String>,
@@ -1146,6 +1150,7 @@ fn main() {
             memory_address,
             memory_length,
             vm_index,
+            vcpu,
             set_register,
             expect_register,
             repeat,
@@ -1162,6 +1167,7 @@ fn main() {
                 memory_address,
                 memory_length,
                 vm_index,
+                vcpu,
                 set_register,
                 expect_register,
                 repeat,
@@ -1260,6 +1266,7 @@ struct RestoreProbeOptions {
     memory_address: u64,
     memory_length: usize,
     vm_index: usize,
+    vcpu: usize,
     set_register: Option<String>,
     expect_register: Option<String>,
     repeat: u64,
@@ -1279,6 +1286,7 @@ fn cmd_restore_probe(
         memory_address,
         memory_length,
         vm_index,
+        vcpu,
         set_register,
         expect_register,
         repeat,
@@ -1323,6 +1331,7 @@ fn cmd_restore_probe(
             memory_address,
             memory_length,
             vm_index,
+            vcpu,
             parsed_register,
             expected_register,
         }) {
@@ -1438,6 +1447,7 @@ struct ProbeRunRequest<'a> {
     memory_address: u64,
     memory_length: usize,
     vm_index: usize,
+    vcpu: usize,
     parsed_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
     expected_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
 }
@@ -1451,6 +1461,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         memory_address,
         memory_length,
         vm_index,
+        vcpu,
         parsed_register,
         expected_register,
     } = request;
@@ -1512,7 +1523,13 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
             .vm_slot_mut(vm_index)
             .expect("vm index checked against num_vms");
         // r[impl chaoscontrol.agent_investigation.restore_intervention]
-        let mut state = match slot.vm.read_vcpu_registers(0) {
+        if vcpu >= slot.vm.vcpu_count() {
+            return Err(format!(
+                "vcpu {vcpu} is out of range for VM {vm_index} ({} vCPUs)",
+                slot.vm.vcpu_count()
+            ));
+        }
+        let mut state = match slot.vm.read_vcpu_registers(vcpu) {
             Ok(state) => state,
             Err(error) => {
                 eprintln!("Error: {error}");
@@ -1540,7 +1557,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
             ProbeRegister::R15 => state.r15 = value,
             ProbeRegister::Rflags => state.rflags = value,
         }
-        if let Err(error) = slot.vm.set_vcpu_registers(0, &state) {
+        if let Err(error) = slot.vm.set_vcpu_registers(vcpu, &state) {
             return Err(error.to_string());
         }
         interventions.push(serde_json::json!({
@@ -1619,10 +1636,28 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
                 "error": error.to_string(),
             }),
         };
+        // r[impl chaoscontrol.agent_investigation.restore_smp_observations]
+        let mut vcpu_states = Vec::new();
+        for vcpu_index in 0..slot.vm.vcpu_count() {
+            let state = match slot.vm.read_vcpu_registers(vcpu_index) {
+                Ok(registers) => serde_json::json!({
+                    "rip": registers.rip,
+                    "rsp": registers.rsp,
+                    "rflags": registers.rflags,
+                    "rax": registers.rax,
+                    "rbx": registers.rbx,
+                    "rcx": registers.rcx,
+                    "rdx": registers.rdx,
+                }),
+                Err(error) => serde_json::json!({ "error": error.to_string() }),
+            };
+            vcpu_states.push(serde_json::json!({ "index": vcpu_index, "registers": state }));
+        }
         vms.push(serde_json::json!({
             "index": index,
             "status": format!("{:?}", slot.status),
             "mp_states": slot.vm.vcpu_mp_states(),
+            "vcpus": vcpu_states,
             "registers": registers,
             "memory_probe": memory_probe,
         }));
@@ -1634,7 +1669,12 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
             eprintln!("Error: vm index {vm_index} is out of range");
             std::process::exit(1);
         }
-        let actual = match controller.vm(vm_index).read_vcpu_registers(0) {
+        let selected_vm = controller.vm(vm_index);
+        if vcpu >= selected_vm.vcpu_count() {
+            eprintln!("Error: vcpu {vcpu} is out of range for VM {vm_index}");
+            std::process::exit(1);
+        }
+        let actual = match selected_vm.read_vcpu_registers(vcpu) {
             Ok(state) => match register {
                 chaoscontrol_explore::ProbeRegister::Rip => state.rip,
                 chaoscontrol_explore::ProbeRegister::Rsp => state.rsp,
@@ -1663,6 +1703,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         expectation_failed = actual != expected;
         expectation = serde_json::json!({
             "vm_index": vm_index,
+            "vcpu": vcpu,
             "register": format!("{register:?}").to_lowercase(),
             "expected": expected,
             "actual": actual,

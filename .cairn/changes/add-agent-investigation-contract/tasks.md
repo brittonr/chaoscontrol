@@ -20,6 +20,7 @@
 - [x] [serial] Repeat a probe and report round/VM/tick trace drift. r[chaoscontrol.agent_investigation.restore_repeat_drift]
 - [x] [serial] Emit a digest-bound candidate-validation receipt. r[chaoscontrol.agent_investigation.restore_candidate_receipt]
 - [x] [serial] Name the first differing tick, round, or VM observation in drift reports. r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
+- [x] [serial] Expose per-vCPU state and select the vCPU for register intervention and expectation. r[chaoscontrol.agent_investigation.restore_smp_observations]
 - [x] [serial] Preflight the decoded snapshot VM count against the declared topology before restore. r[chaoscontrol.agent_investigation.restore_shape_preflight]
 - [x] [serial] Add explicit bounded memory-probe address/length arguments with overflow checks. r[chaoscontrol.agent_investigation.restore_probe_memory_window]
 - [x] [serial] Apply an explicit typed register intervention to one restored VM and record it as counterfactual. r[chaoscontrol.agent_investigation.restore_intervention]

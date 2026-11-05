@@ -4,6 +4,7 @@ exclude = [
     "crates/chaoscontrol-vmm/fuzz",
     "tools/tar-codec-differential",
     "tools/guest-admission-model",
+    "tools/counter-time-model",
 ]
 members = [
     "crates/chaoscontrol-protocol",

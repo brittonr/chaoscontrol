@@ -1,0 +1,10 @@
+[package]
+name = "counter-time-model"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Detached model for the progress-based TSC evaluation in
+# .cairn/changes/evaluate-progress-based-tsc-clock. Not a product dependency; the
+# runtime mode stays gated on harden-pmu-transition-evidence.
+[workspace]

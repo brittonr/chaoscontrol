@@ -138,6 +138,8 @@ fault-cover experiment, its independent checker, and the no-go decision for an
 operator surface while branch-local outcomes remain unverified.
 [`docs/guest-seccomp-evaluation.md`](docs/guest-seccomp-evaluation.md) records the
 gated evaluation of uid-map and syscall admission for lowered OCI bundles.
+[`docs/counter-time-model.md`](docs/counter-time-model.md) records the
+model-level per-exit versus counter-time evaluation behind the gated TSC design.
 
 ## Features
 

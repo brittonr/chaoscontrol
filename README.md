@@ -476,6 +476,11 @@ cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
 # Bind admission to an exact session digest before reading snapshots.
 cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
   --checkpoint results/checkpoint.json --expected-digest b3:<digest>
+
+# Bind one failure to a stable read-only moment reference. A supplied --tick must
+# equal the recorded failure tick; a present snapshot reference is validated.
+cargo run --release --bin chaoscontrol-explore -- bind-moment \
+  --checkpoint results/checkpoint.json --dedup-key <u64> --tick <recorded-tick>
 ```
 
 Output directory contains:

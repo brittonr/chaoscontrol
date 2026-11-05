@@ -132,3 +132,26 @@ distinct typed failure, not a warning, and MUST NOT fall back to the actual dige
 - GIVEN an expected digest that differs from the checkpoint bytes
 - WHEN admission runs
 - THEN it fails with a digest-mismatch error before reading snapshots
+
+
+### Requirement: A failure moment has a stable read-only reference
+
+r[chaoscontrol.agent_investigation.moment_reference]
+
+A moment-reference operation MUST bind the checkpoint BLAKE3 digest, checkpoint
+index and artifact name, bug/assertion identity, dedup key, recorded failure tick,
+replay parent depth, and the snapshot digest when a reference is present. A supplied
+tick MUST equal the recorded failure tick or fail with a distinct error. A present
+snapshot reference MUST be validated (digest and depth) before the digest is
+reported. The record MUST state that it is not replay evidence and that the tick is
+the recorded failure tick, not an arbitrary seek position.
+
+#### Scenario: Stable reference
+- GIVEN a valid checkpoint bug
+- WHEN a moment reference is requested
+- THEN the session digest, bug identity, tick, and optional snapshot digest are returned together
+
+#### Scenario: Tick mismatch
+- GIVEN a requested tick different from the stored failure tick
+- WHEN the reference is requested
+- THEN it fails with a typed tick-mismatch error

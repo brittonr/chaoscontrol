@@ -1272,6 +1272,9 @@ pub enum CheckpointBugExportError {
 
     #[snafu(display("checkpoint digest mismatch: expected {expected}, got {actual}"))]
     CheckpointDigestMismatch { expected: String, actual: String },
+
+    #[snafu(display("requested tick {requested} differs from the failure tick {actual}"))]
+    MomentTickMismatch { requested: u64, actual: u64 },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1570,6 +1573,75 @@ pub fn verify_checkpoint_with_digest<P: AsRef<Path>>(
             "Admission proves structural validity and referenced snapshot digests only.",
             "A valid checkpoint is not replay evidence, an accepted verdict, or workload proof.",
             "Missing or invalid snapshot artifacts fail admission rather than being repaired.",
+        ],
+    })
+}
+
+/// Stable read-only reference to one failure moment within one retained session.
+/// It binds the checkpoint digest and bug identity to the recorded tick and
+/// snapshot reference; it is not replay evidence.
+#[derive(Debug, Clone, Serialize)]
+pub struct MomentReference {
+    pub schema: &'static str,
+    pub checkpoint_digest: String,
+    pub checkpoint_index: usize,
+    pub artifact: String,
+    pub bug_id: u64,
+    pub assertion_id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dedup_key: Option<u64>,
+    pub tick: u64,
+    pub replay_parent_depth: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_digest: Option<String>,
+    pub has_assertion_identity: bool,
+    pub non_claims: Vec<&'static str>,
+}
+
+// r[impl chaoscontrol.agent_investigation.moment_reference]
+pub fn bind_moment<P: AsRef<Path>>(
+    checkpoint_path: P,
+    selector: BugSelector,
+    requested_tick: Option<u64>,
+) -> Result<MomentReference, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
+    let bytes = crate::bounded_json::read_checkpoint(checkpoint_path)?;
+    let checkpoint_digest = format!("b3:{}", blake3::hash(bytes.as_bytes()).to_hex());
+    let inspection = inspect_bug(checkpoint_path, selector)?;
+    if let Some(requested) = requested_tick {
+        if requested != inspection.bug.tick {
+            return Err(CheckpointBugExportError::MomentTickMismatch {
+                requested,
+                actual: inspection.bug.tick,
+            });
+        }
+    }
+    let snapshot_digest = match inspection.bug.replay_parent_snapshot_ref.as_ref() {
+        Some(reference) => {
+            let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
+            FileSnapshotStore::new(source_dir)
+                .get_snapshot_artifact(reference)
+                .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
+            Some(reference.digest.clone())
+        }
+        None => None,
+    };
+    Ok(MomentReference {
+        schema: "chaoscontrol.moment_reference.v1",
+        checkpoint_digest,
+        checkpoint_index: inspection.checkpoint_index,
+        artifact: inspection.artifact,
+        bug_id: inspection.bug.bug_id,
+        assertion_id: inspection.bug.assertion_id,
+        dedup_key: inspection.bug.dedup_key,
+        tick: inspection.bug.tick,
+        replay_parent_depth: inspection.bug.replay_parent_depth,
+        snapshot_digest,
+        has_assertion_identity: inspection.bug.assertion_identity.is_some(),
+        non_claims: vec![
+            "A moment reference identifies recorded evidence; it is not replay evidence.",
+            "A verified snapshot digest does not prove admissibility or reproducibility.",
+            "The tick is the recorded failure tick, not an arbitrary seek position.",
         ],
     })
 }
@@ -3242,6 +3314,47 @@ mod tests {
         assert_eq!(verification.snapshots_validated, 0);
         assert_eq!(verification.issues.len(), 1);
         assert_eq!(verification.issues[0].bug_id, 1);
+    }
+
+    #[test]
+    fn bind_moment_refs_a_stable_tick_and_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut bug = minimal_bug(1);
+        bug.tick = 4242;
+        save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();
+        let moment = bind_moment(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+            Some(4242),
+        )
+        .unwrap();
+        assert_eq!(moment.schema, "chaoscontrol.moment_reference.v1");
+        assert_eq!(moment.tick, 4242);
+        assert_eq!(moment.checkpoint_index, 0);
+        assert_eq!(moment.artifact, "bug_0.json");
+        assert!(moment.checkpoint_digest.starts_with("b3:"));
+        assert_eq!(moment.snapshot_digest, None);
+
+        let mismatch = bind_moment(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+            Some(1),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            mismatch,
+            CheckpointBugExportError::MomentTickMismatch {
+                requested: 1,
+                actual: 4242
+            }
+        ));
     }
 
     #[test]

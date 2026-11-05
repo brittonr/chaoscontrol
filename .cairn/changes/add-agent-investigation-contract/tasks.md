@@ -5,6 +5,7 @@
 - [x] [serial] Verify focused tests, formatting, and denied-warning Clippy for the touched crates. r[chaoscontrol.agent_investigation.export_by_dedup_key]
 - [x] [serial] Add a noninteractive checkpoint bug listing with stable records and assertion/dedup/tick filters. r[chaoscontrol.agent_investigation.locate_bugs]
 - [x] [serial] Add single-failure read-only JSON inspection selected by checkpoint index or dedup key. r[chaoscontrol.agent_investigation.inspect_bug]
+- [x] [serial] Bind a failure to a stable read-only moment reference (checkpoint digest, bug identity, recorded tick, snapshot digest). r[chaoscontrol.agent_investigation.moment_reference]
 - [x] [serial] Add versioned checkpoint admission that validates structure and unique referenced snapshot artifacts with a fail-closed verdict. r[chaoscontrol.agent_investigation.verify_checkpoint]
 - [x] [serial] Bind admission to an expected BLAKE3 session digest with a typed mismatch failure. r[chaoscontrol.agent_investigation.session_digest_binding]
 - [ ] [serial] Read-only investigation MVP: admit a retained session in a fresh process and expose locate/seek/inspect through versioned JSON requests. r[chaoscontrol.agent_investigation.bug_event_reference]

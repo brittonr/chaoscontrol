@@ -722,6 +722,29 @@ enum Commands {
     },
 
     /// Validate a retained checkpoint and its referenced snapshot artifacts.
+    /// Bind one checkpoint-held failure to a stable read-only moment reference.
+    BindMoment {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Checkpoint bug index (matches bug_N.json).
+        #[arg(long, conflicts_with = "dedup_key")]
+        index: Option<usize>,
+
+        /// Stored failure dedup key.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+
+        /// Require this recorded failure tick.
+        #[arg(long)]
+        tick: Option<u64>,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     VerifyCheckpoint {
         /// Path to checkpoint.json.
         #[arg(short, long)]
@@ -986,6 +1009,18 @@ fn main() {
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
         ),
+        Commands::BindMoment {
+            checkpoint,
+            index,
+            dedup_key,
+            tick,
+            output,
+        } => cmd_bind_moment(
+            checkpoint,
+            output,
+            chaoscontrol_explore::BugSelector { index, dedup_key },
+            tick,
+        ),
         Commands::VerifyCheckpoint {
             checkpoint,
             expected_digest,
@@ -1043,6 +1078,44 @@ fn main() {
             memory_mb,
             output,
         ),
+    }
+}
+
+fn cmd_bind_moment(
+    checkpoint: String,
+    output: Option<String>,
+    selector: chaoscontrol_explore::BugSelector,
+    tick: Option<u64>,
+) {
+    let checkpoint_path = Path::new(&checkpoint);
+    if !checkpoint_path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint);
+        std::process::exit(1);
+    }
+    let moment = match chaoscontrol_explore::bind_moment(checkpoint_path, selector, tick) {
+        Ok(moment) => moment,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut json = match serde_json::to_string_pretty(&moment) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!("Wrote moment reference to {}", path);
+        }
+        None => print!("{json}"),
     }
 }
 

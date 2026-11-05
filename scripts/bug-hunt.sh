@@ -105,9 +105,9 @@ for bug in "${BUGS[@]}"; do
     END_TIME=$(date +%s)
     ELAPSED=$((END_TIME - START_TIME))
 
-    # The explorer exits 1 both when it reports bugs and when it fails.
-    # Only a completed run writes report.txt, so an exit of 1 without a
-    # report is an explorer error, not a found bug.
+    # Explorer statuses: 0 clean, 1 bugs found, 2 operational failure,
+    # 3 assertion floor. Older binaries exited 1 on failure too, so keep the
+    # report-presence check as a compatibility fallback.
     if [ $EXIT_CODE -eq 1 ] && [ -f "$OUTDIR/report.txt" ]; then
         BUG_COUNT=$(grep -m1 "Bugs discovered:" "$OUTDIR/report.txt" | awk '{print $NF}')
         RESULTS[$bug]="FOUND (${BUG_COUNT:-?} bugs)"

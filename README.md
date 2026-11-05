@@ -557,6 +557,10 @@ cargo run --release --bin chaoscontrol-explore -- validate-candidate \
 `restore-probe --serial-bytes N` adds a bounded (0-4096) per-VM serial tail;
 `--repeat` compares the full per-vCPU observations plus round, tick, and serial state.
 
+Exploration commands use stable exit statuses: `0` clean, `1` bugs found,
+`2` operational failure, `3` assertion-exercise floor failure. `reproduce` keeps its
+separate verdict contract.
+
 Output directory contains:
 - `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history

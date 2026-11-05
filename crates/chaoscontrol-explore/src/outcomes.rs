@@ -19,7 +19,7 @@ pub enum ExplorerOutcome {
 
 impl ExplorerOutcome {
     /// Stable process exit status.
-    pub fn exit_status(self) -> i32 {
+    pub const fn exit_status(self) -> i32 {
         match self {
             Self::Clean => 0,
             Self::BugsFound => 1,

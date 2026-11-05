@@ -76,7 +76,9 @@ use std::fs;
 use std::path::Path;
 use std::str::FromStr;
 
-const EXIT_ERROR: i32 = 1;
+const EXIT_ERROR: i32 = chaoscontrol_explore::outcomes::ExplorerOutcome::Failure.exit_status();
+const EXIT_BUGS_FOUND: i32 =
+    chaoscontrol_explore::outcomes::ExplorerOutcome::BugsFound.exit_status();
 const ENABLED_SCHEDULE_MUTATION_RATIO: f64 = 1.0;
 
 fn mutation_config(schedule_diversity: bool, quantum: u64) -> MutationConfig {
@@ -2596,7 +2598,7 @@ fn cmd_export_bugs(
     let checkpoint_path = Path::new(&checkpoint);
     if !checkpoint_path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     let output_dir = output.unwrap_or_else(|| {
@@ -2622,7 +2624,7 @@ fn cmd_export_bugs(
         }
         Err(e) => {
             eprintln!("Error: failed to export checkpoint bugs: {}", e);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 }
@@ -2674,7 +2676,7 @@ fn cmd_run(
         let family = chaoscontrol_fault::scenario::ScenarioFamily::from_str_loose(&name)
             .unwrap_or_else(|| {
                 eprintln!("Error: unknown scenario family '{}'. Available: network-ring, volatile-write-ring, degraded-io-ring", name);
-                std::process::exit(1);
+                std::process::exit(EXIT_ERROR);
             });
         chaoscontrol_fault::scenario::ScenarioConfig::new(family, vms, scenario_phase_ticks, scenario_turns)
     });
@@ -2685,27 +2687,27 @@ fn cmd_run(
             "Error: {}",
             chaoscontrol_explore::explorer::ExploreError::LegacyDiagnosticWithoutOutput
         );
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
     if !frontier_policy.is_legacy_diagnostic() {
         admit_committed_campaign_cutover();
     }
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     if let Some(ref initrd_path) = initrd {
         if !Path::new(initrd_path).exists() {
             eprintln!("Error: initrd file not found: {}", initrd_path);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 
     if let Some(ref disk_image_path) = disk_image {
         if !Path::new(disk_image_path).exists() {
             eprintln!("Error: disk image file not found: {}", disk_image_path);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 
@@ -2713,7 +2715,7 @@ fn cmd_run(
     if let Some(ref output_dir) = output {
         if let Err(e) = fs::create_dir_all(output_dir) {
             eprintln!("Error: failed to create output directory: {}", e);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 
@@ -2722,7 +2724,7 @@ fn cmd_run(
     let estimated_mb = vms * vm_memory_mb;
     if let Err(e) = chaoscontrol_explore::memory::check_memory(estimated_mb, strict_memory) {
         eprintln!("Error: {}", e);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     // Parse scheduling strategy
@@ -2737,7 +2739,7 @@ fn cmd_run(
                 "Error: unknown scheduling strategy '{}'. Use 'round-robin' or 'randomized'.",
                 other
             );
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -2751,7 +2753,7 @@ fn cmd_run(
                 "Error: unknown exploration mode '{}'. Use 'fault-schedule', 'input-tree', or 'hybrid'.",
                 other
             );
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -2888,7 +2890,7 @@ fn cmd_run(
         Err(e) => {
             eprintln!();
             eprintln!("Exploration failed: {e:?}");
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -2952,9 +2954,9 @@ fn cmd_run(
         std::process::exit(3);
     }
 
-    // Exit with error code if bugs found
+    // Exit with the bugs-found status when findings exist.
     if !report.bugs.is_empty() {
-        std::process::exit(1);
+        std::process::exit(EXIT_BUGS_FOUND);
     }
 }
 
@@ -3023,7 +3025,7 @@ fn cmd_campaign(
         let family = chaoscontrol_fault::scenario::ScenarioFamily::from_str_loose(&name)
             .unwrap_or_else(|| {
                 eprintln!("Error: unknown scenario family '{}'. Available: network-ring, volatile-write-ring, degraded-io-ring", name);
-                std::process::exit(1);
+                std::process::exit(EXIT_ERROR);
             });
         chaoscontrol_fault::scenario::ScenarioConfig::new(family, vms, scenario_phase_ticks, scenario_turns)
     });
@@ -3043,20 +3045,20 @@ fn cmd_campaign(
     // Validate inputs
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     if let Some(ref initrd_path) = initrd {
         if !Path::new(initrd_path).exists() {
             eprintln!("Error: initrd file not found: {}", initrd_path);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 
     if let Some(ref disk_image_path) = disk_image {
         if !Path::new(disk_image_path).exists() {
             eprintln!("Error: disk image file not found: {}", disk_image_path);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 
@@ -3085,7 +3087,7 @@ fn cmd_campaign(
     let estimated_mb = seed_list_len * vms * vm_memory_mb;
     if let Err(e) = chaoscontrol_explore::memory::check_memory(estimated_mb, strict_memory) {
         eprintln!("Error: {}", e);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     let scheduling_strategy = match scheduling.as_str() {
@@ -3096,7 +3098,7 @@ fn cmd_campaign(
         },
         other => {
             eprintln!("Error: unknown scheduling strategy: {}", other);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -3106,7 +3108,7 @@ fn cmd_campaign(
         "hybrid" => ExplorationMode::Hybrid,
         other => {
             eprintln!("Error: unknown exploration mode: {}", other);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -3219,7 +3221,7 @@ fn cmd_campaign(
 
             // Exit code: 0 = bugs found, 1 = no bugs
             if report.bugs.is_empty() {
-                std::process::exit(1);
+                std::process::exit(EXIT_ERROR);
             }
         }
         Err(e) => {
@@ -3443,7 +3445,7 @@ fn cmd_campaign_resume(
 ) {
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: campaign directory not found: {}", corpus);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     let progress = match load_campaign_progress(&corpus) {
@@ -3453,7 +3455,7 @@ fn cmd_campaign_resume(
                 "Error: failed to load campaign_progress.json from {}: {}",
                 corpus, e
             );
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -3591,7 +3593,7 @@ fn cmd_campaign_resume(
             Ok(policy) => policy,
             Err(error) => {
                 eprintln!("Error: {error}");
-                std::process::exit(1);
+                std::process::exit(EXIT_ERROR);
             }
         };
     eprintln!(
@@ -3658,7 +3660,7 @@ fn cmd_campaign_resume(
                 std::process::exit(EXIT_ERROR);
             }
             if prepared.bugs.is_empty() {
-                std::process::exit(1);
+                std::process::exit(EXIT_ERROR);
             }
         }
         Err(e) => {
@@ -3692,7 +3694,7 @@ fn cmd_resume(
     // Validate corpus directory exists
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: corpus directory not found: {}", corpus);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     // Load checkpoint
@@ -3700,14 +3702,14 @@ fn cmd_resume(
     if !Path::new(&checkpoint_path).exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
         eprintln!("Expected: {}", checkpoint_path);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     let mut checkpoint = match load_checkpoint(&checkpoint_path) {
         Ok(cp) => cp,
         Err(e) => {
             eprintln!("Error: failed to load checkpoint: {}", e);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
     checkpoint.config.frontier_policy =
@@ -3715,7 +3717,7 @@ fn cmd_resume(
             Ok(policy) => policy,
             Err(error) => {
                 eprintln!("Error: {error}");
-                std::process::exit(1);
+                std::process::exit(EXIT_ERROR);
             }
         };
 
@@ -3730,13 +3732,13 @@ fn cmd_resume(
     // Validate kernel/initrd paths
     if !Path::new(&kernel_path).exists() {
         eprintln!("Error: kernel file not found: {}", kernel_path);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     if let Some(ref initrd) = initrd_path {
         if !Path::new(initrd).exists() {
             eprintln!("Error: initrd file not found: {}", initrd);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     }
 
@@ -3751,7 +3753,7 @@ fn cmd_resume(
             checkpoint.rounds_completed, max_rounds
         );
         eprintln!("Use --rounds to increase the round limit");
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -3831,7 +3833,7 @@ fn cmd_resume(
         Err(e) => {
             eprintln!();
             eprintln!("Exploration failed: {e:?}");
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -3855,9 +3857,9 @@ fn cmd_resume(
         std::process::exit(EXIT_ERROR);
     }
 
-    // Exit with error code if bugs found
+    // Exit with the bugs-found status when findings exist.
     if !report.bugs.is_empty() {
-        std::process::exit(1);
+        std::process::exit(EXIT_BUGS_FOUND);
     }
 }
 
@@ -3955,11 +3957,11 @@ fn cmd_minimize(
     // Validate inputs
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
     if !Path::new(&bug_path).exists() {
         eprintln!("Error: bug file not found: {}", bug_path);
-        std::process::exit(1);
+        std::process::exit(EXIT_ERROR);
     }
 
     // Load the untrusted bug carrier with bounded regular-file handling.
@@ -3989,7 +3991,7 @@ fn cmd_minimize(
         },
         other => {
             eprintln!("Error: unknown scheduling strategy '{}'", other);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 
@@ -4048,7 +4050,7 @@ fn cmd_minimize(
         Ok(r) => r,
         Err(e) => {
             eprintln!("Minimization failed: {}", e);
-            std::process::exit(1);
+            std::process::exit(EXIT_ERROR);
         }
     };
 

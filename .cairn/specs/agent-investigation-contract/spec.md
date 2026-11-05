@@ -177,3 +177,24 @@ nearest checkpoint is replayable.
 - GIVEN a tick before any checkpoint
 - WHEN debug runs with JSON output
 - THEN the nearest checkpoint is null and the rest of the bounded record is still returned
+
+### Requirement: Admission distinguishes structural from snapshot validation
+
+r[chaoscontrol.agent_investigation.admission_modes]
+
+Admission MUST expose a structure-only mode that validates the checkpoint record and
+bug set without reading snapshot artifacts, and MUST report the mode, whether
+snapshots were checked, the referenced/validated counts, and mode-specific
+non-claims. Full mode MUST retain snapshot digest/depth validation and fail closed.
+Structure-only success MUST NOT be presented as snapshot admission or replay
+evidence.
+
+#### Scenario: Structure-only with absent artifacts
+- GIVEN a checkpoint whose snapshot artifact is absent
+- WHEN structure-only admission runs
+- THEN it succeeds with `snapshots_checked: false` and no snapshot issues
+
+#### Scenario: Full admission still fails
+- GIVEN the same checkpoint
+- WHEN full admission runs
+- THEN it reports the missing artifact and an invalid verdict

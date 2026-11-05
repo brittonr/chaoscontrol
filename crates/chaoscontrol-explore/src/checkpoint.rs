@@ -1482,15 +1482,27 @@ pub struct CheckpointVerificationIssue {
     pub reason: String,
 }
 
+/// Admission depth. Structure-only admits the checkpoint record without reading
+/// snapshot artifacts, which is useful when only the failure index is local.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckpointAdmissionMode {
+    Full,
+    StructureOnly,
+}
+
 /// Versioned integrity record for a retained checkpoint. It proves structural
-/// admission and referenced snapshot digests only; it is not a replay verdict.
+/// admission and, in full mode, referenced snapshot digests; it is not a replay
+/// verdict.
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckpointVerification {
     pub schema: &'static str,
+    pub mode: CheckpointAdmissionMode,
     pub checkpoint_digest: String,
     pub bugs_total: usize,
     pub bugs_with_snapshot_ref: usize,
     pub snapshots_validated: usize,
+    pub snapshots_checked: bool,
     pub issues: Vec<CheckpointVerificationIssue>,
     pub valid: bool,
     pub non_claims: Vec<&'static str>,
@@ -1500,13 +1512,26 @@ pub struct CheckpointVerification {
 pub fn verify_checkpoint<P: AsRef<Path>>(
     checkpoint_path: P,
 ) -> Result<CheckpointVerification, CheckpointBugExportError> {
-    verify_checkpoint_with_digest(checkpoint_path, None)
+    verify_checkpoint_with_options(checkpoint_path, None, CheckpointAdmissionMode::Full)
 }
 
 // r[impl chaoscontrol.agent_investigation.session_digest_binding]
 pub fn verify_checkpoint_with_digest<P: AsRef<Path>>(
     checkpoint_path: P,
     expected_digest: Option<&str>,
+) -> Result<CheckpointVerification, CheckpointBugExportError> {
+    verify_checkpoint_with_options(
+        checkpoint_path,
+        expected_digest,
+        CheckpointAdmissionMode::Full,
+    )
+}
+
+// r[impl chaoscontrol.agent_investigation.admission_modes]
+pub fn verify_checkpoint_with_options<P: AsRef<Path>>(
+    checkpoint_path: P,
+    expected_digest: Option<&str>,
+    mode: CheckpointAdmissionMode,
 ) -> Result<CheckpointVerification, CheckpointBugExportError> {
     let checkpoint_path = checkpoint_path.as_ref();
     let bytes = crate::bounded_json::read_checkpoint(checkpoint_path)?;
@@ -1531,6 +1556,12 @@ pub fn verify_checkpoint_with_digest<P: AsRef<Path>>(
     let mut artifacts: std::collections::HashMap<&str, Result<u32, String>> =
         std::collections::HashMap::new();
     for (index, bug) in checkpoint.bugs.iter().enumerate() {
+        if mode == CheckpointAdmissionMode::StructureOnly {
+            if bug.replay_parent_snapshot_ref.is_some() {
+                bugs_with_snapshot_ref += 1;
+            }
+            continue;
+        }
         let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() else {
             continue;
         };
@@ -1561,19 +1592,29 @@ pub fn verify_checkpoint_with_digest<P: AsRef<Path>>(
         }
     }
 
+    let non_claims = if mode == CheckpointAdmissionMode::Full {
+        vec![
+            "Admission proves structural validity and referenced snapshot digests only.",
+            "A valid checkpoint is not replay evidence, an accepted verdict, or workload proof.",
+            "Missing or invalid snapshot artifacts fail admission rather than being repaired.",
+        ]
+    } else {
+        vec![
+            "Structure-only admission does not read or validate snapshot artifacts.",
+            "A structurally valid checkpoint is not replay evidence, an accepted verdict, or workload proof.",
+        ]
+    };
     Ok(CheckpointVerification {
         schema: "chaoscontrol.checkpoint_verification.v1",
+        mode,
         checkpoint_digest,
         bugs_total: checkpoint.bugs.len(),
         bugs_with_snapshot_ref,
         snapshots_validated,
+        snapshots_checked: mode == CheckpointAdmissionMode::Full,
         valid: issues.is_empty(),
         issues,
-        non_claims: vec![
-            "Admission proves structural validity and referenced snapshot digests only.",
-            "A valid checkpoint is not replay evidence, an accepted verdict, or workload proof.",
-            "Missing or invalid snapshot artifacts fail admission rather than being repaired.",
-        ],
+        non_claims,
     })
 }
 
@@ -3268,6 +3309,39 @@ mod tests {
         assert_eq!(verification.snapshots_validated, 0);
         assert!(verification.checkpoint_digest.starts_with("b3:"));
         assert!(!verification.non_claims.is_empty());
+    }
+
+    #[test]
+    fn structure_only_admission_skips_snapshot_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut bug = minimal_bug(1);
+        bug.replay_parent_depth = 1;
+        bug.replay_parent_snapshot_ref = Some(ReplayParentSnapshotRef {
+            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            digest: format!("sha256:{}", "0".repeat(64)),
+            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            schema_version: 2,
+            path: format!("snapshots/{}.snapshot.bin", "0".repeat(64)),
+        });
+        save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();
+
+        let structure = verify_checkpoint_with_options(
+            &checkpoint_path,
+            None,
+            CheckpointAdmissionMode::StructureOnly,
+        )
+        .unwrap();
+        assert!(structure.valid);
+        assert_eq!(structure.mode, CheckpointAdmissionMode::StructureOnly);
+        assert!(!structure.snapshots_checked);
+        assert_eq!(structure.bugs_with_snapshot_ref, 1);
+        assert_eq!(structure.snapshots_validated, 0);
+
+        let full = verify_checkpoint(&checkpoint_path).unwrap();
+        assert!(!full.valid);
+        assert!(full.snapshots_checked);
+        assert_eq!(full.issues.len(), 1);
     }
 
     #[test]

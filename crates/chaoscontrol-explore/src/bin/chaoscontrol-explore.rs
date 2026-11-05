@@ -754,6 +754,10 @@ enum Commands {
         #[arg(long)]
         expected_digest: Option<String>,
 
+        /// Validate structure only; do not read snapshot artifacts.
+        #[arg(long)]
+        structure_only: bool,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1024,8 +1028,9 @@ fn main() {
         Commands::VerifyCheckpoint {
             checkpoint,
             expected_digest,
+            structure_only,
             output,
-        } => cmd_verify_checkpoint(checkpoint, expected_digest, output),
+        } => cmd_verify_checkpoint(checkpoint, expected_digest, structure_only, output),
         Commands::Resume {
             corpus,
             kernel,
@@ -1122,6 +1127,7 @@ fn cmd_bind_moment(
 fn cmd_verify_checkpoint(
     checkpoint: String,
     expected_digest: Option<String>,
+    structure_only: bool,
     output: Option<String>,
 ) {
     let checkpoint_path = Path::new(&checkpoint);
@@ -1129,9 +1135,15 @@ fn cmd_verify_checkpoint(
         eprintln!("Error: checkpoint file not found: {}", checkpoint);
         std::process::exit(1);
     }
-    let verification = match chaoscontrol_explore::verify_checkpoint_with_digest(
+    let mode = if structure_only {
+        chaoscontrol_explore::CheckpointAdmissionMode::StructureOnly
+    } else {
+        chaoscontrol_explore::CheckpointAdmissionMode::Full
+    };
+    let verification = match chaoscontrol_explore::verify_checkpoint_with_options(
         checkpoint_path,
         expected_digest.as_deref(),
+        mode,
     ) {
         Ok(verification) => verification,
         Err(error) => {

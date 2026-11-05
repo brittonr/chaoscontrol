@@ -477,6 +477,11 @@ cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
 cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
   --checkpoint results/checkpoint.json --expected-digest b3:<digest>
 
+# Structure-only admission when snapshot artifacts are not local. This reports
+# snapshots_checked=false and is not snapshot admission or replay evidence.
+cargo run --release --bin chaoscontrol-explore -- verify-checkpoint \
+  --checkpoint results/checkpoint.json --structure-only
+
 # Bind one failure to a stable read-only moment reference. A supplied --tick must
 # equal the recorded failure tick; a present snapshot reference is validated.
 cargo run --release --bin chaoscontrol-explore -- bind-moment \

@@ -7,7 +7,8 @@
 //! It does not prove the executable is trustworthy or that the output is correct.
 
 use chaoscontrol_protocol::diagnostic::{
-    admit, encode_request, DiagnosticError, DiagnosticRequest,
+    admit, encode_request, DiagnosticError, DiagnosticReceipt, DiagnosticReceiptStatus,
+    DiagnosticRequest,
 };
 use std::io::Read;
 use std::process::{Command, ExitStatus, Stdio};
@@ -33,6 +34,8 @@ pub enum DiagnosticStatus {
 pub struct DiagnosticOutcome {
     /// BLAKE3 identity of the canonical request encoding.
     pub request_digest: [u8; 32],
+    /// BLAKE3 identity of the executed file.
+    pub executable: [u8; 32],
     /// Termination class.
     pub status: DiagnosticStatus,
     /// Exit code when the process reported one.
@@ -166,6 +169,7 @@ pub fn run_diagnostic(
     let (stderr_bytes, stderr_truncated) = stderr_reader.join().unwrap_or_default();
     Ok(DiagnosticOutcome {
         request_digest,
+        executable: request.executable,
         status: if timed_out {
             DiagnosticStatus::TimedOut
         } else {
@@ -180,9 +184,31 @@ pub fn run_diagnostic(
     })
 }
 
+impl DiagnosticOutcome {
+    /// Build the canonical receipt binding for this outcome.
+    pub fn receipt(&self) -> DiagnosticReceipt {
+        DiagnosticReceipt {
+            version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_RECEIPT_VERSION,
+            request_digest: self.request_digest,
+            executable: self.executable,
+            status: match self.status {
+                DiagnosticStatus::Completed => DiagnosticReceiptStatus::Completed,
+                DiagnosticStatus::TimedOut => DiagnosticReceiptStatus::TimedOut,
+            },
+            exit_code: self.exit_code,
+            truncated: self.truncated,
+            stdout_bytes: self.stdout_bytes as u32,
+            stdout_digest: self.stdout_digest,
+            stderr_bytes: self.stderr_bytes as u32,
+            stderr_digest: self.stderr_digest,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chaoscontrol_protocol::diagnostic::encode_receipt;
 
     fn request_for(path: &std::path::Path, argv: &[&str], timeout_ms: u32) -> DiagnosticRequest {
         let bytes = std::fs::read(path).unwrap();
@@ -207,6 +233,14 @@ mod tests {
         assert_eq!(outcome.stdout_bytes, 6);
         assert_eq!(outcome.stdout_digest, *blake3::hash(b"hello\n").as_bytes());
         assert!(!outcome.truncated);
+        let receipt = outcome.receipt();
+        let encoded = encode_receipt(&receipt).unwrap();
+        assert_eq!(
+            chaoscontrol_protocol::diagnostic::decode_receipt(&encoded).unwrap(),
+            receipt
+        );
+        assert_eq!(receipt.request_digest, outcome.request_digest);
+        assert_eq!(receipt.executable, request.executable);
     }
 
     #[test]

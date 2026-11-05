@@ -20,6 +20,9 @@ pub const MAX_DIAGNOSTIC_ARG_BYTES: usize = 1024;
 /// Maximum encoded length of all arguments together.
 pub const MAX_DIAGNOSTIC_TOTAL_ARG_BYTES: usize = 4096;
 
+/// Largest captured byte count for each diagnostic output stream.
+pub const MAX_DIAGNOSTIC_CAPTURE_BYTES: usize = 64 * 1024;
+
 /// Largest admitted diagnostic timeout, in milliseconds.
 pub const MAX_DIAGNOSTIC_TIMEOUT_MS: u32 = 30_000;
 
@@ -212,6 +215,195 @@ pub fn decode_request(bytes: &[u8]) -> Result<DiagnosticRequest, DiagnosticError
     })
 }
 
+/// Version of the diagnostic receipt encoding.
+pub const DIAGNOSTIC_RECEIPT_VERSION: u16 = 1;
+
+/// Termination class recorded in a diagnostic receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticReceiptStatus {
+    /// The process exited before the timeout.
+    Completed = 0,
+    /// The timeout expired and the process was killed.
+    TimedOut = 1,
+}
+
+// r[impl chaoscontrol.guest_diagnostic.receipt_binding]
+/// Bounded receipt for one diagnostic execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagnosticReceipt {
+    /// Receipt encoding version.
+    pub version: u16,
+    /// BLAKE3 identity of the canonical request encoding.
+    pub request_digest: [u8; 32],
+    /// BLAKE3 identity of the executed file.
+    pub executable: [u8; 32],
+    /// Termination class.
+    pub status: DiagnosticReceiptStatus,
+    /// Exit code when the process reported one.
+    pub exit_code: Option<i32>,
+    /// Whether either captured stream exceeded its bound.
+    pub truncated: bool,
+    /// Captured stdout length.
+    pub stdout_bytes: u32,
+    /// BLAKE3 identity of captured stdout bytes.
+    pub stdout_digest: [u8; 32],
+    /// Captured stderr length.
+    pub stderr_bytes: u32,
+    /// BLAKE3 identity of captured stderr bytes.
+    pub stderr_digest: [u8; 32],
+}
+
+/// Reason a diagnostic receipt was rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticReceiptError {
+    /// The receipt version is not supported.
+    UnsupportedVersion {
+        /// Version found in the receipt.
+        found: u16,
+    },
+    /// The status byte is not a known class.
+    InvalidStatus {
+        /// Status byte found in the receipt.
+        found: u8,
+    },
+    /// The presence byte for the exit code is not 0 or 1.
+    InvalidExitPresence {
+        /// Byte found in the receipt.
+        found: u8,
+    },
+    /// The truncation byte is not 0 or 1.
+    InvalidTruncated {
+        /// Byte found in the receipt.
+        found: u8,
+    },
+    /// A captured output length exceeds the capture bound.
+    OutputTooLarge {
+        /// Length found in the receipt.
+        found: u32,
+    },
+    /// The encoding is truncated, malformed, or has trailing bytes.
+    MalformedEncoding,
+}
+
+fn validate_receipt(receipt: &DiagnosticReceipt) -> Result<(), DiagnosticReceiptError> {
+    if receipt.version != DIAGNOSTIC_RECEIPT_VERSION {
+        return Err(DiagnosticReceiptError::UnsupportedVersion {
+            found: receipt.version,
+        });
+    }
+    for found in [receipt.stdout_bytes, receipt.stderr_bytes] {
+        if found as usize > MAX_DIAGNOSTIC_CAPTURE_BYTES {
+            return Err(DiagnosticReceiptError::OutputTooLarge { found });
+        }
+    }
+    Ok(())
+}
+
+/// Encode one diagnostic receipt in canonical little-endian form.
+pub fn encode_receipt(receipt: &DiagnosticReceipt) -> Result<Vec<u8>, DiagnosticReceiptError> {
+    validate_receipt(receipt)?;
+    let mut encoded = Vec::with_capacity(1 + 1 + 32 + 32 + 1 + 1 + 4 + 1 + 4 + 32 + 4 + 32);
+    encoded.extend_from_slice(&receipt.version.to_le_bytes());
+    encoded.extend_from_slice(&receipt.request_digest);
+    encoded.extend_from_slice(&receipt.executable);
+    encoded.push(receipt.status as u8);
+    match receipt.exit_code {
+        Some(code) => {
+            encoded.push(1);
+            encoded.extend_from_slice(&code.to_le_bytes());
+        }
+        None => encoded.push(0),
+    }
+    encoded.push(u8::from(receipt.truncated));
+    encoded.extend_from_slice(&receipt.stdout_bytes.to_le_bytes());
+    encoded.extend_from_slice(&receipt.stdout_digest);
+    encoded.extend_from_slice(&receipt.stderr_bytes.to_le_bytes());
+    encoded.extend_from_slice(&receipt.stderr_digest);
+    Ok(encoded)
+}
+
+/// Decode and validate one diagnostic receipt from canonical bytes.
+pub fn decode_receipt(bytes: &[u8]) -> Result<DiagnosticReceipt, DiagnosticReceiptError> {
+    if bytes.len() > 2 + 32 + 32 + 1 + (1 + 4) + 1 + 4 + 32 + 4 + 32 {
+        return Err(DiagnosticReceiptError::MalformedEncoding);
+    }
+    let mut cursor = 0;
+    let read = |cursor: &mut usize, count: usize| -> Result<&[u8], DiagnosticReceiptError> {
+        let end = cursor
+            .checked_add(count)
+            .ok_or(DiagnosticReceiptError::MalformedEncoding)?;
+        let slice = bytes
+            .get(*cursor..end)
+            .ok_or(DiagnosticReceiptError::MalformedEncoding)?;
+        *cursor = end;
+        Ok(slice)
+    };
+    let version = u16::from_le_bytes(
+        read(&mut cursor, 2)?
+            .try_into()
+            .map_err(|_| DiagnosticReceiptError::MalformedEncoding)?,
+    );
+    let mut request_digest = [0u8; 32];
+    request_digest.copy_from_slice(read(&mut cursor, 32)?);
+    let mut executable = [0u8; 32];
+    executable.copy_from_slice(read(&mut cursor, 32)?);
+    let status = match read(&mut cursor, 1)?[0] {
+        0 => DiagnosticReceiptStatus::Completed,
+        1 => DiagnosticReceiptStatus::TimedOut,
+        found => return Err(DiagnosticReceiptError::InvalidStatus { found }),
+    };
+    let exit_code = match read(&mut cursor, 1)?[0] {
+        0 => None,
+        1 => Some(i32::from_le_bytes(
+            read(&mut cursor, 4)?
+                .try_into()
+                .map_err(|_| DiagnosticReceiptError::MalformedEncoding)?,
+        )),
+        found => return Err(DiagnosticReceiptError::InvalidExitPresence { found }),
+    };
+    let truncated = match read(&mut cursor, 1)?[0] {
+        0 => false,
+        1 => true,
+        found => return Err(DiagnosticReceiptError::InvalidTruncated { found }),
+    };
+    let stdout_bytes = u32::from_le_bytes(
+        read(&mut cursor, 4)?
+            .try_into()
+            .map_err(|_| DiagnosticReceiptError::MalformedEncoding)?,
+    );
+    let mut stdout_digest = [0u8; 32];
+    stdout_digest.copy_from_slice(read(&mut cursor, 32)?);
+    let stderr_bytes = u32::from_le_bytes(
+        read(&mut cursor, 4)?
+            .try_into()
+            .map_err(|_| DiagnosticReceiptError::MalformedEncoding)?,
+    );
+    let mut stderr_digest = [0u8; 32];
+    stderr_digest.copy_from_slice(read(&mut cursor, 32)?);
+    if cursor != bytes.len() {
+        return Err(DiagnosticReceiptError::MalformedEncoding);
+    }
+    let receipt = DiagnosticReceipt {
+        version,
+        request_digest,
+        executable,
+        status,
+        exit_code,
+        truncated,
+        stdout_bytes,
+        stderr_bytes,
+        stdout_digest,
+        stderr_digest,
+    };
+    validate_receipt(&receipt)?;
+    Ok(receipt)
+}
+
+/// BLAKE3 identity of the canonical receipt encoding.
+pub fn receipt_digest(receipt: &DiagnosticReceipt) -> Result<[u8; 32], DiagnosticReceiptError> {
+    Ok(*blake3::hash(&encode_receipt(receipt)?).as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,6 +485,68 @@ mod tests {
             Err(DiagnosticError::InvalidTimeout {
                 found: MAX_DIAGNOSTIC_TIMEOUT_MS + 1
             })
+        );
+    }
+
+    fn receipt() -> DiagnosticReceipt {
+        DiagnosticReceipt {
+            version: DIAGNOSTIC_RECEIPT_VERSION,
+            request_digest: [0x11; 32],
+            executable: [0x22; 32],
+            status: DiagnosticReceiptStatus::Completed,
+            exit_code: Some(0),
+            truncated: false,
+            stdout_bytes: 6,
+            stdout_digest: [0x33; 32],
+            stderr_bytes: 0,
+            stderr_digest: [0x44; 32],
+        }
+    }
+
+    #[test]
+    fn receipt_roundtrips_canonically() {
+        let encoded = encode_receipt(&receipt()).unwrap();
+        assert_eq!(decode_receipt(&encoded).unwrap(), receipt());
+        assert_eq!(
+            receipt_digest(&receipt()).unwrap(),
+            *blake3::hash(&encoded).as_bytes()
+        );
+    }
+
+    #[test]
+    fn receipt_rejects_out_of_range_fields() {
+        let mut value = receipt();
+        value.version = 2;
+        assert_eq!(
+            encode_receipt(&value),
+            Err(DiagnosticReceiptError::UnsupportedVersion { found: 2 })
+        );
+        value.version = DIAGNOSTIC_RECEIPT_VERSION;
+        value.stdout_bytes = MAX_DIAGNOSTIC_CAPTURE_BYTES as u32 + 1;
+        assert!(matches!(
+            encode_receipt(&value),
+            Err(DiagnosticReceiptError::OutputTooLarge { .. })
+        ));
+        let mut encoded = encode_receipt(&receipt()).unwrap();
+        encoded[2 + 32 + 32] = 2;
+        assert_eq!(
+            decode_receipt(&encoded),
+            Err(DiagnosticReceiptError::InvalidStatus { found: 2 })
+        );
+    }
+
+    #[test]
+    fn receipt_rejects_malformed_encodings() {
+        let encoded = encode_receipt(&receipt()).unwrap();
+        assert_eq!(
+            decode_receipt(&encoded[..encoded.len() - 1]),
+            Err(DiagnosticReceiptError::MalformedEncoding)
+        );
+        let mut trailing = encoded;
+        trailing.push(0);
+        assert_eq!(
+            decode_receipt(&trailing),
+            Err(DiagnosticReceiptError::MalformedEncoding)
         );
     }
 

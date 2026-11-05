@@ -28,3 +28,25 @@ completeness.
 - GIVEN a request whose timeout expires
 - WHEN the runner is waiting
 - THEN it kills and reaps the process and reports timeout
+
+### Requirement: Diagnostic outcomes bind into canonical receipts
+
+r[chaoscontrol.guest_diagnostic.receipt_binding]
+
+An execution outcome MUST convert into a versioned diagnostic receipt carrying the
+request digest, executable identity, termination class, optional exit code,
+truncation flag, and each stream's captured length and digest. Admission MUST reject
+unsupported receipt versions, unknown status or presence bytes, oversized captured
+lengths, and malformed or trailing encodings. A receipt identifies bounded
+observations; it does not prove executable trust, output correctness, or replay
+fidelity.
+
+#### Scenario: Receipt identifies bounded output
+- GIVEN a completed execution
+- WHEN its receipt is encoded
+- THEN it roundtrips with the request digest, executable identity, exit code, and output digests
+
+#### Scenario: Invalid receipt is rejected
+- GIVEN a receipt with an unknown status byte or oversized length
+- WHEN it is decoded or encoded
+- THEN the matching rejection is returned

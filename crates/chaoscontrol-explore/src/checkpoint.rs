@@ -1638,6 +1638,8 @@ pub struct MomentReference {
     pub replay_parent_depth: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot_digest: Option<String>,
+    pub branch_id: String,
+    pub seek_granularity: &'static str,
     pub has_assertion_identity: bool,
     pub non_claims: Vec<&'static str>,
 }
@@ -1670,8 +1672,17 @@ pub fn bind_moment<P: AsRef<Path>>(
         }
         None => None,
     };
+    // r[impl chaoscontrol.agent_investigation.moment_reference_branch_granularity]
+    let branch_id = branch_identity(
+        &checkpoint_digest,
+        snapshot_digest.as_deref(),
+        inspection.checkpoint_index,
+        inspection.bug.tick,
+        inspection.bug.dedup_key,
+        inspection.bug.replay_parent_depth,
+    );
     Ok(MomentReference {
-        schema: "chaoscontrol.moment_reference.v1",
+        schema: "chaoscontrol.moment_reference.v2",
         checkpoint_digest,
         checkpoint_index: inspection.checkpoint_index,
         artifact: inspection.artifact,
@@ -1681,6 +1692,8 @@ pub fn bind_moment<P: AsRef<Path>>(
         tick: inspection.bug.tick,
         replay_parent_depth: inspection.bug.replay_parent_depth,
         snapshot_digest,
+        branch_id,
+        seek_granularity: "tick",
         has_assertion_identity: inspection.bug.assertion_identity.is_some(),
         non_claims: vec![
             "A moment reference identifies recorded evidence; it is not replay evidence.",
@@ -4211,8 +4224,20 @@ mod tests {
             Some(4242),
         )
         .unwrap();
-        assert_eq!(moment.schema, "chaoscontrol.moment_reference.v1");
+        assert_eq!(moment.schema, "chaoscontrol.moment_reference.v2");
         assert_eq!(moment.tick, 4242);
+        assert_eq!(moment.seek_granularity, "tick");
+        assert!(moment.branch_id.starts_with("b3:"));
+        let repeat = bind_moment(
+            &checkpoint_path,
+            BugSelector {
+                index: Some(0),
+                dedup_key: None,
+            },
+            Some(4242),
+        )
+        .unwrap();
+        assert_eq!(repeat.branch_id, moment.branch_id);
         assert_eq!(moment.checkpoint_index, 0);
         assert_eq!(moment.artifact, "bug_0.json");
         assert!(moment.checkpoint_digest.starts_with("b3:"));

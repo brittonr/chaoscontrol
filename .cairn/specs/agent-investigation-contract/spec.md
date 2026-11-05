@@ -535,3 +535,23 @@ determinism.
 - GIVEN a vCPU index at or beyond the VM's count
 - WHEN an intervention or expectation is requested
 - THEN the probe fails without recording a result
+
+### Requirement: Moment references bind a branch identity and declare granularity
+
+r[chaoscontrol.agent_investigation.moment_reference_branch_granularity]
+
+A moment reference MUST bind the checkpoint digest and index, snapshot digest when
+present, failure tick, selector and parent depth into one deterministic branch
+identity, and MUST declare the supported seek granularity as the recorded tick.
+Repeated binding of the same evidence MUST produce the same branch identity. The
+identity does not create, isolate, or replay a branch.
+
+#### Scenario: Repeated binding is stable
+- GIVEN the same checkpoint and selector
+- WHEN the moment is bound twice
+- THEN both references carry the same branch identity and `tick` granularity
+
+#### Scenario: Identity separates moments
+- GIVEN a different tick, selector, or parent surface
+- WHEN the moment is bound
+- THEN the branch identity differs

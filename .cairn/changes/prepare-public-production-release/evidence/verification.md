@@ -489,6 +489,22 @@ would build.
 Passing artifact paths through out-link symlinks fails earlier with
 `Os { code: 40, kind: FilesystemLoop }`; use resolved store paths.
 
+Repeating the same command with `cargo build --locked --release` binaries and the
+same bounds accepted the replay:
+
+```json
+{"accepted": true, "reproduced": true, "replay_class": "snapshot_backed_reproduced",
+ "schema_version": 2, "replay_parent_depth": 1, "assertion_id": 3463273124}
+```
+
+The accepted bug is `bug_1.json` for the cohort's `snapshot-replay-probe.v1`
+assertion, with assertion identity and a snapshot reference; the other 75 exported
+findings were not selected for acceptance. The verdict is
+`target/release-preparation-20261029/fresh-row-release/fresh/replay-verdict-bug1.json`.
+These binaries are plain Cargo release-profile builds, not the flake `chaoscontrol`
+package the matrix row resolves, so this proves the row command and the fixed
+fault-plan binding under the admitted bounds — not a matrix receipt.
+
 ### Watchdog timing probe (diagnostic only)
 
 Two additional bounded probes used the same kernel, initrd, and arguments with the

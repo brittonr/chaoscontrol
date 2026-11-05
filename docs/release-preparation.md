@@ -144,6 +144,15 @@ a release-eligible receipt exists. Two attempts stalled in the host Nix daemon
 row output for over 40 minutes), so the current matrix evidence remains the six
 passing rows. Run the matrix on a host with uncontended Nix build capacity.
 
+Running the row command directly on `aa44dcf2` with Cargo release-profile binaries
+and the admitted bounds produced an accepted verdict:
+`reproduced: true`, `replay_class: snapshot_backed_reproduced`, schema 2, replay
+parent depth 1, for the cohort's `snapshot-replay-probe.v1` assertion. The same
+command with unoptimized binaries exceeded the 240 s run and 300 s export bounds
+and was not accepted, so use release binaries. This validates the row command under
+the recorded bounds, not the matrix executor or a receipt. Resolve artifact paths
+before passing them: out-link symlinks fail with `FilesystemLoop`.
+
 ## Preparation evidence and limits
 
 Baseline source: `1caeda2334f1d93e53ce22afbfa012b05458f606`. Preparation commits

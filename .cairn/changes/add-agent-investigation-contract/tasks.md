@@ -22,6 +22,7 @@
 - [x] [serial] Bind the loaded parent and probe record to the disposable branch identity. r[chaoscontrol.agent_investigation.restore_probe_branch_binding]
 - [x] [serial] Filter failure listings by exact owner process instance and identity admission. r[chaoscontrol.agent_investigation.list_bugs_owner_identity_filter]
 - [x] [serial] Filter failure listings by exact admitted assertion fingerprint. r[chaoscontrol.agent_investigation.list_bugs_assertion_fingerprint_filter]
+- [x] [serial] Record each intervention's prior value and exact pre-seek boundary. r[chaoscontrol.agent_investigation.restore_intervention_boundary]
 - [x] [serial] Name the first differing tick, round, or VM observation in drift reports. r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
 - [x] [serial] Expose per-vCPU state and select the vCPU for register intervention and expectation. r[chaoscontrol.agent_investigation.restore_smp_observations]
 - [x] [serial] Bind moment references to a deterministic branch identity and declared tick granularity. r[chaoscontrol.agent_investigation.moment_reference_branch_granularity]

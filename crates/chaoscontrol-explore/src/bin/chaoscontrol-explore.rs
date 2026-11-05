@@ -1556,6 +1556,26 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
             }
         };
         use chaoscontrol_explore::ProbeRegister;
+        let previous = match register {
+            ProbeRegister::Rip => state.rip,
+            ProbeRegister::Rsp => state.rsp,
+            ProbeRegister::Rax => state.rax,
+            ProbeRegister::Rbx => state.rbx,
+            ProbeRegister::Rcx => state.rcx,
+            ProbeRegister::Rdx => state.rdx,
+            ProbeRegister::Rsi => state.rsi,
+            ProbeRegister::Rdi => state.rdi,
+            ProbeRegister::Rbp => state.rbp,
+            ProbeRegister::R8 => state.r8,
+            ProbeRegister::R9 => state.r9,
+            ProbeRegister::R10 => state.r10,
+            ProbeRegister::R11 => state.r11,
+            ProbeRegister::R12 => state.r12,
+            ProbeRegister::R13 => state.r13,
+            ProbeRegister::R14 => state.r14,
+            ProbeRegister::R15 => state.r15,
+            ProbeRegister::Rflags => state.rflags,
+        };
         match register {
             ProbeRegister::Rip => state.rip = value,
             ProbeRegister::Rsp => state.rsp = value,
@@ -1579,10 +1599,14 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         if let Err(error) = slot.vm.set_vcpu_registers(vcpu, &state) {
             return Err(error.to_string());
         }
+        // r[impl chaoscontrol.agent_investigation.restore_intervention_boundary]
         interventions.push(serde_json::json!({
             "vm_index": vm_index,
+            "vcpu": vcpu,
             "register": format!("{register:?}").to_lowercase(),
+            "previous": previous,
             "value": value,
+            "boundary": "after_restore_before_seek",
         }));
     }
     let restored_tick = controller.tick();

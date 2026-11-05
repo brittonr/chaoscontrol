@@ -630,3 +630,23 @@ select a replay verdict or authorize a branch.
 - GIVEN a value that is not a valid fingerprint hex string
 - WHEN listing filters by it
 - THEN the typed rejection is returned
+
+### Requirement: Interventions record their exact boundary and prior value
+
+r[chaoscontrol.agent_investigation.restore_intervention_boundary]
+
+Each applied register intervention MUST record the selected VM and vCPU, register,
+the value before mutation, the applied value, and the boundary label
+`after_restore_before_seek`. The prior value MUST be read from the same vCPU before
+mutation. The record labels a disposable-branch mutation; it does not prove replay
+or isolate the branch.
+
+#### Scenario: Nudge records before and after
+- GIVEN a restored VM and an allowed register assignment
+- WHEN the probe applies it
+- THEN the record names the prior and applied values and the pre-seek boundary
+
+#### Scenario: Boundary is not implied by later execution
+- GIVEN a subsequent seek
+- WHEN the record is inspected
+- THEN the intervention still reports the pre-seek boundary label

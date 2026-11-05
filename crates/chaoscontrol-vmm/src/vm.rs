@@ -3833,6 +3833,13 @@ impl DeterministicVm {
                         self.virtual_tsc.set(self.virtual_tsc.read().max(deadline));
                     }
                     delivered = self.sync_and_suppress_pit()?;
+                    if delivered {
+                        log::debug!(
+                            "HLT woken by PIT deadline={} tsc={}",
+                            deadline,
+                            self.virtual_tsc.read()
+                        );
+                    }
                 }
             }
             (!delivered, delivered.then_some(BSP_VCPU_INDEX))

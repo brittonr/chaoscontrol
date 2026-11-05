@@ -463,8 +463,31 @@ this check, every store write stalled in the daemon: `nix eval .#default.outPath
 with `waiting for the big garbage collector lock...`, while read-only evaluation
 (`nix eval .#default.name`, `nix eval nixpkgs#hello.name`) returned immediately.
 The store had 91–96 GiB free against `min-free = 100 GiB`, and the client blocked in
-`unix_stream_read_generic` on the daemon socket. Clearing that lock needs the
-operator's root access to the Nix daemon.
+`unix_stream_read_generic` on the daemon socket. Clearing that lock
+needs the operator's root access to the Nix daemon.
+
+The `fresh-workload-replay` command was reproduced directly on `aa44dcf2` with the
+debug `accepted-snapshot-verdict-dogfood` and `chaoscontrol-explore` builds, the
+admitted raft cohort bounds, and the previously built vmlinux and initrd-raft store
+artifacts:
+
+```text
+--cohort contracts/fresh-workload-proofs/cohort.json --max-attempts 1 --start-seed 0
+--run-timeout 240 --export-timeout 300 --repro-timeout 300 --vms 3 --rounds 3
+--branches 2 --ticks 80 --memory-mb 256 --fail-after-values 1 --assertion-id 3463273124
+```
+
+The attempt completed exploration, wrote a checkpoint, and exported `bug_1.json`
+with `has_assertion_identity: true`, `has_snapshot_ref: true`, and
+`replay_parent_depth: 1`. No `ApplicablePlanMismatch` occurred, so the plan-binding
+abort is gone. The attempt is not accepted: `run_exit_status` and
+`export_exit_status` were `124` because the unoptimized debug binaries exceeded the
+contract's 240 s and 300 s bounds. That is a binary-profile effect, not bound
+relaxation; row acceptance still needs the release binary the store-dependent row
+would build.
+
+Passing artifact paths through out-link symlinks fails earlier with
+`Os { code: 40, kind: FilesystemLoop }`; use resolved store paths.
 
 ### Watchdog timing probe (diagnostic only)
 

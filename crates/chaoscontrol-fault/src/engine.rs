@@ -2549,6 +2549,7 @@ mod tests {
             version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_PROTOCOL_VERSION,
             executable: [0x42; 32],
             argv: vec!["--json".to_string()],
+            stdin: Vec::new(),
             timeout_ms: 250,
         };
         engine.enqueue_diagnostic_request(&request).unwrap();
@@ -2594,6 +2595,7 @@ mod tests {
             version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_PROTOCOL_VERSION,
             executable: [0x42; 32],
             argv: vec!["--json".to_string()],
+            stdin: Vec::new(),
             timeout_ms: 0,
         };
         assert_eq!(

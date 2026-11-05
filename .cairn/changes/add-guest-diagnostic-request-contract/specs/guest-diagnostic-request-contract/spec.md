@@ -8,10 +8,12 @@ r[chaoscontrol.guest_diagnostic.request_admission]
 
 The protocol MUST define one diagnostic request command and a canonical encoding for
 protocol version, a 32-byte BLAKE3 executable identity, 1-16 non-empty UTF-8
-arguments, and a timeout. Admission MUST reject unsupported versions, a zero
-identity, missing or too many arguments, empty or oversized arguments, an oversized
-argument total, encodings larger than the hypercall payload, timeouts outside
-1-30000 ms, malformed or truncated encodings, and trailing bytes.
+arguments, a bounded stdin payload, and a timeout. Version 2 adds stdin up to 4096
+bytes; version 1 remains accepted only with empty stdin. Admission MUST reject
+unsupported versions, a zero identity, missing or too many arguments, empty or
+oversized arguments, an oversized argument total or stdin, encodings larger than the
+hypercall payload, timeouts outside 1-30000 ms, malformed or truncated encodings, and
+trailing bytes.
 
 #### Scenario: Admitted request roundtrips
 - GIVEN a request within every limit

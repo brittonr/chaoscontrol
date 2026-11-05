@@ -8,8 +8,14 @@
 //! from its admitted manifest and verifies it against ``executable`` before running.
 
 // r[impl chaoscontrol.guest_diagnostic.request_admission]
-/// Version of the diagnostic request encoding.
-pub const DIAGNOSTIC_PROTOCOL_VERSION: u16 = 1;
+/// Current diagnostic request encoding version (bounded stdin supported).
+pub const DIAGNOSTIC_PROTOCOL_VERSION: u16 = 2;
+
+/// Legacy diagnostic request version without stdin.
+pub const DIAGNOSTIC_PROTOCOL_VERSION_V1: u16 = 1;
+
+/// Maximum encoded stdin bytes for version 2 requests.
+pub const MAX_DIAGNOSTIC_STDIN_BYTES: usize = 4096;
 
 /// Maximum number of arguments, excluding the executable.
 pub const MAX_DIAGNOSTIC_ARGS: usize = 16;
@@ -39,6 +45,8 @@ pub struct DiagnosticRequest {
     pub executable: [u8; 32],
     /// Arguments, excluding the executable.
     pub argv: Vec<String>,
+    /// Bounded stdin bytes; must be empty for version 1 requests.
+    pub stdin: Vec<u8>,
     /// Wall-clock bound for the operation.
     pub timeout_ms: u32,
 }
@@ -77,6 +85,11 @@ pub enum DiagnosticError {
         /// Timeout found in the request.
         found: u32,
     },
+    /// The stdin payload exceeds the version's bound or is present in version 1.
+    InputTooLarge {
+        /// Input length found in the request.
+        found: usize,
+    },
     /// The encoding is truncated, malformed, or has trailing bytes.
     MalformedEncoding,
     /// An argument is not valid UTF-8.
@@ -96,10 +109,17 @@ pub fn admit(
     version: u16,
     executable: &[u8; 32],
     argv: &[String],
+    stdin: &[u8],
     timeout_ms: u32,
 ) -> Result<(), DiagnosticError> {
-    if version != DIAGNOSTIC_PROTOCOL_VERSION {
+    if version != DIAGNOSTIC_PROTOCOL_VERSION && version != DIAGNOSTIC_PROTOCOL_VERSION_V1 {
         return Err(DiagnosticError::UnsupportedVersion { found: version });
+    }
+    if version == DIAGNOSTIC_PROTOCOL_VERSION_V1 && !stdin.is_empty() {
+        return Err(DiagnosticError::InputTooLarge { found: stdin.len() });
+    }
+    if stdin.len() > MAX_DIAGNOSTIC_STDIN_BYTES {
+        return Err(DiagnosticError::InputTooLarge { found: stdin.len() });
     }
     if executable.iter().all(|byte| *byte == 0) {
         return Err(DiagnosticError::MissingExecutable);
@@ -124,7 +144,12 @@ pub fn admit(
     if timeout_ms == 0 || timeout_ms > MAX_DIAGNOSTIC_TIMEOUT_MS {
         return Err(DiagnosticError::InvalidTimeout { found: timeout_ms });
     }
-    let encoded_len = 2 + 32 + 2 + 2 * argv.len() + total + 4;
+    let stdin_len = if version == DIAGNOSTIC_PROTOCOL_VERSION_V1 {
+        0
+    } else {
+        2 + stdin.len()
+    };
+    let encoded_len = 2 + 32 + 2 + 2 * argv.len() + total + stdin_len + 4;
     if encoded_len > crate::PAYLOAD_MAX {
         return Err(DiagnosticError::RequestTooLarge { found: encoded_len });
     }
@@ -137,6 +162,7 @@ pub fn encode_request(request: &DiagnosticRequest) -> Result<Vec<u8>, Diagnostic
         request.version,
         &request.executable,
         &request.argv,
+        &request.stdin,
         request.timeout_ms,
     )?;
     let mut encoded = Vec::with_capacity(
@@ -152,6 +178,10 @@ pub fn encode_request(request: &DiagnosticRequest) -> Result<Vec<u8>, Diagnostic
     for argument in &request.argv {
         encoded.extend_from_slice(&(argument.len() as u16).to_le_bytes());
         encoded.extend_from_slice(argument.as_bytes());
+    }
+    if request.version != DIAGNOSTIC_PROTOCOL_VERSION_V1 {
+        encoded.extend_from_slice(&(request.stdin.len() as u16).to_le_bytes());
+        encoded.extend_from_slice(&request.stdin);
     }
     encoded.extend_from_slice(&request.timeout_ms.to_le_bytes());
     Ok(encoded)
@@ -202,6 +232,18 @@ pub fn decode_request(bytes: &[u8]) -> Result<DiagnosticRequest, DiagnosticError
             .map_err(|_| DiagnosticError::NonUtf8Argument { index })?;
         argv.push(argument.to_string());
     }
+    let mut stdin = Vec::new();
+    if version != DIAGNOSTIC_PROTOCOL_VERSION_V1 {
+        let len = u16::from_le_bytes(
+            read(&mut cursor, 2)?
+                .try_into()
+                .map_err(|_| DiagnosticError::MalformedEncoding)?,
+        ) as usize;
+        if len > MAX_DIAGNOSTIC_STDIN_BYTES {
+            return Err(DiagnosticError::InputTooLarge { found: len });
+        }
+        stdin.extend_from_slice(read(&mut cursor, len)?);
+    }
     let timeout_ms = u32::from_le_bytes(
         read(&mut cursor, 4)?
             .try_into()
@@ -210,11 +252,12 @@ pub fn decode_request(bytes: &[u8]) -> Result<DiagnosticRequest, DiagnosticError
     if cursor != bytes.len() {
         return Err(DiagnosticError::MalformedEncoding);
     }
-    admit(version, &executable, &argv, timeout_ms)?;
+    admit(version, &executable, &argv, &stdin, timeout_ms)?;
     Ok(DiagnosticRequest {
         version,
         executable,
         argv,
+        stdin,
         timeout_ms,
     })
 }
@@ -417,6 +460,7 @@ mod tests {
             version: DIAGNOSTIC_PROTOCOL_VERSION,
             executable: [0x42; 32],
             argv: vec!["--json".to_string(), "/tmp/probe".to_string()],
+            stdin: b"payload".to_vec(),
             timeout_ms: 250,
         }
     }
@@ -430,10 +474,10 @@ mod tests {
     #[test]
     fn version_and_identity_are_admitted() {
         let mut value = request();
-        value.version = 2;
+        value.version = 3;
         assert_eq!(
             encode_request(&value),
-            Err(DiagnosticError::UnsupportedVersion { found: 2 })
+            Err(DiagnosticError::UnsupportedVersion { found: 3 })
         );
         value.version = DIAGNOSTIC_PROTOCOL_VERSION;
         value.executable = [0; 32];
@@ -478,10 +522,11 @@ mod tests {
     #[test]
     fn requests_must_fit_the_hypercall_payload() {
         let mut value = request();
+        value.stdin.clear();
         value.argv = vec!["x".repeat(MAX_DIAGNOSTIC_ARG_BYTES); 4];
         assert_eq!(
             encode_request(&value),
-            Err(DiagnosticError::RequestTooLarge { found: 4144 })
+            Err(DiagnosticError::RequestTooLarge { found: 4146 })
         );
     }
 
@@ -561,6 +606,27 @@ mod tests {
         assert_eq!(
             decode_receipt(&trailing),
             Err(DiagnosticReceiptError::MalformedEncoding)
+        );
+    }
+
+    #[test]
+    fn stdin_is_bounded_and_versioned() {
+        let mut value = request();
+        value.version = DIAGNOSTIC_PROTOCOL_VERSION_V1;
+        assert_eq!(
+            encode_request(&value),
+            Err(DiagnosticError::InputTooLarge { found: 7 })
+        );
+        value.stdin.clear();
+        let encoded = encode_request(&value).unwrap();
+        assert_eq!(decode_request(&encoded).unwrap().stdin, b"");
+        value.version = DIAGNOSTIC_PROTOCOL_VERSION;
+        value.stdin = vec![0u8; MAX_DIAGNOSTIC_STDIN_BYTES + 1];
+        assert_eq!(
+            encode_request(&value),
+            Err(DiagnosticError::InputTooLarge {
+                found: MAX_DIAGNOSTIC_STDIN_BYTES + 1
+            })
         );
     }
 

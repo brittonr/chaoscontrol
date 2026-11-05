@@ -10,7 +10,7 @@ use chaoscontrol_protocol::diagnostic::{
     admit, decode_request, encode_receipt, encode_request, DiagnosticError, DiagnosticReceipt,
     DiagnosticReceiptStatus, DiagnosticRequest,
 };
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
@@ -117,6 +117,7 @@ pub fn run_diagnostic(
         request.version,
         &request.executable,
         &request.argv,
+        &request.stdin,
         request.timeout_ms,
     )
     .map_err(DiagnosticRunError::Admission)?;
@@ -141,11 +142,19 @@ pub fn run_diagnostic(
 
     let mut child = Command::new(executable_path)
         .args(&request.argv)
-        .stdin(Stdio::null())
+        .stdin(if request.stdin.is_empty() {
+            Stdio::null()
+        } else {
+            Stdio::piped()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(DiagnosticRunError::Spawn)?;
+    if let Some(mut pipe) = child.stdin.take() {
+        pipe.write_all(&request.stdin)
+            .map_err(DiagnosticRunError::Spawn)?;
+    }
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
     let stdout_reader = std::thread::spawn(move || capture(stdout));
@@ -265,6 +274,7 @@ mod tests {
             version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_PROTOCOL_VERSION,
             executable: *blake3::hash(&bytes).as_bytes(),
             argv: argv.iter().map(|value| value.to_string()).collect(),
+            stdin: Vec::new(),
             timeout_ms,
         }
     }
@@ -322,6 +332,23 @@ mod tests {
             stderr_digest: [0; 32],
         };
         report_diagnostic_receipt(&receipt).unwrap();
+    }
+
+    #[test]
+    fn stdin_is_delivered_to_the_process() {
+        let path = std::path::Path::new("/bin/cat");
+        if !path.exists() {
+            return;
+        }
+        let mut request = request_for(path, &[], 1_000);
+        request.stdin = b"bounded input\n".to_vec();
+        let outcome = run_diagnostic(&request, path).unwrap();
+        assert_eq!(outcome.status, DiagnosticStatus::Completed);
+        assert_eq!(outcome.stdout_bytes, 14);
+        assert_eq!(
+            outcome.stdout_digest,
+            *blake3::hash(b"bounded input\n").as_bytes()
+        );
     }
 
     #[test]

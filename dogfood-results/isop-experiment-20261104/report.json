@@ -1,0 +1,206 @@
+{
+  "schema": "chaoscontrol.isop_experiment.v1",
+  "cases": [
+    {
+      "name": "single_fault",
+      "variables": 3,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 4,
+      "matrix_rows": 8,
+      "cover": [
+        "x0"
+      ],
+      "literal_count": 1,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 4,
+        "cubes": 1,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "and_two_faults",
+      "variables": 3,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 2,
+      "matrix_rows": 8,
+      "cover": [
+        "x0 & x1"
+      ],
+      "literal_count": 2,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 2,
+        "cubes": 1,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "or_two_faults",
+      "variables": 3,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 6,
+      "matrix_rows": 8,
+      "cover": [
+        "x0",
+        "x1"
+      ],
+      "literal_count": 2,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 8,
+        "cubes": 2,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "negative_literal_non_monotone",
+      "variables": 2,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 1,
+      "matrix_rows": 4,
+      "cover": [
+        "x0 & !x1"
+      ],
+      "literal_count": 2,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 1,
+        "cubes": 1,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "redundant_alternatives",
+      "variables": 2,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 2,
+      "matrix_rows": 4,
+      "cover": [
+        "x0"
+      ],
+      "literal_count": 1,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 2,
+        "cubes": 1,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "three_way_consensus",
+      "variables": 3,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 4,
+      "matrix_rows": 8,
+      "cover": [
+        "x0 & x1",
+        "x0 & x2",
+        "x1 & x2"
+      ],
+      "literal_count": 6,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 6,
+        "cubes": 3,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "constant_true",
+      "variables": 2,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 4,
+      "matrix_rows": 4,
+      "cover": [
+        "TRUE"
+      ],
+      "literal_count": 0,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 4,
+        "cubes": 1,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "constant_false",
+      "variables": 2,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 0,
+      "matrix_rows": 4,
+      "cover": [],
+      "literal_count": 0,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 0,
+        "cubes": 0,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "duplicate_same_time_entries",
+      "variables": 2,
+      "duplicate_same_time_variables": [
+        0,
+        1
+      ],
+      "failing_rows": 1,
+      "matrix_rows": 4,
+      "cover": [
+        "x0 & x1"
+      ],
+      "literal_count": 2,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 1,
+        "cubes": 1,
+        "uncovered": []
+      }
+    },
+    {
+      "name": "no_single_fault_suffices",
+      "variables": 4,
+      "duplicate_same_time_variables": [],
+      "failing_rows": 7,
+      "matrix_rows": 16,
+      "cover": [
+        "x0 & x1",
+        "x2 & x3"
+      ],
+      "literal_count": 4,
+      "check": {
+        "sufficiency": true,
+        "coverage": true,
+        "irredundant": true,
+        "cube_rows": 8,
+        "cubes": 2,
+        "uncovered": []
+      }
+    }
+  ],
+  "limitations": [
+    "Synthetic truth tables only; no branch evidence, KVM row, or admitted fault outcome is produced.",
+    "Indeterminate outcomes, timeouts, replay drift and resource exhaustion are not modeled.",
+    "The cover is irredundant, not globally minimum, and grows exponentially in the worst case.",
+    "A cube is sufficient within this finite inclusion model only; it does not claim causality or other schedules."
+  ]
+}

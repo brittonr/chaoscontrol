@@ -133,6 +133,9 @@ hardening, bundle isolation, and determinism posture, at a pinned upstream commi
 their bounded smoke rail. [`docs/tar-codec-evaluation.md`](docs/tar-codec-evaluation.md)
 compares `tar 0.4` with `tar-codec` 0.0.16 on the OCI intake corpus, with a
 no-switch recommendation and a reusable harness.
+[`docs/isop-evaluation.md`](docs/isop-evaluation.md) records the controlled ISOP
+fault-cover experiment, its independent checker, and the no-go decision for an
+operator surface while branch-local outcomes remain unverified.
 
 ## Features
 

@@ -1,0 +1,14 @@
+[package]
+name = "isop-experiment"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Detached from the ChaosControl workspace: this is a controlled ISOP experiment,
+# not a product dependency. Production integration stays gated on verified
+# branch-local outcomes.
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

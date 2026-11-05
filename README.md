@@ -509,10 +509,12 @@ cargo run --release --bin chaoscontrol-explore -- restore-plan \
 # Restore the parent into fresh VMs and report read-only live state (statuses,
 # registers, bounded memory probe). Add --rounds N to seek forward by bounded
 # scheduling rounds, or --until-tick T to seek to a target tick (capped at 1000
-# rounds; reports reached). Guest serial shares stdout; use --output for JSON.
+# rounds; reports reached). Memory inspection defaults to 16 bytes at 0x1000;
+# --memory-address/--memory-length select a bounded window (1..=4096 bytes).
+# Guest serial shares stdout; use --output for JSON.
 cargo run --release --bin chaoscontrol-explore -- restore-probe \
   --checkpoint results/checkpoint.json --index 0 --until-tick 1181 \
-  --output restore-probe.json
+  --memory-address 0x1000 --memory-length 32 --output restore-probe.json
 ```
 
 Output directory contains:

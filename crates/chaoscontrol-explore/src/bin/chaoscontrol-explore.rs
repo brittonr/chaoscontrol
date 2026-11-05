@@ -766,6 +766,14 @@ enum Commands {
         #[arg(long)]
         until_tick: Option<u64>,
 
+        /// Guest physical address for the read-only memory probe.
+        #[arg(long, default_value_t = 0x1000)]
+        memory_address: u64,
+
+        /// Memory probe length in bytes (1-4096).
+        #[arg(long, default_value_t = 16)]
+        memory_length: usize,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1111,6 +1119,8 @@ fn main() {
             dedup_key,
             rounds,
             until_tick,
+            memory_address,
+            memory_length,
             output,
         } => cmd_restore_probe(
             checkpoint,
@@ -1118,6 +1128,8 @@ fn main() {
             chaoscontrol_explore::BugSelector { index, dedup_key },
             rounds,
             until_tick,
+            memory_address,
+            memory_length,
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
@@ -1209,7 +1221,13 @@ fn cmd_restore_probe(
     selector: chaoscontrol_explore::BugSelector,
     rounds: u64,
     until_tick: Option<u64>,
+    memory_address: u64,
+    memory_length: usize,
 ) {
+    if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
+        eprintln!("Error: {error}");
+        std::process::exit(1);
+    }
     let path = Path::new(&checkpoint_path);
     if !path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
@@ -1309,13 +1327,15 @@ fn cmd_restore_probe(
             }),
             Err(error) => serde_json::json!({ "error": error.to_string() }),
         };
-        let memory_probe = match slot.vm.read_guest_memory(0x1000, 16) {
+        let memory_probe = match slot.vm.read_guest_memory(memory_address, memory_length) {
             Ok(bytes) => serde_json::json!({
-                "address": 0x1000u64,
+                "address": memory_address,
+                "length": memory_length,
                 "bytes_hex": bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
             }),
             Err(error) => serde_json::json!({
-                "address": 0x1000u64,
+                "address": memory_address,
+                "length": memory_length,
                 "error": error.to_string(),
             }),
         };

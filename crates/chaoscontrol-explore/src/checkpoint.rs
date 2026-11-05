@@ -2063,6 +2063,19 @@ pub fn load_parent_snapshot<P: AsRef<Path>>(
     })
 }
 
+/// Validate a read-only memory-probe window: non-empty, at most 4096 bytes, and no
+/// address-plus-length overflow.
+// r[impl chaoscontrol.agent_investigation.restore_probe_memory_window]
+pub fn validate_memory_probe(address: u64, length: usize) -> Result<(), String> {
+    if length == 0 || length > 4096 {
+        return Err("memory probe length must be in 1..=4096".to_string());
+    }
+    if address.checked_add(length as u64).is_none() {
+        return Err("memory probe range overflows".to_string());
+    }
+    Ok(())
+}
+
 /// Validate that a decoded parent snapshot matches the declared topology before a
 /// restore attempt. Returns the actual VM count on mismatch.
 // r[impl chaoscontrol.agent_investigation.restore_shape_preflight]
@@ -3934,6 +3947,15 @@ mod tests {
             error,
             CheckpointBugExportError::SnapshotReferenceConflict { .. }
         ));
+    }
+
+    #[test]
+    fn memory_probe_window_is_bounded_and_overflow_checked() {
+        assert!(validate_memory_probe(0x1000, 16).is_ok());
+        assert!(validate_memory_probe(0x1000, 4096).is_ok());
+        assert!(validate_memory_probe(0x1000, 0).is_err());
+        assert!(validate_memory_probe(0x1000, 4097).is_err());
+        assert!(validate_memory_probe(u64::MAX - 1, 16).is_err());
     }
 
     #[test]

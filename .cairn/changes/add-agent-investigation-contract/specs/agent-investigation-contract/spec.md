@@ -389,3 +389,23 @@ MUST NOT be bypassed by snapshot verification mode.
 - GIVEN a snapshot whose VM count differs from the declared topology
 - WHEN restore preflight runs
 - THEN restore fails before any VM is created
+
+
+### Requirement: Restore-probe memory inspection is bounded and explicit
+
+r[chaoscontrol.agent_investigation.restore_probe_memory_window]
+
+The probe MUST accept an explicit guest-physical address and length, reject lengths
+outside 1..=4096 and address-plus-length overflow before restore, and report the
+address, length, and bytes (or a distinct read error) for each VM. The default
+window MUST remain 16 bytes at 0x1000.
+
+#### Scenario: Bounded explicit window
+- GIVEN a restored parent and a valid address/length
+- WHEN the probe inspects memory
+- THEN the record carries the requested address and length with the bytes
+
+#### Scenario: Invalid window
+- GIVEN a zero/oversized length or an overflowing range
+- WHEN the probe starts
+- THEN it fails before creating VMs

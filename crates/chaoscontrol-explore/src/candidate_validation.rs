@@ -57,6 +57,10 @@ pub struct ValidationOutcome {
     pub completed: bool,
     /// Bugs found in the fresh run checkpoint, when one was written.
     pub bugs_found: Option<usize>,
+    // r[impl chaoscontrol.agent_investigation.candidate_validation_counterexamples]
+    /// BLAKE3 identity of the fresh checkpoint (retained counterexamples).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint_digest: Option<String>,
 }
 
 /// Bound facts of one candidate validation.
@@ -135,6 +139,11 @@ impl CandidateValidationReceipt {
         if original.artifact.trim().is_empty() {
             return Err(CandidateValidationError::EmptyOriginalArtifact);
         }
+        if let Some(digest) = outcome.checkpoint_digest.as_deref() {
+            if !valid_digest(digest) {
+                return Err(CandidateValidationError::InvalidDigest);
+            }
+        }
         if profile.rounds == 0
             || profile.ticks == 0
             || profile.vcpus == 0
@@ -212,6 +221,7 @@ mod tests {
                 exit_code: Some(0),
                 completed: true,
                 bugs_found: Some(0),
+                checkpoint_digest: Some(DIGEST.to_string()),
             },
         )
         .unwrap()
@@ -226,6 +236,10 @@ mod tests {
         assert_eq!(decoded, receipt);
         decoded.verify().unwrap();
         assert!(receipt.body.non_claims.len() == 3);
+        assert_eq!(
+            receipt.body.outcome.checkpoint_digest.as_deref(),
+            Some(DIGEST)
+        );
     }
 
     #[test]
@@ -254,6 +268,7 @@ mod tests {
                     exit_code: None,
                     completed: false,
                     bugs_found: None,
+                    checkpoint_digest: None,
                 },
             ),
             Err(CandidateValidationError::EmptyOriginalArtifact)

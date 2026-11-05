@@ -891,3 +891,22 @@ complete log or replay evidence.
 - GIVEN a bound above 4096
 - WHEN the probe starts
 - THEN it fails before loading a snapshot
+
+### Requirement: Candidate receipts bind retained fresh-run counterexamples
+
+r[chaoscontrol.agent_investigation.candidate_validation_counterexamples]
+
+When a fresh run writes a checkpoint, the candidate-validation receipt MUST bind its
+BLAKE3 identity, and the command MUST reject a malformed digest. An absent checkpoint
+MUST leave the field absent. The digest identifies the retained fresh-run
+counterexamples; it does not prove their cause or the candidate's quality.
+
+#### Scenario: Fresh checkpoint identity bound
+- GIVEN a completed fresh run with a checkpoint
+- WHEN the receipt is written
+- THEN the outcome names the checkpoint's `b3:` digest
+
+#### Scenario: No checkpoint
+- GIVEN a run without a checkpoint
+- WHEN the receipt is written
+- THEN the digest field is absent

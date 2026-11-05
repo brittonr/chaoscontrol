@@ -36,6 +36,7 @@
 - [x] [serial] Launch a fresh bounded validation campaign and emit a failure-bound receipt. r[chaoscontrol.agent_investigation.candidate_validation_campaign]
 - [x] [serial] Gate candidate completion on a fresh checkpoint, not exit code alone. r[chaoscontrol.agent_investigation.candidate_validation_checkpoint_gate]
 - [x] [serial] Expose a bounded per-VM serial tail in restore probes. r[chaoscontrol.agent_investigation.restore_serial_tail]
+- [x] [serial] Bind the fresh-run checkpoint identity into candidate receipts. r[chaoscontrol.agent_investigation.candidate_validation_counterexamples]
 - [x] [serial] Name the first differing tick, round, or VM observation in drift reports. r[chaoscontrol.agent_investigation.restore_repeat_drift_detail]
 - [x] [serial] Expose per-vCPU state and select the vCPU for register intervention and expectation. r[chaoscontrol.agent_investigation.restore_smp_observations]
 - [x] [serial] Bind moment references to a deterministic branch identity and declared tick granularity. r[chaoscontrol.agent_investigation.moment_reference_branch_granularity]

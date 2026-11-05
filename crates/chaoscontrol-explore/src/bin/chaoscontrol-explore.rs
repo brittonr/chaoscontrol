@@ -2333,12 +2333,20 @@ fn cmd_validate_candidate(
     } else {
         None
     };
+    let fresh_checkpoint_digest = if checkpoint_out.exists() {
+        file_digest(&checkpoint_out)
+            .ok()
+            .map(|digest| format!("b3:{digest}"))
+    } else {
+        None
+    };
     let exit_code = status.code();
     let completed = matches!(exit_code, Some(0 | 1)) && checkpoint_out.exists();
     let outcome = chaoscontrol_explore::candidate_validation::ValidationOutcome {
         exit_code,
         completed,
         bugs_found,
+        checkpoint_digest: fresh_checkpoint_digest,
     };
     let receipt =
         match chaoscontrol_explore::candidate_validation::CandidateValidationReceipt::build(

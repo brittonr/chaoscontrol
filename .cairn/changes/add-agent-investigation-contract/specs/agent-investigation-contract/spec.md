@@ -221,3 +221,24 @@ and MUST NOT execute a VM or claim replay/admissibility.
 - GIVEN a bug without a snapshot reference
 - WHEN inspection runs
 - THEN it fails with a distinct not-found outcome
+
+
+### Requirement: Unique snapshot references can be listed without decoding
+
+r[chaoscontrol.agent_investigation.list_snapshots]
+
+A listing operation MUST group checkpoint snapshot references by path and return the
+digest, store, codec, depth, referencing bug indices, and artifact names without
+reading artifact bytes. References sharing a path with differing digests or depths
+MUST be rejected as a conflict. The record MUST carry the checkpoint digest and
+state that presence is not admission or replay evidence.
+
+#### Scenario: Shared reference grouped
+- GIVEN several bugs referencing one snapshot path
+- WHEN references are listed
+- THEN one group carries all referencing bug indices and artifact names
+
+#### Scenario: Conflicting metadata
+- GIVEN one path with two different digests
+- WHEN references are listed
+- THEN the listing fails with a conflict error

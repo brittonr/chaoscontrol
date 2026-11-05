@@ -493,6 +493,11 @@ cargo run --release --bin chaoscontrol-explore -- bind-moment \
 # and shape, not VM execution or replay admissibility.
 cargo run --release --bin chaoscontrol-explore -- inspect-snapshot \
   --checkpoint results/checkpoint.json --index 0 --output snapshot-summary.json
+
+# List unique snapshot references and the bugs that share them without reading
+# artifacts; conflicting path/digest metadata is rejected.
+cargo run --release --bin chaoscontrol-explore -- list-snapshots \
+  --checkpoint results/checkpoint.json --output snapshot-references.json
 ```
 
 Output directory contains:

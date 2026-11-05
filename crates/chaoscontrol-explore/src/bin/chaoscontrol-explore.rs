@@ -721,6 +721,17 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// List unique replay-parent snapshot references without reading artifacts.
+    ListSnapshots {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     /// Decode and summarize the replay parent snapshot of one checkpoint failure.
     InspectSnapshot {
         /// Path to checkpoint.json.
@@ -1032,6 +1043,7 @@ fn main() {
             output,
             chaoscontrol_explore::BugSelector { index, dedup_key },
         ),
+        Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
         Commands::InspectSnapshot {
             checkpoint,
             index,
@@ -1112,6 +1124,43 @@ fn main() {
             memory_mb,
             output,
         ),
+    }
+}
+
+fn cmd_list_snapshots(checkpoint: String, output: Option<String>) {
+    let checkpoint_path = Path::new(&checkpoint);
+    if !checkpoint_path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint);
+        std::process::exit(1);
+    }
+    let listing = match chaoscontrol_explore::list_snapshot_references(checkpoint_path) {
+        Ok(listing) => listing,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut json = match serde_json::to_string_pretty(&listing) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!(
+                "Listed {} snapshot reference(s) to {}",
+                listing.snapshots.len(),
+                path
+            );
+        }
+        None => print!("{json}"),
     }
 }
 

@@ -1275,6 +1275,9 @@ pub enum CheckpointBugExportError {
 
     #[snafu(display("requested tick {requested} differs from the failure tick {actual}"))]
     MomentTickMismatch { requested: u64, actual: u64 },
+
+    #[snafu(display("snapshot reference conflict for path {path}"))]
+    SnapshotReferenceConflict { path: String },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1754,6 +1757,82 @@ pub fn inspect_snapshot<P: AsRef<Path>>(
             "Decoding a snapshot artifact is not VM execution, replay, or an accepted verdict.",
             "Snapshot summaries prove content identity and shape only.",
             "A stored parent may still be inadmissible for a changed configuration or artifact set.",
+        ],
+    })
+}
+
+/// One unique replay-parent snapshot referenced by a checkpoint.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct SnapshotReferenceSummary {
+    pub digest: String,
+    pub path: String,
+    pub store: String,
+    pub codec: String,
+    pub replay_parent_depth: u32,
+    pub bug_indices: Vec<usize>,
+    pub artifacts: Vec<String>,
+}
+
+/// Versioned listing of unique snapshot references without reading artifacts.
+#[derive(Debug, Clone, Serialize)]
+pub struct SnapshotReferenceList {
+    pub schema: &'static str,
+    pub checkpoint_digest: String,
+    pub snapshots: Vec<SnapshotReferenceSummary>,
+    pub non_claims: Vec<&'static str>,
+}
+
+// r[impl chaoscontrol.agent_investigation.list_snapshots]
+pub fn list_snapshot_references<P: AsRef<Path>>(
+    checkpoint_path: P,
+) -> Result<SnapshotReferenceList, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
+    let checkpoint_digest = format!(
+        "b3:{}",
+        blake3::hash(crate::bounded_json::read_checkpoint(checkpoint_path)?.as_bytes()).to_hex()
+    );
+    let checkpoint = load_checkpoint(checkpoint_path)?;
+    validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref()).map_err(|error| {
+        CheckpointBugExportError::InvalidAssertionIdentity {
+            bug_id: error.bug_id,
+            reason: error.source.to_string(),
+        }
+    })?;
+    let mut groups: Vec<SnapshotReferenceSummary> = Vec::new();
+    for (index, bug) in checkpoint.bugs.iter().enumerate() {
+        let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() else {
+            continue;
+        };
+        match groups.iter_mut().find(|group| group.path == reference.path) {
+            Some(group) => {
+                if group.digest != reference.digest
+                    || group.replay_parent_depth != bug.replay_parent_depth
+                {
+                    return Err(CheckpointBugExportError::SnapshotReferenceConflict {
+                        path: reference.path.clone(),
+                    });
+                }
+                group.bug_indices.push(index);
+                group.artifacts.push(format!("bug_{index}.json"));
+            }
+            None => groups.push(SnapshotReferenceSummary {
+                digest: reference.digest.clone(),
+                path: reference.path.clone(),
+                store: reference.store.clone(),
+                codec: reference.codec.clone(),
+                replay_parent_depth: bug.replay_parent_depth,
+                bug_indices: vec![index],
+                artifacts: vec![format!("bug_{index}.json")],
+            }),
+        }
+    }
+    Ok(SnapshotReferenceList {
+        schema: "chaoscontrol.snapshot_references.v1",
+        checkpoint_digest,
+        snapshots: groups,
+        non_claims: vec![
+            "References are listed from checkpoint metadata; artifacts are not read.",
+            "Presence here is not snapshot admission or replay evidence.",
         ],
     })
 }
@@ -3413,6 +3492,70 @@ mod tests {
         assert!(!full.valid);
         assert!(full.snapshots_checked);
         assert_eq!(full.issues.len(), 1);
+    }
+
+    fn snapshot_ref(path_suffix: &str, digest_hex: &str) -> ReplayParentSnapshotRef {
+        ReplayParentSnapshotRef {
+            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            digest: format!("sha256:{digest_hex}"),
+            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            schema_version: 2,
+            path: format!("snapshots/{path_suffix}.snapshot.bin"),
+        }
+    }
+
+    #[test]
+    fn list_snapshot_references_groups_shared_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let shared = snapshot_ref(&"1".repeat(64), &"1".repeat(64));
+        let mut first = minimal_bug(1);
+        first.replay_parent_depth = 1;
+        first.replay_parent_snapshot_ref = Some(shared.clone());
+        let mut second = minimal_bug(2);
+        second.replay_parent_depth = 1;
+        second.replay_parent_snapshot_ref = Some(shared);
+        let plain = minimal_bug(3);
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![first, second, plain]),
+        )
+        .unwrap();
+
+        let listing = list_snapshot_references(&checkpoint_path).unwrap();
+        assert_eq!(listing.schema, "chaoscontrol.snapshot_references.v1");
+        assert_eq!(listing.snapshots.len(), 1);
+        assert_eq!(listing.snapshots[0].bug_indices, vec![0, 1]);
+        assert_eq!(
+            listing.snapshots[0].artifacts,
+            vec!["bug_0.json".to_string(), "bug_1.json".to_string()]
+        );
+        assert!(listing.checkpoint_digest.starts_with("b3:"));
+    }
+
+    #[test]
+    fn list_snapshot_references_rejects_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let first = snapshot_ref(&"2".repeat(64), &"2".repeat(64));
+        let conflicting = snapshot_ref(&"2".repeat(64), &"3".repeat(64));
+        let mut one = minimal_bug(1);
+        one.replay_parent_depth = 1;
+        one.replay_parent_snapshot_ref = Some(first);
+        let mut two = minimal_bug(2);
+        two.replay_parent_depth = 1;
+        two.replay_parent_snapshot_ref = Some(conflicting);
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![one, two]),
+        )
+        .unwrap();
+
+        let error = list_snapshot_references(&checkpoint_path).unwrap_err();
+        assert!(matches!(
+            error,
+            CheckpointBugExportError::SnapshotReferenceConflict { .. }
+        ));
     }
 
     #[test]

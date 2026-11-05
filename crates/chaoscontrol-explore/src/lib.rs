@@ -115,11 +115,12 @@ pub use campaign::{
     CampaignReport, CampaignRunner, SerializableCampaignConfig,
 };
 pub use checkpoint::{
-    export_checkpoint_bugs, export_checkpoint_bugs_with_filter, load_checkpoint,
-    load_serializable_bug, load_serializable_bug_artifact, save_checkpoint, CampaignJournalBinding,
-    CheckpointBugExportError, CheckpointBugExportFilter, CheckpointBugExportSummary,
-    CheckpointConfig, CheckpointError, ExplorationCheckpoint, SerializableBug, SerializableFault,
-    SerializableSchedule, SerializableScheduledFault,
+    export_checkpoint_bugs, export_checkpoint_bugs_with_filter, list_bugs_with_filter,
+    load_checkpoint, load_serializable_bug, load_serializable_bug_artifact, save_checkpoint,
+    BugListEntry, BugListFilter, CampaignJournalBinding, CheckpointBugExportError,
+    CheckpointBugExportFilter, CheckpointBugExportSummary, CheckpointConfig, CheckpointError,
+    ExplorationCheckpoint, SerializableBug, SerializableFault, SerializableSchedule,
+    SerializableScheduledFault,
 };
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
 pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};

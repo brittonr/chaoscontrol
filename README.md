@@ -447,7 +447,16 @@ cargo run --release --bin chaoscontrol-explore -- export-bugs \
 cargo run --release --bin chaoscontrol-explore -- export-bugs \
   --checkpoint results/checkpoint.json --output results/ \
   --assertion-id <current-v2-compatibility-id> --min-replay-parent-depth 1 --max-bugs 1
+
+# Locate checkpoint-held failures as stable JSON without writing artifacts.
+# Filters compose: assertion id, dedup key, and an inclusive tick range.
+cargo run --release --bin chaoscontrol-explore -- list-bugs \
+  --checkpoint results/checkpoint.json \
+  --dedup-key <u64> --min-tick <start> --max-tick <end>
 ```
+Each `list-bugs` record carries its checkpoint index and `bug_N.json` artifact name,
+assertion id, dedup key, tick, replay parent depth and snapshot digest, identity
+presence, and process instances. It is a locator, not replay evidence.
 
 Output directory contains:
 - `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available

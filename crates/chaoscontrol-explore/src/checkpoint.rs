@@ -1257,6 +1257,9 @@ pub enum CheckpointBugExportError {
 
     #[snafu(display("bug artifact already exists: {}", path.display()))]
     AlreadyExists { path: PathBuf },
+
+    #[snafu(display("invalid tick range: min {min_tick} exceeds max {max_tick}"))]
+    InvalidTickRange { min_tick: u64, max_tick: u64 },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1288,6 +1291,104 @@ impl CheckpointBugExportFilter {
         }
         true
     }
+}
+
+/// One checkpoint-held failure surfaced for agent inspection. Legacy bugs keep
+/// their identity fields optional; nothing here is replay evidence.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BugListEntry {
+    /// Position of the bug in the checkpoint, matching `bug_N.json` numbering.
+    pub checkpoint_index: usize,
+    pub artifact: String,
+    pub bug_id: u64,
+    pub assertion_id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dedup_key: Option<u64>,
+    pub tick: u64,
+    pub replay_parent_depth: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_parent_snapshot_digest: Option<String>,
+    pub has_assertion_identity: bool,
+    pub assertion_location: String,
+    #[serde(skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub process_instances: std::collections::BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BugListFilter {
+    pub assertion_id: Option<u64>,
+    pub dedup_key: Option<u64>,
+    pub min_tick: Option<u64>,
+    pub max_tick: Option<u64>,
+}
+
+impl BugListFilter {
+    fn matches(&self, bug: &SerializableBug) -> bool {
+        if let Some(assertion_id) = self.assertion_id {
+            if bug.assertion_id != assertion_id {
+                return false;
+            }
+        }
+        if let Some(dedup_key) = self.dedup_key {
+            if bug.dedup_key != Some(dedup_key) {
+                return false;
+            }
+        }
+        if let Some(min_tick) = self.min_tick {
+            if bug.tick < min_tick {
+                return false;
+            }
+        }
+        if let Some(max_tick) = self.max_tick {
+            if bug.tick > max_tick {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// List admitted checkpoint-held failures without writing artifacts or loading
+/// snapshot bytes. Order is the checkpoint's own bug order.
+// r[impl chaoscontrol.agent_investigation.locate_bugs]
+pub fn list_bugs_with_filter<P: AsRef<Path>>(
+    checkpoint_path: P,
+    filter: BugListFilter,
+) -> Result<Vec<BugListEntry>, CheckpointBugExportError> {
+    if let (Some(min_tick), Some(max_tick)) = (filter.min_tick, filter.max_tick) {
+        if min_tick > max_tick {
+            return Err(CheckpointBugExportError::InvalidTickRange { min_tick, max_tick });
+        }
+    }
+    let checkpoint = load_checkpoint(checkpoint_path)?;
+    validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref()).map_err(|error| {
+        CheckpointBugExportError::InvalidAssertionIdentity {
+            bug_id: error.bug_id,
+            reason: error.source.to_string(),
+        }
+    })?;
+    Ok(checkpoint
+        .bugs
+        .iter()
+        .enumerate()
+        .filter(|(_, bug)| filter.matches(bug))
+        .map(|(index, bug)| BugListEntry {
+            checkpoint_index: index,
+            artifact: format!("bug_{index}.json"),
+            bug_id: bug.bug_id,
+            assertion_id: bug.assertion_id,
+            dedup_key: bug.dedup_key,
+            tick: bug.tick,
+            replay_parent_depth: bug.replay_parent_depth,
+            replay_parent_snapshot_digest: bug
+                .replay_parent_snapshot_ref
+                .as_ref()
+                .map(|reference| reference.digest.clone()),
+            has_assertion_identity: bug.assertion_identity.is_some(),
+            assertion_location: bug.assertion_location.clone(),
+            process_instances: bug.process_instances.clone(),
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2692,6 +2793,110 @@ mod tests {
         assert_eq!(empty.bugs_written, 0);
         assert!(!empty_out.join("bug_0.json").exists());
         assert!(!empty_out.join("bug_1.json").exists());
+    }
+
+    #[test]
+    fn list_bugs_filters_without_writing_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut first = minimal_bug(1);
+        first.tick = 100;
+        let mut second = minimal_bug(2);
+        second.tick = 900;
+        let checkpoint = minimal_checkpoint_with_bugs(vec![first, second]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let all = list_bugs_with_filter(&checkpoint_path, BugListFilter::default()).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].checkpoint_index, 0);
+        assert_eq!(all[0].artifact, "bug_0.json");
+        assert_eq!(all[0].dedup_key, Some(1));
+        assert_eq!(all[1].checkpoint_index, 1);
+
+        let by_key = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                dedup_key: Some(2),
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_key.len(), 1);
+        assert_eq!(by_key[0].bug_id, 2);
+
+        let by_range = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                min_tick: Some(500),
+                max_tick: Some(1000),
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_range.len(), 1);
+        assert_eq!(by_range[0].bug_id, 2);
+
+        let by_assertion = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                assertion_id: Some(101),
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_assertion.len(), 1);
+        assert_eq!(by_assertion[0].bug_id, 1);
+
+        assert!(!dir.path().join("bug_0.json").exists());
+    }
+
+    #[test]
+    fn list_bugs_rejects_inverted_tick_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![minimal_bug(1)]),
+        )
+        .unwrap();
+        let error = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                min_tick: Some(10),
+                max_tick: Some(5),
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            CheckpointBugExportError::InvalidTickRange {
+                min_tick: 10,
+                max_tick: 5
+            }
+        ));
+    }
+
+    #[test]
+    fn list_bugs_never_matches_legacy_missing_dedup_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut legacy = minimal_bug(1);
+        legacy.dedup_key = None;
+        save_checkpoint(
+            &checkpoint_path,
+            &minimal_checkpoint_with_bugs(vec![legacy]),
+        )
+        .unwrap();
+        let entries = list_bugs_with_filter(
+            &checkpoint_path,
+            BugListFilter {
+                dedup_key: Some(1),
+                ..BugListFilter::default()
+            },
+        )
+        .unwrap();
+        assert!(entries.is_empty());
     }
 
     #[test]

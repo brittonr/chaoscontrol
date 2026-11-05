@@ -51,3 +51,25 @@ filters MUST write no artifacts and MUST NOT error.
 - GIVEN a checkpoint whose bugs predate stored dedup keys
 - WHEN the operator requests a specific key
 - THEN nothing matches, no artifact is written, and the command exits successfully
+
+### Requirement: Checkpoint failures can be located without artifacts
+
+r[chaoscontrol.agent_investigation.locate_bugs]
+
+A noninteractive listing operation MUST surface admitted checkpoint-held failures
+as stable records without writing artifacts or loading snapshot bytes. Each record
+MUST carry its checkpoint index and artifact name, assertion id, optional dedup
+key, tick, replay parent depth, optional snapshot digest, identity presence, and
+process instances. Filters by assertion id, dedup key, and inclusive tick range
+MUST compose, an inverted range MUST be rejected, and a bug without a stored dedup
+key MUST NOT match a requested key.
+
+#### Scenario: Locate by failure identity
+- GIVEN a checkpoint holding admitted failures
+- WHEN the operator lists with a dedup key or tick range
+- THEN only matching records are returned in checkpoint order and no bug file is written
+
+#### Scenario: Invalid range
+- GIVEN a minimum tick greater than the maximum
+- WHEN listing runs
+- THEN it fails with an explicit range error

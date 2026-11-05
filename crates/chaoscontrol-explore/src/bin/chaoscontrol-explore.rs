@@ -674,6 +674,33 @@ enum Commands {
         #[arg(long)]
         max_bugs: Option<usize>,
     },
+
+    /// List admitted checkpoint-held bugs as JSON without writing artifacts.
+    ListBugs {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Only bugs with this assertion id.
+        #[arg(long)]
+        assertion_id: Option<u64>,
+
+        /// Only bugs with this stored failure dedup key.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+
+        /// Only bugs at or after this tick.
+        #[arg(long)]
+        min_tick: Option<u64>,
+
+        /// Only bugs at or before this tick.
+        #[arg(long)]
+        max_tick: Option<u64>,
+
+        /// Write JSON to this path instead of stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 fn main() {
@@ -898,6 +925,23 @@ fn main() {
                 max_bugs,
             },
         ),
+        Commands::ListBugs {
+            checkpoint,
+            assertion_id,
+            dedup_key,
+            min_tick,
+            max_tick,
+            output,
+        } => cmd_list_bugs(
+            checkpoint,
+            output,
+            chaoscontrol_explore::BugListFilter {
+                assertion_id,
+                dedup_key,
+                min_tick,
+                max_tick,
+            },
+        ),
         Commands::Resume {
             corpus,
             kernel,
@@ -950,6 +994,43 @@ fn main() {
             memory_mb,
             output,
         ),
+    }
+}
+
+fn cmd_list_bugs(
+    checkpoint: String,
+    output: Option<String>,
+    filter: chaoscontrol_explore::BugListFilter,
+) {
+    let checkpoint_path = Path::new(&checkpoint);
+    if !checkpoint_path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint);
+        std::process::exit(1);
+    }
+    let entries = match chaoscontrol_explore::list_bugs_with_filter(checkpoint_path, filter) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    let mut json = match serde_json::to_string_pretty(&entries) {
+        Ok(json) => json,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+    };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!("Listed {} bug(s) to {}", entries.len(), path);
+        }
+        None => print!("{json}"),
     }
 }
 

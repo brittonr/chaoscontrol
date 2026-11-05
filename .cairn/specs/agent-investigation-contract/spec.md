@@ -555,3 +555,23 @@ identity does not create, isolate, or replay a branch.
 - GIVEN a different tick, selector, or parent surface
 - WHEN the moment is bound
 - THEN the branch identity differs
+
+### Requirement: A restore probe records the disposable branch identity
+
+r[chaoscontrol.agent_investigation.restore_probe_branch_binding]
+
+The restored parent snapshot MUST expose the same deterministic branch identity used
+by moment references and restore plans, and each probe record MUST include it. The
+probe and its receipt MUST therefore name the branch before any intervention. The
+identity labels the disposable branch; it does not create, isolate, persist, or
+replay one.
+
+#### Scenario: Probe names the branch
+- GIVEN a checkpoint failure with a replay parent snapshot
+- WHEN the probe restores it
+- THEN the record and receipt carry the branch identity from the parent binding
+
+#### Scenario: Identity matches moment binding
+- GIVEN the same checkpoint and selector
+- WHEN a moment reference and a probe record are produced
+- THEN both branch identities are equal

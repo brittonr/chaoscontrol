@@ -19,6 +19,8 @@ pub struct ProbeReceiptBody {
     pub candidate_revision: String,
     /// BLAKE3 identity of the checkpoint file bytes (lower hex).
     pub checkpoint_digest: String,
+    /// Deterministic branch identity of the inspected moment, when bound.
+    pub branch_id: Option<String>,
     /// Requested target tick, when a seek target was supplied.
     pub target_tick: Option<u64>,
     /// Whether the seek reached its target tick.
@@ -72,6 +74,7 @@ impl ProbeReceipt {
     pub fn build(
         candidate_revision: &str,
         checkpoint_digest: &str,
+        branch_id: Option<&str>,
         target_tick: Option<u64>,
         seek_reached: bool,
         rounds_run: u64,
@@ -100,6 +103,7 @@ impl ProbeReceipt {
             schema: PROBE_RECEIPT_SCHEMA.to_string(),
             candidate_revision: candidate_revision.to_string(),
             checkpoint_digest: checkpoint_digest.to_string(),
+            branch_id: branch_id.map(str::to_string),
             target_tick,
             seek_reached,
             rounds_run,
@@ -150,6 +154,7 @@ mod tests {
         ProbeReceipt::build(
             "0123456789abcdef0123456789abcdef01234567",
             DIGEST,
+            None,
             Some(1181),
             true,
             3,
@@ -176,34 +181,36 @@ mod tests {
     #[test]
     fn drift_or_mismatch_fails_the_verdict() {
         let drifted =
-            ProbeReceipt::build("rev", DIGEST, None, false, 0, 2, Some(true), None).unwrap();
+            ProbeReceipt::build("rev", DIGEST, None, None, false, 0, 2, Some(true), None).unwrap();
         assert_eq!(drifted.body.verdict, "fail");
         let mismatched =
-            ProbeReceipt::build("rev", DIGEST, Some(5), true, 1, 1, None, Some(false)).unwrap();
+            ProbeReceipt::build("rev", DIGEST, None, Some(5), true, 1, 1, None, Some(false))
+                .unwrap();
         assert_eq!(mismatched.body.verdict, "fail");
     }
 
     #[test]
     fn unreached_target_fails_the_verdict() {
         let receipt =
-            ProbeReceipt::build("rev", DIGEST, Some(1181), false, 0, 1, None, None).unwrap();
+            ProbeReceipt::build("rev", DIGEST, None, Some(1181), false, 0, 1, None, None).unwrap();
         assert_eq!(receipt.body.verdict, "fail");
-        let absent = ProbeReceipt::build("rev", DIGEST, None, false, 0, 1, None, None).unwrap();
+        let absent =
+            ProbeReceipt::build("rev", DIGEST, None, None, false, 0, 1, None, None).unwrap();
         assert_eq!(absent.body.verdict, "pass");
     }
 
     #[test]
     fn invalid_facts_are_rejected() {
         assert_eq!(
-            ProbeReceipt::build("", DIGEST, None, true, 1, 1, None, None),
+            ProbeReceipt::build("", DIGEST, None, None, true, 1, 1, None, None),
             Err(ProbeReceiptError::MissingRevision)
         );
         assert_eq!(
-            ProbeReceipt::build("rev", "abcd", None, true, 1, 1, None, None),
+            ProbeReceipt::build("rev", "abcd", None, None, true, 1, 1, None, None),
             Err(ProbeReceiptError::InvalidCheckpointDigest)
         );
         assert_eq!(
-            ProbeReceipt::build("rev", DIGEST, None, true, 1, 4, None, None),
+            ProbeReceipt::build("rev", DIGEST, None, None, true, 1, 4, None, None),
             Err(ProbeReceiptError::InvalidRepeatCount)
         );
     }

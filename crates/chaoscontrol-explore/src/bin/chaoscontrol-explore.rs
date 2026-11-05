@@ -1386,6 +1386,7 @@ fn cmd_restore_probe(
         let receipt = match chaoscontrol_explore::probe_receipt::ProbeReceipt::build(
             revision,
             &checkpoint_digest,
+            Some(record["branch_id"].as_str().unwrap_or_default()),
             until_tick,
             seek_reached,
             rounds_run,
@@ -1712,6 +1713,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
     }
     let record = serde_json::json!({
         "schema": "chaoscontrol.restore_probe.v1",
+        "branch_id": loaded.branch_id,
         "checkpoint_digest": loaded.checkpoint_digest,
         "checkpoint_index": loaded.checkpoint_index,
         "artifact": loaded.artifact,

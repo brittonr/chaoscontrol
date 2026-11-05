@@ -2032,6 +2032,8 @@ pub struct LoadedParentSnapshot {
     pub tick: u64,
     pub snapshot_digest: String,
     pub replay_parent_depth: u32,
+    /// Deterministic identity of the disposable branch rooted at this failure.
+    pub branch_id: String,
     pub snapshot: chaoscontrol_vmm::controller::SimulationSnapshot,
 }
 
@@ -2064,6 +2066,15 @@ pub fn load_parent_snapshot<P: AsRef<Path>>(
             },
         });
     }
+    // r[impl chaoscontrol.agent_investigation.restore_probe_branch_binding]
+    let branch_id = branch_identity(
+        &checkpoint_digest,
+        Some(&reference.digest),
+        inspection.checkpoint_index,
+        inspection.bug.tick,
+        inspection.bug.dedup_key,
+        inspection.bug.replay_parent_depth,
+    );
     Ok(LoadedParentSnapshot {
         checkpoint_digest,
         checkpoint_index: inspection.checkpoint_index,
@@ -2072,6 +2083,7 @@ pub fn load_parent_snapshot<P: AsRef<Path>>(
         tick: inspection.bug.tick,
         snapshot_digest: reference.digest.clone(),
         replay_parent_depth: inspection.bug.replay_parent_depth,
+        branch_id,
         snapshot: artifact.snapshot,
     })
 }

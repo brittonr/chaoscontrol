@@ -782,6 +782,10 @@ enum Commands {
         #[arg(long)]
         set_register: Option<String>,
 
+        /// Require the selected VM's register to equal this value after the seek.
+        #[arg(long)]
+        expect_register: Option<String>,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1131,6 +1135,7 @@ fn main() {
             memory_length,
             vm_index,
             set_register,
+            expect_register,
             output,
         } => cmd_restore_probe(
             checkpoint,
@@ -1143,6 +1148,7 @@ fn main() {
                 memory_length,
                 vm_index,
                 set_register,
+                expect_register,
             },
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
@@ -1237,6 +1243,7 @@ struct RestoreProbeOptions {
     memory_length: usize,
     vm_index: usize,
     set_register: Option<String>,
+    expect_register: Option<String>,
 }
 
 fn cmd_restore_probe(
@@ -1252,12 +1259,24 @@ fn cmd_restore_probe(
         memory_length,
         vm_index,
         set_register,
+        expect_register,
     } = options;
     if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
         eprintln!("Error: {error}");
         std::process::exit(1);
     }
     let parsed_register = match set_register
+        .as_deref()
+        .map(chaoscontrol_explore::parse_register_assignment)
+    {
+        Some(Ok(parsed)) => Some(parsed),
+        Some(Err(error)) => {
+            eprintln!("Error: {error}");
+            std::process::exit(1);
+        }
+        None => None,
+    };
+    let expected_register = match expect_register
         .as_deref()
         .map(chaoscontrol_explore::parse_register_assignment)
     {
@@ -1373,6 +1392,7 @@ fn cmd_restore_probe(
     // r[impl chaoscontrol.agent_investigation.restore_forward_seek]
     // r[impl chaoscontrol.agent_investigation.restore_seek_tick]
     // r[impl chaoscontrol.agent_investigation.restore_seek_event_alignment]
+    // r[impl chaoscontrol.agent_investigation.restore_register_expectation]
     let rounds_requested = rounds.min(1000);
     let mut round_trace = Vec::new();
     let max_rounds = if until_tick.is_some() {
@@ -1446,6 +1466,48 @@ fn cmd_restore_probe(
             "memory_probe": memory_probe,
         }));
     }
+    let mut expectation = serde_json::Value::Null;
+    let mut expectation_failed = false;
+    if let Some((register, expected)) = expected_register {
+        if vm_index >= controller.num_vms() {
+            eprintln!("Error: vm index {vm_index} is out of range");
+            std::process::exit(1);
+        }
+        let actual = match controller.vm(vm_index).read_vcpu_registers(0) {
+            Ok(state) => match register {
+                chaoscontrol_explore::ProbeRegister::Rip => state.rip,
+                chaoscontrol_explore::ProbeRegister::Rsp => state.rsp,
+                chaoscontrol_explore::ProbeRegister::Rax => state.rax,
+                chaoscontrol_explore::ProbeRegister::Rbx => state.rbx,
+                chaoscontrol_explore::ProbeRegister::Rcx => state.rcx,
+                chaoscontrol_explore::ProbeRegister::Rdx => state.rdx,
+                chaoscontrol_explore::ProbeRegister::Rsi => state.rsi,
+                chaoscontrol_explore::ProbeRegister::Rdi => state.rdi,
+                chaoscontrol_explore::ProbeRegister::Rbp => state.rbp,
+                chaoscontrol_explore::ProbeRegister::R8 => state.r8,
+                chaoscontrol_explore::ProbeRegister::R9 => state.r9,
+                chaoscontrol_explore::ProbeRegister::R10 => state.r10,
+                chaoscontrol_explore::ProbeRegister::R11 => state.r11,
+                chaoscontrol_explore::ProbeRegister::R12 => state.r12,
+                chaoscontrol_explore::ProbeRegister::R13 => state.r13,
+                chaoscontrol_explore::ProbeRegister::R14 => state.r14,
+                chaoscontrol_explore::ProbeRegister::R15 => state.r15,
+                chaoscontrol_explore::ProbeRegister::Rflags => state.rflags,
+            },
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        };
+        expectation_failed = actual != expected;
+        expectation = serde_json::json!({
+            "vm_index": vm_index,
+            "register": format!("{register:?}").to_lowercase(),
+            "expected": expected,
+            "actual": actual,
+            "matched": !expectation_failed,
+        });
+    }
     let record = serde_json::json!({
         "schema": "chaoscontrol.restore_probe.v1",
         "checkpoint_digest": loaded.checkpoint_digest,
@@ -1458,6 +1520,7 @@ fn cmd_restore_probe(
         "restored_tick": restored_tick,
         "interventions": interventions,
         "counterfactual": !interventions.is_empty(),
+        "expectation": expectation,
         "current_tick": controller.tick(),
         "forward_rounds_requested": rounds,
         "seek_target_tick": until_tick,
@@ -1489,6 +1552,9 @@ fn cmd_restore_probe(
             eprintln!("Wrote restore probe to {}", path);
         }
         None => print!("{json}"),
+    }
+    if expectation_failed {
+        std::process::exit(1);
     }
 }
 

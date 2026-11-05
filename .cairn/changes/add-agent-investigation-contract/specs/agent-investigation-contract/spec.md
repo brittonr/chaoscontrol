@@ -446,3 +446,24 @@ these events are the complete run trace or a replay verdict.
 - GIVEN a restored parent with pending scheduled faults
 - WHEN the probe seeks across a fault tick
 - THEN that round's entry names the fired fault and tick
+
+
+### Requirement: Seek results can be checked against expected register values
+
+r[chaoscontrol.agent_investigation.restore_register_expectation]
+
+The probe MUST accept an expected register assignment and compare it with the
+selected VM's post-seek value, recording the register, expected value, actual value,
+and match, and MUST exit non-zero on mismatch after writing the record. Invalid
+assignments MUST be rejected before loading a snapshot. A match is a drift check for
+one value, not proof of deterministic replay.
+
+#### Scenario: Matching expectation
+- GIVEN a restored branch with a known register value
+- WHEN the probe checks the expectation
+- THEN the record reports matched=true and exits zero
+
+#### Scenario: Mismatch
+- GIVEN an expected value different from the actual value
+- WHEN the probe checks the expectation
+- THEN the record reports matched=false and the command exits non-zero

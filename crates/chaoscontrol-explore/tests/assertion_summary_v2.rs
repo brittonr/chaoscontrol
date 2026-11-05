@@ -241,6 +241,7 @@ fn legacy_u32_identity_is_rejected_by_exploration_and_campaign_summaries() {
     assert!(AssertionSummaryV2::from_campaign(&campaign).is_err());
 
     let exploration = ExplorationReport {
+        failed_branches: 0,
         rounds: 1,
         total_branches: 1,
         total_edges: 0,

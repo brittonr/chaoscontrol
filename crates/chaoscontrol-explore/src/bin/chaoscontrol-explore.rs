@@ -105,6 +105,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Run an exploration campaign.
+    ///
+    /// Exit statuses: 0 clean, 1 bugs found, 2 operational failure,
+    /// 3 assertion-exercise floor failure..
     Run {
         /// Path to kernel (vmlinux or bzImage).
         #[arg(short, long)]
@@ -3533,6 +3536,7 @@ fn cmd_campaign_resume(
             let report = chaoscontrol_explore::explorer::ExplorationReport {
                 rounds: cp.rounds_completed,
                 total_branches: cp.total_branches_run,
+                failed_branches: 0,
                 total_edges: cp.total_edges,
                 bugs,
                 corpus_size: 0,

@@ -1130,6 +1130,7 @@ mod tests {
         ExplorationReport {
             rounds: 10,
             total_branches: 80,
+            failed_branches: 0,
             total_edges: 100,
             bugs,
             corpus_size: 5,

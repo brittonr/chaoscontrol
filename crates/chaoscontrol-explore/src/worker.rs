@@ -491,6 +491,7 @@ fn run_single_branch(
         schedule_fingerprint,
         timings: BranchTimings::default(),
         assertion_checkpoints: run.assertion_checkpoints,
+        failed: false,
     })
 }
 
@@ -509,6 +510,7 @@ fn empty_branch_result(work: &BranchWork) -> BranchResult {
         schedule_fingerprint: 0,
         timings: BranchTimings::default(),
         assertion_checkpoints: Vec::new(),
+        failed: true,
     }
 }
 
@@ -535,6 +537,19 @@ mod tests {
             schedule_variant: None,
         };
         assert_eq!(work.branch_index, 42);
+    }
+
+    #[test]
+    fn failed_worker_branches_are_marked_and_empty() {
+        let result = empty_branch_result(&BranchWork {
+            schedule: FaultSchedule::new(),
+            branch_index: 0,
+            schedule_variant: None,
+        });
+        assert!(result.failed);
+        assert_eq!(result.total_ticks, 0);
+        assert!(result.bugs.is_empty());
+        assert!(result.snapshot.is_none());
     }
 
     // r[verify chaoscontrol.system_runs.fault_injection.scenario.exploration]

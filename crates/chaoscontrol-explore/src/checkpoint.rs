@@ -2753,6 +2753,7 @@ mod tests {
             RoundHistory {
                 round: 1,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: 42,
                 cumulative_edges: 42,
                 bugs_found: 0,
@@ -2770,6 +2771,7 @@ mod tests {
             RoundHistory {
                 round: 2,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: 10,
                 cumulative_edges: 52,
                 bugs_found: 1,

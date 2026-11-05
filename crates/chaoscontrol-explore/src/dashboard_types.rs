@@ -332,6 +332,7 @@ impl DashboardState {
         self.round_history.push(RoundHistory {
             round,
             branches_run,
+            failed_branches: 0,
             new_edges,
             cumulative_edges,
             bugs_found,
@@ -527,6 +528,7 @@ mod tests {
             round_history: Some(vec![RoundHistory {
                 round: 1,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: 50,
                 cumulative_edges: 50,
                 bugs_found: 0,

@@ -107,6 +107,12 @@ pub fn format_report(report: &ExplorationReport) -> String {
         "Total branches explored: {}\n",
         report.total_branches
     ));
+    if report.failed_branches > 0 {
+        output.push_str(&format!(
+            "Failed branches:        {} (excluded from totals)\n",
+            report.failed_branches
+        ));
+    }
     output.push_str(&format!("Corpus entries:         {}\n", report.corpus_size));
     output.push_str(&format!("Unique edges found:     {}\n", report.total_edges));
     output.push_str(&format!("Bugs discovered:        {}\n", report.bugs.len()));
@@ -983,6 +989,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 10,
             total_branches: 80,
+            failed_branches: 0,
             total_edges: 256,
             bugs: Vec::new(),
             corpus_size: 15,
@@ -1036,6 +1043,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 10,
             total_branches: 80,
+            failed_branches: 0,
             total_edges: 256,
             bugs: Vec::new(),
             corpus_size: 15,
@@ -1082,6 +1090,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 5,
             total_branches: 40,
+            failed_branches: 0,
             total_edges: 128,
             bugs,
             corpus_size: 8,
@@ -1179,6 +1188,7 @@ mod tests {
             RoundHistory {
                 round: 1,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: 50,
                 cumulative_edges: 50,
                 bugs_found: 0,
@@ -1196,6 +1206,7 @@ mod tests {
             RoundHistory {
                 round: 2,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: 30,
                 cumulative_edges: 80,
                 bugs_found: 1,
@@ -1213,6 +1224,7 @@ mod tests {
             RoundHistory {
                 round: 3,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: 0,
                 cumulative_edges: 80,
                 bugs_found: 0,
@@ -1232,6 +1244,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 3,
             total_branches: 24,
+            failed_branches: 0,
             total_edges: 80,
             bugs: Vec::new(),
             corpus_size: 5,
@@ -1293,6 +1306,7 @@ mod tests {
             .map(|r| RoundHistory {
                 round: r,
                 branches_run: 8,
+                failed_branches: 0,
                 new_edges: if r <= 10 { 5 } else { 0 },
                 cumulative_edges: (r as usize).min(10) * 5,
                 bugs_found: 0,
@@ -1312,6 +1326,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 25,
             total_branches: 200,
+            failed_branches: 0,
             total_edges: 50,
             bugs: Vec::new(),
             corpus_size: 25,
@@ -1355,6 +1370,7 @@ mod tests {
         ExplorationReport {
             rounds: 1,
             total_branches: 7,
+            failed_branches: 0,
             total_edges: 10,
             bugs: Vec::new(),
             corpus_size: 1,
@@ -1374,6 +1390,7 @@ mod tests {
             round_history: vec![RoundHistory {
                 round: 1,
                 branches_run: 7,
+                failed_branches: 0,
                 new_edges: 10,
                 cumulative_edges: 10,
                 bugs_found: 0,
@@ -1429,6 +1446,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 0,
             total_branches: 0,
+            failed_branches: 0,
             total_edges: 0,
             bugs: Vec::new(),
             corpus_size: 0,
@@ -1532,6 +1550,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 5,
             total_branches: 40,
+            failed_branches: 0,
             total_edges: 100,
             bugs: Vec::new(),
             corpus_size: 10,
@@ -1621,6 +1640,7 @@ mod tests {
         let report = ExplorationReport {
             rounds: 1,
             total_branches: 8,
+            failed_branches: 2,
             total_edges: 10,
             bugs: Vec::new(),
             corpus_size: 1,
@@ -1886,6 +1906,7 @@ mod tests {
         ExplorationReport {
             rounds: 1,
             total_branches: 1,
+            failed_branches: 0,
             total_edges: 1,
             bugs: Vec::new(),
             corpus_size: 0,

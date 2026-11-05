@@ -778,6 +778,7 @@ impl Explorer {
             let history_entry = RoundHistory {
                 round: self.rounds_completed,
                 branches_run: round_report.branches_run,
+                failed_branches: round_report.failed_branches,
                 new_edges: round_report.new_coverage_edges,
                 cumulative_edges: self.coverage.stats().total_edges,
                 bugs_found: round_report.bugs_found,
@@ -1072,6 +1073,7 @@ impl Explorer {
                 self.write_trace(&TraceRecord::skipped(&skipped, retained))?;
                 return Ok(RoundRun::Completed(RoundReport {
                     branches_run: 0,
+                    failed_branches: 0,
                     new_coverage_edges: 0,
                     bugs_found: 0,
                     frontier_size: self.frontier.len(),
@@ -1403,11 +1405,16 @@ impl Explorer {
         // Process results in deterministic order (by branch index).
         let timings = Self::phase_totals_for(&results);
         let mut branches_run = 0;
+        let mut failed_branches = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found: usize = 0;
         let mut observation = RoundObservation::default();
 
         for (i, result, schedule) in results {
+            if result.failed {
+                failed_branches += 1;
+                continue;
+            }
             branches_run += 1;
             self.total_branches_run += 1;
             let slot = BranchSlot::Variant(branch_slot_index(i)?);
@@ -1481,6 +1488,7 @@ impl Explorer {
         Ok((
             RoundReport {
                 branches_run,
+                failed_branches,
                 new_coverage_edges,
                 bugs_found,
                 frontier_size: 0,
@@ -1520,6 +1528,7 @@ impl Explorer {
         authorized: &AuthorizedRound,
     ) -> Result<(RoundReport, RoundObservation), ExploreError> {
         let mut branches_run = 0;
+        let mut failed_branches = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found: usize = 0;
         let mut timings = BranchTimings::default();
@@ -1546,6 +1555,7 @@ impl Explorer {
             return Ok((
                 RoundReport {
                     branches_run,
+                    failed_branches,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1555,6 +1565,21 @@ impl Explorer {
                 observation,
             ));
         };
+        if probe_result.failed {
+            failed_branches += 1;
+            return Ok((
+                RoundReport {
+                    branches_run,
+                    failed_branches,
+                    new_coverage_edges,
+                    bugs_found,
+                    frontier_size: 0,
+                    timings,
+                    watchdog,
+                },
+                observation,
+            ));
+        }
         timings.restore_ms += probe_result.timings.restore_ms;
         timings.run_ms += probe_result.timings.run_ms;
         timings.snapshot_ms += probe_result.timings.snapshot_ms;
@@ -1631,6 +1656,7 @@ impl Explorer {
             return Ok((
                 RoundReport {
                     branches_run,
+                    failed_branches,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1658,6 +1684,7 @@ impl Explorer {
             return Ok((
                 RoundReport {
                     branches_run,
+                    failed_branches,
                     new_coverage_edges,
                     bugs_found,
                     frontier_size: 0,
@@ -1698,6 +1725,10 @@ impl Explorer {
                 debug!("Input tree branch {} discarded after host watchdog", i + 1);
                 continue;
             };
+            if result.failed {
+                failed_branches += 1;
+                continue;
+            }
             timings.restore_ms += result.timings.restore_ms;
             timings.run_ms += result.timings.run_ms;
             timings.snapshot_ms += result.timings.snapshot_ms;
@@ -1776,6 +1807,7 @@ impl Explorer {
         Ok((
             RoundReport {
                 branches_run,
+                failed_branches,
                 new_coverage_edges,
                 bugs_found,
                 frontier_size: 0,
@@ -1943,6 +1975,7 @@ impl Explorer {
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
             assertion_checkpoints: Vec::new(),
+            failed: false,
         })
     }
 
@@ -2055,6 +2088,7 @@ impl Explorer {
             schedule_fingerprint,
             timings,
             assertion_checkpoints,
+            failed: false,
         })
     }
 
@@ -2156,6 +2190,7 @@ impl Explorer {
             schedule_fingerprint,
             timings,
             assertion_checkpoints,
+            failed: false,
         })
     }
 
@@ -2681,6 +2716,11 @@ impl Explorer {
         ExplorationReport {
             rounds: self.rounds_completed,
             total_branches: self.total_branches_run,
+            failed_branches: self
+                .round_history
+                .iter()
+                .map(|history| history.failed_branches)
+                .sum(),
             total_edges: coverage_stats.total_edges,
             bugs,
             corpus_size: corpus_stats.total_entries,
@@ -3281,6 +3321,8 @@ pub struct BranchResult {
     pub timings: BranchTimings,
     /// Exact assertion-hit checkpoints captured during the branch.
     pub assertion_checkpoints: Vec<chaoscontrol_vmm::controller::ControllerAssertionCheckpoint>,
+    /// True when the branch failed operationally and carries no trustworthy result.
+    pub failed: bool,
 }
 
 impl Clone for BranchResult {
@@ -3298,6 +3340,7 @@ impl Clone for BranchResult {
             schedule_fingerprint: self.schedule_fingerprint,
             timings: self.timings,
             assertion_checkpoints: self.assertion_checkpoints.clone(),
+            failed: self.failed,
         }
     }
 }
@@ -3306,6 +3349,8 @@ impl Clone for BranchResult {
 #[derive(Debug)]
 pub struct RoundReport {
     pub branches_run: usize,
+    /// Branches that failed operationally and were excluded from totals.
+    pub failed_branches: usize,
     pub new_coverage_edges: usize,
     pub bugs_found: usize,
     pub frontier_size: usize,
@@ -3324,6 +3369,9 @@ pub struct RoundHistory {
     pub round: u64,
     /// Branches executed this round.
     pub branches_run: usize,
+    /// Branches that failed operationally and were excluded from totals.
+    #[serde(default)]
+    pub failed_branches: usize,
     /// New coverage edges discovered this round.
     pub new_edges: usize,
     /// Cumulative unique edges after this round.
@@ -3366,6 +3414,8 @@ pub struct RoundHistory {
 pub struct ExplorationReport {
     pub rounds: u64,
     pub total_branches: u64,
+    /// Branches excluded because they failed operationally.
+    pub failed_branches: usize,
     pub total_edges: usize,
     pub bugs: Vec<BugReport>,
     pub corpus_size: usize,
@@ -3989,6 +4039,7 @@ mod tests {
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
             assertion_checkpoints: Vec::new(),
+            failed: false,
         }
     }
 
@@ -4821,6 +4872,7 @@ mod tests {
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
             assertion_checkpoints: Vec::new(),
+            failed: false,
         };
 
         // Add some coverage

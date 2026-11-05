@@ -467,3 +467,25 @@ one value, not proof of deterministic replay.
 - GIVEN an expected value different from the actual value
 - WHEN the probe checks the expectation
 - THEN the record reports matched=false and the command exits non-zero
+
+
+### Requirement: Repeated probes report trace drift
+
+r[chaoscontrol.agent_investigation.restore_repeat_drift]
+
+The probe MUST accept a bounded repeat count (1-3) and rerun the same restore,
+intervention, and seek from the checkpoint, comparing executed round traces, final
+VM observations, and current tick. It MUST record whether rounds, VMs, and ticks
+match, mark drift, and exit non-zero on drift. A matching pair is bounded
+self-consistency evidence for this checkpoint and host, not proof of universal
+determinism.
+
+#### Scenario: Matching repeats
+- GIVEN the same checkpoint and probe arguments
+- WHEN the probe runs twice
+- THEN round traces, VM observations, and tick match with drift=false
+
+#### Scenario: Drift detected
+- GIVEN two repeat runs whose traces differ
+- WHEN the probe compares them
+- THEN the record marks drift and the command exits non-zero

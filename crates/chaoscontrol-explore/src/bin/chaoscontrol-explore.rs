@@ -786,6 +786,10 @@ enum Commands {
         #[arg(long)]
         expect_register: Option<String>,
 
+        /// Repeat the restore+seek and report trace drift (1-3, default 1).
+        #[arg(long, default_value_t = 1)]
+        repeat: u64,
+
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
@@ -1136,6 +1140,7 @@ fn main() {
             vm_index,
             set_register,
             expect_register,
+            repeat,
             output,
         } => cmd_restore_probe(
             checkpoint,
@@ -1149,6 +1154,7 @@ fn main() {
                 vm_index,
                 set_register,
                 expect_register,
+                repeat,
             },
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
@@ -1244,6 +1250,7 @@ struct RestoreProbeOptions {
     vm_index: usize,
     set_register: Option<String>,
     expect_register: Option<String>,
+    repeat: u64,
 }
 
 fn cmd_restore_probe(
@@ -1260,6 +1267,7 @@ fn cmd_restore_probe(
         vm_index,
         set_register,
         expect_register,
+        repeat,
     } = options;
     if let Err(error) = chaoscontrol_explore::validate_memory_probe(memory_address, memory_length) {
         eprintln!("Error: {error}");
@@ -1287,23 +1295,111 @@ fn cmd_restore_probe(
         }
         None => None,
     };
-    let path = Path::new(&checkpoint_path);
-    if !path.exists() {
-        eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
-        std::process::exit(1);
+    let repeats = repeat.clamp(1, 3);
+    let mut records = Vec::new();
+    let mut expectation_failed = false;
+    for _ in 0..repeats {
+        match run_probe_record(ProbeRunRequest {
+            checkpoint_path: &checkpoint_path,
+            selector,
+            rounds,
+            until_tick,
+            memory_address,
+            memory_length,
+            vm_index,
+            parsed_register,
+            expected_register,
+        }) {
+            Ok((record, failed)) => {
+                expectation_failed |= failed;
+                records.push(record);
+            }
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        }
     }
-    let checkpoint = match chaoscontrol_explore::load_checkpoint(path) {
-        Ok(checkpoint) => checkpoint,
+    let mut record = records.remove(0);
+    let mut drift = serde_json::Value::Null;
+    let mut drifted = false;
+    if let Some(first) = records.first() {
+        let same_rounds = record["forward_rounds"] == first["forward_rounds"];
+        let same_vms = record["vms"] == first["vms"];
+        let same_tick = record["current_tick"] == first["current_tick"];
+        drifted = !(same_rounds && same_vms && same_tick);
+        drift = serde_json::json!({
+            "repeat_runs": repeats,
+            "rounds_match": same_rounds,
+            "vms_match": same_vms,
+            "tick_match": same_tick,
+            "drift": drifted,
+        });
+    }
+    if let Some(object) = record.as_object_mut() {
+        object.insert("repeat".to_string(), drift);
+    }
+    let mut json = match serde_json::to_string_pretty(&record) {
+        Ok(json) => json,
         Err(error) => {
             eprintln!("Error: {error}");
             std::process::exit(1);
         }
     };
+    json.push('\n');
+    match output {
+        Some(path) => {
+            if let Err(error) = std::fs::write(&path, json) {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+            eprintln!("Wrote restore probe to {}", path);
+        }
+        None => print!("{json}"),
+    }
+    if expectation_failed || drifted {
+        std::process::exit(1);
+    }
+}
+
+struct ProbeRunRequest<'a> {
+    checkpoint_path: &'a str,
+    selector: chaoscontrol_explore::BugSelector,
+    rounds: u64,
+    until_tick: Option<u64>,
+    memory_address: u64,
+    memory_length: usize,
+    vm_index: usize,
+    parsed_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
+    expected_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
+}
+
+fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, bool), String> {
+    let ProbeRunRequest {
+        checkpoint_path,
+        selector,
+        rounds,
+        until_tick,
+        memory_address,
+        memory_length,
+        vm_index,
+        parsed_register,
+        expected_register,
+    } = request;
+    let path = Path::new(checkpoint_path);
+    if !path.exists() {
+        return Err(format!("checkpoint file not found: {checkpoint_path}"));
+    }
+    let checkpoint = match chaoscontrol_explore::load_checkpoint(path) {
+        Ok(checkpoint) => checkpoint,
+        Err(error) => {
+            return Err(error.to_string());
+        }
+    };
     let loaded = match chaoscontrol_explore::load_parent_snapshot(path, selector) {
         Ok(loaded) => loaded,
         Err(error) => {
-            eprintln!("Error: {error}");
-            std::process::exit(1);
+            return Err(error.to_string());
         }
     };
     if let Err((actual, expected)) = chaoscontrol_explore::validate_snapshot_vm_count(
@@ -1332,13 +1428,11 @@ fn cmd_restore_probe(
     let mut controller = match chaoscontrol_vmm::controller::SimulationController::new(config) {
         Ok(controller) => controller,
         Err(error) => {
-            eprintln!("Error: {error}");
-            std::process::exit(1);
+            return Err(error.to_string());
         }
     };
     if let Err(error) = controller.restore_all(&loaded.snapshot) {
-        eprintln!("Error: {error}");
-        std::process::exit(1);
+        return Err(error.to_string());
     }
     let mut interventions = Vec::new();
     if let Some((register, value)) = parsed_register {
@@ -1379,8 +1473,7 @@ fn cmd_restore_probe(
             ProbeRegister::Rflags => state.rflags = value,
         }
         if let Err(error) = slot.vm.set_vcpu_registers(0, &state) {
-            eprintln!("Error: {error}");
-            std::process::exit(1);
+            return Err(error.to_string());
         }
         interventions.push(serde_json::json!({
             "vm_index": vm_index,
@@ -1393,6 +1486,7 @@ fn cmd_restore_probe(
     // r[impl chaoscontrol.agent_investigation.restore_seek_tick]
     // r[impl chaoscontrol.agent_investigation.restore_seek_event_alignment]
     // r[impl chaoscontrol.agent_investigation.restore_register_expectation]
+    // r[impl chaoscontrol.agent_investigation.restore_repeat_drift]
     let rounds_requested = rounds.min(1000);
     let mut round_trace = Vec::new();
     let max_rounds = if until_tick.is_some() {
@@ -1424,8 +1518,7 @@ fn cmd_restore_probe(
                 }
             }
             Err(error) => {
-                eprintln!("Error while seeking forward: {error}");
-                std::process::exit(1);
+                return Err(format!("seek forward: {error}"));
             }
         }
     }
@@ -1535,27 +1628,7 @@ fn cmd_restore_probe(
             "A successful restore does not prove the workload reproduces or that a fix works."
         ],
     });
-    let mut json = match serde_json::to_string_pretty(&record) {
-        Ok(json) => json,
-        Err(error) => {
-            eprintln!("Error: {error}");
-            std::process::exit(1);
-        }
-    };
-    json.push('\n');
-    match output {
-        Some(path) => {
-            if let Err(error) = std::fs::write(&path, json) {
-                eprintln!("Error: {error}");
-                std::process::exit(1);
-            }
-            eprintln!("Wrote restore probe to {}", path);
-        }
-        None => print!("{json}"),
-    }
-    if expectation_failed {
-        std::process::exit(1);
-    }
+    Ok((record, expectation_failed))
 }
 
 fn cmd_restore_plan(

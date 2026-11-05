@@ -1,0 +1,31 @@
+[package]
+name = "chaoscontrol-protocol-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+chaoscontrol-protocol = { path = "..", features = ["std"] }
+
+[[bin]]
+name = "payload"
+path = "fuzz_targets/payload.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "catalog_frames"
+path = "fuzz_targets/catalog_frames.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+
+[profile.release]
+overflow-checks = true

@@ -343,7 +343,17 @@ cargo run --bin boot -- <kernel-path> [initrd-path]
 
 # Snapshot demo
 cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
+
+# Fuzz guest-controlled protocol frames and virtio planners (bounded smoke,
+# nightly toolchain, network for crate fetching; not part of flake check)
+nix run .#fuzz-smoke
+
+# Shorter local budget per target
+FUZZ_SECONDS=10 nix run .#fuzz-smoke
 ```
+
+See [guest-boundary fuzzing](docs/fuzzing.md) for targets, invariants, corpora,
+and non-claims.
 
 ## Kernel-bundle compatibility smoke
 

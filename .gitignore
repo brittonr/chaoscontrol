@@ -30,3 +30,4 @@ __pycache__/
 # Local direnv state: flake profiles and store paths are machine-specific.
 .direnv/
 .envrc
+crates/*/fuzz/artifacts/

@@ -2428,6 +2428,18 @@
             fresh-rust-workload-proof = mkApp "Build a Rust scaffold and run the bounded onboarding proof classification." "${freshRustWorkloadProof}/bin/fresh-rust-workload-proof";
             check-kvm-release-matrix = mkApp "Validate the typed KVM release matrix and adversarial receipt fixtures." "${chaoscontrol}/bin/check-kvm-release-matrix";
             kvm-release-matrix = mkApp "Run the required bounded KVM release matrix and emit one receipt." "${chaoscontrol}/bin/run-kvm-release-matrix";
+            fuzz-smoke = mkApp "Run a bounded libFuzzer smoke over guest-controlled protocol frames and virtio planners (nightly toolchain, network required)." "${pkgs.writeShellApplication {
+              name = "fuzz-smoke";
+              runtimeInputs = [
+                pkgs.rust-bin.nightly.latest.default
+                pkgs.clang
+                pkgs.git
+                pkgs.coreutils
+              ];
+              text = ''
+                exec bash ${./scripts/fuzz-smoke.sh} "$@"
+              '';
+            }}/bin/fuzz-smoke";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             vm-determinism-matrix = mkApp "Run the bounded hide-tsc VM determinism matrix rail and emit receipts." "${vmDeterminismMatrix}/bin/vm-determinism-matrix";

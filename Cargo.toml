@@ -1,4 +1,8 @@
 [workspace]
+exclude = [
+    "crates/chaoscontrol-protocol/fuzz",
+    "crates/chaoscontrol-vmm/fuzz",
+]
 members = [
     "crates/chaoscontrol-protocol",
     "crates/chaoscontrol-replay-evidence-core",

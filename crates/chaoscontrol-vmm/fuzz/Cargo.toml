@@ -1,0 +1,31 @@
+[package]
+name = "chaoscontrol-vmm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+chaoscontrol-vmm = { path = ".." }
+
+[[bin]]
+name = "virtio_chain"
+path = "fuzz_targets/virtio_chain.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "virtio_request"
+path = "fuzz_targets/virtio_request.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+
+[profile.release]
+overflow-checks = true

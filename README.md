@@ -130,7 +130,9 @@ for inputs, limits, receipt fields, and non-claims.
 OCI-in-a-hardened-Linux-VM hypervisor with ChaosControl's device model, kernel
 hardening, bundle isolation, and determinism posture, at a pinned upstream commit.
 [`docs/fuzzing.md`](docs/fuzzing.md) covers the guest-boundary fuzz targets and
-their bounded smoke rail.
+their bounded smoke rail. [`docs/tar-codec-evaluation.md`](docs/tar-codec-evaluation.md)
+compares `tar 0.4` with `tar-codec` 0.0.16 on the OCI intake corpus, with a
+no-switch recommendation and a reusable harness.
 
 ## Features
 

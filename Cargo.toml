@@ -2,6 +2,7 @@
 exclude = [
     "crates/chaoscontrol-protocol/fuzz",
     "crates/chaoscontrol-vmm/fuzz",
+    "tools/tar-codec-differential",
 ]
 members = [
     "crates/chaoscontrol-protocol",

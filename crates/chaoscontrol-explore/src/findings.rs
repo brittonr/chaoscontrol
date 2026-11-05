@@ -9,7 +9,7 @@
 
 use chaoscontrol_fault::oracle::AssertionRecord;
 use chaoscontrol_protocol::identity::{AssertionFingerprint, AssertionKind};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Classification of one assertion record from one branch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,7 @@ pub fn classify(record: &AssertionRecord) -> BranchFinding {
 }
 
 /// One campaign-level liveness or coverage gap.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CampaignLivenessGap {
     /// Assertion fingerprint.
     pub fingerprint: AssertionFingerprint,

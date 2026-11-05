@@ -3562,6 +3562,8 @@ fn cmd_campaign_resume(
                 assertion_catalog_status,
                 collision_safe_assertion_evidence: collision_safe,
                 assertion_identity_conflicts: Vec::new(),
+                campaign_liveness_gaps: Vec::new(),
+                distinct_failing_assertions: 0,
                 round_history: cp.round_history.unwrap_or_default(),
                 wall_clock_seconds: summary.wall_clock_seconds,
                 branches_per_second: if summary.wall_clock_seconds > 0.0 {

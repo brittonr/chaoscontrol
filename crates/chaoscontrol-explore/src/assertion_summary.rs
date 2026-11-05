@@ -17,6 +17,12 @@ pub struct AssertionSummaryV2 {
     catalog_status: CatalogValidationStatus,
     collision_safe_evidence: bool,
     assertions: Vec<AssertionDetail>,
+    /// Campaign `sometimes`/`reachable` records no branch satisfied.
+    #[serde(default)]
+    liveness_gaps: Vec<crate::findings::CampaignLivenessGap>,
+    /// Distinct assertion fingerprints that produced safety bug records.
+    #[serde(default)]
+    distinct_failing_assertions: usize,
 }
 
 #[derive(Deserialize)]
@@ -26,6 +32,10 @@ struct RawAssertionSummaryV2 {
     catalog_status: CatalogValidationStatus,
     collision_safe_evidence: bool,
     assertions: Vec<AssertionDetail>,
+    #[serde(default)]
+    liveness_gaps: Vec<crate::findings::CampaignLivenessGap>,
+    #[serde(default)]
+    distinct_failing_assertions: usize,
 }
 
 impl AssertionSummaryV2 {
@@ -43,6 +53,14 @@ impl AssertionSummaryV2 {
 
     pub fn assertions(&self) -> &[AssertionDetail] {
         &self.assertions
+    }
+
+    pub fn liveness_gaps(&self) -> &[crate::findings::CampaignLivenessGap] {
+        &self.liveness_gaps
+    }
+
+    pub fn distinct_failing_assertions(&self) -> usize {
+        self.distinct_failing_assertions
     }
 
     pub(crate) fn validate(&self) -> Result<(), String> {
@@ -64,6 +82,8 @@ impl AssertionSummaryV2 {
             report.collision_safe_assertion_evidence,
             &report.assertion_identity_conflicts,
             &report.assertion_details,
+            report.campaign_liveness_gaps.clone(),
+            report.distinct_failing_assertions,
         )
     }
 
@@ -73,6 +93,8 @@ impl AssertionSummaryV2 {
             report.collision_safe_assertion_evidence,
             &report.assertion_identity_conflicts,
             &report.assertion_details,
+            Vec::new(),
+            0,
         )
     }
 
@@ -83,6 +105,8 @@ impl AssertionSummaryV2 {
             catalog_status: CatalogValidationStatus::FatalConflict,
             collision_safe_evidence: false,
             assertions: assertions.to_vec(),
+            liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
         })
     }
 
@@ -91,6 +115,8 @@ impl AssertionSummaryV2 {
         source_status: CatalogValidationStatus,
         source_collision_safe: bool,
         assertions: Vec<AssertionDetail>,
+        liveness_gaps: Vec<crate::findings::CampaignLivenessGap>,
+        distinct_failing_assertions: usize,
     ) -> Result<Self, String> {
         if schema != ASSERTION_SUMMARY_SCHEMA {
             return Err("unsupported assertion summary schema".to_string());
@@ -105,6 +131,8 @@ impl AssertionSummaryV2 {
             catalog_status,
             collision_safe_evidence,
             assertions,
+            liveness_gaps,
+            distinct_failing_assertions,
         })
     }
 
@@ -113,6 +141,8 @@ impl AssertionSummaryV2 {
         source_collision_safe: bool,
         conflicts: &[String],
         assertions: &[AssertionDetail],
+        liveness_gaps: Vec<crate::findings::CampaignLivenessGap>,
+        distinct_failing_assertions: usize,
     ) -> Result<Self, String> {
         let (catalog_status, collision_safe_evidence) =
             Self::recomputed_claims(source_status, source_collision_safe, conflicts, assertions)?;
@@ -121,6 +151,8 @@ impl AssertionSummaryV2 {
             catalog_status,
             collision_safe_evidence,
             assertions: assertions.to_vec(),
+            liveness_gaps,
+            distinct_failing_assertions,
         })
     }
 
@@ -171,6 +203,8 @@ impl<'de> Deserialize<'de> for AssertionSummaryV2 {
             raw.catalog_status,
             raw.collision_safe_evidence,
             raw.assertions,
+            raw.liveness_gaps,
+            raw.distinct_failing_assertions,
         )
         .map_err(serde::de::Error::custom)
     }
@@ -207,6 +241,8 @@ mod tests {
             false,
             &[],
             &[detail(1)],
+            Vec::new(),
+            0,
         )
         .expect("legacy summary");
         assert_eq!(
@@ -249,12 +285,37 @@ mod tests {
     }
 
     #[test]
+    fn liveness_gaps_and_distinct_counts_round_trip() {
+        let gap = crate::findings::CampaignLivenessGap {
+            fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint([3; 32]),
+            kind: chaoscontrol_protocol::identity::AssertionKind::Sometimes,
+            message: "gap".to_string(),
+            hit_count: 2,
+        };
+        let summary = AssertionSummaryV2::new(
+            CatalogValidationStatus::LegacyAmbiguous,
+            false,
+            &[],
+            &[detail(1)],
+            vec![gap.clone()],
+            4,
+        )
+        .expect("summary with liveness facts");
+        let encoded = serde_json::to_value(&summary).expect("summary JSON");
+        let decoded: AssertionSummaryV2 = serde_json::from_value(encoded).expect("summary parses");
+        assert_eq!(decoded.liveness_gaps(), &[gap]);
+        assert_eq!(decoded.distinct_failing_assertions(), 4);
+    }
+
+    #[test]
     fn duplicate_legacy_ids_are_rejected() {
         assert!(AssertionSummaryV2::new(
             CatalogValidationStatus::LegacyAmbiguous,
             false,
             &[],
             &[detail(1), detail(1)],
+            Vec::new(),
+            0,
         )
         .is_err());
     }

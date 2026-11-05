@@ -127,7 +127,7 @@ for bug in "${BUGS[@]}"; do
 
     # Show brief summary from report
     if [ -f "$OUTDIR/stdout.txt" ]; then
-        grep -E "Bugs found|Total edges|Rounds completed|Assertion" "$OUTDIR/stdout.txt" | head -5 || true
+        grep -E "Bugs found|Total edges|Rounds completed|Assertion|Distinct failing|Campaign liveness" "$OUTDIR/stdout.txt" | head -5 || true
     fi
     echo ""
 done

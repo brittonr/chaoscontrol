@@ -1146,6 +1146,8 @@ mod tests {
             assertion_catalog_status: status,
             collision_safe_assertion_evidence: collision_safe,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,

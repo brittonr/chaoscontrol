@@ -94,6 +94,9 @@ fn append_policy_summary(
 }
 
 /// Format an exploration report for human consumption.
+/// Maximum campaign liveness gaps listed in the human report.
+const MAX_REPORTED_LIVENESS_GAPS: usize = 16;
+
 pub fn format_report(report: &ExplorationReport) -> String {
     let mut output = String::new();
 
@@ -116,6 +119,31 @@ pub fn format_report(report: &ExplorationReport) -> String {
     output.push_str(&format!("Corpus entries:         {}\n", report.corpus_size));
     output.push_str(&format!("Unique edges found:     {}\n", report.total_edges));
     output.push_str(&format!("Bugs discovered:        {}\n", report.bugs.len()));
+    output.push_str(&format!(
+        "Distinct failing assertions: {}\n",
+        report.distinct_failing_assertions
+    ));
+    if !report.campaign_liveness_gaps.is_empty() {
+        output.push_str(&format!(
+            "Campaign liveness gaps: {} (coverage gaps, not bugs)\n",
+            report.campaign_liveness_gaps.len()
+        ));
+        for gap in report
+            .campaign_liveness_gaps
+            .iter()
+            .take(MAX_REPORTED_LIVENESS_GAPS)
+        {
+            output.push_str(&format!(
+                "  - {} [{}] hits={}\n",
+                gap.message,
+                format!("{:?}", gap.kind).to_lowercase(),
+                gap.hit_count
+            ));
+        }
+        if report.campaign_liveness_gaps.len() > MAX_REPORTED_LIVENESS_GAPS {
+            output.push_str("  - ...\n");
+        }
+    }
     if report.bugs.is_empty() {
         output.push_str(
             "Interleaving coverage:  no-bug output does not prove validated or exhaustive schedule coverage\n",
@@ -1017,6 +1045,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1060,6 +1090,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1078,6 +1110,23 @@ mod tests {
         assert!(formatted
             .contains("no-bug output does not prove validated or exhaustive schedule coverage"));
         assert!(formatted.contains("No Bugs Found"));
+    }
+
+    #[test]
+    fn liveness_gaps_and_distinct_counts_render_without_changing_bug_count() {
+        let mut report = watchdog_report(0, 0);
+        report.distinct_failing_assertions = 3;
+        report.campaign_liveness_gaps = vec![crate::findings::CampaignLivenessGap {
+            fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint([7; 32]),
+            kind: chaoscontrol_protocol::identity::AssertionKind::Sometimes,
+            message: "leader elected".to_string(),
+            hit_count: 12,
+        }];
+        let formatted = format_report(&report);
+        assert!(formatted.contains("Distinct failing assertions: 3"));
+        assert!(formatted.contains("Campaign liveness gaps: 1 (coverage gaps, not bugs)"));
+        assert!(formatted.contains("leader elected [sometimes] hits=12"));
+        assert!(formatted.contains("Bugs discovered:        0"));
     }
 
     #[test]
@@ -1107,6 +1156,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1264,6 +1315,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: history,
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1347,6 +1400,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: history,
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1391,6 +1446,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: vec![RoundHistory {
                 round: 1,
                 branches_run: 7,
@@ -1468,6 +1525,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1577,6 +1636,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1662,6 +1723,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1928,6 +1991,8 @@ mod tests {
                 chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
+            campaign_liveness_gaps: Vec::new(),
+            distinct_failing_assertions: 0,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,

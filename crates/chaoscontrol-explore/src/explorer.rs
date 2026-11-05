@@ -2796,6 +2796,8 @@ impl Explorer {
             assertion_catalog_status,
             collision_safe_assertion_evidence,
             assertion_identity_conflicts,
+            campaign_liveness_gaps: self.campaign_liveness_gaps().into_iter().cloned().collect(),
+            distinct_failing_assertions: self.distinct_failing_assertions(),
             round_history: self.round_history.clone(),
             wall_clock_seconds: 0.0, // Set by caller
             branches_per_second: 0.0,
@@ -3530,6 +3532,10 @@ pub struct ExplorationReport {
     pub collision_safe_assertion_evidence: bool,
     /// Assertion identity diagnostics retained from the merged oracle report.
     pub assertion_identity_conflicts: Vec<String>,
+    /// Campaign `sometimes`/`reachable` records no branch satisfied.
+    pub campaign_liveness_gaps: Vec<crate::findings::CampaignLivenessGap>,
+    /// Distinct assertion fingerprints that produced safety bug records.
+    pub distinct_failing_assertions: usize,
     /// Per-round exploration history.
     pub round_history: Vec<RoundHistory>,
     /// Total wall-clock time for the exploration run.

@@ -1,0 +1,36 @@
+name: Fuzz smoke
+
+on:
+  schedule:
+    - cron: "41 4 * * 0"
+  workflow_dispatch:
+
+env:
+  FUZZ_SECONDS: "120"
+
+jobs:
+  guest-boundary-fuzz:
+    name: Bounded guest-boundary fuzz smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Run bounded libFuzzer smoke
+        run: nix run .#fuzz-smoke
+      - name: File crashers as regression inputs
+        if: always()
+        run: |
+          mkdir -p target/fuzz-artifacts
+          find crates -path '*/fuzz/artifacts/*' -type f -print0 \
+            | xargs -0 -r -I{} cp --parents {} target/fuzz-artifacts/
+          find target/fuzz-artifacts -type f -print || true
+      - name: Upload crashers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers-${{ github.run_id }}
+          path: target/fuzz-artifacts
+          if-no-files-found: ignore
+          retention-days: 30

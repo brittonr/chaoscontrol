@@ -5,7 +5,7 @@
 - [x] [serial] Generate committed seed corpora from existing protocol and virtio fixtures. r[chaoscontrol.fuzzing.guest_boundary_targets]
 - [x] [serial] Add the bounded smoke script and non-default `nix run .#fuzz-smoke` app. r[chaoscontrol.fuzzing.guest_boundary_targets]
 - [x] [serial] Run every target under the smoke and fix harness defects; record results. r[chaoscontrol.fuzzing.guest_boundary_targets]
-- [ ] [serial] Keep a scheduled or CI job that runs the smoke and files crashers as regressions. r[chaoscontrol.fuzzing.guest_boundary_targets]
+- [x] [serial] Keep a scheduled or CI job that runs the smoke and files crashers as regressions. r[chaoscontrol.fuzzing.guest_boundary_targets]
 
 ## Evidence
 

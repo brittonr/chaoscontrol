@@ -24,6 +24,17 @@ cargo test
 The model reproduces the motivating failure and the inverse risk: exit-driven time
 can ignore real work, while a progress clock can fire earlier when exits dominate.
 
+## Design-only VMM model
+
+`chaoscontrol-vmm` carries the design-only counterpart for the gated mode.
+`TscProgressSnapshot` records mode, base, scale, and the last admitted retired
+count; `restore` rejects a cross-mode snapshot, and `advance` rejects retired-count
+regression while resuming the same mapping. `halt_deadline` keeps the PIT-deadline
+jump and marks progress-mode jumps as declared bounds, and `pit_tsc_khz` programs
+the PIT from the same mapping. `CpuConfig::admit_tsc_mode` still rejects
+`instruction-progress` because `INSTRUCTION_PROGRESS_TSC_ADMITTED` is false and PMU
+support remains unclaimed, so the default stays per-exit.
+
 ## Non-claims
 
 This is a synthetic trace model, not the VMM clock. It does not measure PMU skid,

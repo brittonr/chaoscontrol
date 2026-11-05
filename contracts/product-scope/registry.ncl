@@ -735,6 +735,13 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["No workload SDK promotion.", "No Wasm semantic equivalence claim."],
     },
     {
+      change = "add-agent-investigation-contract",
+      owner = "chaoscontrol-evidence",
+      target_state = "experimental",
+      evidence_prerequisite = "A versioned investigation contract and the reference-only mid-run failure identity and checkpoint selection slice must pass; session admission, moment addressing, branch creation, diagnostic operations, intervention recording, and candidate receipts remain unimplemented.",
+      non_claims = ["A stable failure identity does not prove agent diagnosis or candidate correctness.", "No hosted service, credential, or Antithesis parity claim."],
+    },
+    {
       change = "add-identity-aware-connectivity-campaign",
       owner = "chaoscontrol-sim-core",
       target_state = "blocked",
@@ -833,11 +840,32 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["An operational failure is not a guest finding.", "No change to assertion or replay verdict meaning."],
     },
     {
+      change = "evaluate-guest-seccomp-admission",
+      owner = "chaoscontrol-evidence",
+      target_state = "blocked",
+      evidence_prerequisite = "A maintainer product-scope decision on a uid-map and syscall policy for lowered bundles must precede bundle fixtures, replay-configuration policy binding, and the KVM rust-workload proof.",
+      non_claims = ["Admission evaluation does not implement a container runtime or namespace and filter installation.", "No isolation, security, or replay claim follows from planning."],
+    },
+    {
+      change = "evaluate-isop-fault-schedules",
+      owner = "chaoscontrol-explore",
+      target_state = "experimental",
+      evidence_prerequisite = "The detached checker must verify cube sufficiency, complete failing-row coverage, and irredundancy over synthetic truth tables and reject injected broken covers; gated integration requires admitted branch-local outcome verification.",
+      non_claims = ["No minimum-cover, causal, replay, or operator-surface claim.", "Synthetic truth tables do not prove fault-interaction sufficiency on recorded failures."],
+    },
+    {
       change = "evaluate-page-addressed-snapshots",
       owner = "chaoscontrol-vmm",
       target_state = "experimental",
       evidence_prerequisite = "A bounded paired evaluation must establish independent full-state and continuation equivalence before measurements, reject corrupt references, and retain an adopt, defer, or reject decision.",
       non_claims = ["No production codec or reference migration.", "No storage-saving, speedup, durability, or replay-promotion claim from planning."],
+    },
+    {
+      change = "evaluate-progress-based-tsc-clock",
+      owner = "chaoscontrol-vmm",
+      target_state = "experimental",
+      evidence_prerequisite = "Gated mode admission, the pure snapshot and HLT/PIT consistency model, the rejected host skid profile, and clock and scope documentation must pass; busy-loop admission remains open until a host profile is bit-exact and PMU support is admitted.",
+      non_claims = ["Instruction-progress time is a time-model option, not a determinism or host-class proof.", "No PMU support promotion or default-mode change."],
     },
     {
       change = "evaluate-sometimes-assertions-campaign-wide",

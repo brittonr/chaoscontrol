@@ -133,6 +133,15 @@ pub fn run_diagnostic_with_artifacts(
     run_diagnostic_inner(request, executable_path, Some(artifact_dir))
 }
 
+#[allow(unknown_lints)]
+#[allow(
+    ambient_clock,
+    reason = "diagnostic shell enforces a child-process timeout on the host clock"
+)]
+fn host_now() -> Instant {
+    Instant::now()
+}
+
 fn run_diagnostic_inner(
     request: &DiagnosticRequest,
     executable_path: &std::path::Path,
@@ -185,12 +194,12 @@ fn run_diagnostic_inner(
     let stdout_reader = std::thread::spawn(move || capture(stdout));
     let stderr_reader = std::thread::spawn(move || capture(stderr));
 
-    let deadline = Instant::now() + Duration::from_millis(u64::from(request.timeout_ms));
+    let deadline = host_now() + Duration::from_millis(u64::from(request.timeout_ms));
     let mut timed_out = false;
     let status: ExitStatus = loop {
         match child.try_wait().map_err(DiagnosticRunError::Wait)? {
             Some(status) => break status,
-            None if Instant::now() >= deadline => {
+            None if host_now() >= deadline => {
                 timed_out = true;
                 let _ = child.kill();
                 break child.wait().map_err(DiagnosticRunError::Wait)?;

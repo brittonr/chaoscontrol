@@ -220,10 +220,10 @@ pub struct EngineSnapshot {
     #[serde(default = "empty_process_fault_queue")]
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
     /// Admitted diagnostic requests not yet polled by the guest supervisor.
-    #[serde(default)]
+    #[serde(default = "empty_diagnostic_requests")]
     diagnostic_requests: VecDeque<Vec<u8>>,
     /// Accepted canonical diagnostic receipts.
-    #[serde(default)]
+    #[serde(default = "empty_diagnostic_receipts")]
     diagnostic_receipts: VecDeque<Vec<u8>>,
     /// Admitted pause-control windows retained for replay.
     #[serde(default = "empty_pause_control")]
@@ -231,6 +231,14 @@ pub struct EngineSnapshot {
 }
 
 fn empty_process_fault_queue() -> VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand> {
+    VecDeque::new()
+}
+
+fn empty_diagnostic_requests() -> VecDeque<Vec<u8>> {
+    VecDeque::new()
+}
+
+fn empty_diagnostic_receipts() -> VecDeque<Vec<u8>> {
     VecDeque::new()
 }
 

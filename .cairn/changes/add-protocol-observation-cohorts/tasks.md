@@ -20,7 +20,7 @@
 
 ## SDK, VMM, and oracle boundary
 
-- [ ] [serial] Add the bounded SDK protocol-observation surface with producer sequence and loss accounting. r[chaoscontrol.protocol_observation.envelope]
+- [x] [serial] Add the bounded SDK protocol-observation surface with producer sequence and loss accounting. r[chaoscontrol.protocol_observation.envelope]
 - [ ] [serial] Add VMM collection and scheduler-position binding without parsing protocol projection meaning. r[chaoscontrol.protocol_observation.envelope] r[chaoscontrol.protocol_observation.cohort]
 - [x] [serial] Add a narrow consumer-owned pure oracle adapter boundary over admitted cohorts. r[chaoscontrol.protocol_observation.oracle_boundary]
   - Evidence: `observation::oracle` publishes `ProtocolOracle`, typed `OracleResult`/`OracleVerdict`, and `evaluate_oracle`; an incomplete cohort is recorded without invoking the oracle, and a runtime self-oracle is rejected before evaluation.

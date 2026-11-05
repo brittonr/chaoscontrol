@@ -7,8 +7,8 @@
 //! It does not prove the executable is trustworthy or that the output is correct.
 
 use chaoscontrol_protocol::diagnostic::{
-    admit, encode_request, DiagnosticError, DiagnosticReceipt, DiagnosticReceiptStatus,
-    DiagnosticRequest,
+    admit, decode_request, encode_receipt, encode_request, DiagnosticError, DiagnosticReceipt,
+    DiagnosticReceiptStatus, DiagnosticRequest,
 };
 use std::io::Read;
 use std::process::{Command, ExitStatus, Stdio};
@@ -205,10 +205,59 @@ impl DiagnosticOutcome {
     }
 }
 
+// r[impl chaoscontrol.guest_diagnostic.guest_client]
+/// Poll one host-queued diagnostic request.
+///
+/// Returns `Ok(None)` when the host has nothing queued or when no VM transport is
+/// active. Malformed payloads fail closed.
+pub fn poll_diagnostic_request() -> Result<Option<DiagnosticRequest>, String> {
+    let (present, status, payload) =
+        crate::transport::hypercall_response(chaoscontrol_protocol::CMD_DIAGNOSTIC_REQUEST);
+    if status != chaoscontrol_protocol::STATUS_OK {
+        return Err(format!("diagnostic poll failed with status {status}"));
+    }
+    if present == 0 {
+        return Ok(None);
+    }
+    decode_request(&payload)
+        .map(Some)
+        .map_err(|error| format!("{error:?}"))
+}
+
+/// Report one canonical receipt to the host.
+pub fn report_diagnostic_receipt(receipt: &DiagnosticReceipt) -> Result<(), String> {
+    let encoded = encode_receipt(receipt).map_err(|error| format!("{error:?}"))?;
+    let (_, status) = crate::transport::hypercall_raw(
+        chaoscontrol_protocol::CMD_DIAGNOSTIC_REPORT,
+        0,
+        0,
+        &encoded,
+    );
+    if status != chaoscontrol_protocol::STATUS_OK {
+        return Err(format!("diagnostic report failed with status {status}"));
+    }
+    Ok(())
+}
+
+/// Poll, execute, and report at most one diagnostic request.
+///
+/// The supervisor supplies the executable path from its admitted manifest.
+pub fn serve_one_diagnostic(
+    executable_path: &std::path::Path,
+) -> Result<Option<DiagnosticReceipt>, String> {
+    let Some(request) = poll_diagnostic_request()? else {
+        return Ok(None);
+    };
+    let outcome =
+        run_diagnostic(&request, executable_path).map_err(|error| format!("{error:?}"))?;
+    let receipt = outcome.receipt();
+    report_diagnostic_receipt(&receipt)?;
+    Ok(Some(receipt))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chaoscontrol_protocol::diagnostic::encode_receipt;
 
     fn request_for(path: &std::path::Path, argv: &[&str], timeout_ms: u32) -> DiagnosticRequest {
         let bytes = std::fs::read(path).unwrap();
@@ -255,6 +304,24 @@ mod tests {
             run_diagnostic(&request, path),
             Err(DiagnosticRunError::ExecutableIdentityMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn local_transport_has_no_requests_and_accepts_report() {
+        assert_eq!(poll_diagnostic_request().unwrap(), None);
+        let receipt = super::DiagnosticReceipt {
+            version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_RECEIPT_VERSION,
+            request_digest: [0x11; 32],
+            executable: [0x22; 32],
+            status: DiagnosticReceiptStatus::Completed,
+            exit_code: Some(0),
+            truncated: false,
+            stdout_bytes: 0,
+            stdout_digest: [0; 32],
+            stderr_bytes: 0,
+            stderr_digest: [0; 32],
+        };
+        report_diagnostic_receipt(&receipt).unwrap();
     }
 
     #[test]

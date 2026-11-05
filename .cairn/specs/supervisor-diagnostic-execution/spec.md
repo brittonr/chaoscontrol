@@ -79,3 +79,23 @@ Polls preserve order and never fabricate an empty request.
 - GIVEN pending requests and accepted receipts
 - WHEN the engine snapshot is restored
 - THEN the same pending requests and receipts remain
+
+### Requirement: The guest client polls, executes, and reports one request
+
+r[chaoscontrol.guest_diagnostic.guest_client]
+
+The SDK MUST poll the host diagnostic queue, decode an admitted request or report
+absence, execute it with the supervisor-supplied path, encode the outcome receipt,
+and report it with the report command. Failed polls, malformed payloads, execution
+errors, and rejected reports MUST surface as errors; the client MUST NOT fabricate
+a receipt or claim execution success.
+
+#### Scenario: Empty queue
+- GIVEN no queued request or no VM transport
+- WHEN the client polls
+- THEN it returns no request and reports nothing
+
+#### Scenario: One request completes the loop
+- GIVEN one queued admitted request and a matching executable
+- WHEN the client serves it
+- THEN it reports the canonical receipt and returns it

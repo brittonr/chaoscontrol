@@ -50,3 +50,28 @@ fidelity.
 - GIVEN a receipt with an unknown status byte or oversized length
 - WHEN it is decoded or encoded
 - THEN the matching rejection is returned
+
+### Requirement: The host queues admitted requests and records reported receipts
+
+r[chaoscontrol.guest_diagnostic.host_dispatch]
+
+The fault engine MUST bound and admit canonical diagnostic requests, serve at most
+one per supervisor poll with its payload, and retain accepted canonical receipts
+within fixed bounds. Requests and receipts MUST survive engine snapshot and restore,
+and restore MUST reject queues that exceed bounds or contain malformed payloads.
+Polls preserve order and never fabricate an empty request.
+
+#### Scenario: Request served once
+- GIVEN one admitted request
+- WHEN the supervisor polls
+- THEN the payload decodes to that request and the queue is empty
+
+#### Scenario: Invalid payload rejected
+- GIVEN a request or receipt outside admission
+- WHEN it is queued or recorded
+- THEN the queue rejects it without changing bounded state
+
+#### Scenario: Snapshot preserves queues
+- GIVEN pending requests and accepted receipts
+- WHEN the engine snapshot is restored
+- THEN the same pending requests and receipts remain

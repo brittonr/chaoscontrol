@@ -5184,6 +5184,12 @@ impl DeterministicVm {
                 Ok(present) => (u64::from(present), chaoscontrol_protocol::STATUS_OK),
                 Err(_) => (0, chaoscontrol_protocol::STATUS_ERROR),
             }
+        } else if page.command == chaoscontrol_protocol::CMD_DIAGNOSTIC_REQUEST {
+            response_payload = true;
+            match self.fault_engine.write_diagnostic_request(&mut page) {
+                Ok(present) => (u64::from(present), chaoscontrol_protocol::STATUS_OK),
+                Err(_) => (0, chaoscontrol_protocol::STATUS_ERROR),
+            }
         } else {
             self.fault_engine.handle_hypercall(&page)
         };

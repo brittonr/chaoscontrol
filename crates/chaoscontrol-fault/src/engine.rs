@@ -28,6 +28,12 @@ use std::collections::{BTreeMap, VecDeque};
 
 pub const MAX_PROCESS_FAULT_QUEUE: usize = 64;
 
+/// Bound on admitted diagnostic requests awaiting a guest poll.
+pub const MAX_DIAGNOSTIC_REQUEST_QUEUE: usize = 64;
+
+/// Bound on accepted diagnostic receipts retained for observation.
+pub const MAX_DIAGNOSTIC_RECEIPTS: usize = 64;
+
 /// Bound on accepted assertion-hit observations retained between drains.
 pub const MAX_ASSERTION_HIT_EVENTS: usize = 256;
 
@@ -55,6 +61,17 @@ pub enum ProcessFaultQueueError {
     InvalidCommand,
     QueueFull,
     PayloadLimit,
+}
+
+/// Rejection class for diagnostic request and receipt queues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Snafu)]
+pub enum DiagnosticQueueError {
+    /// The request or receipt encoding failed admission.
+    #[snafu(display("diagnostic payload rejected"))]
+    InvalidPayload,
+    /// The bounded queue is full.
+    #[snafu(display("diagnostic queue is full"))]
+    QueueFull,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -202,6 +219,12 @@ pub struct EngineSnapshot {
     /// Host-directed process commands not yet observed by the guest supervisor.
     #[serde(default = "empty_process_fault_queue")]
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+    /// Admitted diagnostic requests not yet polled by the guest supervisor.
+    #[serde(default)]
+    diagnostic_requests: VecDeque<Vec<u8>>,
+    /// Accepted canonical diagnostic receipts.
+    #[serde(default)]
+    diagnostic_receipts: VecDeque<Vec<u8>>,
     /// Admitted pause-control windows retained for replay.
     #[serde(default = "empty_pause_control")]
     pause_control: Vec<PauseControlRequest>,
@@ -393,6 +416,10 @@ pub struct FaultEngine {
     catalog_builder: Option<CatalogBuilder>,
     /// Bounded host-to-supervisor process fault queue.
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+    /// Bounded host-to-supervisor diagnostic request queue (canonical bytes).
+    diagnostic_requests: VecDeque<Vec<u8>>,
+    /// Bounded accepted diagnostic receipts (canonical bytes).
+    diagnostic_receipts: VecDeque<Vec<u8>>,
     /// Accepted assertion hits awaiting a deterministic VMM boundary.
     assertion_hits: VecDeque<AssertionHitEvent>,
     /// Accepted hits dropped because the observation queue was full.
@@ -429,6 +456,8 @@ impl FaultEngine {
             choice_count: 0,
             catalog_builder: None,
             process_fault_queue: VecDeque::new(),
+            diagnostic_requests: VecDeque::new(),
+            diagnostic_receipts: VecDeque::new(),
             assertion_hits: VecDeque::new(),
             assertion_hit_overflow: 0,
             pause_control: Vec::new(),
@@ -445,6 +474,8 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        self.diagnostic_requests.clear();
+        self.diagnostic_receipts.clear();
         self.assertion_hits.clear();
         self.assertion_hit_overflow = 0;
         self.pause_control.clear();
@@ -483,6 +514,8 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        self.diagnostic_requests.clear();
+        self.diagnostic_receipts.clear();
         self.pause_control.clear();
         self.assertion_hits.clear();
         self.assertion_hit_overflow = 0;
@@ -515,6 +548,8 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        self.diagnostic_requests.clear();
+        self.diagnostic_receipts.clear();
         self.pause_control.clear();
         self.assertion_hits.clear();
         self.assertion_hit_overflow = 0;
@@ -550,6 +585,62 @@ impl FaultEngine {
         }
         self.process_fault_queue.push_back(command);
         Ok(())
+    }
+
+    // r[impl chaoscontrol.guest_diagnostic.host_dispatch]
+    /// Admit one diagnostic request for the guest supervisor to poll.
+    pub fn enqueue_diagnostic_request(
+        &mut self,
+        request: &chaoscontrol_protocol::diagnostic::DiagnosticRequest,
+    ) -> Result<(), DiagnosticQueueError> {
+        if self.diagnostic_requests.len() >= MAX_DIAGNOSTIC_REQUEST_QUEUE {
+            return Err(DiagnosticQueueError::QueueFull);
+        }
+        let bytes = chaoscontrol_protocol::diagnostic::encode_request(request)
+            .map_err(|_| DiagnosticQueueError::InvalidPayload)?;
+        if bytes.len() > PAYLOAD_MAX {
+            return Err(DiagnosticQueueError::InvalidPayload);
+        }
+        self.diagnostic_requests.push_back(bytes);
+        Ok(())
+    }
+
+    /// Write one queued diagnostic request into a supervisor poll response.
+    pub fn write_diagnostic_request(
+        &mut self,
+        page: &mut HypercallPage,
+    ) -> Result<bool, DiagnosticQueueError> {
+        let Some(bytes) = self.diagnostic_requests.front() else {
+            page.payload_len = 0;
+            return Ok(false);
+        };
+        let length =
+            u16::try_from(bytes.len()).map_err(|_| DiagnosticQueueError::InvalidPayload)?;
+        page.payload[..bytes.len()].copy_from_slice(bytes);
+        page.payload_len = length;
+        self.diagnostic_requests.pop_front();
+        Ok(true)
+    }
+
+    /// Record one canonical diagnostic receipt reported by the supervisor.
+    pub fn record_diagnostic_receipt(&mut self, bytes: &[u8]) -> Result<(), DiagnosticQueueError> {
+        chaoscontrol_protocol::diagnostic::decode_receipt(bytes)
+            .map_err(|_| DiagnosticQueueError::InvalidPayload)?;
+        if self.diagnostic_receipts.len() >= MAX_DIAGNOSTIC_RECEIPTS {
+            return Err(DiagnosticQueueError::QueueFull);
+        }
+        self.diagnostic_receipts.push_back(bytes.to_vec());
+        Ok(())
+    }
+
+    /// Number of admitted diagnostic requests not yet polled.
+    pub fn pending_diagnostic_requests(&self) -> usize {
+        self.diagnostic_requests.len()
+    }
+
+    /// Canonical diagnostic receipts accepted so far.
+    pub fn diagnostic_receipts(&self) -> impl Iterator<Item = &[u8]> {
+        self.diagnostic_receipts.iter().map(Vec::as_slice)
     }
 
     /// Write one queued process command into a supervisor poll response.
@@ -644,6 +735,13 @@ impl FaultEngine {
                 });
                 (value, STATUS_OK)
             }
+            CMD_DIAGNOSTIC_REPORT => match self.page_payload(page) {
+                Ok(payload) => match self.record_diagnostic_receipt(payload) {
+                    Ok(()) => (0, STATUS_OK),
+                    Err(_) => (0, STATUS_ERROR),
+                },
+                Err(_) => (0, STATUS_ERROR),
+            },
             _cmd => {
                 // Unknown command — return error
                 (0, STATUS_ERROR)
@@ -1152,6 +1250,8 @@ impl FaultEngine {
             next_random_fault_time_ns: self.next_random_fault_time_ns,
             choice_count: self.choice_count,
             process_fault_queue: self.process_fault_queue.clone(),
+            diagnostic_requests: self.diagnostic_requests.clone(),
+            diagnostic_receipts: self.diagnostic_receipts.clone(),
             pause_control: self.pause_control.clone(),
         }
     }
@@ -1167,6 +1267,19 @@ impl FaultEngine {
                 .process_fault_queue
                 .iter()
                 .any(|command| command.validate().is_err())
+        {
+            return Err(FaultTransitionError::SnapshotRunStateMismatch);
+        }
+        if snapshot.diagnostic_requests.len() > MAX_DIAGNOSTIC_REQUEST_QUEUE
+            || snapshot
+                .diagnostic_requests
+                .iter()
+                .any(|bytes| chaoscontrol_protocol::diagnostic::decode_request(bytes).is_err())
+            || snapshot.diagnostic_receipts.len() > MAX_DIAGNOSTIC_RECEIPTS
+            || snapshot
+                .diagnostic_receipts
+                .iter()
+                .any(|bytes| chaoscontrol_protocol::diagnostic::decode_receipt(bytes).is_err())
         {
             return Err(FaultTransitionError::SnapshotRunStateMismatch);
         }
@@ -1371,6 +1484,8 @@ impl FaultEngine {
         self.choice_history.clear();
         self.catalog_builder = None;
         self.process_fault_queue = snapshot.process_fault_queue.clone();
+        self.diagnostic_requests = snapshot.diagnostic_requests.clone();
+        self.diagnostic_receipts = snapshot.diagnostic_receipts.clone();
         self.pause_control = snapshot.pause_control.clone();
         // Assertion-hit observations are branch-local runtime facts. They are
         // drained by the VMM at their boundary and never restored as authority.
@@ -2425,6 +2540,72 @@ mod tests {
         engine.begin_run();
         let (v3, _) = engine.handle_hypercall(&page);
         assert_eq!(v2, v3);
+    }
+
+    #[test]
+    fn diagnostic_request_queue_roundtrips_through_snapshot() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        let request = chaoscontrol_protocol::diagnostic::DiagnosticRequest {
+            version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_PROTOCOL_VERSION,
+            executable: [0x42; 32],
+            argv: vec!["--json".to_string()],
+            timeout_ms: 250,
+        };
+        engine.enqueue_diagnostic_request(&request).unwrap();
+        assert_eq!(engine.pending_diagnostic_requests(), 1);
+        let receipt = chaoscontrol_protocol::diagnostic::DiagnosticReceipt {
+            version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_RECEIPT_VERSION,
+            request_digest: [0x11; 32],
+            executable: [0x42; 32],
+            status: chaoscontrol_protocol::diagnostic::DiagnosticReceiptStatus::Completed,
+            exit_code: Some(0),
+            truncated: false,
+            stdout_bytes: 2,
+            stdout_digest: [0x22; 32],
+            stderr_bytes: 0,
+            stderr_digest: [0x33; 32],
+        };
+        let receipt_bytes = chaoscontrol_protocol::diagnostic::encode_receipt(&receipt).unwrap();
+        engine.record_diagnostic_receipt(&receipt_bytes).unwrap();
+
+        let snapshot = engine.snapshot();
+        let mut restored = FaultEngine::new(EngineConfig::default());
+        restored.restore(&snapshot).unwrap();
+        assert_eq!(restored.pending_diagnostic_requests(), 1);
+        assert_eq!(
+            restored.diagnostic_receipts().next().unwrap(),
+            receipt_bytes.as_slice()
+        );
+
+        let mut page = HypercallPage::zeroed();
+        assert!(restored.write_diagnostic_request(&mut page).unwrap());
+        let decoded = chaoscontrol_protocol::diagnostic::decode_request(
+            &page.payload[..usize::from(page.payload_len)],
+        )
+        .unwrap();
+        assert_eq!(decoded, request);
+        assert_eq!(restored.pending_diagnostic_requests(), 0);
+    }
+
+    #[test]
+    fn invalid_diagnostic_payloads_are_rejected() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        let mut request = chaoscontrol_protocol::diagnostic::DiagnosticRequest {
+            version: chaoscontrol_protocol::diagnostic::DIAGNOSTIC_PROTOCOL_VERSION,
+            executable: [0x42; 32],
+            argv: vec!["--json".to_string()],
+            timeout_ms: 0,
+        };
+        assert_eq!(
+            engine.enqueue_diagnostic_request(&request),
+            Err(DiagnosticQueueError::InvalidPayload)
+        );
+        request.timeout_ms = 100;
+        assert!(engine.enqueue_diagnostic_request(&request).is_ok());
+        assert_eq!(
+            engine.record_diagnostic_receipt(&[0, 1, 2]),
+            Err(DiagnosticQueueError::InvalidPayload)
+        );
     }
 
     #[test]

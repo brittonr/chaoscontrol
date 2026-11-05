@@ -124,6 +124,10 @@ pub fn admit(
     if timeout_ms == 0 || timeout_ms > MAX_DIAGNOSTIC_TIMEOUT_MS {
         return Err(DiagnosticError::InvalidTimeout { found: timeout_ms });
     }
+    let encoded_len = 2 + 32 + 2 + 2 * argv.len() + total + 4;
+    if encoded_len > crate::PAYLOAD_MAX {
+        return Err(DiagnosticError::RequestTooLarge { found: encoded_len });
+    }
     Ok(())
 }
 
@@ -468,6 +472,16 @@ mod tests {
             Err(DiagnosticError::ArgumentsTooLarge {
                 found: 5 * MAX_DIAGNOSTIC_ARG_BYTES
             })
+        );
+    }
+
+    #[test]
+    fn requests_must_fit_the_hypercall_payload() {
+        let mut value = request();
+        value.argv = vec!["x".repeat(MAX_DIAGNOSTIC_ARG_BYTES); 4];
+        assert_eq!(
+            encode_request(&value),
+            Err(DiagnosticError::RequestTooLarge { found: 4144 })
         );
     }
 

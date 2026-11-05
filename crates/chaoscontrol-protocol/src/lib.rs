@@ -194,6 +194,9 @@ pub const CMD_PROCESS_FAULT_POLL: u8 = 0x50;
 /// Guest supervisor: run one admitted diagnostic request.
 pub const CMD_DIAGNOSTIC_REQUEST: u8 = 0x60;
 
+/// Guest supervisor: report one canonical diagnostic receipt.
+pub const CMD_DIAGNOSTIC_REPORT: u8 = 0x61;
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Status codes
 // ═══════════════════════════════════════════════════════════════════════

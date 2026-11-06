@@ -36,17 +36,22 @@
   - Evidence: validated mechanism receipts and replay-checked bounded control events in `chaoscontrol-fault::evidence`; 155 fault tests pass, including nine receipt/control positive and negative fixtures.
 - [x] [parallel] Add snapshot and exact-replay fixtures for each mechanism and for overlapping windows, including drift rejection. r[chaoscontrol.fault_mechanisms.fixtures]
   - Evidence: six CBOR-backed VMM snapshot fixtures and five exact-replay fixtures pass; adapter lifetime and oversized rejected-request replay remain explicit non-claims in the fixture audit.
-- [ ] [serial] Exercise one bounded KVM campaign with a directional fault, a CPU throttle, a custom effect, and a pause window in one recorded run. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.interactions]
+- [x] [serial] Exercise one bounded KVM campaign with a directional fault, a CPU throttle, a custom effect, and a pause window in one recorded run. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.interactions]
+  - Evidence: Pueue task 46 passed with the sustained Raft initrd, two VMs, seed 42 and unchanged 180-second deadline. The retained `evidence/2026-11-06-interaction-campaign.json` records three applied mechanisms, one custom invocation and three due-work suppression opportunities; the test also asserts post-window selection resumes. No packet-level directional observation or snapshot-backed replay promotion is claimed.
 
 ## Phase 5: Verification and evidence
 
 - [ ] [serial] Run focused fault, network, VMM, SDK, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.fault_mechanisms.fixtures]
 - [x] [serial] Record the bounded KVM receipt, profile and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.nonclaims]
 
-## Blocked prerequisite
+## Remaining verification blockers
 
-A single KVM interaction campaign could not be completed through the controller
-harness: direct controller rounds do not reach guest setup within the bounded
-test window, and the repository's local multi-hypervisor KVM smoke currently
-fails the rust-workload replay expectation (`attempts=6`, `bug_count=0`). The
-in-process four-mechanism fixture is present, but it is not KVM campaign evidence.
+The combined KVM campaign now passes. Complete retained traces show successful
+catalog and setup admission; the earlier setup-failure diagnosis was incorrect.
+The finite SDK demo completes and idles during this interaction schedule; the
+sustained Raft guest completes the unchanged bounded campaign instead.
+Octet remains blocked by a nightly Cargo panic, and full Nix evaluation by the
+missing Mantle store derivation recorded in the fixture audit. These failures,
+and acceptance traceability before spec synchronization, prevent closing the
+verification task or archiving this change.
+

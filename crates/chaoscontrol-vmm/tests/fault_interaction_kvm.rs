@@ -129,10 +129,15 @@ fn kvm_campaign_records_four_mechanisms_in_one_run() {
             duration_ticks: 10,
         },
     ));
-    controller.begin_counterfactual_fault_run(schedule).expect("bind schedule while preserving completed setup");
+    controller
+        .begin_counterfactual_fault_run(schedule)
+        .expect("bind schedule while preserving completed setup");
     controller.run(20).expect("campaign runs");
     let calls_after_apply = calls.load(Ordering::SeqCst);
-    eprintln!("campaign: three effects applied at tick {}", controller.tick());
+    eprintln!(
+        "campaign: three effects applied at tick {}",
+        controller.tick()
+    );
 
     controller
         .request_pause_control(PauseControlRequest {

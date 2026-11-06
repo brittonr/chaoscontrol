@@ -146,5 +146,56 @@ is not evidence of host-side setup admission. Required next diagnostic: reconcil
 the retained SDK initrd's setup transport/catalog protocol with current VMM
 admission before another interaction campaign; do not extend timeouts blindly.
 
+## Setup diagnosis correction and successful campaign
+
+The earlier setup-admission interpretation above was based on truncated Pueue
+output and is superseded. The complete locally retained diagnostic trace
+(`/tmp/cc-fault/admission-boundary.log`) shows both catalog completions and both
+setup hypercalls returning status 0. Both engines have accepted catalogs and
+setup=true at controller tick 1170. No SDK/catalog compatibility change is justified.
+Temporary VM hypercall and per-round tracing was removed after diagnosis.
+
+The finite SDK demo completes its workload and enters idle handling during the
+interaction schedule. A sustained Raft guest passes the same interaction assertions
+and the unchanged 180-second deadline. This establishes a suitable campaign
+consumer, not a fix or performance guarantee for idle handling.
+
+Pueue task 45 passed with diagnostic instrumentation. Task 46 repeated the clean
+final harness and passed: 1 test, 0 failures, 64.87 seconds reported by the test.
+Source base: `120feff8408df9c85af381ca27c2359daf641ab1`. The harness BLAKE3 at
+execution was `ae9a1d53dcd96d5900d9447dddcd9c85ec373f1c29704cb1c904e8d5cd2bdd22`.
+The run uses two single-vCPU VMs, hidden TSC, seed 42, quantum 100, random faults
+disabled and 10,000 bootstrap ticks. Setup completed at tick 1171; the retained
+receipt describes state at tick 1200, inside pause [1191,1201). The test then
+executes three further rounds and asserts the deferred fourth selection occurs
+after release. The receipt is written only after all assertions pass.
+
+```sh
+CC_KERNEL=/nix/store/5aya7zvynanjw5mh3xvz40sga3zfsmn8-chaoscontrol-vmlinux/vmlinux \
+CC_INITRD=/nix/store/ymfxhvyv4zr3la0q4k6h6famb9avz8y9-chaoscontrol-initrd-raft \
+CC_RECEIPT=/tmp/cc-fault/interaction-raft-final.json \
+timeout 180 cargo test -p chaoscontrol-vmm --test fault_interaction_kvm -- --ignored --nocapture
+```
+
+| Artifact | BLAKE3 |
+| --- | --- |
+| Kernel above | `f2abae8a52c83c975ed15de504535445e2ac159cc0198f8028867b0c18cdf67c` |
+| Raft initrd above | `2580c3a76bb4f25d2622e7a489e44acff544201a13d79c145a35502a863812af` |
+| Retained `2026-11-06-interaction-campaign.json` | `e92d62cf698cc9860de2054e3e4190b8703cfd3883fb5a85e7889139964e3d5d` |
+
+The runtime receipt was generated and revalidated by the Rust mechanism receipt
+API during the test. It records three selected/applicable/applied attempts, zero
+rejections/application failures, two observations, one custom invocation and
+three suppression opportunities for the pending throttle. Those opportunities
+are repeated due-work polls, not three distinct faults. Network packets sent=0:
+directional installation is exercised, packet-level directional impact is not.
+This is bounded KVM execution evidence, not snapshot-backed replay, universal
+determinism, protocol correctness or release eligibility. Owner: ChaosControl
+VMM/fault maintainers; repeatable consumer: the explicit-artifact ignored KVM
+interaction test. SDK setup-positive and inactive-run-negative engine tests and
+the final campaign's denied-warning Clippy check also pass. Octet/Nix blockers
+above remain unchanged; no archive or release promotion is authorized by this run.
+
+
 
 

@@ -990,6 +990,71 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// Build a reviewer receipt over a failure, replay, branch, and candidates.
+    ReviewCandidate {
+        /// Checkpoint holding the original failure.
+        #[arg(long)]
+        checkpoint: String,
+        /// Original failure bug index.
+        #[arg(long, conflicts_with = "dedup_key")]
+        index: Option<usize>,
+        /// Original failure dedup key.
+        #[arg(long)]
+        dedup_key: Option<u64>,
+        /// Restore-probe JSON carrying the branch identity.
+        #[arg(long)]
+        probe: String,
+        /// Replay verdict JSON.
+        #[arg(long)]
+        replay_verdict: String,
+        /// Positive candidate-validation receipt JSON.
+        #[arg(long)]
+        positive: String,
+        /// Negative candidate-validation receipt JSON.
+        #[arg(long)]
+        negative: String,
+        /// Receipt path (must not exist).
+        #[arg(long)]
+        receipt: String,
+    },
+
+    /// Run one bounded guest diagnostic operation through the supervisor.
+    Diagnose {
+        /// Kernel path.
+        #[arg(long)]
+        kernel: String,
+        /// Supervisor initrd path.
+        #[arg(long)]
+        initrd: String,
+        /// VM count.
+        #[arg(long, default_value_t = 1)]
+        vms: usize,
+        /// Seed.
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+        /// Bootstrap budget.
+        #[arg(long, default_value_t = 5000)]
+        bootstrap_budget: u64,
+        /// Ticks to run after queueing the request.
+        #[arg(long, default_value_t = 20)]
+        ticks: u64,
+        /// Supervisor-chosen guest executable path.
+        #[arg(long, default_value = "/init")]
+        executable: String,
+        /// Observed BLAKE3 identity of the guest executable.
+        #[arg(long)]
+        executable_digest: String,
+        /// Request argument (repeatable).
+        #[arg(long = "arg")]
+        arguments: Vec<String>,
+        /// Guest execution timeout in milliseconds.
+        #[arg(long, default_value_t = 1000)]
+        timeout_ms: u32,
+        /// Receipt path (must not exist).
+        #[arg(long)]
+        receipt: String,
+    },
+
     /// Compare two fresh-process runs of one explorer configuration.
     RepeatabilityGate {
         /// Kernel path.
@@ -1423,6 +1488,51 @@ fn main() {
             structure_only,
             output,
         } => cmd_verify_checkpoint(checkpoint, expected_digest, structure_only, output),
+        Commands::ReviewCandidate {
+            checkpoint,
+            index,
+            dedup_key,
+            probe,
+            replay_verdict,
+            positive,
+            negative,
+            receipt,
+        } => cmd_review_candidate(
+            checkpoint,
+            chaoscontrol_explore::BugSelector { index, dedup_key },
+            probe,
+            replay_verdict,
+            positive,
+            negative,
+            receipt,
+        ),
+        Commands::Diagnose {
+            kernel,
+            initrd,
+            vms,
+            seed,
+            bootstrap_budget,
+            ticks,
+            executable,
+            executable_digest,
+            arguments,
+            timeout_ms,
+            receipt,
+        } => cmd_diagnose(
+            chaoscontrol_explore::diagnostic_run::DiagnosticSessionConfig {
+                kernel,
+                initrd,
+                vms,
+                seed,
+                bootstrap_budget,
+                ticks,
+                executable_path: executable,
+                executable_digest,
+                argv: arguments,
+                timeout_ms,
+            },
+            receipt,
+        ),
         Commands::RepeatabilityGate {
             kernel,
             initrd,
@@ -2437,6 +2547,7 @@ fn cmd_validate_candidate(
                 rounds,
                 ticks,
                 vcpus,
+                extra_cmdline: extra_cmdline.clone().unwrap_or_default(),
             },
             outcome,
         ) {
@@ -4863,6 +4974,161 @@ fn cmd_repeatability_gate(
     );
     println!("Receipt: {receipt_path}");
     std::process::exit(exit_status(receipt.verdict));
+}
+
+fn cmd_diagnose(
+    config: chaoscontrol_explore::diagnostic_run::DiagnosticSessionConfig,
+    receipt_path: String,
+) {
+    let receipt = match chaoscontrol_explore::diagnostic_run::run_session(&config) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    let mut bytes = match serde_json::to_vec_pretty(&receipt) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("Error: encode receipt: {error}");
+            std::process::exit(2);
+        }
+    };
+    bytes.push(b'\n');
+    if let Err(error) = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&receipt_path)
+        .and_then(|mut file| {
+            use std::io::Write;
+            file.write_all(&bytes).and_then(|()| file.sync_all())
+        })
+    {
+        eprintln!("Error: write {receipt_path}: {error}");
+        std::process::exit(2);
+    }
+    println!(
+        "Diagnostic session: receipts={} pending={} digest={}",
+        receipt.receipts.len(),
+        receipt.pending_requests,
+        receipt.session_digest
+    );
+    println!("Receipt: {receipt_path}");
+    if receipt.receipts.is_empty() {
+        std::process::exit(3);
+    }
+}
+
+fn cmd_review_candidate(
+    checkpoint: String,
+    selector: chaoscontrol_explore::BugSelector,
+    probe: String,
+    replay_verdict: String,
+    positive: String,
+    negative: String,
+    receipt_path: String,
+) {
+    use chaoscontrol_explore::candidate_review;
+    let read = |path: &str| -> Vec<u8> {
+        match std::fs::read(path) {
+            Ok(bytes) if bytes.len() <= 16 * 1024 * 1024 => bytes,
+            Ok(_) => {
+                eprintln!("Error: {path} exceeds 16 MiB");
+                std::process::exit(2);
+            }
+            Err(error) => {
+                eprintln!("Error: read {path}: {error}");
+                std::process::exit(2);
+            }
+        }
+    };
+    let inspection = match chaoscontrol_explore::inspect_bug(&checkpoint, selector) {
+        Ok(inspection) => inspection,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    let checkpoint_bytes = match chaoscontrol_explore::bounded_json::read_checkpoint(
+        std::path::Path::new(&checkpoint),
+    ) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("Error: read checkpoint: {error}");
+            std::process::exit(2);
+        }
+    };
+    let original = chaoscontrol_explore::candidate_validation::OriginalFailure {
+        checkpoint_digest: format!("b3:{}", blake3::hash(checkpoint_bytes.as_bytes()).to_hex()),
+        artifact: inspection.artifact.clone(),
+        bug_id: inspection.bug.bug_id,
+        dedup_key: inspection.bug.dedup_key,
+        tick: inspection.bug.tick,
+    };
+    let branch_id = match candidate_review::branch_identity(&read(&probe)) {
+        Ok(branch_id) => branch_id,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    let replay = match candidate_review::replay_facts(&read(&replay_verdict)) {
+        Ok(replay) => replay,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    let positive_row = match candidate_review::candidate_row("positive", &read(&positive)) {
+        Ok(row) => row,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    let negative_row = match candidate_review::candidate_row("negative", &read(&negative)) {
+        Ok(row) => row,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    let receipt =
+        match candidate_review::build(original, branch_id, replay, positive_row, negative_row) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(2);
+            }
+        };
+    let mut bytes = match serde_json::to_vec_pretty(&receipt) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("Error: encode receipt: {error}");
+            std::process::exit(2);
+        }
+    };
+    bytes.push(b'\n');
+    if let Err(error) = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&receipt_path)
+        .and_then(|mut file| {
+            use std::io::Write;
+            file.write_all(&bytes).and_then(|()| file.sync_all())
+        })
+    {
+        eprintln!("Error: write {receipt_path}: {error}");
+        std::process::exit(2);
+    }
+    println!(
+        "Candidate review: {:?} digest={}",
+        receipt.verdict, receipt.review_digest
+    );
+    println!("Receipt: {receipt_path}");
+    if receipt.verdict != chaoscontrol_explore::candidate_review::ReviewVerdict::Ready {
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]

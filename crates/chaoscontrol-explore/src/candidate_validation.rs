@@ -46,6 +46,9 @@ pub struct ValidationProfile {
     pub ticks: u64,
     /// vCPUs per VM.
     pub vcpus: usize,
+    /// Extra guest cmdline, recording the selected fault/planted variant.
+    #[serde(default)]
+    pub extra_cmdline: String,
 }
 
 /// Observed fresh-run outcome.
@@ -216,6 +219,7 @@ mod tests {
                 rounds: 1,
                 ticks: 100,
                 vcpus: 2,
+                extra_cmdline: String::new(),
             },
             ValidationOutcome {
                 exit_code: Some(0),
@@ -263,6 +267,7 @@ mod tests {
                     rounds: 1,
                     ticks: 1,
                     vcpus: 1,
+                    extra_cmdline: String::new(),
                 },
                 ValidationOutcome {
                     exit_code: None,

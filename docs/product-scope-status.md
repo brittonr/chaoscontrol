@@ -35,7 +35,6 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | Change | Target state | Owner | Evidence prerequisite |
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
-| `add-agent-investigation-contract` | `experimental` | `chaoscontrol-evidence` | A versioned investigation contract and the reference-only mid-run failure identity and checkpoint selection slice must pass; session admission, moment addressing, branch creation, diagnostic operations, intervention recording, and candidate receipts remain unimplemented. |
 | `add-counterfactual-replay-witnesses` | `experimental` | `chaoscontrol-evidence` | An exact common-prefix replay pair with one schedule-entry omission, independently validated outcomes, bounded search, and adversarial binding fixtures must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
 | `add-local-debug-query-workspace` | `experimental` | `chaoscontrol-replay` | Canonical event envelopes, a typed bounded query core, moment admission, static timelines, declared guest observations, receipts, and positive and negative fixtures must pass. |

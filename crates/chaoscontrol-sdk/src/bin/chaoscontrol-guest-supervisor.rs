@@ -5,12 +5,10 @@ use chaoscontrol_sdk::prelude::*;
 use chaoscontrol_sdk::supervisor::{StdProcessRuntime, Supervisor};
 use std::io::Write;
 use std::path::Path;
-use std::time::Duration;
 
 const DEFAULT_MANIFEST: &str = "/etc/chaoscontrol/process-manifest.json";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const MAX_FIXTURE_STATE_BYTES: u64 = 1024 * 1024;
-const SUPERVISOR_POLL_MILLIS: u64 = 1;
 const FIXTURE_WORKER_MODE: &str = "--fixture-worker";
 const FIXTURE_SHARED_FILE_NAME: &str = "cooperating-state";
 const DEFAULT_FIXTURE_DATA_DIRECTORY: &str = "/data";
@@ -99,8 +97,11 @@ fn run_fixture_worker() -> Result<(), String> {
 }
 
 fn run() -> Result<(), String> {
+    // The kernel forwards unknown command-line tokens to init as argv. Only an
+    // absolute first argument can be a supervisor-chosen manifest path.
     let manifest_path = std::env::args()
         .nth(1)
+        .filter(|argument| argument.starts_with('/'))
         .unwrap_or_else(|| DEFAULT_MANIFEST.to_string());
     if manifest_path.len() > MAX_PATH_BYTES || !Path::new(&manifest_path).is_absolute() {
         return Err("manifest path must be a bounded absolute path".to_string());
@@ -110,6 +111,12 @@ fn run() -> Result<(), String> {
         serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
     let admitted = admit_manifest(&manifest).map_err(|error| format!("{error:?}"))?;
     let process_count = admitted.processes.len();
+    // Host diagnostic requests name an executable identity only; the supervisor
+    // chooses which admitted executable path to verify and run.
+    let diagnostic_executable = admitted
+        .processes
+        .first()
+        .map(|process| process.spec.executable.clone());
     let manifest_identity = admitted.manifest_identity.clone();
     let shared_storage = chaoscontrol_sdk::supervisor::prepare_guest_shared_storage(&admitted)
         .map_err(|error| format!("shared storage admission: {error:?}"))?;
@@ -133,12 +140,18 @@ fn run() -> Result<(), String> {
                 .apply_fault(&command)
                 .map_err(|error| format!("{error:?}"))?;
         }
+        if let Some(executable) = diagnostic_executable.as_deref() {
+            chaoscontrol_sdk::diagnostic::serve_one_diagnostic(Path::new(executable))
+                .map_err(|error| format!("diagnostic operation: {error}"))?;
+        }
         supervisor.monitor().map_err(|error| format!("{error:?}"))?;
         supervisor
             .advance_tick()
             .map_err(|error| format!("{error:?}"))?;
         emit_events(supervisor.drain_events());
-        std::thread::sleep(Duration::from_millis(SUPERVISOR_POLL_MILLIS));
+        // Guest time advances from VMM exits; a host clock sleep would stall
+        // deterministic progress once every vCPU is idle.
+        std::thread::yield_now();
     }
 }
 

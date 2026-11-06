@@ -30,7 +30,8 @@
 ## Phase 4: Interactions and evidence
 
 - [x] [serial] Implement deterministic network overlap precedence. r[chaoscontrol.fault_mechanisms.interactions]
-- [ ] [serial] Extend overlap and one-active-per-target precedence to the new and existing mechanisms. r[chaoscontrol.fault_mechanisms.interactions]
+- [x] [serial] Extend overlap and one-active-per-target precedence to the new and existing mechanisms. r[chaoscontrol.fault_mechanisms.interactions]
+  - Evidence: [fixture audit](evidence/2026-11-06-fixture-audit.md) and the published table in `docs/fault-surface.md`. Directional windows on one link overlap with most-restrictive precedence and scoped heal; CPU throttle, stall, process fault/restart, clock freeze, memory pressure, and thread pause admit one active effect per target (`overlapping_*` controller tests); pause control suppresses only new selection; custom effects have no target and require an exact admitted adapter identity.
 - [ ] [serial] Extend the stage ledger and receipt with mechanism identity, effective target, suppression, overlap, and per-stage counts. r[chaoscontrol.fault_mechanisms.evidence]
 - [ ] [parallel] Add snapshot and exact-replay fixtures for each mechanism and for overlapping windows, including drift rejection. r[chaoscontrol.fault_mechanisms.fixtures]
 - [ ] [serial] Exercise one bounded KVM campaign with a directional fault, a CPU throttle, a custom effect, and a pause window in one recorded run. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.interactions]

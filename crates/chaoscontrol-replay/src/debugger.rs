@@ -3,10 +3,10 @@
 use crate::checkpoint::Checkpoint;
 use crate::recording::{validate_recording, RecordedEvent, Recording};
 use crate::replay::{
-    checked_recorded_target_tick, checked_target_tick, validate_replayed_fault_interval,
-    validate_replayed_fault_round, validated_checkpoint_snapshot, InvalidStateSnafu,
-    MemoryModification, RegisterModification, ReplayEngine, ReplayError, ReplayResult,
-    SimulationRunner,
+    checked_recorded_target_tick, checked_target_tick, synchronize_replayed_fault_controls,
+    validate_replayed_fault_interval, validate_replayed_fault_round, validated_checkpoint_snapshot,
+    InvalidStateSnafu, MemoryModification, RegisterModification, ReplayEngine, ReplayError,
+    ReplayResult, SimulationRunner,
 };
 use chaoscontrol_vmm::registers::{Register, RegisterState};
 
@@ -66,10 +66,12 @@ impl<R: SimulationRunner> Debugger<R> {
             let ticks_to_run = tick - cp.tick;
             let snapshot = validated_checkpoint_snapshot(&self.recording, &cp)?;
             runner.restore_all(snapshot)?;
+            synchronize_replayed_fault_controls(&self.recording, runner)?;
             let mut fault_outcomes = Vec::new();
             for _ in 0..ticks_to_run {
                 let round = runner.step_round()?;
                 validate_replayed_fault_round(&self.recording, round.tick, &round.fault_outcomes)?;
+                synchronize_replayed_fault_controls(&self.recording, runner)?;
                 fault_outcomes.extend(round.fault_outcomes);
                 if round.vms_running == 0 {
                     break;
@@ -96,9 +98,11 @@ impl<R: SimulationRunner> Debugger<R> {
                 self.recording.fault_run_sequence,
             )?;
             let mut fault_outcomes = Vec::new();
+            synchronize_replayed_fault_controls(&self.recording, &mut runner)?;
             while runner.tick() < target_tick {
                 let round = runner.step_round()?;
                 validate_replayed_fault_round(&self.recording, round.tick, &round.fault_outcomes)?;
+                synchronize_replayed_fault_controls(&self.recording, &mut runner)?;
                 fault_outcomes.extend(round.fault_outcomes);
                 if round.vms_running == 0 {
                     break;
@@ -402,6 +406,19 @@ mod tests {
             _run_sequence: u64,
         ) -> Result<Self, ReplayError> {
             Ok(Self { tick: 0 })
+        }
+
+        fn fault_control_events(&self) -> &[chaoscontrol_fault::evidence::FaultControlEvent] {
+            &[]
+        }
+
+        fn replay_pause_request(
+            &mut self,
+            _request: chaoscontrol_fault::mechanisms::PauseControlRequest,
+        ) -> Result<(), ReplayError> {
+            Err(ReplayError::InvalidState {
+                message: "this debugger fixture has no pause-control engine".into(),
+            })
         }
 
         fn begin_counterfactual_fault_run(

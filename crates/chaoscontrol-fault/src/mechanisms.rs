@@ -180,7 +180,7 @@ pub enum MechanismPlan {
 }
 
 /// Fault-mechanism admission failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MechanismError {
     InvalidLink,
     InvalidWindow,
@@ -198,6 +198,7 @@ pub enum MechanismError {
     DuplicatePauseRequest,
     TooManyPauseRequests,
     TooManyNetworkFaults,
+    EvidenceBoundExceeded,
 }
 
 impl core::fmt::Display for MechanismError {
@@ -219,6 +220,7 @@ impl core::fmt::Display for MechanismError {
             Self::DuplicatePauseRequest => "pause request duplicates an active request",
             Self::TooManyPauseRequests => "pause request count exceeds the bound",
             Self::TooManyNetworkFaults => "active network fault count exceeds the bound",
+            Self::EvidenceBoundExceeded => "fault control evidence exceeds the bound",
         };
         formatter.write_str(message)
     }

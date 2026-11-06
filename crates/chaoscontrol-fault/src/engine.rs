@@ -4,6 +4,10 @@
 //! deterministic RNG into a single coordinator.  The VMM calls into the
 //! engine on every hypercall and on every exit to check if faults are due.
 
+use crate::evidence::{
+    active_effects, admitted_pause_requests, applied_attempts, record_fault_control,
+    FaultControlKind, PauseRequestEvidence,
+};
 use crate::faults::{Fault, GpRegister};
 use crate::mechanisms::{admit_pause_requests, PauseControlRequest};
 use crate::oracle::{AssertionKind, PropertyOracle};
@@ -969,12 +973,72 @@ impl FaultEngine {
     pub fn request_pause_control(
         &mut self,
         request: PauseControlRequest,
+        tick: u64,
     ) -> Result<(), crate::mechanisms::MechanismError> {
         let mut requests = self.pause_control.clone();
-        requests.push(request);
-        admit_pause_requests(&requests)?;
+        requests.push(request.clone());
+        let decision = admit_pause_requests(&requests);
+        let applied_attempts = applied_attempts(&self.outcomes);
+        let active_effects = active_effects(&self.outcomes, self.run_id, tick);
+        record_fault_control(
+            &mut self.outcomes,
+            self.run_id,
+            self.run_sequence,
+            self.schedule_id,
+            tick,
+            FaultControlKind::PauseRequested {
+                request: PauseRequestEvidence::new(&request),
+                decision,
+                applied_attempts,
+                active_effects,
+            },
+        )
+        .map_err(|_| crate::mechanisms::MechanismError::EvidenceBoundExceeded)?;
+        decision?;
         self.pause_control = requests;
         Ok(())
+    }
+
+    /// Reject previously selected work during a pause without altering existing effects.
+    pub fn suppress_fault_application(
+        &mut self,
+        attempt_id: FaultAttemptId,
+        tick: u64,
+    ) -> Result<bool, FaultTransitionError> {
+        let Some((index, request)) = self
+            .pause_control
+            .iter()
+            .enumerate()
+            .find(|(_, window)| window.start_tick <= tick && tick < window.end_tick)
+        else {
+            return Ok(false);
+        };
+        let mut next = self.outcomes.clone();
+        record_fault_control(
+            &mut next,
+            self.run_id,
+            self.run_sequence,
+            self.schedule_id,
+            tick,
+            FaultControlKind::ApplicationSuppressed {
+                tick,
+                request_index: index as u32,
+                attempt_id,
+            },
+        )?;
+        next = transition_fault_outcome(
+            &next,
+            None,
+            attempt_id,
+            FaultStageKind::Rejected {
+                reason: crate::outcomes::FaultRejectionReason::PauseControlActive {
+                    start_tick: request.start_tick,
+                    end_tick: request.end_tick,
+                },
+            },
+        )?;
+        self.outcomes = next;
+        Ok(true)
     }
 
     pub fn poll_fault_attempts(
@@ -1000,11 +1064,47 @@ impl FaultEngine {
             return Ok(Vec::new());
         }
         let current_tick = current_time_ns / crate::outcomes::NANOSECONDS_PER_SIMULATION_TICK;
-        if self
-            .pause_control
-            .iter()
-            .any(|window| current_tick >= window.start_tick && current_tick < window.end_tick)
+        if let Some((request_index, _)) =
+            self.pause_control.iter().enumerate().find(|(_, window)| {
+                current_tick >= window.start_tick && current_tick < window.end_tick
+            })
         {
+            let scheduled_entry_indices = self
+                .schedule
+                .faults()
+                .iter()
+                .enumerate()
+                .skip(self.schedule.total() - self.schedule.remaining())
+                .take_while(|(_, entry)| entry.time_ns <= current_time_ns)
+                .map(|(index, _)| index as u64)
+                .collect::<Vec<_>>();
+            let scheduled_mechanisms = scheduled_entry_indices
+                .iter()
+                .map(|index| self.schedule.faults()[*index as usize].fault.variant())
+                .collect();
+            let random_due = self.config.random_faults
+                && self.config.num_vms > 0
+                && current_time_ns >= self.next_random_fault_time_ns;
+            // A quiet empty poll is not a suppressed selection. Due work stays pending,
+            // and repeated opportunities are explicitly separate from unique attempts.
+            if !scheduled_entry_indices.is_empty() || random_due {
+                record_fault_control(
+                    &mut self.outcomes,
+                    self.run_id,
+                    self.run_sequence,
+                    self.schedule_id,
+                    current_tick,
+                    FaultControlKind::SelectionSuppressed {
+                        tick: current_tick,
+                        time_ns: current_time_ns,
+                        request_index: request_index as u32,
+                        scheduled_entry_indices,
+                        scheduled_mechanisms,
+                        random_due,
+                    },
+                )
+                .context(OutcomeTransitionSnafu)?;
+            }
             return Ok(Vec::new());
         }
         if self.run_exhausted {
@@ -1231,6 +1331,11 @@ impl FaultEngine {
                 .attempts
                 .values()
                 .any(|state| state.attempt.run_sequence == self.run_sequence)
+            || self
+                .outcomes
+                .control_events
+                .iter()
+                .any(|event| event.run_id == self.run_id)
         {
             return Err(FaultSelectionError::ScheduleMutationAfterSelection);
         }
@@ -1264,6 +1369,80 @@ impl FaultEngine {
         }
     }
 
+    fn validate_suppression_snapshot(
+        &self,
+        snapshot: &EngineSnapshot,
+    ) -> Result<(), FaultTransitionError> {
+        let mut stage_cursor = 0;
+        let mut schedule_cursor = 0;
+        let mut next_random_time_ns = self.config.random_fault_interval_ns;
+        for control in snapshot
+            .outcomes
+            .control_events
+            .iter()
+            .filter(|event| event.run_id == snapshot.run_id)
+        {
+            let boundary = usize::try_from(control.stage_event_count)
+                .map_err(|_| FaultTransitionError::ControlEventMismatch)?;
+            for event in &snapshot.outcomes.events[stage_cursor..boundary] {
+                if event.kind != FaultStageKind::Selected {
+                    continue;
+                }
+                let attempt = &snapshot.outcomes.attempts[&event.attempt_id].attempt;
+                if attempt.run_id != snapshot.run_id {
+                    continue;
+                }
+                match attempt.source {
+                    FaultAttemptSource::Scheduled { .. } => schedule_cursor += 1,
+                    FaultAttemptSource::Random => {
+                        next_random_time_ns = attempt
+                            .selected_at_ns
+                            .saturating_add(self.config.random_fault_interval_ns)
+                    }
+                    FaultAttemptSource::Direct => {}
+                }
+            }
+            stage_cursor = boundary;
+            if let FaultControlKind::SelectionSuppressed {
+                scheduled_entry_indices,
+                scheduled_mechanisms,
+                random_due,
+                time_ns,
+                ..
+            } = &control.kind
+            {
+                let mut expected = Vec::new();
+                let mut index = schedule_cursor;
+                while let Some(entry) = snapshot.schedule.entry(index) {
+                    if entry.time_ns > *time_ns {
+                        break;
+                    }
+                    expected.push(index as u64);
+                    index += 1;
+                }
+                let expected_random = self.config.random_faults
+                    && self.config.num_vms > 0
+                    && *time_ns >= next_random_time_ns;
+                if *scheduled_entry_indices != expected || *random_due != expected_random {
+                    return Err(FaultTransitionError::ControlEventMismatch);
+                }
+                if expected
+                    .iter()
+                    .zip(scheduled_mechanisms)
+                    .any(|(index, mechanism)| {
+                        snapshot
+                            .schedule
+                            .entry(*index as usize)
+                            .is_none_or(|entry| entry.fault.variant() != *mechanism)
+                    })
+                {
+                    return Err(FaultTransitionError::ControlEventMismatch);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Validate fault-stage state without changing live state.
     fn validate_fault_snapshot(
         &self,
@@ -1293,6 +1472,18 @@ impl FaultEngine {
         }
         if admit_pause_requests(&snapshot.pause_control).is_err() {
             return Err(FaultTransitionError::SnapshotRunStateMismatch);
+        }
+        if admitted_pause_requests(&snapshot.outcomes, snapshot.run_id) != snapshot.pause_control {
+            return Err(FaultTransitionError::ControlEventMismatch);
+        }
+        self.validate_suppression_snapshot(snapshot)?;
+        for control in &snapshot.outcomes.control_events {
+            if control.run_sequence > snapshot.run_sequence
+                || control.run_id
+                    != fault_run_id(self.config.seed, control.run_sequence, control.schedule_id)
+            {
+                return Err(FaultTransitionError::SnapshotRunIdentityMismatch);
+            }
         }
         let canonical_rng = Self::rng_from_seed(self.config.seed);
         if snapshot.rng_seed != canonical_rng.get_seed()
@@ -1886,11 +2077,14 @@ mod tests {
         engine.begin_run();
         engine.force_setup_complete();
         engine
-            .request_pause_control(PauseControlRequest {
-                requester: String::from("operator"),
-                start_tick: 0,
-                end_tick: 5,
-            })
+            .request_pause_control(
+                PauseControlRequest {
+                    requester: String::from("operator"),
+                    start_tick: 0,
+                    end_tick: 5,
+                },
+                0,
+            )
             .expect("pause admitted");
         assert!(engine.poll_faults(0).unwrap().is_empty());
 
@@ -1904,11 +2098,14 @@ mod tests {
         assert!(engine.poll_faults(1_000_000).unwrap().is_empty());
         assert_eq!(engine.poll_faults(5_000_000).unwrap().len(), 1);
         assert_eq!(
-            engine.request_pause_control(PauseControlRequest {
-                requester: String::from("operator"),
-                start_tick: 0,
-                end_tick: 5,
-            }),
+            engine.request_pause_control(
+                PauseControlRequest {
+                    requester: String::from("operator"),
+                    start_tick: 0,
+                    end_tick: 5,
+                },
+                5
+            ),
             Err(crate::mechanisms::MechanismError::DuplicatePauseRequest)
         );
     }
@@ -1931,7 +2128,7 @@ mod tests {
         engine.begin_run();
         engine.force_setup_complete();
         engine
-            .request_pause_control(pause())
+            .request_pause_control(pause(), 0)
             .expect("pause admitted");
         assert!(engine.poll_faults(0).unwrap().is_empty());
 
@@ -1940,7 +2137,7 @@ mod tests {
         assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
 
         engine
-            .request_pause_control(pause())
+            .request_pause_control(pause(), 0)
             .expect("pause admitted");
         engine
             .begin_counterfactual_run(schedule.clone())
@@ -1948,7 +2145,7 @@ mod tests {
         assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
 
         engine
-            .request_pause_control(pause())
+            .request_pause_control(pause(), 0)
             .expect("pause admitted");
         engine.rebind_fresh_run_at(schedule, 9);
         engine.force_setup_complete();

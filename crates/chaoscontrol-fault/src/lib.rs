@@ -19,6 +19,9 @@
 //! ```
 
 pub mod engine;
+pub mod evidence;
+#[cfg(test)]
+mod evidence_tests;
 pub mod faults;
 pub mod mechanisms;
 pub mod oracle;

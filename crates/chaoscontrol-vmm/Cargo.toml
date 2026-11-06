@@ -34,5 +34,6 @@ serde_json = "1"
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
+ciborium = "0.2"
 chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
 tempfile = "3"

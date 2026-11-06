@@ -1000,6 +1000,10 @@ pub enum FaultRejectionReason {
     },
     InvalidCustomEffect,
     InvalidThreadPause,
+    PauseControlActive {
+        start_tick: u64,
+        end_tick: u64,
+    },
     ArithmeticOverflow,
     UnsupportedCapability {
         variant: FaultVariant,
@@ -1892,6 +1896,7 @@ pub enum FaultApplicationFailureReason {
     DeviceDisappeared,
     TargetStateChanged,
     InternalInvariant,
+    ActiveEffectOverlap,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1925,6 +1930,7 @@ pub struct FaultStageEvent {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FaultStageCounters {
     pub selected: u64,
+    pub applicable: u64,
     pub rejected: u64,
     pub applied: u64,
     pub application_failed: u64,
@@ -1959,6 +1965,8 @@ pub struct FaultOutcomeLedger {
     pub attempts: BTreeMap<FaultAttemptId, FaultAttemptState>,
     pub events: Vec<FaultStageEvent>,
     pub counters: FaultStageCounters,
+    #[serde(default)]
+    pub control_events: Vec<crate::evidence::FaultControlEvent>,
 }
 
 impl FaultOutcomeLedger {
@@ -2003,6 +2011,11 @@ pub enum FaultTransitionError {
     ObservationBoundExceeded,
     CounterOverflow,
     EventSequenceOverflow,
+    ControlEventBoundExceeded,
+    ControlEventMismatch,
+    ReceiptProfileInvalid,
+    ReceiptMismatch,
+    ReceiptPayloadBoundExceeded,
 }
 
 impl fmt::Display for FaultTransitionError {
@@ -2039,6 +2052,7 @@ fn apply_fault_outcome_transition(
         FaultStageKind::Selected => transition_selected(ledger, attempt, attempt_id)?,
         FaultStageKind::Applicable { effect } => {
             transition_applicable(ledger, attempt_id, effect)?;
+            ledger.counters.applicable = checked_increment(ledger.counters.applicable)?;
         }
         FaultStageKind::Rejected { .. } => {
             transition_terminal(
@@ -2081,11 +2095,25 @@ pub fn validate_fault_outcome_ledger(
 ) -> Result<(), FaultTransitionError> {
     validate_ledger_bounds(ledger)?;
     let mut replay = FaultOutcomeLedger::default();
+    let mut controls = ledger.control_events.iter().peekable();
+    let mut pause_requests = Vec::new();
     for (index, event) in ledger.events.iter().enumerate() {
         let expected_sequence =
             u64::try_from(index).map_err(|_| FaultTransitionError::EventSequenceOverflow)?;
         if event.sequence != expected_sequence {
             return Err(FaultTransitionError::EventSequenceMismatch);
+        }
+        while controls
+            .peek()
+            .is_some_and(|control| control.stage_event_count == index as u64)
+        {
+            crate::evidence::replay_fault_control(
+                &mut replay,
+                controls
+                    .next()
+                    .ok_or(FaultTransitionError::ControlEventMismatch)?,
+                &mut pause_requests,
+            )?;
         }
         let attempt = if event.kind == FaultStageKind::Selected {
             Some(
@@ -2098,8 +2126,13 @@ pub fn validate_fault_outcome_ledger(
         } else {
             None
         };
+        crate::evidence::validate_control_stage(&replay, attempt, event)?;
         apply_fault_outcome_transition(&mut replay, attempt, event.attempt_id, event.kind.clone())?;
     }
+    for control in controls {
+        crate::evidence::replay_fault_control(&mut replay, control, &mut pause_requests)?;
+    }
+    crate::evidence::validate_control_terminals(ledger)?;
     if replay != *ledger {
         return Err(FaultTransitionError::LedgerReplayMismatch);
     }
@@ -3050,10 +3083,16 @@ fn validate_ledger_bounds(ledger: &FaultOutcomeLedger) -> Result<(), FaultTransi
     if ledger.events.len() > MAX_FAULT_OUTCOME_EVENTS {
         return Err(FaultTransitionError::EventBoundExceeded);
     }
+    if ledger.control_events.len() > crate::evidence::MAX_FAULT_CONTROL_EVENTS {
+        return Err(FaultTransitionError::ControlEventBoundExceeded);
+    }
     Ok(())
 }
 
 fn validate_counter_invariants(ledger: &FaultOutcomeLedger) -> Result<(), FaultTransitionError> {
+    if ledger.counters.applicable > ledger.counters.selected {
+        return Err(FaultTransitionError::CounterOverflow);
+    }
     if ledger.counters.rejected > ledger.counters.selected {
         return Err(FaultTransitionError::CounterOverflow);
     }

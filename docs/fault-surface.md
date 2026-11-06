@@ -76,9 +76,11 @@ and gate, not arbitrary OS-thread preemption.
 
 ## Pause control
 
-An admitted pause-control window suppresses new fault selection while the virtual tick is inside
-the window. Already-applied effects continue to run; the window does not clear them. Replay
-snapshots retain the admitted windows, so a restored run resumes the same suppression boundary.
+An admitted pause-control window suppresses new fault selection and application while the virtual
+tick is inside the window. Already-applied effects continue to run; the window does not clear them.
+Snapshots retain the admitted windows and ordered control facts. A restored run resumes the same
+suppression boundary; previously selected work reaching application inside the window is rejected
+with `PauseControlActive`, not reported as applied.
 
 ## System runs inject faults by default
 
@@ -118,8 +120,34 @@ Directional faults use only mode-relevant parameters: `Stopped` needs neither a 
 The controller application shell rechecks custom-effect, directional, and thread-pause admission so a
 malformed plan cannot reach the adapter, fabric, or cooperative gate.
 
-The stage ledger records the attempt identity, mechanism, effective target, and observed stage for
-each accepted effect. It does not infer that a suppressed fault was absent from the host.
+The stage ledger retains exact attempt identities, selected descriptors, applicable plans and
+observations. The bounded `chaoscontrol.fault-mechanism-receipt.v1` projection is built with
+`chaoscontrol_fault::evidence::fault_mechanism_receipt(ledger, seed, profile)` and independently
+checked with `validate_fault_mechanism_receipt`. It binds the named profile, seed, run/schedule
+identities, effective targets, all six stage counts per attempt and mechanism, control facts and
+overlap decisions. It contains no raw logs or packet payloads.
+
+Directional decisions retain every installed candidate and the effective attempt for each directed
+link after application or heal. They use the fabric's severity and equal-mode delay/queue tie rules.
+Resource/process decisions retain the effective applied attempt for each managed slot when a later
+request is applied, rejected or fails. Stable rejection/failure reasons remain in the exact stage
+events; a failed overlapping request does not replace the effective applied attempt.
+
+Pause request facts retain the requester, exact window, admission decision, applied-attempt inventory,
+and release/heal-aware active core-managed windows at the request boundary. A custom adapter's
+opaque effect lifetime is not inferred from invocation: its application remains in the inventory,
+not an unsupported claim about continued activity. Oversized rejected requester text is omitted;
+its byte length and BLAKE3 digest are retained instead. Control facts are bounded separately from
+stage events and exhaustion returns a typed error rather than silently dropping evidence.
+Receipt emission also rejects over-bound selected descriptors before copying their strings or
+collections; it does not turn malformed custom payloads into a larger evidence artifact.
+
+`selection_suppression_opportunities` counts polls with due scheduled work, attributed to its
+mechanism and canonical schedule index. Repeated polls may name the same deferred entry; these are
+not unique selections. Random due opportunities are separate because suppression does not sample
+or advance the RNG. Empty polls are not counted. `application_suppressions` counts selected attempts
+rejected by pause control. None of these counters increments `Selected`, `Applied`, or `Observed`.
+The ledger does not infer that a suppressed fault was absent from the host.
 
 ### Explicit unsupported cases
 
@@ -130,7 +158,13 @@ each accepted effect. It does not infer that a suppressed fault was absent from 
 
 ## Evidence and replay
 
-Each accepted effect records `Selected`, `Applicable`, `Applied`, and `Observed` stages. Invalid windows and unsupported profiles record typed rejections.
-Snapshots retain active deadlines, limits, and clock settings. Restore rejects state that does not match an observed applied plan.
+An attempt may record `Selected`, `Applicable`, `Applied`, and `Observed`, or terminate with
+`Rejected` or `ApplicationFailed`. Application without an affected operation has zero observations;
+selection alone has zero applications. Snapshot admission replays the exact ordered stage and control
+facts, checks all derived counters, binds pause windows to their admission facts, and rechecks due
+schedule indices, mechanism identities and random opportunity state. It retains exact plan matching,
+observation identity checks and active-window restore checks. Receipt validation rebuilds the entire
+projection and rejects target, count, suppression, precedence, profile or seed drift. Exact replay
+does not reconstruct omitted oversized request payloads: unavailable original input fails closed.
 
 These records prove bounded VMM behavior for the selected run. They do not prove guest-kernel OOM behavior, host timing, or production readiness.

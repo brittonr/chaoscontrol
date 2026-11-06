@@ -33,6 +33,8 @@ mod recorded_fault_ledger {
     struct WireFaultLedger {
         attempts: Vec<FaultAttemptState>,
         events: Vec<FaultStageEvent>,
+        #[serde(default)]
+        control_events: Vec<chaoscontrol_fault::evidence::FaultControlEvent>,
         counters: FaultStageCounters,
     }
 
@@ -43,6 +45,7 @@ mod recorded_fault_ledger {
         WireFaultLedger {
             attempts: ledger.attempts.values().cloned().collect(),
             events: ledger.events.clone(),
+            control_events: ledger.control_events.clone(),
             counters: ledger.counters,
         }
         .serialize(serializer)
@@ -69,6 +72,7 @@ mod recorded_fault_ledger {
         Ok(FaultOutcomeLedger {
             attempts,
             events: wire.events,
+            control_events: wire.control_events,
             counters: wire.counters,
         })
     }

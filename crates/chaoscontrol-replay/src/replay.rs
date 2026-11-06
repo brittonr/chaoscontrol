@@ -1,6 +1,7 @@
 //! Replay engine — restores and replays from recording.
 
 use crate::recording::{validate_recording, RecordedEvent, Recording, RecordingConfig};
+use chaoscontrol_fault::evidence::{FaultControlEvent, FaultControlKind};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::outcomes::{
     transition_fault_outcome, validate_fault_outcome_ledger, FaultOutcomeLedger, FaultStageEvent,
@@ -49,6 +50,15 @@ pub trait SimulationRunner {
 
     /// Step the simulation by one round.
     fn step_round(&mut self) -> Result<RoundResult, ReplayError>;
+
+    /// Cumulative pause admission and suppression facts, including restored facts.
+    fn fault_control_events(&self) -> &[FaultControlEvent];
+
+    /// Replay one recorded external request through the normal admission path.
+    fn replay_pause_request(
+        &mut self,
+        request: chaoscontrol_fault::mechanisms::PauseControlRequest,
+    ) -> Result<(), ReplayError>;
 
     /// Take a snapshot of all VMs.
     fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError>;
@@ -148,6 +158,20 @@ impl SimulationRunner for RealSimulationRunner {
 
     fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
         Ok(self.controller.step_round()?)
+    }
+
+    fn fault_control_events(&self) -> &[FaultControlEvent] {
+        &self.controller.fault_outcomes().control_events
+    }
+
+    fn replay_pause_request(
+        &mut self,
+        request: chaoscontrol_fault::mechanisms::PauseControlRequest,
+    ) -> Result<(), ReplayError> {
+        // Both admission and typed rejection are retained in control_events and
+        // compared with the recording immediately after dispatch.
+        let _decision = self.controller.request_pause_control(request);
+        Ok(())
     }
 
     fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
@@ -259,6 +283,21 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         let target_tick = checked_recorded_target_tick(&self.recording, start_tick, ticks)?;
         let mut events = Vec::new();
         let mut fault_outcomes = Vec::new();
+        let mut stage_event_count = self
+            .recording
+            .fault_round_deltas
+            .iter()
+            .filter(|delta| delta.tick <= start_tick)
+            .map(|delta| delta.event_end)
+            .next_back()
+            .unwrap_or(0);
+        replay_pause_requests(&self.recording, &mut runner, stage_event_count)?;
+        validate_replayed_fault_controls(
+            &self.recording,
+            runner.tick(),
+            stage_event_count,
+            runner.fault_control_events(),
+        )?;
 
         while runner.tick() < target_tick {
             let result = runner.step_round().map_err(|e| {
@@ -275,6 +314,14 @@ impl<R: SimulationRunner> ReplayEngine<R> {
                 &result.schedule_traces,
             )?;
             fault_outcomes.extend(result.fault_outcomes.iter().cloned());
+            stage_event_count += result.fault_outcomes.len() as u64;
+            replay_pause_requests(&self.recording, &mut runner, stage_event_count)?;
+            validate_replayed_fault_controls(
+                &self.recording,
+                runner.tick(),
+                stage_event_count,
+                runner.fault_control_events(),
+            )?;
 
             // Collect events that occurred this tick
             for event in &self.recording.events {
@@ -511,7 +558,7 @@ pub(crate) fn validated_checkpoint_snapshot<'a>(
     let prefix_end = usize::try_from(prefix_end).map_err(|_| ReplayError::InvalidState {
         message: "checkpoint fault-stage prefix exceeds platform bounds".to_string(),
     })?;
-    let expected = replay_fault_ledger_prefix(recording, prefix_end)?;
+    let expected = replay_fault_ledger_prefix(recording, prefix_end, checkpoint.tick)?;
     if snapshot.fault_engine_snapshot.outcomes() != &expected {
         return InvalidStateSnafu {
             message: format!(
@@ -527,6 +574,7 @@ pub(crate) fn validated_checkpoint_snapshot<'a>(
 fn replay_fault_ledger_prefix(
     recording: &Recording,
     prefix_end: usize,
+    tick: u64,
 ) -> Result<FaultOutcomeLedger, ReplayError> {
     let events = recording
         .fault_stage_events
@@ -555,7 +603,103 @@ fn replay_fault_ledger_prefix(
             message: format!("recorded fault prefix is invalid: {error}"),
         })?;
     }
+    ledger.control_events = fault_control_prefix(recording, tick, prefix_end as u64)
+        .cloned()
+        .collect();
+    validate_fault_outcome_ledger(&ledger).map_err(|error| ReplayError::InvalidState {
+        message: format!("recorded fault-control prefix is invalid: {error}"),
+    })?;
     Ok(ledger)
+}
+
+fn fault_control_prefix(
+    recording: &Recording,
+    tick: u64,
+    stage_event_count: u64,
+) -> impl Iterator<Item = &FaultControlEvent> {
+    recording
+        .fault_outcome_ledger
+        .control_events
+        .iter()
+        .filter(move |event| {
+            event.stage_event_count <= stage_event_count
+                && (event.run_id != recording.fault_run_id || event.tick <= tick)
+        })
+}
+
+pub(crate) fn validate_replayed_fault_controls(
+    recording: &Recording,
+    tick: u64,
+    stage_event_count: u64,
+    replayed: &[FaultControlEvent],
+) -> Result<(), ReplayError> {
+    if !replayed
+        .iter()
+        .eq(fault_control_prefix(recording, tick, stage_event_count))
+    {
+        return Err(ReplayError::InvalidState {
+            message: format!("fault-control trace mismatch at tick {tick}"),
+        });
+    }
+    Ok(())
+}
+
+pub(crate) fn replay_pause_requests<R: SimulationRunner>(
+    recording: &Recording,
+    runner: &mut R,
+    stage_event_count: u64,
+) -> Result<(), ReplayError> {
+    while let Some(event) = recording
+        .fault_outcome_ledger
+        .control_events
+        .get(runner.fault_control_events().len())
+    {
+        if event.tick != runner.tick() || event.stage_event_count != stage_event_count {
+            break;
+        }
+        let FaultControlKind::PauseRequested { request, .. } = &event.kind else {
+            break;
+        };
+        if request.requester_bytes != request.requester.len() as u64 {
+            return Err(ReplayError::InvalidState {
+                message: "recorded rejected pause request has no retained raw identity".to_string(),
+            });
+        }
+        let before = runner.fault_control_events().len();
+        runner.replay_pause_request(chaoscontrol_fault::mechanisms::PauseControlRequest {
+            requester: request.requester.clone(),
+            start_tick: request.start_tick,
+            end_tick: request.end_tick,
+        })?;
+        if runner.fault_control_events().len() != before + 1
+            || runner.fault_control_events().last() != Some(event)
+        {
+            return Err(ReplayError::InvalidState {
+                message: "pause-control admission diverged from the recorded decision".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn synchronize_replayed_fault_controls<R: SimulationRunner>(
+    recording: &Recording,
+    runner: &mut R,
+) -> Result<(), ReplayError> {
+    let stage_event_count = recording
+        .fault_round_deltas
+        .iter()
+        .filter(|delta| delta.tick <= runner.tick())
+        .map(|delta| delta.event_end)
+        .next_back()
+        .unwrap_or(0);
+    replay_pause_requests(recording, runner, stage_event_count)?;
+    validate_replayed_fault_controls(
+        recording,
+        runner.tick(),
+        stage_event_count,
+        runner.fault_control_events(),
+    )
 }
 
 pub(crate) fn checked_target_tick(start_tick: u64, ticks: u64) -> Result<u64, ReplayError> {
@@ -822,6 +966,7 @@ mod tests {
         schedule: FaultSchedule,
         run_sequence: u64,
         seed: u64,
+        control_engine: chaoscontrol_fault::engine::FaultEngine,
     }
 
     impl SimulationRunner for MockRunner {
@@ -831,6 +976,15 @@ mod tests {
             seed: u64,
             run_sequence: u64,
         ) -> Result<Self, ReplayError> {
+            let mut control_engine = chaoscontrol_fault::engine::FaultEngine::new(
+                chaoscontrol_fault::engine::EngineConfig {
+                    seed,
+                    schedule: Some(schedule.clone()),
+                    ..Default::default()
+                },
+            );
+            control_engine.start_fresh_run_at(schedule.clone(), run_sequence);
+            control_engine.force_setup_complete();
             Ok(Self {
                 tick: 0,
                 max_ticks: if config.quantum == SHORT_REPLAY_QUANTUM {
@@ -846,7 +1000,25 @@ mod tests {
                 schedule,
                 run_sequence,
                 seed,
+                control_engine,
             })
+        }
+
+        fn fault_control_events(&self) -> &[FaultControlEvent] {
+            &self.control_engine.fault_outcomes().control_events
+        }
+
+        fn replay_pause_request(
+            &mut self,
+            mut request: chaoscontrol_fault::mechanisms::PauseControlRequest,
+        ) -> Result<(), ReplayError> {
+            if self.corrupt_trace {
+                request.end_tick += 1;
+            }
+            let _decision = self
+                .control_engine
+                .request_pause_control(request, self.tick);
+            Ok(())
         }
 
         fn begin_counterfactual_fault_run(
@@ -861,12 +1033,65 @@ mod tests {
                     })?;
             self.scheduled_fault_count = schedule.total();
             self.run_start_tick = self.tick;
+            self.control_engine
+                .begin_counterfactual_run(schedule.clone())
+                .map_err(|error| ReplayError::InvalidState {
+                    message: error.to_string(),
+                })?;
             self.schedule = schedule;
             Ok(())
         }
 
         fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
             self.tick += 1;
+            if self.seed == mechanism_fixtures::PAUSE_TRACE_SEED {
+                let start = self.control_engine.fault_outcomes().events.len();
+                let attempts = self
+                    .control_engine
+                    .poll_fault_attempts(self.tick * NANOSECONDS_PER_SIMULATION_TICK)
+                    .map_err(|error| ReplayError::InvalidState {
+                        message: error.to_string(),
+                    })?;
+                return Ok(RoundResult {
+                    tick: self.tick,
+                    vms_running: 2,
+                    vms_halted: 0,
+                    faults_fired: attempts.into_iter().map(|attempt| attempt.fault).collect(),
+                    fault_outcomes: self.control_engine.fault_outcomes().events[start..].to_vec(),
+                    messages_delivered: 0,
+                    schedule_traces: Vec::new(),
+                });
+            }
+            if self.seed == mechanism_fixtures::MECHANISM_TRACE_SEED {
+                let recording = mechanism_fixtures::recording_for_schedule(self.schedule.clone());
+                let mut fault_outcomes = if self.tick == 1 {
+                    recording.fault_stage_events
+                } else {
+                    Vec::new()
+                };
+                if self.corrupt_trace {
+                    if let Some(event) = fault_outcomes.first_mut() {
+                        event.attempt_id = FaultAttemptId([9; 32]);
+                    }
+                }
+                return Ok(RoundResult {
+                    tick: self.tick,
+                    vms_running: 2,
+                    vms_halted: 0,
+                    faults_fired: if self.tick == 1 {
+                        self.schedule
+                            .faults()
+                            .iter()
+                            .map(|entry| entry.fault.clone())
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
+                    fault_outcomes,
+                    messages_delivered: 0,
+                    schedule_traces: Vec::new(),
+                });
+            }
             let attempt = if self.applied_trace {
                 applied_mock_attempt(self.schedule.identity())
             } else {
@@ -947,7 +1172,11 @@ mod tests {
                 tick: self.tick,
                 vm_snapshots: vec![],
                 network_state: NetworkFabric::new(2, 42),
-                fault_engine_snapshot: engine.snapshot(),
+                fault_engine_snapshot: if self.seed == mechanism_fixtures::PAUSE_TRACE_SEED {
+                    self.control_engine.snapshot()
+                } else {
+                    engine.snapshot()
+                },
                 vcpu_stall_until: vec![],
                 cpu_throttle: vec![],
                 clock_freeze: vec![],
@@ -968,6 +1197,13 @@ mod tests {
                 });
             }
             self.tick = snapshot.tick;
+            if self.seed == mechanism_fixtures::PAUSE_TRACE_SEED {
+                self.control_engine
+                    .restore_orchestration(&snapshot.fault_engine_snapshot)
+                    .map_err(|error| ReplayError::InvalidState {
+                        message: error.to_string(),
+                    })?;
+            }
             Ok(())
         }
 
@@ -1625,4 +1861,7 @@ mod tests {
         assert_eq!(mod1.address, 0x1000);
         assert_eq!(mod1.data.len(), 3);
     }
+
+    #[path = "mechanism_fixtures.rs"]
+    mod mechanism_fixtures;
 }

@@ -1154,6 +1154,13 @@ impl SimulationController {
         attempt: &FaultAttempt,
         event_limit: usize,
     ) -> Result<(), VmError> {
+        if self
+            .fault_engine
+            .suppress_fault_application(attempt.id, self.tick)
+            .map_err(fault_transition_vm_error)?
+        {
+            return Ok(());
+        }
         let facts = self.collect_fault_planning_facts()?;
         let plan = match plan_fault_application(attempt, &facts, &self.fault_application_policy) {
             Ok(plan) => plan,
@@ -1861,7 +1868,10 @@ impl SimulationController {
                     .cpu_throttle
                     .is_some_and(|active| tick < active.release_at_tick)
                 {
-                    return Err(target_state_application_error());
+                    return Err(FaultApplicationError {
+                        reason: chaoscontrol_fault::outcomes::FaultApplicationFailureReason::ActiveEffectOverlap,
+                        disposition: chaoscontrol_fault::outcomes::FaultApplicationFailureDisposition::RolledBack,
+                    });
                 }
                 slot.cpu_throttle = Some(CpuThrottleState {
                     budget_units: *budget_units,
@@ -2819,6 +2829,87 @@ impl SimulationController {
             .network_state
             .validate_pending_faults(ledger, vm_count)
             .map_err(fault_transition_vm_error)?;
+        for fault in &snapshot.network_state.directional {
+            let attempt_id = fault.attempt_id.ok_or_else(|| {
+                fault_transition_vm_error(FaultTransitionError::SnapshotPendingStateMismatch)
+            })?;
+            let effect = FaultPlanEffect::NetworkDirectional {
+                node: u32::try_from(fault.node).map_err(|_| {
+                    fault_transition_vm_error(FaultTransitionError::SnapshotPendingStateMismatch)
+                })?,
+                peer: u32::try_from(fault.peer).map_err(|_| {
+                    fault_transition_vm_error(FaultTransitionError::SnapshotPendingStateMismatch)
+                })?,
+                direction: fault.direction,
+                disruption: fault.disruption,
+                delay_ticks: fault.delay_ticks,
+                queue_limit: fault.queue_limit,
+            };
+            chaoscontrol_fault::outcomes::validate_pending_fault_effect(
+                ledger, attempt_id, &effect,
+            )
+            .map_err(fault_transition_vm_error)?;
+        }
+        let mut retained_directional = snapshot.network_state.directional.iter().rev();
+        let mut healed_links = std::collections::BTreeSet::new();
+        for event in ledger.events.iter().rev() {
+            match &event.kind {
+                FaultStageKind::Applied {
+                    effect: FaultPlanEffect::NetworkHeal,
+                } => break,
+                FaultStageKind::Applied {
+                    effect: FaultPlanEffect::NetworkDirectionalHeal { node, peer },
+                } => {
+                    healed_links.insert(((*node).min(*peer), (*node).max(*peer)));
+                }
+                FaultStageKind::Applied {
+                    effect: FaultPlanEffect::NetworkDirectional { node, peer, .. },
+                } if !healed_links.contains(&((*node).min(*peer), (*node).max(*peer)))
+                    && retained_directional
+                        .next()
+                        .and_then(|fault| fault.attempt_id)
+                        != Some(event.attempt_id) =>
+                {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
+                _ => {}
+            }
+        }
+        if retained_directional.next().is_some() {
+            return Err(fault_transition_vm_error(
+                FaultTransitionError::SnapshotPendingStateMismatch,
+            ));
+        }
+        for event in &ledger.events {
+            if let FaultStageKind::Applied {
+                effect:
+                    FaultPlanEffect::CpuThrottle {
+                        target,
+                        budget_units,
+                        release_at_tick,
+                    },
+            } = &event.kind
+            {
+                let retained = snapshot
+                    .cpu_throttle
+                    .get(*target as usize)
+                    .copied()
+                    .flatten();
+                if *release_at_tick > snapshot.tick
+                    && retained
+                        != Some(CpuThrottleState {
+                            budget_units: *budget_units,
+                            release_at_tick: *release_at_tick,
+                        })
+                {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
+            }
+        }
         for (index, ((vm_snapshot, status), attempt_id)) in snapshot
             .vm_snapshots
             .iter()
@@ -2883,6 +2974,21 @@ impl SimulationController {
                     bound_tsc: jitter_bound,
                 };
                 if !ledger_has_observed_effect(ledger, &expected) {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
+            }
+            if let Some(throttle) = snapshot.cpu_throttle.get(index).copied().flatten() {
+                let expected = FaultPlanEffect::CpuThrottle {
+                    target,
+                    budget_units: throttle.budget_units,
+                    release_at_tick: throttle.release_at_tick,
+                };
+                if throttle.budget_units == 0
+                    || throttle.release_at_tick <= snapshot.tick
+                    || !ledger_has_observed_effect(ledger, &expected)
+                {
                     return Err(fault_transition_vm_error(
                         FaultTransitionError::SnapshotPendingStateMismatch,
                     ));
@@ -3080,7 +3186,7 @@ impl SimulationController {
         &mut self,
         request: chaoscontrol_fault::mechanisms::PauseControlRequest,
     ) -> Result<(), chaoscontrol_fault::mechanisms::MechanismError> {
-        self.fault_engine.request_pause_control(request)
+        self.fault_engine.request_pause_control(request, self.tick)
     }
 
     /// Install the one host-owned custom-effect adapter.
@@ -4657,7 +4763,10 @@ mod tests {
                 release_at_tick: 9,
             },
         };
-        assert!(controller.apply_fault_plan(&second).is_err());
+        assert_eq!(
+            controller.apply_fault_plan(&second).unwrap_err().reason,
+            FaultApplicationFailureReason::ActiveEffectOverlap,
+        );
         assert_eq!(
             controller.vms[0].cpu_throttle,
             Some(CpuThrottleState {
@@ -7086,4 +7195,7 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first[0].effect, FaultObservationEffect::PacketCorrupted);
     }
+
+    #[path = "fault_snapshot_fixtures.rs"]
+    mod fault_snapshot_fixtures;
 }

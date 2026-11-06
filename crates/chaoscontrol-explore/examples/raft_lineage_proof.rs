@@ -270,7 +270,7 @@ fn ledger_json(ledger: &FaultOutcomeLedger) -> Value {
     // Same wire shape as chaoscontrol-replay recording::recorded_fault_ledger:
     // JSON object keys cannot represent the typed binary attempt IDs.
     json!({"attempts": ledger.attempts.values().collect::<Vec<_>>(),
-        "events": ledger.events, "counters": ledger.counters})
+        "events": ledger.events, "control_events": ledger.control_events, "counters": ledger.counters})
 }
 
 fn trace_identity(

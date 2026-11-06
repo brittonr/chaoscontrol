@@ -715,6 +715,34 @@ mod tests {
     }
 
     #[test]
+    fn malformed_pause_and_throttle_identities_are_rejected() {
+        for requester in ["".to_string(), "a".repeat(MAX_CUSTOM_STRING_BYTES + 1)] {
+            let request = PauseControlRequest {
+                requester,
+                start_tick: 0,
+                end_tick: 1,
+            };
+            assert_eq!(
+                admit_pause_control(&request).unwrap_err(),
+                MechanismError::InvalidRequester
+            );
+        }
+        let unnamed_process = CpuThrottle {
+            target: ThrottleTarget::Process {
+                vm: 0,
+                process: String::new(),
+            },
+            budget_units: 1,
+            start_tick: 0,
+            end_tick: 1,
+        };
+        assert_eq!(
+            admit_cpu_throttle(&unnamed_process).unwrap_err(),
+            MechanismError::InvalidThrottleTarget
+        );
+    }
+
+    #[test]
     fn pause_requests_are_bounded_and_unique() {
         let request = PauseControlRequest {
             requester: "liveness-check".to_string(),

@@ -14,7 +14,8 @@
 - [x] [serial] Apply directional network faults in the fabric with deterministic directional delays, drops, and counters. r[chaoscontrol.fault_mechanisms.directional_network]
 - [x] [serial] Wire directional fault attempts and packet observations into the network stage ledger. r[chaoscontrol.fault_mechanisms.directional_network] r[chaoscontrol.fault_mechanisms.evidence]
 - [x] [serial] Add the virtual quantum-budget CPU throttle, exact release, and scheduler enforcement. r[chaoscontrol.fault_mechanisms.cpu_throttle]
-- [ ] [parallel] Add positive and negative fixtures for direction, modes, scoped heal, queue bounds, budget exhaustion, release, and host-throttle rejection. r[chaoscontrol.fault_mechanisms.fixtures]
+- [x] [parallel] Add positive and negative fixtures for direction, modes, scoped heal, queue bounds, budget exhaustion, release, and host-throttle rejection. r[chaoscontrol.fault_mechanisms.fixtures]
+  - Evidence: [fixture audit](evidence/2026-11-06-fixture-audit.md). Direction, mode parameters, scoped heal, queue bounds, and throttle clamp/exhaustion/release are covered by existing mechanism and controller tests; host-style targets are unrepresentable and an unnamed process target is rejected by `malformed_pause_and_throttle_identities_are_rejected`.
 
 ## Phase 3: Custom effects and pause control
 
@@ -23,7 +24,8 @@
 - [x] [serial] Implement seeded custom-effect selection and bounded execution with typed rejection and application-failure paths. r[chaoscontrol.fault_mechanisms.custom_effect]
 - [x] [serial] Implement bounded pause-control request admission with exact windows and duplicate rejection. r[chaoscontrol.fault_mechanisms.pause_control]
 - [x] [serial] Wire pause control to active-effect continuation and replay binding. r[chaoscontrol.fault_mechanisms.pause_control]
-- [ ] [parallel] Add negative fixtures for ambient commands, unadmitted adapters, malformed or overlapping pause windows, and out-of-horizon requests. r[chaoscontrol.fault_mechanisms.fixtures] r[chaoscontrol.fault_mechanisms.nonclaims]
+- [x] [parallel] Add negative fixtures for ambient commands, unadmitted adapters, malformed or overlapping pause windows, and out-of-horizon requests. r[chaoscontrol.fault_mechanisms.fixtures] r[chaoscontrol.fault_mechanisms.nonclaims]
+  - Evidence: [fixture audit](evidence/2026-11-06-fixture-audit.md). Existing tests reject ambient command strings, missing or invalid adapters, malformed and overlapping pause windows, and over-horizon windows; `malformed_pause_and_throttle_identities_are_rejected` adds empty and over-bound requester identities.
 
 ## Phase 4: Interactions and evidence
 

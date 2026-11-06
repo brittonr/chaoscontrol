@@ -9,8 +9,11 @@ license = "AGPL-3.0-or-later"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
-# The persisted-session shell reuses the reviewed bounded CBOR/zstd snapshot store.
-chaoscontrol-explore = { path = "../chaoscontrol-explore" }
+# Snapshot references remain neutral; this crate owns the bounded store shell.
+chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
+ciborium = "0.2"
+zstd = "0.14"
+sha2 = "0.10"
 libc = "0.2"
 log = "0.4"
 snafu = "0.8"
@@ -23,7 +26,6 @@ tempfile = "3"
 regex = "1"
 
 [dev-dependencies]
-ciborium = "0.2"
 rand = "0.8"
 rand_chacha = "0.3"
 
@@ -31,6 +33,3 @@ rand_chacha = "0.3"
 name = "chaoscontrol-replay"
 path = "src/bin/chaoscontrol-replay.rs"
 
-[[bin]]
-name = "query-events"
-path = "src/bin/query-events.rs"

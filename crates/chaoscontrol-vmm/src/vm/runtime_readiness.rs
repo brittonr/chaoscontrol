@@ -1,4 +1,4 @@
-//! Exact-runtime regression scenarios; these use the real DeterministicVm shell.
+//! Partial KVM-control diagnostics; never strict production SMP capability evidence.
 use super::*;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -15,13 +15,12 @@ const HORIZON: usize = 32;
 const CODE: [u8; 3] = [0x40, 0xeb, 0xfd]; // inc ax; jmp 0x200 (real mode)
 
 fn spin_vm() -> DeterministicVm {
-    let mut vm = DeterministicVm::new(VmConfig {
+    let mut vm = diagnostic_fixtures::partial_smp_vm(VmConfig {
         memory_size: MEMORY_BYTES,
         num_vcpus: 2,
         smp_instruction_quantum: QUANTUM,
         ..VmConfig::default()
-    })
-    .unwrap();
+    });
     vm.memory
         .inner()
         .write_slice(&CODE, GuestAddress(CODE_ADDRESS))

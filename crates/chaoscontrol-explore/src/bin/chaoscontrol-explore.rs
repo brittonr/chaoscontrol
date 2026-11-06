@@ -425,6 +425,18 @@ enum Commands {
         /// Write machine-readable replay verdict JSON to this path.
         #[arg(long)]
         verdict_output: Option<String>,
+
+        /// Retain an exact fresh continuation; the directory must not exist.
+        #[arg(long, requires_all = ["debug_recording_profile", "debug_recording_checkpoint_interval"])]
+        debug_recording_output: Option<String>,
+
+        /// Reviewed finite recording limits profile (exact-local-v1).
+        #[arg(long, requires = "debug_recording_output", value_parser = [chaoscontrol_replay::session::SESSION_LIMITS_PROFILE])]
+        debug_recording_profile: Option<String>,
+
+        /// Capture a checkpoint every this many continuation ticks.
+        #[arg(long, requires = "debug_recording_output", value_parser = clap::value_parser!(u64).range(1..))]
+        debug_recording_checkpoint_interval: Option<u64>,
     },
 
     /// Run a multi-seed campaign.
@@ -1202,6 +1214,9 @@ fn main() {
             memory_mb,
             serial,
             verdict_output,
+            debug_recording_output,
+            debug_recording_profile,
+            debug_recording_checkpoint_interval,
         } => cmd_reproduce(
             kernel,
             initrd,
@@ -1218,6 +1233,9 @@ fn main() {
             memory_mb,
             serial,
             verdict_output,
+            debug_recording_output,
+            debug_recording_profile,
+            debug_recording_checkpoint_interval,
         ),
         Commands::Campaign {
             kernel,
@@ -3481,10 +3499,10 @@ fn persist_exploration_outputs(
     assertion_summary: &AssertionSummaryV2,
     num_vms: usize,
 ) -> Result<(), String> {
-    use chaoscontrol_explore::snapshot_store::SnapshotStore;
+    use chaoscontrol_replay::snapshot_store::SnapshotStore;
 
     let output = Path::new(output);
-    let snapshot_store = chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(output);
+    let snapshot_store = chaoscontrol_replay::snapshot_store::FileSnapshotStore::new(output);
     for bug in &report.bugs {
         if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
             let snapshot = snapshot_store
@@ -3506,7 +3524,7 @@ fn persist_exploration_outputs(
     let mut bug_outputs = Vec::with_capacity(report.bugs.len());
     let mut replay_parents = std::collections::BTreeMap::<
         _,
-        chaoscontrol_explore::snapshot_store::ReplayParentSnapshotRef,
+        chaoscontrol_replay::snapshot_store::ReplayParentSnapshotRef,
     >::new();
     for bug in &report.bugs {
         let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
@@ -4085,7 +4103,7 @@ fn load_replay_parent_snapshot_for_verdict(
     use chaoscontrol_explore::replay_verdict::{
         snapshot_validation_from_error, ReplaySnapshotValidation,
     };
-    use chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};
+    use chaoscontrol_replay::snapshot_store::{FileSnapshotStore, SnapshotStore};
 
     match serialized_bug.replay_parent_snapshot_ref.as_ref() {
         Some(reference) => {
@@ -4107,7 +4125,7 @@ fn load_replay_parent_snapshot_for_verdict(
                     )
                 }
                 Ok(_) => {
-                    let error = chaoscontrol_explore::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                    let error = chaoscontrol_replay::snapshot_store::SnapshotStoreError::MetadataMismatch {
                         field: "replay_parent_depth",
                     };
                     (
@@ -4301,6 +4319,131 @@ fn cmd_minimize(
     }
 }
 
+fn debug_capture_plan(
+    start: u64,
+    ticks: u64,
+    interval: u64,
+    vm_count: usize,
+    memory_bytes: usize,
+    limits: chaoscontrol_replay::session::SessionLimits,
+) -> Result<u64, String> {
+    limits.validate().map_err(|error| error.to_string())?;
+    if interval == 0 || ticks > limits.max_replay_ticks {
+        return Err("debug recording cadence/ticks exceed the named profile".into());
+    }
+    let end = start
+        .checked_add(ticks)
+        .ok_or("debug recording target overflow")?;
+    let checkpoints = ticks
+        .checked_div(interval)
+        .and_then(|count| count.checked_add(1))
+        .ok_or("debug recording checkpoint count overflow")?;
+    let retained = checkpoints
+        .checked_mul(vm_count as u64)
+        .and_then(|count| count.checked_mul(memory_bytes as u64))
+        .ok_or("debug recording retained memory overflow")?;
+    if checkpoints > limits.max_checkpoints as u64 || retained > limits.max_total_bytes {
+        return Err("debug recording checkpoints exceed the named profile".into());
+    }
+    Ok(end)
+}
+
+/// A recording failure invalidates the entire capture, not the guest run.
+fn fail_debug_capture<T>(capture: &mut Option<T>, error: &mut Option<String>, reason: String) {
+    *capture = None;
+    if error.is_none() {
+        *error = Some(reason);
+    }
+}
+
+fn expire_debug_capture<T>(capture: &mut Option<T>, error: &mut Option<String>, expired: bool) {
+    if expired && capture.is_some() {
+        fail_debug_capture(
+            capture,
+            error,
+            "debug recording host execution deadline exhausted (operational capture failure)"
+                .into(),
+        );
+    }
+}
+
+fn reproduction_status_after_recording(exit_status: i32, recording_error: Option<&str>) -> i32 {
+    if let Some(error) = recording_error {
+        eprintln!(
+            "Error: debug recording failed: {error}; reproduction verdict remains {}",
+            if exit_status == 0 {
+                "reproduced"
+            } else {
+                "not reproduced"
+            }
+        );
+    }
+    exit_status
+}
+
+// Mirrors controller.run's guest stop policy while retaining every completed
+// round before deciding to stop. Capture failure never changes the guest verdict.
+fn run_recorded_reproduction(
+    controller: &mut chaoscontrol_vmm::controller::SimulationController,
+    recorder: &mut Option<chaoscontrol_replay::recording::Recorder>,
+    recording_error: &mut Option<String>,
+    ticks: u64,
+    limits: chaoscontrol_replay::session::SessionLimits,
+) -> Result<(), String> {
+    let end = controller
+        .tick()
+        .checked_add(ticks)
+        .ok_or("reproduction target overflow")?;
+    let deadline = std::time::Instant::now()
+        .checked_add(std::time::Duration::from_millis(limits.host_deadline_ms));
+    while controller.tick() < end {
+        expire_debug_capture(
+            recorder,
+            recording_error,
+            deadline.is_none_or(|deadline| std::time::Instant::now() >= deadline),
+        );
+        let round = controller.step_round().map_err(|error| error.to_string())?;
+        expire_debug_capture(
+            recorder,
+            recording_error,
+            deadline.is_none_or(|deadline| std::time::Instant::now() >= deadline),
+        );
+        if let Some(capture) = recorder.as_mut() {
+            let captured = capture
+                .record_round(&round, controller.fault_outcomes())
+                .map_err(|error| format!("completed-round capture: {error:?}"))
+                .and_then(|()| {
+                    let start = capture.recording().checkpoints.all()[0].tick;
+                    chaoscontrol_replay::session::validate_session_recording(
+                        capture.recording(),
+                        start,
+                        limits,
+                    )
+                    .map_err(|error| error.to_string())
+                })
+                .and_then(|()| {
+                    capture
+                        .on_controller_tick(controller, Vec::new())
+                        .map_err(|error| error.to_string())
+                });
+            if let Err(error) = captured {
+                fail_debug_capture(recorder, recording_error, error);
+            }
+        }
+        if round.vms_running == 0
+            || (0..controller.num_vms()).any(|index| {
+                controller
+                    .vm_mut(index)
+                    .fault_engine()
+                    .has_assertion_failure()
+            })
+        {
+            break;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_reproduce(
     kernel: String,
@@ -4318,6 +4461,9 @@ fn cmd_reproduce(
     memory_mb: usize,
     show_serial: bool,
     verdict_output: Option<String>,
+    debug_recording_output: Option<String>,
+    debug_recording_profile: Option<String>,
+    debug_recording_checkpoint_interval: Option<u64>,
 ) {
     use chaoscontrol_fault::oracle::Verdict;
     use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
@@ -4401,6 +4547,35 @@ fn cmd_reproduce(
         }
         eprintln!("Error: {diagnostic}");
         std::process::exit(1);
+    }
+    let recording_limits = chaoscontrol_replay::session::SessionLimits::default();
+    if debug_recording_output.is_some() {
+        if debug_recording_profile.as_deref()
+            != Some(chaoscontrol_replay::session::SESSION_LIMITS_PROFILE)
+            || replay_parent_snapshot.is_none()
+            || serialized_bug.replay_parent_snapshot_ref.is_none()
+        {
+            eprintln!("Error: debug recording requires the named profile and a validated original replay parent; boot fallback is not permitted");
+            std::process::exit(EXIT_ERROR);
+        }
+        let Some(recording_memory_bytes) = memory_mb.checked_mul(1024 * 1024) else {
+            eprintln!("Error: debug recording memory size overflow");
+            std::process::exit(EXIT_ERROR);
+        };
+        if let Err(error) = debug_capture_plan(
+            replay_parent_snapshot
+                .as_ref()
+                .expect("validated parent")
+                .tick,
+            ticks,
+            debug_recording_checkpoint_interval.unwrap_or(0),
+            vms,
+            recording_memory_bytes,
+            recording_limits,
+        ) {
+            eprintln!("Error: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
     }
 
     let schedule: FaultSchedule = (&serialized_bug.schedule).into();
@@ -4558,17 +4733,68 @@ fn cmd_reproduce(
         }
     }
     controller.reset_vm_statuses();
-    if let Err(e) = controller.begin_counterfactual_fault_run(schedule) {
+    let fresh_run = if debug_recording_output.is_some() {
+        controller.begin_recorded_counterfactual_fault_run(schedule)
+    } else {
+        controller.begin_counterfactual_fault_run(schedule)
+    };
+    if let Err(e) = fresh_run {
         eprintln!("Error: counterfactual fault run failed: {}", e);
         std::process::exit(1);
     }
     controller.clear_all_coverage();
+    let mut recording_error = None;
+    let mut recorder = debug_recording_output.as_ref().and_then(|_| {
+        let config = controller.config();
+        let Some(run_sequence) = snapshot.fault_engine_snapshot.run_sequence().checked_add(1)
+        else {
+            recording_error = Some("counterfactual run sequence overflow".into());
+            return None;
+        };
+        let mut recorder = chaoscontrol_replay::recording::Recorder::new_for_run(
+            chaoscontrol_replay::recording::RecordingConfig {
+                num_vms: config.num_vms,
+                vm_memory_size: config.vm_config.memory_size,
+                tsc_khz: config.vm_config.cpu.tsc_khz,
+                kernel_path: config.kernel_path.clone(),
+                initrd_path: config.initrd_path.clone(),
+                quantum: config.quantum,
+                checkpoint_interval: debug_recording_checkpoint_interval
+                    .expect("required recording cadence"),
+                disk_image_path: config.disk_image_path.clone(),
+                random_faults: config.random_faults,
+            },
+            config.schedule.clone(),
+            config.seed,
+            run_sequence,
+        );
+        match recorder.start_controller_session(&mut controller) {
+            Ok(()) => Some(recorder),
+            Err(error) => {
+                recording_error = Some(format!("session-start checkpoint: {error}"));
+                None
+            }
+        }
+    });
 
     eprintln!("Running {} ticks with fault schedule...", ticks);
 
-    // Run
-    if let Err(e) = controller.run(ticks) {
-        eprintln!("Error: simulation failed: {}", e);
+    let run_result = if debug_recording_output.is_some() {
+        run_recorded_reproduction(
+            &mut controller,
+            &mut recorder,
+            &mut recording_error,
+            ticks,
+            recording_limits,
+        )
+    } else {
+        controller
+            .run(ticks)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    };
+    if let Err(error) = run_result {
+        eprintln!("Error: simulation failed: {error}");
         std::process::exit(1);
     }
     let executed_schedule_matches = match serialized_bug.schedule_variant.as_ref() {
@@ -4666,7 +4892,7 @@ fn cmd_reproduce(
         let verdict = match chaoscontrol_explore::replay_verdict::verdict_from_reproduce(
             chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
                 run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
-                command: command_context,
+                command: command_context.clone(),
                 exit_status,
                 bug_path: bug_path.clone(),
                 bug_artifact_hash,
@@ -4691,8 +4917,50 @@ fn cmd_reproduce(
         }
         eprintln!("Replay verdict: {path}");
     }
+    if let Some(output) = debug_recording_output.as_ref() {
+        if let Some(capture) = recorder.as_ref() {
+            let finding = chaoscontrol_replay::session::SessionFinding {
+                bug_artifact: chaoscontrol_replay::session::SessionArtifact {
+                    path: "finding.json".into(),
+                    digest: chaoscontrol_replay::session::digest_bytes(&bug_artifact_bytes),
+                    bytes: bug_artifact_bytes.len() as u64,
+                },
+                bug_id: serialized_bug.bug_id,
+                assertion_id: target_assertion,
+                assertion_identity: target_identity,
+                original_parent: serialized_bug
+                    .replay_parent_snapshot_ref
+                    .clone()
+                    .expect("validated parent reference"),
+                original_parent_depth: serialized_bug.replay_parent_depth,
+                original_parent_tick: replay_parent_tick,
+                command: command_context,
+                requested_ticks: ticks,
+                target_failed,
+                reproduction_exit_status: exit_status,
+            };
+            match chaoscontrol_replay::session::save_recorder_with_finding(
+                capture,
+                &controller,
+                Path::new(output),
+                recording_limits,
+                &finding,
+                &bug_artifact_bytes,
+            ) {
+                Ok(manifest) => eprintln!(
+                    "Debug recording: {output}/session.json ({})",
+                    manifest.session_id
+                ),
+                Err(error) => recording_error = Some(error.to_string()),
+            }
+        }
+        // Capture/publication errors are secondary to the established guest verdict.
+    }
 
-    std::process::exit(exit_status);
+    std::process::exit(reproduction_status_after_recording(
+        exit_status,
+        recording_error.as_deref(),
+    ));
 }
 
 /// Run delta-debugging minimization on each bug.
@@ -5187,6 +5455,157 @@ mod tests {
 
     fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
         Cli::try_parse_from(std::iter::once(BIN).chain(args.iter().copied()))
+    }
+
+    // r[verify chaoscontrol.replay_debugger.producer]
+    #[test]
+    fn reproduce_recording_requires_named_profile_and_positive_explicit_cadence() {
+        let base = ["reproduce", "--kernel", "kernel", "--bug", "finding.json"];
+        assert!(parse(&base).is_ok(), "ordinary reproduction is unchanged");
+        for extra in [
+            vec!["--debug-recording-output", "session"],
+            vec!["--debug-recording-profile", "exact-local-v1"],
+            vec![
+                "--debug-recording-output",
+                "session",
+                "--debug-recording-profile",
+                "unbounded",
+                "--debug-recording-checkpoint-interval",
+                "10",
+            ],
+            vec![
+                "--debug-recording-output",
+                "session",
+                "--debug-recording-profile",
+                "exact-local-v1",
+                "--debug-recording-checkpoint-interval",
+                "0",
+            ],
+        ] {
+            assert!(parse(&base.iter().copied().chain(extra).collect::<Vec<_>>()).is_err());
+        }
+        let args = base
+            .into_iter()
+            .chain([
+                "--debug-recording-output",
+                "session",
+                "--debug-recording-profile",
+                "exact-local-v1",
+                "--debug-recording-checkpoint-interval",
+                "7",
+                "--vcpus",
+                "2",
+                "--quantum",
+                "37",
+            ])
+            .collect::<Vec<_>>();
+        match parse(&args).unwrap().command {
+            Commands::Reproduce {
+                debug_recording_output,
+                debug_recording_profile,
+                debug_recording_checkpoint_interval,
+                vcpus,
+                quantum,
+                ..
+            } => {
+                assert_eq!(debug_recording_output.as_deref(), Some("session"));
+                assert_eq!(debug_recording_profile.as_deref(), Some("exact-local-v1"));
+                assert_eq!(debug_recording_checkpoint_interval, Some(7));
+                assert_eq!((vcpus, quantum), (2, 37));
+            }
+            _ => panic!("expected reproduction"),
+        }
+    }
+
+    // r[verify chaoscontrol.replay_debugger.producer]
+    #[test]
+    fn recording_plan_admits_start_and_end_and_rejects_overflow_and_exhaustion() {
+        let mut limits = chaoscontrol_replay::session::SessionLimits::default();
+        const MEMORY: usize = 1024 * 1024;
+        assert_eq!(
+            debug_capture_plan(50, 20, 10, 1, MEMORY, limits).unwrap(),
+            70
+        );
+        assert_eq!(
+            debug_capture_plan(50, 0, 10, 1, MEMORY, limits).unwrap(),
+            50
+        );
+        assert!(debug_capture_plan(u64::MAX, 1, 10, 1, MEMORY, limits).is_err());
+        assert!(debug_capture_plan(50, 20, 0, 1, MEMORY, limits).is_err());
+        assert!(
+            debug_capture_plan(50, limits.max_replay_ticks + 1, 10, 1, MEMORY, limits).is_err()
+        );
+        limits.max_checkpoints = 2;
+        assert!(debug_capture_plan(50, 20, 10, 1, MEMORY, limits).is_err());
+        limits.max_checkpoints = 3;
+        limits.max_total_bytes = 2 * MEMORY as u64;
+        assert!(debug_capture_plan(50, 20, 10, 1, MEMORY, limits).is_err());
+    }
+
+    // r[verify chaoscontrol.replay_debugger.producer]
+    #[test]
+    fn recording_deadline_invalidates_capture_without_stopping_reproduction() {
+        const ROUNDS: u64 = 5;
+        for expires_at in [None, Some(2)] {
+            let mut capture = Some(Vec::new());
+            let mut recording_error = None;
+            let mut executed = 0;
+            while executed < ROUNDS {
+                expire_debug_capture(
+                    &mut capture,
+                    &mut recording_error,
+                    expires_at.is_some_and(|tick| executed >= tick),
+                );
+                executed += 1;
+                if let Some(rounds) = capture.as_mut() {
+                    rounds.push(executed);
+                }
+            }
+            assert_eq!(executed, ROUNDS);
+            if expires_at.is_some() {
+                assert!(capture.is_none(), "partial capture must not be publishable");
+                assert!(recording_error.as_deref().unwrap().contains("deadline"));
+            } else {
+                assert_eq!(capture.unwrap(), vec![1, 2, 3, 4, 5]);
+                assert!(recording_error.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn capture_and_publication_failure_preserve_both_reproduction_statuses() {
+        let root = tempfile::tempdir().unwrap();
+        let retained = root.path().join("completed.json");
+        write_new_synced(&retained, b"previous completed session").unwrap();
+        let publication_error = write_new_synced(&retained, b"replacement")
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            std::fs::read(&retained).unwrap(),
+            b"previous completed session"
+        );
+        for status in [0, 1] {
+            assert_eq!(reproduction_status_after_recording(status, None), status);
+            assert_eq!(
+                reproduction_status_after_recording(status, Some(&publication_error)),
+                status
+            );
+            let mut capture = Some(vec![1, 2]);
+            let mut error = None;
+            fail_debug_capture(
+                &mut capture,
+                &mut error,
+                "completed-round capture failed".into(),
+            );
+            assert!(capture.is_none());
+            assert_eq!(
+                reproduction_status_after_recording(status, error.as_deref()),
+                status
+            );
+            // Later timeout handling must not erase the original capture failure.
+            expire_debug_capture(&mut capture, &mut error, true);
+            assert_eq!(error.as_deref(), Some("completed-round capture failed"));
+        }
     }
 
     fn run_policy(args: &[&str]) -> FrontierPolicy {

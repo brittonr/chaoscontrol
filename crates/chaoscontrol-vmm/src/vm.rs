@@ -190,10 +190,6 @@ const PANIC_PATTERNS: [u64; 4] = [
 /// PIT timer IRQ line number (standard PC, IRQ 0).
 const PIT_IRQ: u32 = 0;
 
-/// PIT oscillator frequency (Hz).
-const PIT_FREQ_HZ: u128 = 1_193_182;
-/// Effective PIT reload represented by a hardware count of zero.
-const PIT_ZERO_RELOAD: u64 = 65_536;
 /// Bootstrap processor index used by legacy PIC delivery.
 const BSP_VCPU_INDEX: usize = 0;
 
@@ -264,8 +260,8 @@ pub struct VmConfig {
     pub cpu: CpuConfig,
     /// Number of vCPUs (default: 1).
     ///
-    /// When `num_vcpus > 1`, the VM runs in SMP mode with deterministic
-    /// serialized scheduling — only one vCPU executes at a time.
+    /// More than one vCPU requires an event-entry exact backend capability.
+    /// The current portable KVM provider rejects strict SMP before mutation.
     pub num_vcpus: usize,
     /// Scheduling strategy for multi-vCPU VMs.
     ///
@@ -274,8 +270,8 @@ pub struct VmConfig {
     pub scheduling_strategy: SchedulingStrategy,
     /// Declared deterministic SMP progress mode.
     ///
-    /// PMU acceleration fails closed when guest-only instruction overflow is
-    /// unavailable. It never falls back to wall-clock preemption.
+    /// Both exact mode and PMU exact remainder require full event-entry
+    /// exactness. Neither falls back to wall-clock or coarse boundaries.
     pub smp_progress_mode: ProgressMode,
     /// Guest instructions in the initial and round-robin SMP quantum.
     pub smp_instruction_quantum: u64,
@@ -387,6 +383,15 @@ impl Default for VmConfig {
 }
 
 impl VmConfig {
+    /// CPU policy actually exposed by this machine. SMP always uses the
+    /// instruction-driven PIT/jiffies clock and hides the TSC capability.
+    #[must_use]
+    pub fn effective_cpu_config(&self) -> CpuConfig {
+        let mut cpu = self.cpu.clone();
+        cpu.hide_tsc |= self.num_vcpus > 1;
+        cpu
+    }
+
     /// Build the standard single-vCPU machine with an explicit seed and TSC visibility.
     ///
     /// Optional disks, affinity, extra boot arguments, and diagnostic outputs remain absent.
@@ -1007,14 +1012,21 @@ impl DeterministicVm {
         })
     }
 
-    fn probe_exact_singlestep(vcpus: &[VcpuFd]) -> Result<(), VmError> {
-        for (vcpu, fd) in vcpus.iter().enumerate() {
-            Self::set_vcpu_singlestep(fd, true).map_err(|error| VmError::ProgressCapability {
-                message: format!("vCPU {vcpu} cannot enable exact single-step: {error}"),
-            })?;
-            Self::set_vcpu_singlestep(fd, false).map_err(|error| VmError::ProgressCapability {
-                message: format!("vCPU {vcpu} cannot disable exact single-step: {error}"),
-            })?;
+    // r[impl chaoscontrol.event_entry_exact.admission]
+    // KVM_SET_GUEST_DEBUG acceptance is not a capability for exact retirement
+    // through event entry. Portable KVM has no such backend guarantee. In
+    // particular, rearming TF before RUN cannot repair TF lost inside IRQ/NMI
+    // or synchronous exception entry; PMU exact remainder needs the same primitive.
+    pub(crate) fn validate_production_progress(config: &VmConfig) -> Result<(), VmError> {
+        if config.num_vcpus > 1 {
+            validate_progress_capabilities(
+                config.smp_progress_mode,
+                ProgressCapabilities {
+                    event_entry_exact_single_step: false,
+                    guest_instruction_pmu: false,
+                    pmu_overflow: false,
+                },
+            )?;
         }
         Ok(())
     }
@@ -1050,9 +1062,12 @@ impl DeterministicVm {
     }
 
     pub(crate) fn new_with_disk_image(
-        config: VmConfig,
+        mut config: VmConfig,
         disk_image: Option<std::sync::Arc<Vec<u8>>>,
     ) -> Result<Self, VmError> {
+        // r[impl chaoscontrol.event_entry_exact.early]
+        // Reject before allocations, KVM creation, disk/log setup or guest loading.
+        Self::validate_production_progress(&config)?;
         let runtime_capacity_limits = runtime_capacity_limits(&config)?;
         let runtime_capacity_plan =
             plan_runtime_capacity(&runtime_capacity_limits).map_err(|error| {
@@ -1180,6 +1195,12 @@ impl DeterministicVm {
                     limit: error.limit,
                 }
             })?;
+        // `notsc` marks Linux's TSC unstable, but does not clear its TSC
+        // capability: the IOAPIC timer check would still busy-wait on RDTSC.
+        // KVM's legacy IA32_TSC write synchronization can retain a host-time
+        // offset, so such a wait can end before any virtual PIT tick. SMP uses
+        // the instruction-driven PIT/jiffies clock, including this early check.
+        config.cpu = config.effective_cpu_config();
 
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
         let mut vcpus = Vec::with_capacity(num_vcpus);
@@ -1302,73 +1323,9 @@ impl DeterministicVm {
         )?;
         let active_vcpu = scheduler.active();
 
-        // Validate every selected execution capability before guest progress.
-        let instruction_counter = if num_vcpus > 1 {
-            Self::probe_exact_singlestep(&vcpus)?;
-            match progress_mode {
-                ProgressMode::ExactSingleStep => {
-                    validate_progress_capabilities(
-                        progress_mode,
-                        ProgressCapabilities {
-                            exact_single_step: true,
-                            guest_instruction_pmu: false,
-                            pmu_overflow: false,
-                        },
-                    )?;
-                    info!(
-                        "SMP progress: exact KVM single-step, quantum={}",
-                        scheduler.remaining()
-                    );
-                    None
-                }
-                ProgressMode::PmuAccelerated { exact_step_margin } => {
-                    let overflow_period = scheduler
-                        .remaining()
-                        .checked_sub(exact_step_margin)
-                        .filter(|period| *period > 0)
-                        .ok_or_else(|| VmError::ProgressCapability {
-                            message: "PMU overflow period must be positive".to_string(),
-                        })?;
-                    let counter = crate::perf::InstructionCounter::with_overflow(overflow_period)
-                        .map_err(|error| VmError::ProgressCapability {
-                        message: format!(
-                            "guest-only instruction PMU overflow is unavailable: {error}"
-                        ),
-                    })?;
-                    validate_progress_capabilities(
-                        progress_mode,
-                        ProgressCapabilities {
-                            exact_single_step: true,
-                            guest_instruction_pmu: true,
-                            pmu_overflow: true,
-                        },
-                    )?;
-                    counter.reset_and_enable()?;
-                    counter.disable()?;
-                    info!(
-                        "SMP progress: guest-only PMU overflow + exact remainder, quantum={}, margin={}",
-                        scheduler.remaining(), exact_step_margin
-                    );
-                    // The capability probe is closed on this thread. The live
-                    // counter binds lazily to the thread that enters KVM.
-                    drop(counter);
-                    None
-                }
-                ProgressMode::LegacyWallClock => {
-                    validate_progress_capabilities(
-                        progress_mode,
-                        ProgressCapabilities {
-                            exact_single_step: true,
-                            guest_instruction_pmu: false,
-                            pmu_overflow: false,
-                        },
-                    )?;
-                    unreachable!("legacy wall-clock mode is rejected above")
-                }
-            }
-        } else {
-            None
-        };
+        // Portable KVM cannot currently admit strict SMP. Keep the live PMU
+        // owner absent; debug-control and PMU probes cannot confer exactness.
+        let instruction_counter = None;
 
         Ok(Self {
             kvm,
@@ -2654,6 +2611,21 @@ impl DeterministicVm {
         })
     }
 
+    /// Settle pending KVM I/O bookkeeping at the same boundary as snapshots.
+    /// Immediate exit completes an already executed instruction, but cannot
+    /// execute the next guest instruction or create scheduler progress evidence.
+    /// No guest memory, device state, or snapshot payload is copied.
+    pub(crate) fn settle_exact_observation(&mut self) -> Result<(), VmError> {
+        self.ensure_schedule_execution_healthy()?;
+        if self.pending_schedule_reservation.is_some() {
+            return Err(VmError::Snapshot {
+                message: "cannot inspect while a host-interrupt retry holds schedule evidence"
+                    .into(),
+            });
+        }
+        self.complete_pending_kvm_exits_for_snapshot()
+    }
+
     fn complete_pending_kvm_exits_for_snapshot(&mut self) -> Result<(), VmError> {
         for vcpu_id in 0..self.vcpus.len() {
             self.vcpus[vcpu_id].set_kvm_immediate_exit(1);
@@ -3680,12 +3652,93 @@ impl DeterministicVm {
         snapshot.hlt_latched_vcpus.clone()
     }
 
+    /// A software HLT latch is released only by an architecturally deliverable
+    /// event. KVM leaves MP_STATE_RUNNABLE after single-stepped HLT, so MP state
+    /// alone cannot distinguish idle from an interrupt-woken processor.
+    fn vcpu_has_hlt_wake(&self, vcpu: usize) -> Result<bool, VmError> {
+        let fd = &self.vcpus[vcpu];
+        let events = fd.get_vcpu_events().context(SetRegistersSnafu)?;
+        if events.nmi.injected != 0
+            || (events.nmi.pending != 0 && events.nmi.masked == 0 && events.interrupt.shadow == 0)
+        {
+            return Ok(true);
+        }
+        let regs = fd.get_regs().context(SetRegistersSnafu)?;
+        if regs.rflags & (1 << 9) == 0 || events.interrupt.shadow != 0 {
+            return Ok(false);
+        }
+        if events.interrupt.injected != 0 {
+            return Ok(true);
+        }
+        let lapic = fd.get_lapic().context(SetRegistersSnafu)?;
+        let register = |offset: usize| {
+            u32::from_le_bytes(std::array::from_fn(|i| lapic.regs[offset + i] as u8))
+        };
+        let sregs = fd.get_sregs().context(SetRegistersSnafu)?;
+        let hardware_enabled = sregs.apic_base & (1 << 11) != 0;
+        if hardware_enabled && register(0xf0) & (1 << 8) != 0 {
+            // PPR is derived from TPR and the highest in-service vector;
+            // recompute it rather than trusting KVM's lazily updated PPR image.
+            let highest_vector = |base: usize| {
+                (0..8).rev().find_map(|bank| {
+                    let bits = register(base + bank * 16);
+                    (bits != 0).then(|| bank as u32 * 32 + 31 - bits.leading_zeros())
+                })
+            };
+            let priority = (register(0x80) & 0xf0).max(highest_vector(0x100).unwrap_or(0) & 0xf0);
+            if highest_vector(0x200).is_some_and(|vector| vector & 0xf0 > priority) {
+                return Ok(true);
+            }
+        }
+        let lint0 = register(0x350);
+        let accepts_pic = !hardware_enabled || lint0 & ((1 << 16) | (7 << 8)) == 7 << 8;
+        if vcpu == BSP_VCPU_INDEX && accepts_pic {
+            let mut chip = kvm_bindings::kvm_irqchip {
+                chip_id: kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
+                ..Default::default()
+            };
+            self.vm.get_irqchip(&mut chip).context(CreateIrqChipSnafu)?;
+            // SAFETY: the master PIC chip identity selects this ABI arm.
+            let pic = unsafe { chip.chip.pic };
+            let priority = |mask: u8| {
+                (0..8u8)
+                    .find(|offset| mask & (1 << ((offset + pic.priority_add) & 7)) != 0)
+                    .unwrap_or(8)
+            };
+            let in_service = if pic.special_mask != 0 {
+                pic.isr & !pic.imr
+            } else {
+                pic.isr
+            };
+            return Ok(priority(pic.irr & !pic.imr) < priority(in_service));
+        }
+        Ok(false)
+    }
+
+    fn refresh_hlt_wakes(&mut self) -> Result<(), VmError> {
+        for vcpu in 0..self.vcpus.len() {
+            if self.hlt_latched_vcpus[vcpu]
+                && !self.forced_stalled_vcpus.contains(&vcpu)
+                && self.vcpu_has_hlt_wake(vcpu)?
+            {
+                self.record_explicit_vcpu_wake(vcpu)?;
+            }
+        }
+        Ok(())
+    }
+
     fn observe_runnable_vcpus(&self) -> Result<Vec<bool>, VmError> {
         self.vcpus
             .iter()
             .enumerate()
             .map(|(vcpu, fd)| {
-                let kvm_runnable = Self::vcpu_fd_is_runnable(vcpu, fd)?;
+                let state = fd.get_mp_state().map_err(|error| VmError::Snapshot {
+                    message: format!("failed to read vCPU {vcpu} MP state: {error}"),
+                })?;
+                // KVM consumes an in-kernel HLT wake only on the next RUN.
+                let kvm_runnable = Self::mp_state_is_runnable(state.mp_state)
+                    || (state.mp_state == kvm_bindings::KVM_MP_STATE_HALTED
+                        && self.vcpu_has_hlt_wake(vcpu)?);
                 Ok(kvm_runnable
                     && !self.hlt_latched_vcpus[vcpu]
                     && !self.forced_stalled_vcpus.contains(&vcpu))
@@ -3905,32 +3958,21 @@ impl DeterministicVm {
             }
             (!delivered, delivered.then_some(BSP_VCPU_INDEX))
         } else {
-            // Preserve the existing SMP HLT policy.
             self.virtual_tsc.tick();
-            let pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
-            let channel = &pit_state.channels[0];
-            let reload = if channel.count == 0 {
-                PIT_ZERO_RELOAD
-            } else {
-                u64::from(channel.count)
-            };
-            if channel.gate != 0 && reload > 0 {
-                const KILOHERTZ_TO_HERTZ: u128 = 1_000;
-                let tsc_khz = u128::from(self.virtual_tsc.tsc_khz());
-                let tsc_per_period = (u128::from(reload) * tsc_khz * KILOHERTZ_TO_HERTZ)
-                    .div_ceil(PIT_FREQ_HZ) as u64;
-                self.virtual_tsc
-                    .advance_to(self.virtual_tsc.read() + tsc_per_period);
-                self.vm
-                    .set_irq_line(PIT_IRQ, true)
-                    .context(CreateIrqChipSnafu)?;
-                self.vm
-                    .set_irq_line(PIT_IRQ, false)
-                    .context(CreateIrqChipSnafu)?;
-                (false, Some(BSP_VCPU_INDEX))
-            } else {
-                (true, None)
+            let delivered = self.sync_and_suppress_pit()?;
+            // An idle AP must not accelerate the clock while another vCPU is
+            // runnable. Only whole-machine idle permits a PIT deadline jump.
+            if self.scheduler.state().halted && !delivered {
+                if let Some(deadline) = self.pit.next_irq_tsc() {
+                    if !self.virtual_tsc.is_frozen() {
+                        self.virtual_tsc.set(self.virtual_tsc.read().max(deadline));
+                    }
+                    self.sync_and_suppress_pit()?;
+                }
             }
+            // The committed schedule action owns the halted verdict; pending
+            // architectural interrupts are observed after applying that action.
+            (false, None)
         };
         if halted {
             info!(
@@ -4061,9 +4103,10 @@ impl DeterministicVm {
     }
 
     fn enable_singlestep(&mut self, vcpu: usize) -> Result<(), VmError> {
-        if self.singlestep_active {
-            return Ok(());
-        }
+        // KVM_GUESTDBG_SINGLESTEP is not a persistent instruction boundary:
+        // POPF/IRET and interrupt entry can clear hardware TF. SET_GUEST_DEBUG
+        // refreshes KVM's singlestep_rip and injects TF at this entry's RIP.
+        // Re-arm before every exact RUN, including a PMU exact remainder.
         Self::set_vcpu_singlestep(&self.vcpus[vcpu], true).map_err(|error| {
             VmError::ProgressCapability {
                 message: format!("vCPU {vcpu} could not enable exact single-step: {error}"),
@@ -4163,12 +4206,15 @@ impl DeterministicVm {
     fn step(&mut self) -> Result<bool, VmError> {
         self.ensure_schedule_execution_healthy()?;
         self.sync_and_suppress_pit()?;
-        self.sync_tsc_to_guest()?;
 
         let num_vcpus = self.vcpus.len();
-        if self.pending_schedule_reservation.is_none() && self.refresh_runnable_state()? {
-            return Ok(true);
+        if self.pending_schedule_reservation.is_none() {
+            self.refresh_hlt_wakes()?;
+            if self.refresh_runnable_state()? {
+                return Ok(true);
+            }
         }
+        self.sync_tsc_to_guest()?;
         debug_assert_eq!(self.active_vcpu, self.scheduler.active());
         if self.vcpus.len() > 1
             && matches!(
@@ -4860,6 +4906,11 @@ impl DeterministicVm {
             self.finish_after_committed_progress(SchedulePoisonStage::ExitHandling, wake_result)?;
             schedule_halted &= self.scheduler.state().halted;
         }
+        if num_vcpus > 1 && self.pending_schedule_reservation.is_none() {
+            let wake_result = self.refresh_hlt_wakes();
+            self.finish_after_committed_progress(SchedulePoisonStage::ExitHandling, wake_result)?;
+            schedule_halted &= self.scheduler.state().halted;
+        }
 
         // Serial panic detection: if the sliding window matched
         // "Kernel p" during this exit's serial output, treat the
@@ -5361,6 +5412,10 @@ mod incremental_lineage;
 mod configuration;
 
 #[cfg(test)]
+#[path = "vm/diagnostic_fixtures.rs"]
+pub(crate) mod diagnostic_fixtures;
+
+#[cfg(test)]
 #[path = "vm/runtime_readiness.rs"]
 mod runtime_readiness;
 
@@ -5405,6 +5460,59 @@ mod tests {
         assert_eq!(checked_guest_range_end(9, 2, 10), None);
         assert_eq!(checked_guest_range_end(u64::MAX, 1, 10), None);
         assert_eq!(checked_guest_range_end(0, 11, 10), None);
+    }
+
+    // r[verify chaoscontrol.replay_debugger.navigation]
+    #[test]
+    fn exact_observation_settles_out_without_executing_the_next_instruction() {
+        const MEMORY_BYTES: usize = 4 * 1024 * 1024;
+        const CODE_ADDRESS: u64 = 0x200;
+        const MARKER: u64 = 0x5a;
+        // OUT 0x10,AL; INC AX; HLT. Settlement must not execute INC AX.
+        const CODE: [u8; 4] = [0xe6, 0x10, 0x40, 0xf4];
+        let mut vm = DeterministicVm::new(VmConfig {
+            memory_size: MEMORY_BYTES,
+            ..VmConfig::default()
+        })
+        .unwrap();
+        vm.write_guest_memory(CODE_ADDRESS, &CODE).unwrap();
+        let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+        sregs.cs.base = 0;
+        sregs.cs.selector = 0;
+        vm.vcpus[0].set_sregs(&sregs).unwrap();
+        vm.vcpus[0]
+            .set_regs(&kvm_regs {
+                rip: CODE_ADDRESS,
+                rax: MARKER,
+                rflags: 2,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(
+            matches!(vm.vcpus[0].run().unwrap(), VcpuExit::IoOut(0x10, data) if data == [MARKER as u8])
+        );
+        let scheduler = vm.scheduler.snapshot();
+        let exit_count = vm.exit_count;
+        let io_exit_count = vm.io_exit_count;
+        let tsc = vm.virtual_tsc.read();
+        vm.settle_exact_observation().unwrap();
+        let settled = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(settled.rip, CODE_ADDRESS + 2);
+        assert_eq!(settled.rax, MARKER);
+        vm.settle_exact_observation().unwrap();
+        assert_eq!(vm.vcpus[0].get_regs().unwrap(), settled);
+        assert_eq!(vm.scheduler.snapshot(), scheduler);
+        assert_eq!(
+            (vm.exit_count, vm.io_exit_count, vm.virtual_tsc.read()),
+            (exit_count, io_exit_count, tsc)
+        );
+        assert_eq!(
+            vm.read_guest_memory(CODE_ADDRESS, CODE.len()).unwrap(),
+            CODE
+        );
+        // Full checkpoint capture uses the identical immediate-exit boundary.
+        vm.snapshot().unwrap();
+        assert_eq!(vm.vcpus[0].get_regs().unwrap(), settled);
     }
 
     #[test]
@@ -5818,7 +5926,7 @@ mod tests {
             num_vcpus: 2,
             ..VmConfig::default()
         };
-        let vm = DeterministicVm::new(config).unwrap();
+        let vm = diagnostic_fixtures::partial_smp_vm(config);
         let bytes = vm.build_cmdline(0);
         let cmdline = String::from_utf8_lossy(&bytes);
         assert!(cmdline.contains("nohpet"), "SMP cmdline must disable HPET");
@@ -5849,7 +5957,7 @@ mod tests {
             num_vcpus: 2,
             ..VmConfig::default()
         };
-        let mut vm = DeterministicVm::new(config).unwrap();
+        let mut vm = diagnostic_fixtures::partial_smp_vm(config);
         let snapshot = vm.snapshot().unwrap();
         let tsc_target = vm.virtual_tsc.read().saturating_add(POISONED_TSC_ADVANCE);
         vm.virtual_tsc.advance_to(tsc_target);
@@ -5914,7 +6022,7 @@ mod tests {
                 num_vcpus: 2,
                 ..VmConfig::default()
             };
-            let mut vm = DeterministicVm::new(config).unwrap();
+            let mut vm = diagnostic_fixtures::partial_smp_vm(config);
             vm.inject_controller_test_progress().unwrap();
             let committed_state = vm.scheduler.state_id();
             let injected_result: Result<bool, VmError> = Err(VmError::Snapshot {
@@ -5959,7 +6067,7 @@ mod tests {
             num_vcpus: TEST_VCPU_COUNT,
             ..VmConfig::default()
         };
-        let mut vm = DeterministicVm::new(config).unwrap();
+        let mut vm = diagnostic_fixtures::partial_smp_vm(config);
         let scheduler_config = SchedulerConfig {
             num_vcpus: TEST_VCPU_COUNT,
             quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
@@ -6002,6 +6110,379 @@ mod tests {
         assert!(vm.scheduler.state().runnable_vcpus[0]);
         assert_eq!(vm.scheduler.state().instruction_progress[0], 1);
         assert!(vm.observe_runnable_vcpus().unwrap()[0]);
+    }
+
+    #[test]
+    fn diagnostic_step_rearms_after_popf_and_iret_without_skipping_compute() {
+        const CODE_ADDRESS: u64 = 0x200;
+        const RETURN_ADDRESS: u64 = 0x300;
+        const STACK_ADDRESS: u64 = 0x1000;
+        const FLAGS_WITHOUT_TF: u16 = 2;
+        // INC AX; INC BX; OUT 0x10,AL. Neither compute instruction may be
+        // swallowed into the next I/O exit after guest code clears TF.
+        const COMPUTE: [u8; 4] = [0x40, 0x43, 0xe6, 0x10];
+        for use_iret in [false, true] {
+            let mut vm = diagnostic_fixtures::partial_smp_vm(VmConfig {
+                memory_size: 4 * 1024 * 1024,
+                num_vcpus: 2,
+                smp_instruction_quantum: 64,
+                ..VmConfig::default()
+            });
+            let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+            sregs.cs.base = 0;
+            sregs.cs.selector = 0;
+            sregs.ss.base = 0;
+            sregs.ss.selector = 0;
+            vm.vcpus[0].set_sregs(&sregs).unwrap();
+            let (code, expected_rips, compute_address) = if use_iret {
+                vm.write_guest_memory(RETURN_ADDRESS, &COMPUTE).unwrap();
+                let frame = [
+                    RETURN_ADDRESS as u16,
+                    0, // return CS
+                    FLAGS_WITHOUT_TF,
+                ];
+                let bytes: Vec<u8> = frame.into_iter().flat_map(u16::to_le_bytes).collect();
+                vm.write_guest_memory(STACK_ADDRESS, &bytes).unwrap();
+                (
+                    vec![0xcf], // IRET clears TF from the stacked RFLAGS.
+                    vec![RETURN_ADDRESS, RETURN_ADDRESS + 1, RETURN_ADDRESS + 2],
+                    RETURN_ADDRESS,
+                )
+            } else {
+                // PUSH 2; POPF; followed by the compute instructions.
+                let mut code = vec![0x6a, FLAGS_WITHOUT_TF as u8, 0x9d];
+                code.extend_from_slice(&COMPUTE);
+                (
+                    code,
+                    vec![
+                        CODE_ADDRESS + 2,
+                        CODE_ADDRESS + 3,
+                        CODE_ADDRESS + 4,
+                        CODE_ADDRESS + 5,
+                    ],
+                    CODE_ADDRESS + 3,
+                )
+            };
+            vm.write_guest_memory(CODE_ADDRESS, &code).unwrap();
+            vm.vcpus[0]
+                .set_regs(&kvm_regs {
+                    rip: CODE_ADDRESS,
+                    rsp: STACK_ADDRESS,
+                    rflags: u64::from(FLAGS_WITHOUT_TF),
+                    ..Default::default()
+                })
+                .unwrap();
+            for (index, expected_rip) in expected_rips.into_iter().enumerate() {
+                assert!(!vm.step().unwrap());
+                let regs = vm.vcpus[0].get_regs().unwrap();
+                assert_eq!(regs.rip, expected_rip, "IRET={use_iret}, step={index}");
+                assert_eq!(
+                    vm.scheduler.state().instruction_progress[0],
+                    index as u64 + 1
+                );
+                assert_eq!(vm.io_exit_count, 0, "compute was skipped to OUT");
+            }
+            let regs = vm.vcpus[0].get_regs().unwrap();
+            assert_eq!(regs.rip, compute_address + 2);
+            assert_eq!((regs.rax, regs.rbx), (1, 1));
+        }
+    }
+
+    #[test]
+    // r[verify chaoscontrol.event_entry_exact.evidence]
+    // Known capability-negative diagnostic, not a production execution test.
+    // Retain the one-instruction handler boundary: the observed RIP 0x201 with
+    // AX/BX=1 after one debug exit is an overshoot, never the new expectation.
+    #[ignore = "known portable KVM IRQ-entry overshoot; diagnostic only, production SMP rejects"]
+    fn diagnostic_irq_entry_does_not_meet_exact_instruction_contract() {
+        const CODE_ADDRESS: u64 = 0x200;
+        const HANDLER_ADDRESS: u64 = 0x300;
+        const STACK_ADDRESS: u64 = 0x1000;
+        const VECTOR: u8 = 0x51;
+        let mut vm = diagnostic_fixtures::partial_smp_vm(VmConfig {
+            memory_size: 4 * 1024 * 1024,
+            num_vcpus: 2,
+            ..VmConfig::default()
+        });
+        vm.write_guest_memory(CODE_ADDRESS, &[0x40, 0xe6, 0x10])
+            .unwrap();
+        vm.write_guest_memory(HANDLER_ADDRESS, &[0x43, 0xcf])
+            .unwrap();
+        let vector = [HANDLER_ADDRESS as u8, (HANDLER_ADDRESS >> 8) as u8, 0, 0];
+        vm.write_guest_memory(u64::from(VECTOR) * 4, &vector)
+            .unwrap();
+        let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+        sregs.cs.base = 0;
+        sregs.cs.selector = 0;
+        sregs.ss.base = 0;
+        sregs.ss.selector = 0;
+        vm.vcpus[0].set_sregs(&sregs).unwrap();
+        vm.vcpus[0]
+            .set_regs(&kvm_regs {
+                rip: CODE_ADDRESS,
+                rsp: STACK_ADDRESS,
+                rflags: 2 | (1 << 9),
+                ..Default::default()
+            })
+            .unwrap();
+        // Exercise the exact restored-event entry boundary. An IRQ merely
+        // queued in an IOAPIC can still require KVM's interrupt-window work;
+        // that does not prove it was selected for this particular RUN.
+        // SET_VCPU_EVENTS is also the production checkpoint restore path.
+        let mut events = vm.vcpus[0].get_vcpu_events().unwrap();
+        events.interrupt.injected = 1;
+        events.interrupt.nr = VECTOR;
+        events.interrupt.soft = 0;
+        events.interrupt.shadow = 0;
+        vm.vcpus[0].set_vcpu_events(&events).unwrap();
+        let admitted = vm.vcpus[0].get_vcpu_events().unwrap();
+        assert_eq!(admitted.interrupt.injected, 1);
+        assert_eq!(admitted.interrupt.nr, VECTOR);
+        assert!(vm.vcpu_has_hlt_wake(0).unwrap());
+        for (index, expected_rip) in [HANDLER_ADDRESS + 1, CODE_ADDRESS, CODE_ADDRESS + 1]
+            .into_iter()
+            .enumerate()
+        {
+            let before_regs = vm.vcpus[0].get_regs().unwrap();
+            let before_events = vm.vcpus[0].get_vcpu_events().unwrap();
+            assert!(!vm.step().unwrap());
+            let after_regs = vm.vcpus[0].get_regs().unwrap();
+            let after_events = vm.vcpus[0].get_vcpu_events().unwrap();
+            assert_eq!(
+                after_regs.rip, expected_rip,
+                "step={index}; before_regs={before_regs:?}; before_events={before_events:?}; \
+                 after_regs={after_regs:?}; after_events={after_events:?}"
+            );
+            assert_eq!(
+                vm.scheduler.state().instruction_progress[0],
+                index as u64 + 1
+            );
+            assert_eq!(vm.io_exit_count, 0);
+        }
+        let regs = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!((regs.rax, regs.rbx), (1, 1));
+    }
+
+    #[test]
+    fn smp_guest_cpuid_hides_tsc_and_binds_jiffies_profile() {
+        const CODE_ADDRESS: u64 = 0x200;
+        // CPUID; OUT 0x10,AL. Inspect EDX after CPUID really runs in KVM.
+        const CODE: [u8; 4] = [0x0f, 0xa2, 0xe6, 0x10];
+        for num_vcpus in [1, 2] {
+            let config = VmConfig {
+                memory_size: 4 * 1024 * 1024,
+                num_vcpus,
+                ..VmConfig::default()
+            };
+            let mut vm = if num_vcpus == 1 {
+                DeterministicVm::new(config).unwrap()
+            } else {
+                diagnostic_fixtures::partial_smp_vm(config)
+            };
+            vm.write_guest_memory(CODE_ADDRESS, &CODE).unwrap();
+            let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+            sregs.cs.base = 0;
+            sregs.cs.selector = 0;
+            vm.vcpus[0].set_sregs(&sregs).unwrap();
+            vm.vcpus[0]
+                .set_regs(&kvm_regs {
+                    rip: CODE_ADDRESS,
+                    rax: 1,
+                    rflags: 2,
+                    ..Default::default()
+                })
+                .unwrap();
+            assert!(matches!(
+                vm.vcpus[0].run().unwrap(),
+                VcpuExit::IoOut(0x10, _)
+            ));
+            let edx = vm.vcpus[0].get_regs().unwrap().rdx;
+            assert_eq!(edx & u64::from(cpu::CPUID_1_EDX_TSC) == 0, num_vcpus > 1);
+            let expected_clock = if num_vcpus > 1 {
+                GuestClockMode::DeterministicJiffies
+            } else {
+                GuestClockMode::VirtualTsc
+            };
+            assert_eq!(
+                vm.guest_determinism_profile.input.clock_mode,
+                expected_clock
+            );
+            let snapshot = vm.snapshot().unwrap();
+            vm.validate_fault_engine_snapshot(&snapshot).unwrap();
+        }
+    }
+
+    fn halted_smp_test_vm() -> DeterministicVm {
+        let mut vm = diagnostic_fixtures::partial_smp_vm(VmConfig {
+            memory_size: 4 * 1024 * 1024,
+            num_vcpus: 2,
+            ..VmConfig::default()
+        });
+        let config = SchedulerConfig {
+            num_vcpus: 2,
+            quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: 0,
+        };
+        vm.scheduler =
+            VcpuScheduler::try_new(&config, ProgressMode::ExactSingleStep, vec![true; 2]).unwrap();
+        for vcpu in 0..2 {
+            vm.vcpus[vcpu]
+                .set_mp_state(kvm_bindings::kvm_mp_state {
+                    mp_state: KVM_MP_STATE_RUNNABLE,
+                })
+                .unwrap();
+            let mut regs = vm.vcpus[vcpu].get_regs().unwrap();
+            regs.rflags = 2 | (1 << 9);
+            vm.vcpus[vcpu].set_regs(&regs).unwrap();
+            let mut lapic = vm.vcpus[vcpu].get_lapic().unwrap();
+            lapic.regs[0xf0..0xf4].copy_from_slice(&0x1ffu32.to_le_bytes().map(|b| b as i8));
+            // Isolate LAPIC wake tests from the legacy PIC virtual wire.
+            lapic.regs[0x350..0x354].copy_from_slice(&(1u32 << 16).to_le_bytes().map(|b| b as i8));
+            vm.vcpus[vcpu].set_lapic(&lapic).unwrap();
+            let reservation = vm.scheduler.reserve_transition().unwrap();
+            let planned = plan_execution_observation(
+                vm.scheduler.state(),
+                ExecutionProgressObservation::ExactInstructionHalt { vcpu },
+            )
+            .unwrap()
+            .unwrap();
+            let record = vm.scheduler.commit(reservation, planned).unwrap();
+            vm.hlt_latched_vcpus[vcpu] = true;
+            vm.apply_schedule_action(&record.action).unwrap();
+        }
+        vm
+    }
+
+    #[test]
+    fn pending_nmi_hlt_wake_respects_mask_and_both_interrupt_shadows() {
+        let mut vm = halted_smp_test_vm();
+        let vcpu = 1;
+        let mut regs = vm.vcpus[vcpu].get_regs().unwrap();
+        regs.rflags = 2; // NMI delivery is independent of IF.
+        vm.vcpus[vcpu].set_regs(&regs).unwrap();
+        let mut events = vm.vcpus[vcpu].get_vcpu_events().unwrap();
+        events.flags |= kvm_bindings::KVM_VCPUEVENT_VALID_NMI_PENDING;
+        events.nmi.pending = 1;
+        for (masked, shadow) in [
+            (1, 0),
+            (0, kvm_bindings::KVM_X86_SHADOW_INT_MOV_SS as u8),
+            (0, kvm_bindings::KVM_X86_SHADOW_INT_STI as u8),
+        ] {
+            events.nmi.masked = masked;
+            events.interrupt.shadow = shadow;
+            vm.vcpus[vcpu].set_vcpu_events(&events).unwrap();
+            vm.refresh_hlt_wakes().unwrap();
+            assert!(vm.hlt_latched_vcpus[vcpu]);
+        }
+        events.nmi.masked = 0;
+        events.interrupt.shadow = 0;
+        vm.vcpus[vcpu].set_vcpu_events(&events).unwrap();
+        vm.refresh_hlt_wakes().unwrap();
+        assert!(!vm.hlt_latched_vcpus[vcpu]);
+        assert!(vm.scheduler.state().runnable_vcpus[vcpu]);
+    }
+
+    #[test]
+    fn smp_hlt_wakes_on_targeted_ipi_but_not_if_or_priority_masked() {
+        const VECTOR: u32 = 0x51;
+        const X2APIC_ICR: u32 = 0x830;
+        let mut vm = halted_smp_test_vm();
+        let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+        sregs.apic_base |= (1 << 11) | (1 << 10);
+        vm.vcpus[0].set_sregs(&sregs).unwrap();
+        let msrs = kvm_bindings::Msrs::from_entries(&[kvm_bindings::kvm_msr_entry {
+            index: X2APIC_ICR,
+            data: (1u64 << 32) | u64::from(VECTOR),
+            ..Default::default()
+        }])
+        .unwrap();
+        assert_eq!(vm.vcpus[0].set_msrs(&msrs).unwrap(), 1);
+        let mut regs = vm.vcpus[1].get_regs().unwrap();
+        regs.rflags &= !(1 << 9);
+        vm.vcpus[1].set_regs(&regs).unwrap();
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, true]);
+        regs.rflags |= 1 << 9;
+        vm.vcpus[1].set_regs(&regs).unwrap();
+        let mut events = vm.vcpus[1].get_vcpu_events().unwrap();
+        events.interrupt.shadow = 1;
+        vm.vcpus[1].set_vcpu_events(&events).unwrap();
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, true]);
+        events.interrupt.shadow = 0;
+        vm.vcpus[1].set_vcpu_events(&events).unwrap();
+        let mut lapic = vm.vcpus[1].get_lapic().unwrap();
+        lapic.regs[0x80..0x84].copy_from_slice(&0x50u32.to_le_bytes().map(|b| b as i8));
+        vm.vcpus[1].set_lapic(&lapic).unwrap();
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, true]);
+        lapic.regs[0x80..0x84].fill(0);
+        vm.vcpus[1].set_lapic(&lapic).unwrap();
+        vm.vcpus[1]
+            .set_mp_state(kvm_bindings::kvm_mp_state {
+                mp_state: kvm_bindings::KVM_MP_STATE_HALTED,
+            })
+            .unwrap();
+        let progress = vm.scheduler.state().instruction_progress.clone();
+        let sequence = vm.scheduler.state().sequence;
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, false]);
+        assert_eq!(vm.scheduler.state().runnable_vcpus, [false, true]);
+        assert_eq!(vm.observe_runnable_vcpus().unwrap(), [false, true]);
+        assert_eq!(vm.scheduler.state().instruction_progress, progress);
+        assert_eq!(vm.scheduler.state().sequence, sequence + 1);
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.scheduler.state().sequence, sequence + 1);
+        let snapshot = vm.snapshot().unwrap();
+        vm.validate_fault_engine_snapshot(&snapshot).unwrap();
+    }
+
+    #[test]
+    fn smp_hlt_pit_uses_one_deadline_and_respects_ioapic_mask_and_destination() {
+        const VECTOR: u64 = 0x51;
+        let mut vm = halted_smp_test_vm();
+        let mut ioapic = kvm_bindings::kvm_irqchip {
+            chip_id: kvm_bindings::KVM_IRQCHIP_IOAPIC,
+            ..Default::default()
+        };
+        vm.vm.get_irqchip(&mut ioapic).unwrap();
+        // SAFETY: chip identity selects IOAPIC; IRQ0 remains on default pin0.
+        let mut state = unsafe { ioapic.chip.ioapic };
+        state.redirtbl[0].bits = (1u64 << 56) | (1 << 16) | VECTOR;
+        ioapic.chip.ioapic = state;
+        vm.vm.set_irqchip(&ioapic).unwrap();
+        let mut pit = vm.vm.get_pit2().unwrap();
+        pit.channels[0].count = 1193;
+        pit.channels[0].mode = 0;
+        pit.channels[0].gate = 1;
+        vm.vm.set_pit2(&pit).unwrap();
+        vm.sync_and_suppress_pit().unwrap();
+        let deadline = vm.pit.next_irq_tsc().unwrap();
+        vm.virtual_tsc.set(deadline - cpu::DEFAULT_TSC_ADVANCE - 1);
+        assert!(!vm.sync_and_suppress_pit().unwrap());
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, true]);
+        vm.handle_hlt_exit().unwrap();
+        assert_eq!(vm.virtual_tsc.read(), deadline);
+        assert_eq!(vm.pit.irqs_delivered(), 1);
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, true]);
+        state.redirtbl[0].bits = (1u64 << 56) | VECTOR;
+        ioapic.chip.ioapic = state;
+        vm.vm.set_irqchip(&ioapic).unwrap();
+        vm.inject_interrupt(PIT_IRQ).unwrap();
+        vm.refresh_hlt_wakes().unwrap();
+        assert_eq!(vm.hlt_latched_vcpus, [true, false]);
+        let delivered = vm.pit.irqs_delivered();
+        let tsc = vm.virtual_tsc.read();
+        vm.handle_hlt_exit().unwrap();
+        assert_eq!(vm.pit.irqs_delivered(), delivered);
+        assert_eq!(vm.virtual_tsc.read(), tsc + cpu::DEFAULT_TSC_ADVANCE);
+        assert!(
+            vm.pit.next_irq_tsc().is_none(),
+            "one-shot PIT must not repeat"
+        );
     }
 
     #[test]

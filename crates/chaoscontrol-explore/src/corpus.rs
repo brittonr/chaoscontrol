@@ -1,9 +1,9 @@
 //! Corpus — stores interesting inputs (fault schedules) that produced new coverage or bugs.
 
 use crate::coverage::CoverageBitmap;
-use crate::snapshot_store::ReplayParentSnapshotRef;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
+use chaoscontrol_replay::snapshot_store::ReplayParentSnapshotRef;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
 use std::sync::Arc;

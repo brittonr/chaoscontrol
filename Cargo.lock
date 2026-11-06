@@ -488,6 +488,7 @@ dependencies = [
  "chaoscontrol-evidence",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
+ "chaoscontrol-replay",
  "chaoscontrol-replay-evidence-core",
  "chaoscontrol-vmm",
  "choregraph-history",
@@ -508,7 +509,6 @@ dependencies = [
  "tower-http",
  "tracing",
  "vm-memory",
- "zstd",
 ]
 
 [[package]]
@@ -609,9 +609,9 @@ name = "chaoscontrol-replay"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "chaoscontrol-explore",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
+ "chaoscontrol-replay-evidence-core",
  "chaoscontrol-vmm",
  "ciborium",
  "clap",
@@ -623,8 +623,10 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sha2",
  "snafu",
  "tempfile",
+ "zstd",
 ]
 
 [[package]]

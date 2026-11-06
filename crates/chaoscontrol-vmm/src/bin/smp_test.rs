@@ -1,6 +1,6 @@
-//! SMP determinism test: verify identical exit counts across runs.
+//! Actual-run SMP determinism diagnostic; missing strict capability is an error.
 
-use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig, VmError};
 use std::env;
 
 fn strip_nondeterministic(s: &str) -> String {
@@ -15,12 +15,21 @@ fn strip_nondeterministic(s: &str) -> String {
     s.to_string()
 }
 
-fn run_boot(kernel: &str, initrd: &str, num_vcpus: usize) -> (u64, u64, String) {
-    let config = VmConfig {
+fn create_vm(num_vcpus: usize) -> Result<DeterministicVm, VmError> {
+    DeterministicVm::new(VmConfig {
         num_vcpus,
         ..Default::default()
-    };
-    let mut vm = DeterministicVm::new(config).expect("create VM");
+    })
+}
+
+fn create_vm_or_exit(num_vcpus: usize) -> DeterministicVm {
+    create_vm(num_vcpus).unwrap_or_else(|error| {
+        eprintln!("error: smp_test: cannot create {num_vcpus}-vCPU VM: {error}");
+        std::process::exit(1);
+    })
+}
+
+fn run_boot(kernel: &str, initrd: &str, mut vm: DeterministicVm) -> (u64, u64, String) {
     vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
 
     let mut output = String::new();
@@ -42,12 +51,16 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Reject SMP before any baseline guest runs. Reuse the admitted VM in the
+    // first SMP run rather than treating admission as execution evidence.
+    let mut first_smp_vm = Some(create_vm_or_exit(2));
+
     // Single-vCPU baseline
     println!("=== Single-vCPU (3 runs) ===");
     let mut s_ref = None;
     let mut s_ok = true;
     for i in 0..3 {
-        let (e, t, _) = run_boot(&args[1], &args[2], 1);
+        let (e, t, _) = run_boot(&args[1], &args[2], create_vm_or_exit(1));
         println!("  Run {}: exits={} vtsc={}", i + 1, e, t);
         if let Some((re, rt)) = s_ref {
             if e != re || t != rt {
@@ -70,7 +83,8 @@ fn main() {
     println!("\n=== SMP 2-vCPU (5 runs) ===");
     let mut results = Vec::new();
     for i in 0..5 {
-        let (e, t, o) = run_boot(&args[1], &args[2], 2);
+        let vm = first_smp_vm.take().unwrap_or_else(|| create_vm_or_exit(2));
+        let (e, t, o) = run_boot(&args[1], &args[2], vm);
         let ok = o.contains("Brought up 1 node, 2 CPUs");
         println!("  Run {}: exits={} vtsc={} 2cpus={}", i + 1, e, t, ok);
         results.push((e, t, o));
@@ -135,5 +149,24 @@ fn main() {
             }
         }
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chaoscontrol_vmm::scheduler::core::ScheduleError;
+
+    #[test]
+    fn smp_boot_is_rejected_before_loading_guest_artifacts() {
+        let error = create_vm(2).err().expect("portable KVM must reject SMP");
+        assert!(matches!(
+            error,
+            VmError::Schedule {
+                source: ScheduleError::MissingCapability {
+                    capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
+                },
+            }
+        ));
     }
 }

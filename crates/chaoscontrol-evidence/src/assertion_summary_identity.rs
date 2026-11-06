@@ -16,6 +16,45 @@ struct SummaryEnvelope {
     catalog_status: CatalogValidationStatus,
     collision_safe_evidence: bool,
     assertions: Vec<ReviewAssertion>,
+    // Campaign diagnostics are typed and checked independently of identity authority.
+    // They can describe other branches, so neither field is derived from these rows.
+    #[serde(default = "empty_liveness_gaps")]
+    liveness_gaps: Vec<ReviewLivenessGap>,
+    #[serde(default, rename = "distinct_failing_assertions")]
+    _distinct_failing_assertions: usize,
+}
+
+fn empty_liveness_gaps() -> Vec<ReviewLivenessGap> {
+    Vec::new()
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewLivenessGap {
+    fingerprint: AssertionFingerprint,
+    kind: AssertionKind,
+    message: String,
+    hit_count: u64,
+}
+
+fn validate_liveness_gaps(gaps: &[ReviewLivenessGap]) -> EvidenceResult<()> {
+    let mut fingerprints = BTreeSet::new();
+    for gap in gaps {
+        if !fingerprints.insert(gap.fingerprint)
+            || !matches!(
+                (gap.kind, gap.hit_count),
+                (AssertionKind::Sometimes, 1..) | (AssertionKind::Reachable, 0)
+            )
+            || gap.message.is_empty()
+            || gap.message.len() > chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES
+            || gap.message.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err(EvidenceError::new(
+                "assertion-summary: campaign liveness gap metadata is invalid",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -105,6 +144,7 @@ pub(crate) fn validate(
         if envelope.schema != ASSERTION_SUMMARY_SCHEMA {
             return Err(EvidenceError::new("assertion-summary: unsupported schema"));
         }
+        validate_liveness_gaps(&envelope.liveness_gaps)?;
         (
             envelope.assertions,
             Some((envelope.catalog_status, envelope.collision_safe_evidence)),

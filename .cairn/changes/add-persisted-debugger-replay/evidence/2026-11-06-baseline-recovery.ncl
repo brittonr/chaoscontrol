@@ -1,0 +1,45 @@
+# Recovered original observations, not rerun or reconstructed results.
+let P = import "../../../../contracts/evidence/profile-primitives.ncl" in
+{
+  schema | P.exact_string "chaoscontrol.persisted-debugger-baseline-recovery.v1" = "chaoscontrol.persisted-debugger-baseline-recovery.v1",
+  source_session = "01a1ad67-8395-7461-96ca-cfb5527bd635",
+  recovery = "Full retained JSONL tool events were inspected after the compact recap failed to establish the evidence. Earlier 'unestablished' notes describe the retrieval gap at that time.",
+  test_baseline = {
+    command_event = "32fd531a",
+    result_event = "778f2355",
+    command_at = "2026-11-06T18:45:55.043Z",
+    result_at = "2026-11-06T18:49:10.342Z",
+    command = "nix develop -c cargo test -p chaoscontrol-replay -p chaoscontrol-sdk -p chaoscontrol-protocol -p chaoscontrol-fault -p chaoscontrol-explore -p chaoscontrol-evidence -p chaoscontrol-vmm --all-targets --no-fail-fast",
+    passed = 2726, failed = 6, ignored = 16, targets = 196,
+    failures = ["chaoscontrol-explore/tests/assertion_summary_v2.rs", "chaoscontrol-explore/tests/assertion_summary_writer.rs"],
+    cause = "Evidence consumer rejected producer field distinct_failing_assertions; five failures in assertion_summary_v2 and one in assertion_summary_writer.",
+    ordering = "Observed before the persisted-debugger cutover workers were dispatched at 2026-11-06T19:11:23.633Z (event45cd2aae). This was a failing baseline, not an all-green claim.",
+  },
+  fresh_process_baseline = {
+    command_event = "987f971c", result_event = "e4e608f8", queue_job = 29,
+    command_at = "2026-11-06T19:13:35.817Z",
+    result_at = "2026-11-06T19:15:09.371Z",
+    command = "/home/brittonr/.cargo-target/debug/chaoscontrol-replay replay --recording /tmp/cc-debug-query-8s9axtnv/session/recording.json --checkpoint 0 --ticks 1",
+    exit_status = 1,
+    stdout = "Loading recording from recording.json; Replaying 1 ticks from checkpoint 0",
+    stderr = "Error: Replay error",
+    executable = "Cached pre-cutover b6fa2efa replay executable; parent explicitly retained it before rebuilding (event72af1a0b).",
+    ordering_limit = "This cached-program probe overlapped parallel source edits: the store file move occurred at 19:13:24.485Z. It proves old executable behavior before rebuilding, not that every physical source edit waited for the probe. No historical timing claim is manufactured.",
+  },
+  reference_discovery = {
+    worker = "StoreOwnership",
+    search_event = "803dd700", result_event = "39649950",
+    before_move_lsp_requests = ["5e899aee", "5628e0c0"],
+    move_event = "50853e61", move_at = "2026-11-06T19:13:24.485Z",
+    migrated_callers = [
+      "explore/src/checkpoint.rs", "explore/src/corpus.rs", "explore/src/explorer.rs",
+      "explore/src/replay_verdict.rs", "explore/src/bin/chaoscontrol-explore.rs",
+      "explore/examples/raft_lineage_proof.rs", "replay/src/session.rs", "replay/src/session_tests.rs",
+      "query-events binary and publication/workspace child modules", "frontier timeline adapter and fixtures",
+    ],
+    claim = "Reference discovery preceded the exported store move. Current imports use replay::snapshot_store; no explore snapshot-store compatibility alias remains. LSP requests are evidence of attempted semantic discovery, not assumed successful reference resolution.",
+  },
+  disposition = "Original-version tests and the fresh-process missing-checkpoint gap are recovered, with the physical-edit/probe timing deviation retained explicitly. Later passing checks do not replace these original observations.",
+  maintenance_owner = "ChaosControl replay and explorer maintainers",
+  non_claims = ["Not a reconstructed historical run", "Not an all-green baseline", "Not evidence that source-edit sequencing was strictly serial", "Not production or release approval"],
+}

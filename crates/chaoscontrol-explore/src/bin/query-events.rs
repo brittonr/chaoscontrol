@@ -295,11 +295,12 @@ fn execute(cli: Cli) -> Result<(), String> {
             let mut source_truncated = false;
             if let Some(path) = frontier {
                 let bytes = read_bytes(&path)?;
-                let projection = chaoscontrol_replay::event_query::timeline_from_frontier_trace(
-                    &bytes,
-                    &timeline_limits,
-                )
-                .map_err(|error| error.to_string())?;
+                let projection =
+                    chaoscontrol_explore::frontier_timeline::timeline_from_frontier_trace(
+                        &bytes,
+                        &timeline_limits,
+                    )
+                    .map_err(|error| error.to_string())?;
                 moment.source_ids.push(format!(
                     "b3:{}",
                     blake3::Hash::from(projection.source_id).to_hex()
@@ -836,6 +837,213 @@ mod tests {
             },
         })
         .is_err());
+    }
+
+    // Reproduce the retained bootstrap shape: empty rounds before and after
+    // four CPU-throttle stages at tick 1171, with the horizon at tick 1210.
+    fn bootstrap_recording() -> chaoscontrol_replay::recording::Recording {
+        use chaoscontrol_fault::faults::Fault;
+        use chaoscontrol_fault::outcomes::{
+            fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptSource,
+            FaultObservation, FaultObservationEffect, FaultObservationSubsystem,
+            FaultOutcomeLedger, FaultPlanEffect, FaultStageKind, NANOSECONDS_PER_SIMULATION_TICK,
+        };
+        use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+        use chaoscontrol_replay::recording::{RecordedEvent, Recorder, RecordingConfig};
+        use chaoscontrol_vmm::controller::RoundResult;
+
+        const SEED: u64 = 42;
+        const RUN_SEQUENCE: u64 = 1;
+        const SELECTION_TICK: u64 = 1171;
+        const HORIZON: u64 = 1210;
+        const DURATION_TICKS: u64 = 5;
+        let fault = Fault::CpuThrottle {
+            target: 0,
+            budget_units: 20,
+            duration_ticks: DURATION_TICKS,
+        };
+        let mut schedule = FaultSchedule::new();
+        schedule.add(ScheduledFault::new(0, fault.clone()));
+        let schedule_id = schedule.identity();
+        let attempt = FaultAttempt::new_with_source(
+            fault_run_id(SEED, RUN_SEQUENCE, schedule_id),
+            RUN_SEQUENCE,
+            schedule_id,
+            0,
+            SELECTION_TICK * NANOSECONDS_PER_SIMULATION_TICK,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: 0,
+            },
+            fault.clone(),
+        );
+        let effect = FaultPlanEffect::CpuThrottle {
+            target: 0,
+            budget_units: 20,
+            release_at_tick: SELECTION_TICK + DURATION_TICKS,
+        };
+        let mut recorder = Recorder::new_for_run(
+            RecordingConfig {
+                num_vms: 1,
+                vm_memory_size: 128 * 1024 * 1024,
+                tsc_khz: 3_000_000,
+                kernel_path: "/test/vmlinux".into(),
+                initrd_path: None,
+                quantum: 100,
+                checkpoint_interval: 20,
+                disk_image_path: None,
+                random_faults: false,
+            },
+            schedule,
+            SEED,
+            RUN_SEQUENCE,
+        );
+        let mut ledger = FaultOutcomeLedger::default();
+        for tick in 1..=HORIZON {
+            let mut faults_fired = Vec::new();
+            let mut fault_outcomes = Vec::new();
+            if tick == SELECTION_TICK {
+                ledger = transition_fault_outcome(
+                    &ledger,
+                    Some(&attempt),
+                    attempt.id,
+                    FaultStageKind::Selected,
+                )
+                .unwrap();
+                for kind in [
+                    FaultStageKind::Applicable {
+                        effect: effect.clone(),
+                    },
+                    FaultStageKind::Applied {
+                        effect: effect.clone(),
+                    },
+                    FaultStageKind::Observed {
+                        observation: FaultObservation::new(
+                            attempt.id,
+                            FaultObservationSubsystem::Cpu,
+                            0,
+                            FaultObservationEffect::CpuThrottleActivated,
+                        ),
+                    },
+                ] {
+                    ledger = transition_fault_outcome(&ledger, None, attempt.id, kind).unwrap();
+                }
+                faults_fired.push(fault.clone());
+                fault_outcomes = ledger.events.clone();
+            }
+            recorder
+                .record_round(
+                    &RoundResult {
+                        tick,
+                        vms_running: 1,
+                        vms_halted: 0,
+                        faults_fired,
+                        fault_outcomes,
+                        messages_delivered: 0,
+                        schedule_traces: Vec::new(),
+                    },
+                    &ledger,
+                )
+                .unwrap();
+            if tick == 1 {
+                recorder.record_event(RecordedEvent::SerialOutput {
+                    tick,
+                    vm_index: 0,
+                    data: "[    0.000000] Linux version 6.19.0 (nixbld@".into(),
+                });
+            }
+        }
+        recorder.recording().clone()
+    }
+
+    #[test]
+    fn query_bootstrap_empty_rounds_preserves_all_stages_and_receipt() {
+        let temp = tempfile::tempdir().unwrap();
+        let recording_path = temp.path().join("recording.json");
+        let query = temp.path().join("query.json");
+        let result = temp.path().join("result.json");
+        let receipt = temp.path().join("receipt.json");
+        let recording = bootstrap_recording();
+        chaoscontrol_replay::recording::validate_recording(&recording).unwrap();
+        let bytes = serde_json::to_vec(&recording).unwrap();
+        let source_id = *blake3::hash(&bytes).as_bytes();
+        std::fs::write(&recording_path, bytes).unwrap();
+        std::fs::write(&query, r#""All""#).unwrap();
+        let sources = SourceArgs {
+            recording: Some(recording_path),
+            ..SourceArgs::default()
+        };
+        execute(Cli {
+            command: Command::Query {
+                sources: sources.clone(),
+                query: query.clone(),
+                output: result.clone(),
+                receipt: Some(receipt.clone()),
+                limits: None,
+            },
+        })
+        .unwrap();
+        let rows: EventQueryResult = read_json(&result).unwrap();
+        assert_eq!(rows.scanned, 6);
+        assert_eq!(rows.matched, 6);
+        assert_eq!(rows.rows.len(), 6);
+        assert!(!rows.truncated);
+        assert_eq!(rows.rows[0].kind, "serial_output");
+        for (index, kind) in ["selected", "applicable", "applied", "observed"]
+            .into_iter()
+            .enumerate()
+        {
+            let row = &rows.rows[index + 2];
+            assert_eq!(row.kind, format!("fault_stage_{kind}"));
+            assert_eq!(row.tick, 1171);
+            assert_eq!(row.source_id, source_id);
+            assert_eq!(row.source_sequence, index as u64 + 2);
+            assert_eq!(row.process.as_deref(), Some("fault_engine"));
+            assert_eq!(
+                row.payload_digest,
+                *blake3::hash(&serde_json::to_vec(&recording.fault_stage_events[index]).unwrap())
+                    .as_bytes()
+            );
+        }
+        execute(Cli {
+            command: Command::Validate {
+                sources,
+                query,
+                result,
+                receipt,
+                limits: None,
+            },
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn query_bootstrap_rejects_reversed_empty_round_without_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let recording_path = temp.path().join("recording.json");
+        let query = temp.path().join("query.json");
+        let result = temp.path().join("result.json");
+        let receipt = temp.path().join("receipt.json");
+        let mut recording = bootstrap_recording();
+        recording.fault_round_deltas[1171].event_end = 3;
+        std::fs::write(&recording_path, serde_json::to_vec(&recording).unwrap()).unwrap();
+        std::fs::write(&query, r#""All""#).unwrap();
+        let error = execute(Cli {
+            command: Command::Query {
+                sources: SourceArgs {
+                    recording: Some(recording_path),
+                    ..SourceArgs::default()
+                },
+                query,
+                output: result.clone(),
+                receipt: Some(receipt.clone()),
+                limits: None,
+            },
+        })
+        .unwrap_err();
+        assert!(error.contains("InvalidRoundDelta"), "{error}");
+        assert!(!result.exists());
+        assert!(!receipt.exists());
     }
 
     #[test]

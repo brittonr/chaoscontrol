@@ -8,6 +8,9 @@
 //! The default single-VM/controller clock profile is `hide-tsc`, the current
 //! bounded operator profile with committed passing drift evidence. Use
 //! `--single-clock-profile tsc` for legacy baseline A/B diagnosis.
+//!
+//! Selected SMP cases fail strict production admission before any run or receipt
+//! creation. Narrow single-vCPU selections retain their existing execution path.
 
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
@@ -20,7 +23,7 @@ use chaoscontrol_vmm::determinism_gate::{
 };
 use chaoscontrol_vmm::dlog::{dlog_diff_structural, DiffResult, DlogRecord, DlogTag};
 use chaoscontrol_vmm::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
-use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig, VmError};
 use crc32fast::Hasher;
 use std::env;
 use std::io::{self, Read};
@@ -199,6 +202,18 @@ fn case_enabled(args: &Args, name: &str) -> bool {
     args.cases.is_empty() || args.cases.iter().any(|case| case == name)
 }
 
+fn admit_selected_smp_cases(args: &Args) -> Result<(), VmError> {
+    if case_enabled(args, "single-vm-2vcpu") || case_enabled(args, "controller-3vm-2vcpu") {
+        // Ask the production constructor, not a guessed host feature or a
+        // fabricated scheduler capability. No guest artifacts are opened.
+        DeterministicVm::new(VmConfig {
+            num_vcpus: 2,
+            ..Default::default()
+        })?;
+    }
+    Ok(())
+}
+
 /// Strip known non-deterministic lines from serial output.
 fn strip_nondeterministic(s: &str) -> String {
     s.lines()
@@ -249,7 +264,10 @@ fn run_single_vm(
         },
         ..Default::default()
     };
-    let mut vm = DeterministicVm::new(config).expect("create VM");
+    let mut vm = DeterministicVm::new(config).unwrap_or_else(|error| {
+        eprintln!("error: determinism_stress: cannot create {num_vcpus}-vCPU VM: {error}");
+        std::process::exit(1);
+    });
     vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
 
     let mut output = String::new();
@@ -327,7 +345,10 @@ fn run_controller(
         random_faults: true,
     };
 
-    let mut ctrl = SimulationController::new(config).expect("create controller");
+    let mut ctrl = SimulationController::new(config).unwrap_or_else(|error| {
+        eprintln!("error: determinism_stress: cannot create {num_vcpus}-vCPU controller: {error}");
+        std::process::exit(1);
+    });
     ctrl.force_setup_complete();
 
     for _ in 0..ticks {
@@ -726,6 +747,10 @@ fn write_receipt(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args = parse_args();
+    if let Err(error) = admit_selected_smp_cases(&args) {
+        eprintln!("error: determinism_stress: selected SMP case cannot be admitted: {error}");
+        std::process::exit(1);
+    }
 
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!(
@@ -875,6 +900,42 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn selected_smp_cases_reject_before_guest_inputs_or_receipts_are_opened() {
+        use chaoscontrol_vmm::scheduler::core::ScheduleError;
+
+        for case in [None, Some("single-vm-2vcpu"), Some("controller-3vm-2vcpu")] {
+            let mut argv = vec!["missing-kernel".to_string(), "missing-initrd".to_string()];
+            if let Some(case) = case {
+                argv.extend(["--case".to_string(), case.to_string()]);
+            }
+            let args = parse_args_from(argv).unwrap();
+            let error = admit_selected_smp_cases(&args).expect_err("SMP must fail closed");
+            assert!(matches!(
+                error,
+                VmError::Schedule {
+                    source: ScheduleError::MissingCapability {
+                        capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
+                    },
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn narrow_single_vcpu_cases_do_not_probe_smp_or_open_guest_inputs() {
+        for case in ["single-vm-1vcpu", "controller-3vm-1vcpu"] {
+            let args = parse_args_from(vec![
+                "missing-kernel".to_string(),
+                "missing-initrd".to_string(),
+                "--case".to_string(),
+                case.to_string(),
+            ])
+            .unwrap();
+            admit_selected_smp_cases(&args).unwrap();
+        }
+    }
+
     #[test]
     fn crc_reads_reject_symlinks_and_fifos() {
         use std::os::unix::ffi::OsStrExt;

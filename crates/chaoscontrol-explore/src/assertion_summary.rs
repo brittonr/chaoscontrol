@@ -73,6 +73,7 @@ impl AssertionSummaryV2 {
             &[],
             &self.assertions,
         )?;
+        crate::findings::validate_liveness_gaps(&self.liveness_gaps)?;
         Ok(())
     }
 
@@ -126,6 +127,7 @@ impl AssertionSummaryV2 {
         if catalog_status != source_status || collision_safe_evidence != source_collision_safe {
             return Err("assertion summary authority claim is not exact".to_string());
         }
+        crate::findings::validate_liveness_gaps(&liveness_gaps)?;
         Ok(Self {
             schema,
             catalog_status,
@@ -146,6 +148,7 @@ impl AssertionSummaryV2 {
     ) -> Result<Self, String> {
         let (catalog_status, collision_safe_evidence) =
             Self::recomputed_claims(source_status, source_collision_safe, conflicts, assertions)?;
+        crate::findings::validate_liveness_gaps(&liveness_gaps)?;
         Ok(Self {
             schema: ASSERTION_SUMMARY_SCHEMA.to_string(),
             catalog_status,
@@ -305,6 +308,28 @@ mod tests {
         let decoded: AssertionSummaryV2 = serde_json::from_value(encoded).expect("summary parses");
         assert_eq!(decoded.liveness_gaps(), &[gap]);
         assert_eq!(decoded.distinct_failing_assertions(), 4);
+    }
+
+    #[test]
+    fn invalid_campaign_gap_is_rejected_at_construction_and_write_validation() {
+        let gap = crate::findings::CampaignLivenessGap {
+            fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint([3; 32]),
+            kind: chaoscontrol_protocol::identity::AssertionKind::Sometimes,
+            message: "gap".to_string(),
+            hit_count: 0,
+        };
+        assert!(AssertionSummaryV2::new(
+            CatalogValidationStatus::LegacyAmbiguous,
+            false,
+            &[],
+            &[detail(1)],
+            vec![gap.clone()],
+            0,
+        )
+        .is_err());
+        let mut summary = AssertionSummaryV2::fatal(&[detail(1)]).expect("fatal summary");
+        summary.liveness_gaps.push(gap);
+        assert!(summary.validate().is_err());
     }
 
     #[test]

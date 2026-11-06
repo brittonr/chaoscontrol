@@ -1,4 +1,7 @@
-//! KVM evidence for exact deterministic SMP scheduling.
+//! Partial KVM-control diagnostics and strict production admission regressions.
+//!
+//! No diagnostic in this suite establishes event-entry exactness or positive
+//! production SMP execution. The release rail uses a separate actual-run command.
 
 use chaoscontrol_vmm::scheduler::core::{
     plan_execution_observation, validate_transition_trace, ExecutionProgressObservation,
@@ -26,6 +29,77 @@ const GUEST_RFLAGS_RESERVED: u64 = 2;
 const MEMORY_SLOT: u32 = 0;
 const GUEST_CODE: [u8; 3] = [0x40, 0xeb, 0xfd]; // inc ax; jmp 0
 const HLT_CODE: [u8; 1] = [0xf4];
+
+#[test]
+// r[verify chaoscontrol.event_entry_exact.admission]
+// r[verify chaoscontrol.event_entry_exact.early]
+fn production_exact_and_pmu_smp_reject_before_allocation_or_output_mutation() {
+    use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig, VmError};
+
+    let root = tempfile::tempdir().unwrap();
+    let log_path = root.path().join("must-not-create.dlog");
+    for mode in [
+        ProgressMode::ExactSingleStep,
+        ProgressMode::PmuAccelerated {
+            exact_step_margin: TEST_QUANTUM,
+        },
+    ] {
+        let config = VmConfig {
+            num_vcpus: TEST_VCPU_COUNT,
+            smp_progress_mode: mode,
+            // Even invalid memory must not obscure unavailable SMP capability.
+            memory_size: 0,
+            dlog_path: Some(log_path.clone()),
+            ..VmConfig::default()
+        };
+        assert!(matches!(
+            DeterministicVm::new(config),
+            Err(VmError::Schedule {
+                source: ScheduleError::MissingCapability {
+                    capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry"
+                }
+            })
+        ));
+        assert!(!log_path.exists());
+    }
+}
+
+#[test]
+// r[verify chaoscontrol.event_entry_exact.early]
+fn production_single_vcpu_runs_without_smp_exactness_capability() {
+    use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+
+    const MEMORY_BYTES: usize = 4 * 1024 * 1024;
+    let mut vm = DeterministicVm::new(VmConfig {
+        memory_size: MEMORY_BYTES,
+        num_vcpus: 1,
+        // This SMP-only selection must not request a PMU for one vCPU.
+        smp_progress_mode: ProgressMode::PmuAccelerated {
+            exact_step_margin: TEST_QUANTUM,
+        },
+        ..VmConfig::default()
+    })
+    .expect("single-vCPU production admission remains available");
+    assert_eq!(vm.num_vcpus(), 1);
+    let mut snapshot = vm.snapshot().expect("single-vCPU snapshot");
+    const CODE_ADDRESS: u64 = 0x200;
+    snapshot.vcpu_snapshots[0].sregs.cs.base = 0;
+    snapshot.vcpu_snapshots[0].sregs.cs.selector = 0;
+    snapshot.vcpu_snapshots[0].regs.rip = CODE_ADDRESS;
+    snapshot.vcpu_snapshots[0].regs.rax = 0;
+    snapshot.vcpu_snapshots[0].regs.rflags = GUEST_RFLAGS_RESERVED;
+    vm.restore(&snapshot).expect("single-vCPU restore");
+    vm.write_guest_memory(CODE_ADDRESS, &[0x40, 0xe6, 0x10])
+        .expect("INC AX; OUT 0x10,AL");
+    assert_eq!(
+        vm.run_bounded(1)
+            .expect("ordinary single-vCPU guest execution"),
+        (1, false)
+    );
+    assert_eq!(vm.exit_count(), 1);
+    let executed = vm.snapshot().expect("executed single-vCPU state");
+    assert_eq!(executed.vcpu_snapshots[0].regs.rax, 1);
+}
 
 #[derive(Clone, Copy)]
 enum HostPerturbation {

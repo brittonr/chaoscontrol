@@ -1,7 +1,11 @@
 //! Typed frontier adapters. Product round numbers never become simulation ticks.
-use super::*;
-use chaoscontrol_explore::explorer::{inspect_frontier_trace, FrontierTraceViewError};
-use chaoscontrol_explore::frontier::FrontierEntry;
+use crate::explorer::{inspect_frontier_trace, FrontierTraceViewError};
+use crate::frontier::FrontierEntry;
+use chaoscontrol_replay::event_query::{
+    ordered_timeline, EventQueryError, TimelineFact, TimelineLimits, MAX_TIMELINE_NODES,
+};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -1,6 +1,7 @@
 //! Replay engine — restores and replays from recording.
 
 use crate::recording::{validate_recording, RecordedEvent, Recording, RecordingConfig};
+use crate::session::ExactSession;
 use chaoscontrol_fault::evidence::{FaultControlEvent, FaultControlKind};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::outcomes::{
@@ -9,12 +10,13 @@ use chaoscontrol_fault::outcomes::{
 };
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{
-    RoundResult, SimulationConfig, SimulationController, SimulationSnapshot, VmScheduleTrace,
+    RoundResult, SimulationController, SimulationSnapshot, VmScheduleTrace,
 };
 pub use chaoscontrol_vmm::registers::{RegisterModification, RegisterState};
 use chaoscontrol_vmm::vm::VmError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
+use std::sync::Arc;
 
 /// Errors that can occur during replay.
 #[derive(Debug, Snafu)]
@@ -42,6 +44,27 @@ pub trait SimulationRunner {
     where
         Self: Sized;
 
+    /// Construct from a fully admitted session, never from partial metadata.
+    fn create_from_session(session: &ExactSession, checkpoint_id: u64) -> Result<Self, ReplayError>
+    where
+        Self: Sized,
+    {
+        let recording = session.recording();
+        let checkpoint = recording
+            .checkpoints
+            .get(checkpoint_id)
+            .ok_or(ReplayError::CheckpointNotFound { id: checkpoint_id })?;
+        let snapshot = validated_checkpoint_snapshot(recording, checkpoint)?;
+        let mut runner = Self::create(
+            &recording.config,
+            recording.schedule.clone(),
+            recording.seed,
+            recording.fault_run_sequence,
+        )?;
+        runner.restore_all(snapshot)?;
+        Ok(runner)
+    }
+
     /// Start one clean counterfactual fault run after a restored checkpoint.
     fn begin_counterfactual_fault_run(
         &mut self,
@@ -50,6 +73,11 @@ pub trait SimulationRunner {
 
     /// Step the simulation by one round.
     fn step_round(&mut self) -> Result<RoundResult, ReplayError>;
+
+    /// Finish pending host-exit bookkeeping at the snapshot observation boundary.
+    /// Must not execute another guest instruction, advance ticks or SMP evidence,
+    /// or allocate/copy a snapshot. Abstract runners must already be settled.
+    fn settle_exact_observation(&mut self) -> Result<(), ReplayError>;
 
     /// Cumulative pause admission and suppression facts, including restored facts.
     fn fault_control_events(&self) -> &[FaultControlEvent];
@@ -93,68 +121,103 @@ pub trait SimulationRunner {
     ) -> Result<(), ReplayError>;
 }
 
-/// VMM configuration of a replay. Every run-defining value, including the
-/// random-fault setting, comes from the recording, so the replay executes the
-/// run the recording describes.
-#[allow(
-    explicit_defaults,
-    reason = "replay shell derives VMM config from recorded partial metadata"
-)]
-fn recorded_simulation_config(
-    config: &RecordingConfig,
-    schedule: FaultSchedule,
-    seed: u64,
-) -> SimulationConfig {
-    SimulationConfig {
-        num_vms: config.num_vms,
-        vm_config: chaoscontrol_vmm::vm::VmConfig {
-            memory_size: config.vm_memory_size,
-            cpu: chaoscontrol_vmm::cpu::CpuConfig {
-                tsc_khz: config.tsc_khz,
-                seed,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        kernel_path: config.kernel_path.clone(),
-        initrd_path: config.initrd_path.clone(),
-        seed,
-        quantum: config.quantum,
-        schedule,
-        disk_image_path: config.disk_image_path.clone(),
-        base_core: None,
-        dlog_dir: None,
-        bootstrap_budget: None,
-        random_faults: config.random_faults,
-    }
-}
-
 /// Real implementation using SimulationController.
 pub struct RealSimulationRunner {
     controller: SimulationController,
+    /// Keep sealed guest-input capabilities alive for the complete attempt.
+    _artifacts: Vec<std::fs::File>,
+    deadline: Option<std::time::Instant>,
+}
+
+#[allow(
+    ambient_clock,
+    reason = "host watchdog shell only; never deterministic guest state"
+)]
+fn host_watchdog_now() -> std::time::Instant {
+    std::time::Instant::now()
 }
 
 impl RealSimulationRunner {
     pub(crate) fn from_controller(controller: SimulationController) -> Self {
-        Self { controller }
+        Self {
+            controller,
+            _artifacts: Vec::new(),
+            deadline: None,
+        }
     }
     pub(crate) fn into_controller(self) -> SimulationController {
         self.controller
+    }
+    pub(crate) fn from_restored_controller(
+        controller: SimulationController,
+        artifacts: Vec<std::fs::File>,
+    ) -> Self {
+        Self {
+            controller,
+            _artifacts: artifacts,
+            deadline: None,
+        }
+    }
+    pub(crate) fn set_execution_deadline(&mut self, milliseconds: u64) -> Result<(), ReplayError> {
+        self.deadline = Some(
+            host_watchdog_now()
+                .checked_add(std::time::Duration::from_millis(milliseconds))
+                .ok_or_else(|| ReplayError::InvalidState {
+                    message: "host execution deadline overflow".into(),
+                })?,
+        );
+        Ok(())
+    }
+
+    fn check_deadline(&self) -> Result<(), ReplayError> {
+        if self
+            .deadline
+            .is_some_and(|deadline| host_watchdog_now() >= deadline)
+        {
+            return Err(ReplayError::Runner {
+                message: "exact replay host execution deadline exhausted (operational failure)"
+                    .into(),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_vm(&self, vm_index: usize, vcpu: Option<usize>) -> Result<(), ReplayError> {
+        if vm_index >= self.controller.num_vms()
+            || vcpu.is_some_and(|vcpu| vcpu >= self.controller.config().vm_config.num_vcpus)
+        {
+            return Err(ReplayError::InvalidState {
+                message: "VM/vCPU observation index is outside the admitted topology".into(),
+            });
+        }
+        Ok(())
     }
 }
 
 impl SimulationRunner for RealSimulationRunner {
     fn create(
-        config: &RecordingConfig,
-        schedule: FaultSchedule,
-        seed: u64,
-        run_sequence: u64,
+        _config: &RecordingConfig,
+        _schedule: FaultSchedule,
+        _seed: u64,
+        _run_sequence: u64,
     ) -> Result<Self, ReplayError> {
-        let replay_schedule = schedule.clone();
-        let mut controller =
-            SimulationController::new(recorded_simulation_config(config, schedule, seed))?;
-        controller.start_fault_run_at(replay_schedule, run_sequence);
-        Ok(Self { controller })
+        Err(ReplayError::InvalidState {
+            message: "exact replay requires a persisted ExactSession; metadata cannot reconstruct deterministic inputs or boot a replacement".into(),
+        })
+    }
+
+    fn create_from_session(
+        session: &ExactSession,
+        checkpoint_id: u64,
+    ) -> Result<Self, ReplayError> {
+        let mut runner = session
+            .restore_controller(checkpoint_id)
+            .map(|restored| restored.into_runner())
+            .map_err(|error| ReplayError::InvalidState {
+                message: error.to_string(),
+            })?;
+        runner.set_execution_deadline(session.host_deadline_ms())?;
+        Ok(runner)
     }
 
     fn begin_counterfactual_fault_run(
@@ -166,7 +229,10 @@ impl SimulationRunner for RealSimulationRunner {
     }
 
     fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
-        Ok(self.controller.step_round()?)
+        self.check_deadline()?;
+        let result = self.controller.step_round()?;
+        self.check_deadline()?;
+        Ok(result)
     }
 
     fn fault_control_events(&self) -> &[FaultControlEvent] {
@@ -181,6 +247,12 @@ impl SimulationRunner for RealSimulationRunner {
         // compared with the recording immediately after dispatch.
         let _decision = self.controller.request_pause_control(request);
         Ok(())
+    }
+
+    fn settle_exact_observation(&mut self) -> Result<(), ReplayError> {
+        self.check_deadline()?;
+        self.controller.settle_exact_observation()?;
+        self.check_deadline()
     }
 
     fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
@@ -206,10 +278,12 @@ impl SimulationRunner for RealSimulationRunner {
     }
 
     fn read_memory(&self, vm_index: usize, addr: u64, size: usize) -> Result<Vec<u8>, ReplayError> {
+        self.validate_vm(vm_index, None)?;
         Ok(self.controller.vm(vm_index).read_guest_memory(addr, size)?)
     }
 
     fn write_memory(&mut self, vm_index: usize, addr: u64, data: &[u8]) -> Result<(), ReplayError> {
+        self.validate_vm(vm_index, None)?;
         Ok(self
             .controller
             .vm(vm_index)
@@ -217,6 +291,7 @@ impl SimulationRunner for RealSimulationRunner {
     }
 
     fn read_registers(&self, vm_index: usize, vcpu: usize) -> Result<RegisterState, ReplayError> {
+        self.validate_vm(vm_index, Some(vcpu))?;
         Ok(self.controller.vm(vm_index).read_vcpu_registers(vcpu)?)
     }
 
@@ -226,6 +301,7 @@ impl SimulationRunner for RealSimulationRunner {
         vcpu: usize,
         state: &RegisterState,
     ) -> Result<(), ReplayError> {
+        self.validate_vm(vm_index, Some(vcpu))?;
         Ok(self
             .controller
             .vm_mut(vm_index)
@@ -233,10 +309,34 @@ impl SimulationRunner for RealSimulationRunner {
     }
 }
 
+/// Share admitted RAM rather than cloning the checkpoint inventory per consumer.
+#[derive(Clone)]
+pub(crate) enum ReplayRecording {
+    Memory(Arc<Recording>),
+    Session(Arc<ExactSession>),
+}
+impl ReplayRecording {
+    fn session(&self) -> Option<&ExactSession> {
+        match self {
+            Self::Session(session) => Some(session),
+            Self::Memory(_) => None,
+        }
+    }
+}
+impl std::ops::Deref for ReplayRecording {
+    type Target = Recording;
+    fn deref(&self) -> &Recording {
+        match self {
+            Self::Memory(recording) => recording,
+            Self::Session(session) => session.recording(),
+        }
+    }
+}
+
 /// Replays a recording from any checkpoint.
 pub struct ReplayEngine<R: SimulationRunner = RealSimulationRunner> {
     /// The recording to replay.
-    recording: Recording,
+    recording: ReplayRecording,
     /// Phantom data for the runner type.
     _runner: std::marker::PhantomData<R>,
 }
@@ -245,9 +345,98 @@ impl<R: SimulationRunner> ReplayEngine<R> {
     /// Create a new replay engine from a recording.
     pub fn new(recording: Recording) -> Self {
         Self {
-            recording,
+            recording: ReplayRecording::Memory(Arc::new(recording)),
             _runner: std::marker::PhantomData,
         }
+    }
+
+    /// The production intake: complete persisted deterministic inputs.
+    pub fn from_session(session: Arc<ExactSession>) -> Self {
+        Self {
+            recording: ReplayRecording::Session(session),
+            _runner: std::marker::PhantomData,
+        }
+    }
+
+    pub(crate) fn validate_target(&self, tick: u64) -> Result<(), ReplayError> {
+        checked_recorded_target_tick(&self.recording, 0, tick)?;
+        if let Some(session) = self.recording.session() {
+            session
+                .validate_target(tick)
+                .map_err(|error| ReplayError::InvalidState {
+                    message: error.to_string(),
+                })?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn start_tick(&self) -> u64 {
+        self.recording
+            .session()
+            .map_or(0, |session| session.manifest().retained_start_tick)
+    }
+
+    fn restored_runner(&self, checkpoint_id: Option<u64>) -> Result<R, ReplayError> {
+        if let Some(session) = self.recording.session() {
+            let id = checkpoint_id.ok_or_else(|| ReplayError::InvalidState {
+                message: "exact session has no checkpoint at or before target".into(),
+            })?;
+            let runner = R::create_from_session(session, id)?;
+            let expected = self
+                .recording
+                .checkpoints
+                .get(id)
+                .ok_or(ReplayError::CheckpointNotFound { id })?
+                .tick;
+            if runner.tick() != expected {
+                return Err(ReplayError::InvalidState {
+                    message: "restored runner tick differs from the admitted checkpoint".into(),
+                });
+            }
+            return Ok(runner);
+        }
+        let snapshot = checkpoint_id
+            .map(|id| {
+                let checkpoint = self
+                    .recording
+                    .checkpoints
+                    .get(id)
+                    .ok_or(ReplayError::CheckpointNotFound { id })?;
+                validated_checkpoint_snapshot(&self.recording, checkpoint)
+            })
+            .transpose()?;
+        let mut runner = R::create(
+            &self.recording.config,
+            self.recording.schedule.clone(),
+            self.recording.seed,
+            self.recording.fault_run_sequence,
+        )?;
+        if let Some(snapshot) = snapshot {
+            runner.restore_all(snapshot)?;
+            if runner.tick() != snapshot.tick {
+                return Err(ReplayError::InvalidState {
+                    message: "restored runner tick differs from checkpoint".into(),
+                });
+            }
+        }
+        Ok(runner)
+    }
+
+    /// Failed attempts are dropped, never inspected or reused after poison.
+    pub(crate) fn seek(&self, tick: u64) -> Result<(R, Option<u64>), ReplayError> {
+        self.validate_replay_recording()?;
+        self.validate_target(tick)?;
+        let checkpoint = self
+            .recording
+            .checkpoints
+            .all()
+            .iter()
+            .filter(|checkpoint| checkpoint.tick <= tick)
+            .max_by_key(|checkpoint| (checkpoint.tick, checkpoint.id));
+        let id = checkpoint.map(|checkpoint| checkpoint.id);
+        let mut runner = self.restored_runner(id)?;
+        advance_exact_runner(&self.recording, &mut runner, tick)?;
+        Ok((runner, id))
     }
 
     /// Replay from the beginning (or a specific checkpoint) for N ticks.
@@ -257,39 +446,30 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
         self.validate_replay_recording()?;
-        let mut runner = R::create(
-            &self.recording.config,
-            self.recording.schedule.clone(),
-            self.recording.seed,
-            self.recording.fault_run_sequence,
-        )
-        .map_err(|e| {
-            RunnerSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-
-        let start_tick = if let Some(cp_id) = checkpoint_id {
-            let checkpoint = self
-                .recording
-                .checkpoints
-                .get(cp_id)
-                .ok_or(CheckpointNotFoundSnafu { id: cp_id }.build())?;
-
-            let snapshot = validated_checkpoint_snapshot(&self.recording, checkpoint)?;
-            runner.restore_all(snapshot).map_err(|e| {
-                RunnerSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-            checkpoint.tick
-        } else {
-            0
-        };
-
+        let checkpoint_id = checkpoint_id.or_else(|| {
+            self.recording.session().and_then(|_| {
+                self.recording
+                    .checkpoints
+                    .all()
+                    .iter()
+                    .filter(|checkpoint| checkpoint.tick == self.start_tick())
+                    .max_by_key(|checkpoint| (checkpoint.tick, checkpoint.id))
+                    .map(|checkpoint| checkpoint.id)
+            })
+        });
+        let start_tick = checkpoint_id
+            .map(|id| {
+                self.recording
+                    .checkpoints
+                    .get(id)
+                    .map(|checkpoint| checkpoint.tick)
+                    .ok_or(ReplayError::CheckpointNotFound { id })
+            })
+            .transpose()?
+            .unwrap_or(0);
         let target_tick = checked_recorded_target_tick(&self.recording, start_tick, ticks)?;
+        self.validate_target(target_tick)?;
+        let mut runner = self.restored_runner(checkpoint_id)?;
         let (events, fault_outcomes) =
             advance_exact_runner(&self.recording, &mut runner, target_tick)?;
         let oracle_report = runner.report();
@@ -297,7 +477,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             .map(|i| runner.serial_output(i))
             .collect();
 
-        let final_snapshot = runner.snapshot_all().ok();
+        let final_snapshot = Some(runner.snapshot_all()?);
 
         Ok(ReplayResult {
             ticks_executed: runner.tick() - start_tick,
@@ -306,6 +486,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             events,
             fault_outcomes,
             final_snapshot,
+            counterfactual: false,
         })
     }
 
@@ -322,32 +503,13 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             .checkpoints
             .get(checkpoint_id)
             .ok_or(CheckpointNotFoundSnafu { id: checkpoint_id }.build())?;
-
-        let snapshot = validated_checkpoint_snapshot(&self.recording, checkpoint)?;
-
-        let mut runner = R::create(
-            &self.recording.config,
-            self.recording.schedule.clone(),
-            self.recording.seed,
-            self.recording.fault_run_sequence,
-        )
-        .map_err(|e| {
-            RunnerSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-
-        runner.restore_all(snapshot).map_err(|e| {
-            RunnerSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-        runner.begin_counterfactual_fault_run(modified_schedule)?;
-
         let start_tick = checkpoint.tick;
         let target_tick = checked_target_tick(start_tick, ticks)?;
+        self.validate_target(target_tick)?;
+
+        let mut runner = self.restored_runner(Some(checkpoint_id))?;
+        runner.begin_counterfactual_fault_run(modified_schedule)?;
+
         let events = Vec::new(); // Events not collected in counterfactual replay
         let mut fault_outcomes = Vec::new();
 
@@ -370,7 +532,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             .map(|i| runner.serial_output(i))
             .collect();
 
-        let final_snapshot = runner.snapshot_all().ok();
+        let final_snapshot = Some(runner.snapshot_all()?);
 
         Ok(ReplayResult {
             ticks_executed: runner.tick() - start_tick,
@@ -379,6 +541,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             events,
             fault_outcomes,
             final_snapshot,
+            counterfactual: true,
         })
     }
 
@@ -399,17 +562,12 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             .checkpoints
             .get(checkpoint_id)
             .ok_or(CheckpointNotFoundSnafu { id: checkpoint_id }.build())?;
+        let start_tick = checkpoint.tick;
+        let target_tick = checked_target_tick(start_tick, ticks)?;
+        self.validate_target(target_tick)?;
 
-        let snapshot = validated_checkpoint_snapshot(&self.recording, checkpoint)?;
-
-        let mut runner = R::create(
-            &self.recording.config,
-            self.recording.schedule.clone(),
-            self.recording.seed,
-            self.recording.fault_run_sequence,
-        )?;
-
-        runner.restore_all(snapshot)?;
+        let mut runner = self.restored_runner(Some(checkpoint_id))?;
+        runner.begin_counterfactual_fault_run(self.recording.schedule.clone())?;
 
         // Apply memory modifications first.
         for mem_mod in &memory_mods {
@@ -425,8 +583,6 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             runner.set_registers(reg_mod.vm_index, reg_mod.vcpu, &state)?;
         }
 
-        let start_tick = checkpoint.tick;
-        let target_tick = checked_target_tick(start_tick, ticks)?;
         let mut fault_outcomes = Vec::new();
 
         while runner.tick() < target_tick {
@@ -442,7 +598,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             .map(|i| runner.serial_output(i))
             .collect();
 
-        let final_snapshot = runner.snapshot_all().ok();
+        let final_snapshot = Some(runner.snapshot_all()?);
 
         Ok(ReplayResult {
             ticks_executed: runner.tick() - start_tick,
@@ -451,12 +607,17 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             events: Vec::new(),
             fault_outcomes,
             final_snapshot,
+            counterfactual: true,
         })
     }
 
     /// Get the recording info.
     pub fn recording(&self) -> &Recording {
         &self.recording
+    }
+
+    pub(crate) fn recording_source(&self) -> ReplayRecording {
+        self.recording.clone()
     }
 
     fn validate_replay_recording(&self) -> Result<(), ReplayError> {
@@ -497,10 +658,20 @@ pub(crate) fn advance_exact_runner<R: SimulationRunner>(
         runner.fault_control_events(),
     )?;
     while runner.tick() < target_tick {
+        let expected_tick = checked_target_tick(runner.tick(), 1)?;
         let result = runner.step_round()?;
+        if result.tick != expected_tick || runner.tick() != expected_tick {
+            return Err(ReplayError::InvalidState {
+                message: format!("exact replay round did not arrive at tick {expected_tick}"),
+            });
+        }
         validate_replayed_fault_round(recording, result.tick, &result.fault_outcomes)?;
         validate_replayed_schedule_round(recording, result.tick, &result.schedule_traces)?;
-        stage_event_count += result.fault_outcomes.len() as u64;
+        stage_event_count = stage_event_count
+            .checked_add(result.fault_outcomes.len() as u64)
+            .ok_or_else(|| ReplayError::InvalidState {
+                message: "fault-stage count overflow".into(),
+            })?;
         fault_outcomes.extend(result.fault_outcomes);
         replay_pause_requests(recording, runner, stage_event_count)?;
         validate_replayed_fault_controls(
@@ -526,6 +697,7 @@ pub(crate) fn advance_exact_runner<R: SimulationRunner>(
             message: format!("exact replay stopped before tick {target_tick}"),
         });
     }
+    runner.settle_exact_observation()?;
     Ok((events, fault_outcomes))
 }
 
@@ -690,26 +862,6 @@ pub(crate) fn replay_pause_requests<R: SimulationRunner>(
     Ok(())
 }
 
-pub(crate) fn synchronize_replayed_fault_controls<R: SimulationRunner>(
-    recording: &Recording,
-    runner: &mut R,
-) -> Result<(), ReplayError> {
-    let stage_event_count = recording
-        .fault_round_deltas
-        .iter()
-        .filter(|delta| delta.tick <= runner.tick())
-        .map(|delta| delta.event_end)
-        .next_back()
-        .unwrap_or(0);
-    replay_pause_requests(recording, runner, stage_event_count)?;
-    validate_replayed_fault_controls(
-        recording,
-        runner.tick(),
-        stage_event_count,
-        runner.fault_control_events(),
-    )
-}
-
 pub(crate) fn checked_target_tick(start_tick: u64, ticks: u64) -> Result<u64, ReplayError> {
     start_tick
         .checked_add(ticks)
@@ -840,6 +992,8 @@ pub struct ReplayResult {
     pub fault_outcomes: Vec<FaultStageEvent>,
     /// Final snapshot (if available).
     pub final_snapshot: Option<SimulationSnapshot>,
+    /// Explicit mutations never certify the original recorded continuation.
+    pub counterfactual: bool,
 }
 
 /// Helper to extract tick from an event.
@@ -874,33 +1028,11 @@ mod tests {
 
     // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
     #[test]
-    fn replay_runs_under_the_recorded_random_fault_setting() {
-        const RANDOM_FAULTS_KEY: &str = "random_faults";
-        let recording = |random_faults| RecordingConfig {
-            num_vms: 2,
-            vm_memory_size: 256 * 1024 * 1024,
-            tsc_khz: 3_000_000,
-            kernel_path: "vmlinux".into(),
-            initrd_path: None,
-            quantum: 100,
-            checkpoint_interval: 1000,
-            disk_image_path: None,
-            random_faults,
-        };
-        for random_faults in [true, false] {
-            let config = recording(random_faults);
-            let replayed = recorded_simulation_config(&config, FaultSchedule::new(), 7);
-            assert_eq!(replayed.random_faults, random_faults);
-        }
-
-        let mut legacy = serde_json::to_value(recording(true)).expect("recording config JSON");
-        legacy
-            .as_object_mut()
-            .expect("recording config object")
-            .remove(RANDOM_FAULTS_KEY);
-        let legacy: RecordingConfig = serde_json::from_value(legacy).expect("legacy recording");
-        let replayed = recorded_simulation_config(&legacy, FaultSchedule::new(), 7);
-        assert!(!replayed.random_faults);
+    fn real_runner_rejects_partial_metadata_without_booting() {
+        let recording = test_recording();
+        assert!(matches!(RealSimulationRunner::create(&recording.config,
+            recording.schedule.clone(), recording.seed, recording.fault_run_sequence),
+            Err(ReplayError::InvalidState { message }) if message.contains("ExactSession")));
     }
 
     const SHORT_REPLAY_QUANTUM: u64 = 45;
@@ -978,6 +1110,11 @@ mod tests {
     }
 
     impl SimulationRunner for MockRunner {
+        fn settle_exact_observation(&mut self) -> Result<(), ReplayError> {
+            // Abstract rounds have no deferred KVM completion state.
+            Ok(())
+        }
+
         fn create(
             config: &RecordingConfig,
             schedule: FaultSchedule,
@@ -1445,6 +1582,58 @@ mod tests {
         }];
         recording.fault_outcome_ledger = ledger;
         recording
+    }
+
+    // r[verify chaoscontrol.replay_debugger.navigation]
+    #[test]
+    fn replay_and_debugger_share_fault_smp_and_arrival_verdicts() {
+        for quantum in [
+            100,
+            CORRUPT_FAULT_TRACE_QUANTUM,
+            DIVERGENT_SCHEDULE_TRACE_QUANTUM,
+            SHORT_REPLAY_QUANTUM,
+        ] {
+            let mut recording = traced_recording(3);
+            recording.config.quantum = quantum;
+            recording.total_ticks = 3;
+            let replay = ReplayEngine::<MockRunner>::new(recording.clone());
+            let mut debugger = crate::debugger::Debugger::<MockRunner>::new(recording);
+            let control = replay.replay_from(None, 3);
+            let observed = debugger.goto(3);
+            assert_eq!(control.is_ok(), observed.is_ok(), "quantum {quantum}");
+            if let (Err(control), Err(observed)) = (control, observed) {
+                assert_eq!(control.to_string(), observed.to_string());
+                assert!(!debugger.state().live_state_available);
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_empty_evidence_allows_exact_start_end_and_reverse_navigation() {
+        let mut recording = test_recording();
+        recording.total_ticks = 3;
+        recording.checkpoints = CheckpointStore::new();
+        for tick in 1..=3 {
+            recording.fault_round_deltas.push(FaultRoundTraceDelta {
+                tick,
+                event_start: 0,
+                event_end: 0,
+            });
+            recording.schedule_rounds.push(RecordedScheduleRound {
+                tick,
+                traces: Vec::new(),
+            });
+        }
+        let replay = ReplayEngine::<MockRunner>::new(recording.clone());
+        let mut debugger = crate::debugger::Debugger::<MockRunner>::new(recording);
+        assert_eq!(replay.replay_from(None, 0).unwrap().ticks_executed, 0);
+        assert_eq!(debugger.goto(0).unwrap().tick, 0);
+        assert_eq!(replay.replay_from(None, 3).unwrap().ticks_executed, 3);
+        assert_eq!(debugger.goto(3).unwrap().tick, 3);
+        assert_eq!(debugger.rewind(3).unwrap().tick, 0);
+        assert_eq!(debugger.step_forward(3).unwrap().tick, 3);
+        assert!(debugger.goto(4).is_err());
+        assert!(debugger.read_registers(0, 0).is_err());
     }
 
     #[test]

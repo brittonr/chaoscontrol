@@ -11,7 +11,7 @@
 //! run IDs from the clock, and writing verdict files.
 
 use crate::checkpoint::SerializableBug;
-use crate::snapshot_store::{ReplayParentSnapshotRef, SnapshotStoreError};
+use chaoscontrol_replay::snapshot_store::{ReplayParentSnapshotRef, SnapshotStoreError};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;

@@ -1,4 +1,4 @@
-// Quick test: boot with 4 vCPUs
+//! Actual-run 4/8-vCPU boot diagnostic; missing strict capability is an error.
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 
 fn main() {
@@ -10,7 +10,10 @@ fn main() {
             num_vcpus,
             ..Default::default()
         };
-        let mut vm = DeterministicVm::new(config).expect("create VM");
+        let mut vm = DeterministicVm::new(config).unwrap_or_else(|error| {
+            eprintln!("error: smp4_test: cannot create {num_vcpus}-vCPU VM: {error}");
+            std::process::exit(1);
+        });
         vm.load_kernel("result-dev/vmlinux", Some("guest/initrd.gz"))
             .expect("load kernel");
 
@@ -60,6 +63,41 @@ fn main() {
             println!("  ❌ FAILED to bring up all CPUs");
         } else {
             println!("  ✅ All {} CPUs online", num_vcpus);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chaoscontrol_vmm::scheduler::core::{ProgressMode, ScheduleError};
+    use chaoscontrol_vmm::vm::VmError;
+
+    #[test]
+    fn larger_smp_guests_reject_both_exact_modes_before_boot() {
+        for num_vcpus in [4, 8] {
+            for mode in [
+                ProgressMode::ExactSingleStep,
+                ProgressMode::PmuAccelerated {
+                    exact_step_margin: 64,
+                },
+            ] {
+                let error = DeterministicVm::new(VmConfig {
+                    num_vcpus,
+                    smp_progress_mode: mode,
+                    ..Default::default()
+                })
+                .err()
+                .expect("portable KVM must reject SMP");
+                assert!(matches!(
+                    error,
+                    VmError::Schedule {
+                        source: ScheduleError::MissingCapability {
+                            capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
+                        },
+                    }
+                ));
+            }
         }
     }
 }

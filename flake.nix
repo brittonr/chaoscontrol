@@ -237,6 +237,7 @@
               isArchitectureFixture = pkgs.lib.hasPrefix "contracts/architecture-modules/fixtures/" relPath;
               isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
               isDebugWorkspaceFixture = pkgs.lib.hasPrefix "contracts/debug-query-workspace/" relPath;
+              isPersistedDebuggerProfile = pkgs.lib.hasPrefix "contracts/persisted-debugger/" relPath;
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isCampaignCutover = pkgs.lib.hasPrefix "contracts/campaign-cutover/" relPath;
               isFlakeInput = relPath == "flake.nix" || relPath == "flake.lock";
@@ -251,6 +252,7 @@
             || isArchitectureFixture
             || isPropertyCoverageFixture
             || isDebugWorkspaceFixture
+            || isPersistedDebuggerProfile
             || isKvmReleaseMatrix
             || isCampaignCutover
             || isFlakeInput
@@ -1896,6 +1898,19 @@
                     if ! grep -Fq 'contract broken' rejection; then
                       cat rejection >&2
                       echo "fixture did not reach its contract boundary: $fixture" >&2
+                      exit 1
+                    fi
+                  done
+                  profile=${./contracts}/persisted-debugger
+                  nickel export --format json "$profile/exact-local-v1.ncl" --output profile.json
+                  cmp profile.json "$profile/generated/exact-local-v1.json"
+                  for fixture in "$profile"/fixtures/invalid/*.ncl; do
+                    if nickel export --format json "$fixture" > /dev/null 2> rejection; then
+                      echo "invalid exact-session profile accepted: $fixture" >&2
+                      exit 1
+                    fi
+                    if ! grep -Fq 'contract broken' rejection; then
+                      cat rejection >&2
                       exit 1
                     fi
                   done

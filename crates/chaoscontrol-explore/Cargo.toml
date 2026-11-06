@@ -25,6 +25,10 @@ path = "src/bin/symbolize-coverage.rs"
 name = "chaoscontrol-investigate"
 path = "src/bin/chaoscontrol-investigate.rs"
 
+[[bin]]
+name = "query-events"
+path = "src/bin/query-events.rs"
+
 [features]
 default = []
 dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep:futures-core"]
@@ -39,6 +43,7 @@ chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-evidence = { path = "../chaoscontrol-evidence" }
 chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
+chaoscontrol-replay = { path = "../chaoscontrol-replay" }
 blake3 = "1.8"
 log = "0.4"
 snafu = "0.8"
@@ -51,7 +56,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 ciborium = "0.2"
-zstd = "0.14"
 sha2 = "0.10"
 libc = "0.2"
 tracing = { version = "0.1", optional = true }

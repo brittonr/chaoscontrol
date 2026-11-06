@@ -1,18 +1,18 @@
 //! Time-travel debugger — interactive navigation of recorded execution.
 
 use crate::checkpoint::Checkpoint;
-use crate::recording::{validate_recording, RecordedEvent, Recording};
+use crate::recording::{RecordedEvent, Recording};
 use crate::replay::{
-    checked_recorded_target_tick, checked_target_tick, synchronize_replayed_fault_controls,
-    validate_replayed_fault_interval, validate_replayed_fault_round, validated_checkpoint_snapshot,
-    InvalidStateSnafu, MemoryModification, RegisterModification, ReplayEngine, ReplayError,
-    ReplayResult, SimulationRunner,
+    checked_target_tick, InvalidStateSnafu, MemoryModification, RegisterModification, ReplayEngine,
+    ReplayError, ReplayRecording, ReplayResult, SimulationRunner,
 };
+use crate::session::ExactSession;
 use chaoscontrol_vmm::registers::{Register, RegisterState};
+use std::sync::Arc;
 
 /// Interactive time-travel debugger.
 pub struct Debugger<R: SimulationRunner> {
-    recording: Recording,
+    recording: ReplayRecording,
     replay: ReplayEngine<R>,
     /// Live runner holding VM state at `current_tick`.
     runner: Option<R>,
@@ -20,118 +20,77 @@ pub struct Debugger<R: SimulationRunner> {
     current_tick: u64,
     /// Current checkpoint (the one we're "at" or just after).
     current_checkpoint: Option<u64>,
+    /// Live edited state is explicitly outside the original session claim.
+    counterfactual: bool,
+    observation_limit: u64,
 }
 
 impl<R: SimulationRunner> Debugger<R> {
     /// Create a new debugger from a recording.
     pub fn new(recording: Recording) -> Self {
-        let replay = ReplayEngine::new(recording.clone());
+        let replay = ReplayEngine::new(recording);
+        let recording = replay.recording_source();
         Self {
             recording,
             replay,
             runner: None,
             current_tick: 0,
             current_checkpoint: None,
+            counterfactual: false,
+            observation_limit: crate::session::SessionLimits::default().max_output_bytes,
         }
     }
 
-    /// Ensure we have a live runner, creating one if needed.
-    fn ensure_runner(&mut self) -> Result<(), ReplayError> {
-        if self.runner.is_none() {
-            let runner = R::create(
-                &self.recording.config,
-                self.recording.schedule.clone(),
-                self.recording.seed,
-                self.recording.fault_run_sequence,
-            )?;
-            self.runner = Some(runner);
+    /// Open an admitted persisted session, with its complete execution inputs.
+    pub fn from_session(session: Arc<ExactSession>) -> Self {
+        let replay = ReplayEngine::from_session(session.clone());
+        let recording = replay.recording_source();
+        let current_tick = session.manifest().retained_start_tick;
+        let observation_limit = session.limits().max_output_bytes;
+        Self {
+            recording,
+            replay,
+            runner: None,
+            current_tick,
+            current_checkpoint: None,
+            counterfactual: false,
+            observation_limit,
         }
-        Ok(())
     }
 
-    /// Jump to a specific tick (finds nearest checkpoint, replays forward).
+    /// Jump using the replay engine's identical fault/SMP/arrival validators.
+    // r[impl chaoscontrol.replay_debugger.navigation]
+    // r[impl chaoscontrol.replay_debugger.failure_isolation]
     pub fn goto(&mut self, tick: u64) -> Result<DebugState, ReplayError> {
-        validate_recording(&self.recording).map_err(|error| ReplayError::InvalidState {
-            message: format!("invalid recorded fault trace: {error:?}"),
-        })?;
-        let target_tick = checked_recorded_target_tick(&self.recording, 0, tick)?;
-
-        // Find the nearest checkpoint at or before target tick.
-        let checkpoint = self.recording.checkpoints.at_or_before(tick).cloned();
-
-        if let Some(cp) = checkpoint {
-            self.ensure_runner()?;
-            let runner = self.runner.as_mut().unwrap();
-            self.current_checkpoint = Some(cp.id);
-            let ticks_to_run = tick - cp.tick;
-            let snapshot = validated_checkpoint_snapshot(&self.recording, &cp)?;
-            runner.restore_all(snapshot)?;
-            synchronize_replayed_fault_controls(&self.recording, runner)?;
-            let mut fault_outcomes = Vec::new();
-            for _ in 0..ticks_to_run {
-                let round = runner.step_round()?;
-                validate_replayed_fault_round(&self.recording, round.tick, &round.fault_outcomes)?;
-                synchronize_replayed_fault_controls(&self.recording, runner)?;
-                fault_outcomes.extend(round.fault_outcomes);
-                if round.vms_running == 0 {
-                    break;
-                }
-            }
-            validate_replayed_fault_interval(
-                &self.recording,
-                cp.tick,
-                target_tick,
-                &fault_outcomes,
-            )?;
-            if runner.tick() != target_tick {
-                return InvalidStateSnafu {
-                    message: format!("debug replay stopped before tick {target_tick}"),
-                }
-                .fail();
-            }
-            self.current_tick = runner.tick();
-        } else {
-            let mut runner = R::create(
-                &self.recording.config,
-                self.recording.schedule.clone(),
-                self.recording.seed,
-                self.recording.fault_run_sequence,
-            )?;
-            let mut fault_outcomes = Vec::new();
-            synchronize_replayed_fault_controls(&self.recording, &mut runner)?;
-            while runner.tick() < target_tick {
-                let round = runner.step_round()?;
-                validate_replayed_fault_round(&self.recording, round.tick, &round.fault_outcomes)?;
-                synchronize_replayed_fault_controls(&self.recording, &mut runner)?;
-                fault_outcomes.extend(round.fault_outcomes);
-                if round.vms_running == 0 {
-                    break;
-                }
-            }
-            validate_replayed_fault_interval(&self.recording, 0, target_tick, &fault_outcomes)?;
-            if runner.tick() != target_tick {
-                return InvalidStateSnafu {
-                    message: format!("debug replay stopped before tick {target_tick}"),
-                }
-                .fail();
-            }
-            self.current_tick = runner.tick();
-            self.current_checkpoint = None;
-            self.runner = Some(runner);
-        }
-
+        // Invalidate before admission too: failure must never leave an old live
+        // state looking like the requested position. Metadata remains last verified.
+        self.runner.take();
+        self.counterfactual = false;
+        let (runner, checkpoint) = self.replay.seek(tick)?;
+        self.current_tick = runner.tick();
+        self.current_checkpoint = checkpoint;
+        self.runner = Some(runner);
         Ok(self.build_state())
     }
 
     /// Rewind by N ticks from current position.
     pub fn rewind(&mut self, ticks: u64) -> Result<DebugState, ReplayError> {
-        let target_tick = self.current_tick.saturating_sub(ticks);
+        let target_tick = self
+            .current_tick
+            .saturating_sub(ticks)
+            .max(self.replay.start_tick());
         self.goto(target_tick)
     }
 
     /// Step forward by N ticks.
     pub fn step_forward(&mut self, ticks: u64) -> Result<DebugState, ReplayError> {
-        let target_tick = checked_target_tick(self.current_tick, ticks)?;
+        let target_tick = match checked_target_tick(self.current_tick, ticks) {
+            Ok(tick) => tick,
+            Err(error) => {
+                self.runner.take();
+                return Err(error);
+            }
+        };
         self.goto(target_tick)
     }
 
@@ -155,6 +114,7 @@ impl<R: SimulationRunner> Debugger<R> {
                 }
             }
         }
+        self.runner.take();
         InvalidStateSnafu {
             message: format!("Bug {} not found", bug_id),
         }
@@ -168,6 +128,11 @@ impl<R: SimulationRunner> Debugger<R> {
         address: u64,
         size: usize,
     ) -> Result<Vec<u8>, ReplayError> {
+        if u64::try_from(size).map_or(true, |size| size > self.observation_limit / 4) {
+            return Err(ReplayError::InvalidState {
+                message: "memory observation exceeds admitted output byte bound".into(),
+            });
+        }
         let runner = self.runner.as_ref().ok_or_else(|| {
             InvalidStateSnafu {
                 message: "No runner — call goto() first".to_string(),
@@ -194,8 +159,8 @@ impl<R: SimulationRunner> Debugger<R> {
 
     /// Write bytes to guest physical memory (destructive analysis).
     ///
-    /// The modification is live — subsequent `step_forward` will see it.
-    /// Use `goto()` to rewind to the original state.
+    /// The live state is labeled counterfactual. Navigation independently
+    /// restores the original session; it does not certify an edited suffix.
     pub fn poke_memory(
         &mut self,
         vm_index: usize,
@@ -208,7 +173,12 @@ impl<R: SimulationRunner> Debugger<R> {
             }
             .build()
         })?;
-        runner.write_memory(vm_index, address, data)
+        self.counterfactual = true;
+        let result = runner.write_memory(vm_index, address, data);
+        if result.is_err() {
+            self.runner.take();
+        }
+        result
     }
 
     /// Set a single register on a vCPU (destructive analysis).
@@ -225,9 +195,16 @@ impl<R: SimulationRunner> Debugger<R> {
             }
             .build()
         })?;
-        let mut state = runner.read_registers(vm_index, vcpu)?;
-        reg.set(&mut state, value);
-        runner.set_registers(vm_index, vcpu, &state)
+        self.counterfactual = true;
+        let result = (|| {
+            let mut state = runner.read_registers(vm_index, vcpu)?;
+            reg.set(&mut state, value);
+            runner.set_registers(vm_index, vcpu, &state)
+        })();
+        if result.is_err() {
+            self.runner.take();
+        }
+        result
     }
 
     /// Get serial output up to the current position.
@@ -260,6 +237,11 @@ impl<R: SimulationRunner> Debugger<R> {
         register_mods: Vec<RegisterModification>,
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
+        if self.runner.is_none() {
+            return Err(ReplayError::InvalidState {
+                message: "no verified live position for counterfactual analysis".into(),
+            });
+        }
         let checkpoint_id = self.current_checkpoint.ok_or_else(|| {
             InvalidStateSnafu {
                 message: "No checkpoint available for counterfactual".to_string(),
@@ -274,6 +256,11 @@ impl<R: SimulationRunner> Debugger<R> {
     /// List all checkpoints.
     pub fn checkpoints(&self) -> &[Checkpoint] {
         self.recording.checkpoints.all()
+    }
+
+    /// Named retained-output bound also limits script intake and hex observations.
+    pub fn observation_limit(&self) -> u64 {
+        self.observation_limit
     }
 
     /// Get current state.
@@ -307,9 +294,22 @@ impl<R: SimulationRunner> Debugger<R> {
         DebugState {
             tick: self.current_tick,
             checkpoint_id,
-            vm_statuses: vec!["Running".to_string(); self.recording.config.num_vms],
+            vm_statuses: vec![
+                if self.runner.is_none() {
+                    "Unavailable"
+                } else if self.counterfactual {
+                    "Counterfactual"
+                } else {
+                    "Verified"
+                }
+                .to_string();
+                self.recording.config.num_vms
+            ],
             events_at_tick,
             serial_snippets,
+            verified_original: self.runner.is_some() && !self.counterfactual,
+            live_state_available: self.runner.is_some(),
+            counterfactual: self.counterfactual && self.runner.is_some(),
         }
     }
 
@@ -327,6 +327,10 @@ pub struct DebugState {
     pub vm_statuses: Vec<String>,
     pub events_at_tick: Vec<RecordedEvent>,
     pub serial_snippets: Vec<String>,
+    /// False after any failed seek, even though tick retains last verified metadata.
+    pub verified_original: bool,
+    pub live_state_available: bool,
+    pub counterfactual: bool,
 }
 
 // RegisterState re-exported from chaoscontrol_vmm::registers
@@ -393,19 +397,69 @@ mod tests {
     use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
     use chaoscontrol_vmm::controller::{NetworkFabric, RoundResult, SimulationSnapshot};
 
+    const SETTLEMENT_FAILURE_QUANTUM: u64 = 780;
+
+    #[test]
+    fn every_exact_target_settles_before_becoming_inspectable() {
+        let mut debugger = Debugger::<MockRunner>::new(test_recording());
+        for tick in [0, 1, 0] {
+            assert!(debugger.goto(tick).unwrap().verified_original);
+            assert!(debugger.runner.as_ref().unwrap().observation_settled);
+        }
+        let mut debugger = Debugger::<MockRunner>::new(checkpoint_trace_recording());
+        assert!(debugger.goto(1).unwrap().verified_original);
+        assert!(debugger.runner.as_ref().unwrap().observation_settled);
+    }
+
+    #[test]
+    fn failed_observation_settlement_never_exposes_a_verified_position() {
+        let mut recording = test_recording();
+        recording.config.quantum = SETTLEMENT_FAILURE_QUANTUM;
+        let mut debugger = Debugger::<MockRunner>::new(recording);
+        for tick in [0, 1, 0] {
+            assert!(debugger.goto(tick).is_err());
+            assert!(!debugger.state().verified_original);
+            assert!(!debugger.state().live_state_available);
+            assert!(debugger.read_registers(0, 0).is_err());
+        }
+    }
+
     // Mock simulation runner for testing
     struct MockRunner {
         tick: u64,
+        instance: u64,
+        mode: u64,
+        poisoned: bool,
+        observation_settled: bool,
     }
 
     impl SimulationRunner for MockRunner {
+        fn settle_exact_observation(&mut self) -> Result<(), ReplayError> {
+            if self.mode == SETTLEMENT_FAILURE_QUANTUM {
+                self.poisoned = true;
+                return Err(ReplayError::Runner {
+                    message: "injected observation settlement failure".into(),
+                });
+            }
+            self.observation_settled = true;
+            Ok(())
+        }
+
         fn create(
-            _config: &RecordingConfig,
+            config: &RecordingConfig,
             _schedule: FaultSchedule,
             _seed: u64,
             _run_sequence: u64,
         ) -> Result<Self, ReplayError> {
-            Ok(Self { tick: 0 })
+            static NEXT_INSTANCE: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
+            Ok(Self {
+                tick: 0,
+                mode: config.quantum,
+                poisoned: false,
+                observation_settled: false,
+                instance: NEXT_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            })
         }
 
         fn fault_control_events(&self) -> &[chaoscontrol_fault::evidence::FaultControlEvent] {
@@ -429,10 +483,29 @@ mod tests {
         }
 
         fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
+            self.observation_settled = false;
             self.tick += 1;
+            if self.poisoned {
+                return Err(ReplayError::Runner {
+                    message: "poisoned fixture reused".into(),
+                });
+            }
+            if self.mode == POISON_QUANTUM && self.tick == 2 {
+                self.poisoned = true;
+                return Err(ReplayError::Runner {
+                    message: "injected controller poison after progress".into(),
+                });
+            }
+            if self.mode == DRIFT_QUANTUM {
+                self.tick += 1;
+            }
             Ok(RoundResult {
                 tick: self.tick,
-                vms_running: 2,
+                vms_running: if self.mode == EARLY_STOP_QUANTUM {
+                    0
+                } else {
+                    2
+                },
                 vms_halted: 0,
                 faults_fired: vec![],
                 fault_outcomes: vec![],
@@ -463,6 +536,11 @@ mod tests {
         }
 
         fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), ReplayError> {
+            if self.poisoned {
+                return Err(ReplayError::Runner {
+                    message: "poisoned fixture restored".into(),
+                });
+            }
             self.tick = snapshot.tick;
             Ok(())
         }
@@ -666,6 +744,117 @@ mod tests {
             events_since_last: vec![],
         });
         recording
+    }
+
+    const EARLY_STOP_QUANTUM: u64 = 777;
+    const POISON_QUANTUM: u64 = 778;
+    const DRIFT_QUANTUM: u64 = 779;
+
+    // r[verify chaoscontrol.replay_debugger.failure_isolation]
+    #[test]
+    fn failed_seek_discards_poisoned_runner_and_retry_is_fresh() {
+        let mut recording = test_recording();
+        recording.config.quantum = POISON_QUANTUM;
+        let mut debugger = Debugger::<MockRunner>::new(recording);
+        debugger.goto(1).unwrap();
+        let first = debugger.runner.as_ref().unwrap().instance;
+        assert!(debugger.goto(3).is_err());
+        let failed = debugger.state();
+        assert_eq!(failed.tick, 1, "only last verified metadata survives");
+        assert!(!failed.live_state_available);
+        assert!(!failed.verified_original);
+        assert!(debugger.read_memory(0, 0, 1).is_err());
+        assert!(debugger.read_registers(0, 0).is_err());
+        debugger.goto(1).unwrap();
+        assert_ne!(first, debugger.runner.as_ref().unwrap().instance);
+        assert!(debugger.state().verified_original);
+    }
+
+    // r[verify chaoscontrol.replay_debugger.navigation]
+    #[test]
+    fn early_stop_and_tick_drift_never_publish_a_position() {
+        for mode in [EARLY_STOP_QUANTUM, DRIFT_QUANTUM] {
+            let mut recording = test_recording();
+            recording.config.quantum = mode;
+            let mut debugger = Debugger::<MockRunner>::new(recording);
+            assert!(debugger.goto(3).is_err());
+            assert!(!debugger.state().live_state_available);
+            assert!(!debugger.state().verified_original);
+        }
+    }
+
+    // r[verify chaoscontrol.replay_debugger.claim_boundary]
+    #[test]
+    fn edits_are_counterfactual_and_navigation_restores_original_claim() {
+        let mut debugger = Debugger::<MockRunner>::new(test_recording());
+        debugger.goto(1).unwrap();
+        debugger.poke_memory(0, 0, &[1]).unwrap();
+        assert!(debugger.state().counterfactual);
+        assert!(!debugger.state().verified_original);
+        debugger.goto(1).unwrap();
+        assert!(debugger.state().verified_original);
+        debugger.set_register(0, 0, Register::Rax, 7).unwrap();
+        assert!(debugger.state().counterfactual);
+    }
+
+    #[test]
+    fn deterministic_script_seeks_both_directions_and_rejects_errors() {
+        let debugger = Debugger::<MockRunner>::new(test_recording());
+        crate::inspect::run_script(
+            debugger,
+            std::io::Cursor::new(b"goto 2\nmem 0 0 4\nregs 0 0\nrewind 1\nstep 1\nstate\nquit\n"),
+        )
+        .unwrap();
+        let debugger = Debugger::<MockRunner>::new(test_recording());
+        assert!(crate::inspect::run_script(
+            debugger,
+            std::io::Cursor::new(b"goto 1001\nmem 0 0 4\n")
+        )
+        .is_err());
+        let debugger = Debugger::<MockRunner>::new(test_recording());
+        assert!(
+            crate::inspect::run_script(debugger, std::io::Cursor::new(b"sh -c anything\n"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn checkpoint_choice_uses_latest_admitted_checkpoint() {
+        let mut recording = checkpoint_trace_recording();
+        let mut latest = recording.checkpoints.all()[0].clone();
+        latest.id = 9;
+        let mut earlier = latest.clone();
+        earlier.id = 0;
+        earlier.tick = 0;
+        // Earlier snapshots need their own empty ledger, not the tick-one prefix.
+        let mut runner = MockRunner::create(
+            &recording.config,
+            recording.schedule.clone(),
+            recording.seed,
+            recording.fault_run_sequence,
+        )
+        .unwrap();
+        earlier.snapshot = Some(runner.snapshot_all().unwrap());
+        let mut engine = chaoscontrol_fault::engine::FaultEngine::new(
+            chaoscontrol_fault::engine::EngineConfig {
+                seed: recording.seed,
+                num_vms: recording.config.num_vms,
+                schedule: Some(recording.schedule.clone()),
+                random_faults: recording.config.random_faults,
+                ..Default::default()
+            },
+        );
+        engine.start_fresh_run_at(recording.schedule.clone(), recording.fault_run_sequence);
+        earlier.snapshot.as_mut().unwrap().fault_engine_snapshot = engine.snapshot();
+        recording.checkpoints = CheckpointStore::new();
+        recording.checkpoints.push(earlier);
+        recording.checkpoints.push(latest);
+        let mut debugger = Debugger::<MockRunner>::new(recording);
+        let state = debugger.goto(1).unwrap();
+        assert_eq!(state.checkpoint_id, 9);
+        assert_eq!(debugger.read_memory(0, 0, 1).unwrap(), [1]);
+        assert_eq!(debugger.rewind(1).unwrap().checkpoint_id, 0);
+        assert_eq!(debugger.step_forward(1).unwrap().checkpoint_id, 9);
     }
 
     #[test]

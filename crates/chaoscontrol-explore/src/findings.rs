@@ -67,6 +67,7 @@ pub fn classify(record: &AssertionRecord) -> BranchFinding {
 
 /// One campaign-level liveness or coverage gap.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CampaignLivenessGap {
     /// Assertion fingerprint.
     pub fingerprint: AssertionFingerprint,
@@ -74,8 +75,26 @@ pub struct CampaignLivenessGap {
     pub kind: AssertionKind,
     /// Assertion message.
     pub message: String,
-    /// Times the assertion was evaluated across branches.
+    /// Evaluation count of the retained unsatisfied branch observation.
     pub hit_count: u64,
+}
+
+pub(crate) fn validate_liveness_gaps(gaps: &[CampaignLivenessGap]) -> Result<(), String> {
+    let mut fingerprints = std::collections::BTreeSet::new();
+    for gap in gaps {
+        if !fingerprints.insert(gap.fingerprint)
+            || !matches!(
+                (gap.kind, gap.hit_count),
+                (AssertionKind::Sometimes, 1..) | (AssertionKind::Reachable, 0)
+            )
+            || gap.message.is_empty()
+            || gap.message.len() > chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES
+            || gap.message.bytes().any(|byte| byte.is_ascii_control())
+        {
+            return Err("campaign liveness gap metadata is invalid".to_string());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

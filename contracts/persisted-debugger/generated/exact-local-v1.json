@@ -1,0 +1,15 @@
+{
+  "host_deadline_ms": 600000,
+  "max_artifact_bytes": 536870912,
+  "max_artifacts": 256,
+  "max_branches": 128,
+  "max_checkpoints": 128,
+  "max_decoded_snapshot_bytes": 2147483648,
+  "max_manifest_bytes": 4194304,
+  "max_output_bytes": 16777216,
+  "max_recording_bytes": 16777216,
+  "max_replay_ticks": 65536,
+  "max_snapshot_bytes": 268435456,
+  "max_total_bytes": 4294967296,
+  "max_trace_records_per_vm": 65536
+}

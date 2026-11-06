@@ -44,9 +44,16 @@ fn sample_matrix() -> KvmReleaseMatrix {
                 kind,
                 required: true,
                 required_capabilities: vec!["kvm".to_string()],
-                command: CommandSpec {
-                    program: "true".to_string(),
-                    args: vec!["--version".to_string()],
+                command: if kind == RowKind::DeterministicSmp {
+                    CommandSpec {
+                        program: STRICT_SMP_COMMAND_PROGRAM.to_string(),
+                        args: STRICT_SMP_COMMAND_ARGS.map(str::to_string).to_vec(),
+                    }
+                } else {
+                    CommandSpec {
+                        program: "true".to_string(),
+                        args: vec!["--version".to_string()],
+                    }
                 },
                 limits: RowLimits {
                     timeout_seconds: ROW_TIMEOUT_SECONDS,
@@ -74,7 +81,9 @@ fn sample_receipt(matrix: &KvmReleaseMatrix) -> KvmReleaseReceipt {
                 kind: row.kind,
                 required_capabilities: row.required_capabilities.clone(),
                 command: row.command.clone(),
-                executed_argv: vec![row.command.program.clone(), row.command.args[0].clone()],
+                executed_argv: std::iter::once(row.command.program.clone())
+                    .chain(row.command.args.iter().cloned())
+                    .collect(),
                 command_identity: command_identity(&row.command),
                 started_unix_seconds: STARTED_UNIX_SECONDS,
                 finished_unix_seconds: FINISHED_UNIX_SECONDS,
@@ -138,6 +147,58 @@ fn repository_matrix_fixture_satisfies_validation() {
     let bytes = std::fs::read(&path).expect("repository matrix fixture");
     let matrix: KvmReleaseMatrix = serde_json::from_slice(&bytes).expect("matrix JSON");
     validate_matrix(&matrix).expect("repository matrix passes admission");
+}
+
+// r[verify chaoscontrol.event_entry_exact.evidence]
+#[test]
+fn portable_negatives_and_partial_kvm_diagnostics_cannot_authorize_smp_release() {
+    for args in [
+        vec![
+            "test",
+            "-p",
+            "chaoscontrol-vmm",
+            "--test",
+            "deterministic_smp_kvm",
+        ],
+        vec!["test", "-p", "chaoscontrol-vmm", "strict_smp"],
+    ] {
+        let mut matrix = sample_matrix();
+        let row = matrix
+            .rows
+            .iter_mut()
+            .find(|row| row.kind == RowKind::DeterministicSmp)
+            .unwrap();
+        row.command = CommandSpec {
+            program: "cargo".to_string(),
+            args: args.into_iter().map(str::to_string).collect(),
+        };
+        let receipt = sample_receipt(&matrix);
+        let decision = validate_receipt(&matrix, FIXTURE_REVISION, &receipt, FINISHED_UNIX_SECONDS);
+        assert_eq!(decision.terminal_class, ReleaseClass::Blocked);
+        assert!(decision.blockers.contains(&Blocker::InvalidMatrix));
+    }
+}
+
+#[test]
+fn unavailable_actual_smp_execution_is_nonpassing_despite_other_passing_rows() {
+    let matrix = sample_matrix();
+    for status in [
+        RowStatus::Failed,
+        RowStatus::Unsupported,
+        RowStatus::Skipped,
+        RowStatus::TimedOut,
+        RowStatus::Absent,
+    ] {
+        let mut receipt = sample_receipt(&matrix);
+        let row = receipt
+            .rows
+            .iter_mut()
+            .find(|row| row.kind == RowKind::DeterministicSmp)
+            .unwrap();
+        row.status = status;
+        row.exit_code = Some(1);
+        assert_blocked(&receipt, Blocker::RowNotPassed, FINISHED_UNIX_SECONDS);
+    }
 }
 
 #[test]

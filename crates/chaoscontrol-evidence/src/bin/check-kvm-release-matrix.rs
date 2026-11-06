@@ -21,13 +21,14 @@ const DEFAULT_MATRIX_SOURCE: &str = "contracts/kvm-release/matrix.ncl";
 const DEFAULT_MATRIX_PROJECTION: &str = "contracts/kvm-release/matrix.json";
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_EXPECTED_REVISION_BYTES: usize = 256;
-const INVALID_NICKEL_FIXTURES: [&str; 2] = [
+const INVALID_NICKEL_FIXTURES: [&str; 3] = [
     "contracts/kvm-release/fixtures/invalid/missing-timeout.invalid.ncl",
     "contracts/kvm-release/fixtures/invalid/legacy-diagnostic-row.invalid.ncl",
+    "contracts/kvm-release/fixtures/invalid/smp-diagnostic-command.invalid.ncl",
 ];
 const VALID_RECEIPT_FIXTURE: &str =
     "contracts/kvm-release/fixtures/valid/complete-receipt.valid.json";
-const INVALID_RECEIPT_FIXTURES: [&str; 9] = [
+const INVALID_RECEIPT_FIXTURES: [&str; 10] = [
     "contracts/kvm-release/fixtures/invalid/missing-row.invalid.json",
     "contracts/kvm-release/fixtures/invalid/stale.invalid.json",
     "contracts/kvm-release/fixtures/invalid/skipped.invalid.json",
@@ -37,6 +38,7 @@ const INVALID_RECEIPT_FIXTURES: [&str; 9] = [
     "contracts/kvm-release/fixtures/invalid/dirty.invalid.json",
     "contracts/kvm-release/fixtures/invalid/overclaim.invalid.json",
     "contracts/kvm-release/fixtures/invalid/legacy-diagnostic-output.invalid.json",
+    "contracts/kvm-release/fixtures/invalid/smp-diagnostic-command.invalid.json",
 ];
 /// Diagnostic receipt a legacy-diagnostic exploration leaves in its output.
 const LEGACY_DIAGNOSTIC_ARTIFACT: &str = "fresh/attempts/attempt-01/frontier-policy.json";
@@ -464,7 +466,7 @@ fn write_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), Str
     write_json(root.join(INVALID_RECEIPT_FIXTURES[7]), &overclaim)?;
 
     // r[verify chaoscontrol.campaign_policy.rollback.valid]
-    let mut diagnostic = valid;
+    let mut diagnostic = valid.clone();
     let row = diagnostic
         .receipt
         .rows
@@ -479,7 +481,33 @@ fn write_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), Str
     row.artifacts.sort();
     row.artifact_set_identity = artifact_set_identity(&row.artifacts);
     set_blocked(&mut diagnostic, Blocker::LegacyDiagnosticOutput);
-    write_json(root.join(INVALID_RECEIPT_FIXTURES[8]), &diagnostic)
+    write_json(root.join(INVALID_RECEIPT_FIXTURES[8]), &diagnostic)?;
+
+    let mut smp_diagnostic = valid;
+    let row = smp_diagnostic
+        .receipt
+        .rows
+        .iter_mut()
+        .find(|row| row.kind == RowKind::DeterministicSmp)
+        .ok_or_else(|| "matrix lacks the deterministic SMP row".to_string())?;
+    row.command = chaoscontrol_evidence::kvm_release::CommandSpec {
+        program: "cargo".to_string(),
+        args: [
+            "test",
+            "-p",
+            "chaoscontrol-vmm",
+            "--test",
+            "deterministic_smp_kvm",
+        ]
+        .map(str::to_string)
+        .to_vec(),
+    };
+    row.executed_argv = std::iter::once(row.command.program.clone())
+        .chain(row.command.args.iter().cloned())
+        .collect();
+    row.command_identity = command_identity(&row.command);
+    set_blocked(&mut smp_diagnostic, Blocker::CommandMismatch);
+    write_json(root.join(INVALID_RECEIPT_FIXTURES[9]), &smp_diagnostic)
 }
 
 fn fixture_case(matrix: &KvmReleaseMatrix) -> FixtureCase {

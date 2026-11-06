@@ -3,11 +3,14 @@
 //! The pure validators bind configuration, recording, checkpoint and guest input
 //! identities. The shell pins no-follow directory/file capabilities and reuses
 //! the existing bounded exploration snapshot store's CBOR/zstd representation.
+//! Retained budgets charge the raw manifest file length, not reserialized JSON.
+//! Artifact metadata must match its declared length before body IO or allocation;
+//! reads and copies stop at that length and reject observed concurrent length drift.
 
 use crate::checkpoint::{Checkpoint, CheckpointStore};
 use crate::event_query::TimelineFact;
 use crate::recording::{validate_recording, Recorder, Recording};
-use chaoscontrol_explore::snapshot_store::{
+use crate::snapshot_store::{
     decode_snapshot_artifact_with_limit, encode_snapshot_artifact_with_limits,
     ReplayParentSnapshotRef,
 };
@@ -23,7 +26,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
-pub const SESSION_SCHEMA_VERSION: u32 = 1;
+pub const SESSION_SCHEMA_VERSION: u32 = 2;
 pub const MAX_SESSION_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_SESSION_RECORDING_BYTES: u64 = 16 * 1024 * 1024;
 pub const MAX_SESSION_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
@@ -32,9 +35,12 @@ pub const MAX_SESSION_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const MAX_SESSION_CHECKPOINTS: usize = 128;
 pub const MAX_SESSION_BRANCHES: usize = 128;
 pub const MAX_SESSION_DECODED_SNAPSHOT_BYTES: u64 =
-    chaoscontrol_explore::snapshot_store::MAX_DECOMPRESSED_SNAPSHOT_BYTES;
+    crate::snapshot_store::MAX_DECOMPRESSED_SNAPSHOT_BYTES;
 const MAX_SESSION_PATH_BYTES: usize = 4096;
 const MANIFEST_NAME: &str = "session.json";
+pub const SESSION_LIMITS_PROFILE: &str = "exact-local-v1";
+const REVIEWED_LIMITS_JSON: &str =
+    include_str!("../../../contracts/persisted-debugger/generated/exact-local-v1.json");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -46,21 +52,45 @@ pub struct SessionLimits {
     pub max_total_bytes: u64,
     pub max_checkpoints: usize,
     pub max_branches: usize,
+    pub max_artifacts: usize,
+    pub max_decoded_snapshot_bytes: u64,
+    pub max_trace_records_per_vm: usize,
+    pub max_output_bytes: u64,
+    pub max_replay_ticks: u64,
+    /// Operational bound, excluded from deterministic controller state.
+    pub host_deadline_ms: u64,
 }
 impl Default for SessionLimits {
     fn default() -> Self {
-        Self {
-            max_manifest_bytes: MAX_SESSION_MANIFEST_BYTES,
-            max_recording_bytes: MAX_SESSION_RECORDING_BYTES,
-            max_artifact_bytes: MAX_SESSION_ARTIFACT_BYTES,
-            max_snapshot_bytes: MAX_SESSION_SNAPSHOT_BYTES,
-            max_total_bytes: MAX_SESSION_TOTAL_BYTES,
-            max_checkpoints: MAX_SESSION_CHECKPOINTS,
-            max_branches: MAX_SESSION_BRANCHES,
-        }
+        static REVIEWED: std::sync::LazyLock<SessionLimits> = std::sync::LazyLock::new(|| {
+            serde_json::from_str(REVIEWED_LIMITS_JSON)
+                .expect("checked-in Nickel session limits projection must be valid")
+        });
+        *REVIEWED
     }
 }
 impl SessionLimits {
+    fn intersect(self, other: Self) -> Self {
+        Self {
+            max_manifest_bytes: self.max_manifest_bytes.min(other.max_manifest_bytes),
+            max_recording_bytes: self.max_recording_bytes.min(other.max_recording_bytes),
+            max_artifact_bytes: self.max_artifact_bytes.min(other.max_artifact_bytes),
+            max_snapshot_bytes: self.max_snapshot_bytes.min(other.max_snapshot_bytes),
+            max_total_bytes: self.max_total_bytes.min(other.max_total_bytes),
+            max_checkpoints: self.max_checkpoints.min(other.max_checkpoints),
+            max_branches: self.max_branches.min(other.max_branches),
+            max_artifacts: self.max_artifacts.min(other.max_artifacts),
+            max_decoded_snapshot_bytes: self
+                .max_decoded_snapshot_bytes
+                .min(other.max_decoded_snapshot_bytes),
+            max_trace_records_per_vm: self
+                .max_trace_records_per_vm
+                .min(other.max_trace_records_per_vm),
+            max_output_bytes: self.max_output_bytes.min(other.max_output_bytes),
+            max_replay_ticks: self.max_replay_ticks.min(other.max_replay_ticks),
+            host_deadline_ms: self.host_deadline_ms.min(other.host_deadline_ms),
+        }
+    }
     pub fn validate(self) -> Result<(), SessionError> {
         let hard = Self::default();
         if self.max_manifest_bytes == 0
@@ -77,11 +107,97 @@ impl SessionLimits {
             || self.max_checkpoints > hard.max_checkpoints
             || self.max_branches == 0
             || self.max_branches > hard.max_branches
+            || self.max_artifacts == 0
+            || self.max_artifacts > hard.max_artifacts
+            || self.max_decoded_snapshot_bytes == 0
+            || self.max_decoded_snapshot_bytes > MAX_SESSION_DECODED_SNAPSHOT_BYTES
+            || self.max_trace_records_per_vm == 0
+            || self.max_trace_records_per_vm > hard.max_trace_records_per_vm
+            || self.max_output_bytes == 0
+            || self.max_output_bytes > hard.max_output_bytes
+            || self.max_replay_ticks == 0
+            || self.max_replay_ticks > hard.max_replay_ticks
+            || self.host_deadline_ms == 0
+            || self.host_deadline_ms > hard.host_deadline_ms
         {
             return Err(SessionError::Bound("session limits"));
         }
         Ok(())
     }
+}
+
+/// Pure finite capture admission; every completed tick has explicit evidence,
+/// including intentionally empty fault and single-vCPU schedule slices.
+pub fn validate_session_recording(
+    recording: &Recording,
+    start_tick: u64,
+    limits: SessionLimits,
+) -> Result<(), SessionError> {
+    limits.validate()?;
+    let ticks = recording
+        .total_ticks
+        .checked_sub(start_tick)
+        .ok_or(SessionError::Bound("replay ticks"))?;
+    if ticks > limits.max_replay_ticks {
+        return Err(SessionError::Bound("replay ticks"));
+    }
+    let expected = usize::try_from(ticks).map_err(|_| SessionError::Bound("trace rounds"))?;
+    if recording.fault_round_deltas.len() != expected || recording.schedule_rounds.len() != expected
+    {
+        return Err(SessionError::Corrupt(
+            "missing completed-round evidence".into(),
+        ));
+    }
+    let mut per_vm = BTreeMap::<usize, usize>::new();
+    for (index, (fault, schedule)) in recording
+        .fault_round_deltas
+        .iter()
+        .zip(&recording.schedule_rounds)
+        .enumerate()
+    {
+        let tick = start_tick
+            .checked_add(index as u64)
+            .and_then(|tick| tick.checked_add(1))
+            .ok_or(SessionError::Bound("trace tick"))?;
+        if fault.tick != tick || schedule.tick != tick {
+            return Err(SessionError::Corrupt(
+                "completed-round evidence order".into(),
+            ));
+        }
+        for trace in &schedule.traces {
+            if trace.vm_index >= recording.config.num_vms {
+                return Err(SessionError::Corrupt("trace VM index".into()));
+            }
+            let count = per_vm.entry(trace.vm_index).or_default();
+            *count = count
+                .checked_add(trace.trace.records.len())
+                .ok_or(SessionError::Bound("per-VM trace records"))?;
+            if *count > limits.max_trace_records_per_vm {
+                return Err(SessionError::Bound("per-VM trace records"));
+            }
+        }
+    }
+    let mut output = 0u64;
+    let mut add_output = |bytes: usize| -> Result<(), SessionError> {
+        output = output
+            .checked_add(bytes as u64)
+            .ok_or(SessionError::Bound("retained output bytes"))?;
+        if output > limits.max_output_bytes {
+            return Err(SessionError::Bound("retained output bytes"));
+        }
+        Ok(())
+    };
+    for event in &recording.events {
+        if let crate::recording::RecordedEvent::SerialOutput { data, .. } = event {
+            add_output(data.len())?;
+        }
+    }
+    for checkpoint in recording.checkpoints.all() {
+        for serial in &checkpoint.serial_output {
+            add_output(serial.len())?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -167,9 +283,11 @@ impl SessionConfiguration {
                 "configuration schedule cursor is not initial".into(),
             ));
         }
+        let mut vm_config = config.vm_config.clone();
+        vm_config.cpu = config.vm_config.effective_cpu_config();
         Ok(Self {
             num_vms: config.num_vms,
-            vm_config: config.vm_config.clone(),
+            vm_config,
             kernel_path: config.kernel_path.clone(),
             initrd_path: config.initrd_path.clone(),
             disk_image_path: config.disk_image_path.clone(),
@@ -179,14 +297,14 @@ impl SessionConfiguration {
             base_core: config.base_core,
             dlog_dir: config.dlog_dir.clone(),
             random_faults: config.random_faults,
-            schedule_identity: digest_json(config.schedule.faults())?,
+            schedule_identity: schedule_identity(&config.schedule)?,
         })
     }
     pub fn simulation_config(
         &self,
         schedule: chaoscontrol_fault::schedule::FaultSchedule,
     ) -> Result<SimulationConfig, SessionError> {
-        if digest_json(schedule.faults())? != self.schedule_identity
+        if schedule_identity(&schedule)? != self.schedule_identity
             || schedule.snapshot().cursor() != 0
         {
             return Err(SessionError::Incompatible(
@@ -228,10 +346,29 @@ pub struct SessionBranch {
     pub checkpoint_id: u64,
     pub tick: u64,
 }
+/// Original finding and parent are provenance, never fabricated session history.
+/// This bounded fresh-run outcome does not confer a replay evidence class.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionFinding {
+    pub bug_artifact: SessionArtifact,
+    pub bug_id: u64,
+    pub assertion_id: u64,
+    pub assertion_identity: chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    pub original_parent: ReplayParentSnapshotRef,
+    pub original_parent_depth: u32,
+    pub original_parent_tick: u64,
+    pub command: String,
+    pub requested_ticks: u64,
+    pub target_failed: bool,
+    pub reproduction_exit_status: i32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionManifest {
     pub schema_version: u32,
+    pub limits_profile: String,
     pub session_id: String,
     pub config_identity: String,
     pub configuration: SessionConfiguration,
@@ -242,6 +379,7 @@ pub struct SessionManifest {
     pub retained_start_tick: u64,
     pub retained_end_tick: u64,
     pub limits: SessionLimits,
+    pub finding: Option<SessionFinding>,
 }
 
 pub fn digest_bytes(bytes: &[u8]) -> String {
@@ -276,12 +414,14 @@ fn manifest_identity(manifest: &SessionManifest) -> Result<String, SessionError>
     digest_json(&(
         "chaoscontrol.exact-session.v1",
         manifest.schema_version,
+        &manifest.limits_profile,
         &manifest.config_identity,
         &manifest.configuration,
         &manifest.recording,
         &manifest.guest_artifacts,
         &manifest.checkpoints,
         &manifest.branches,
+        &manifest.finding,
         manifest.retained_start_tick,
         manifest.retained_end_tick,
         manifest.limits,
@@ -311,7 +451,8 @@ impl Write for IdentityWriter {
     }
 }
 
-/// Pure manifest admission. No path is opened and no VM is constructed.
+/// Pure manifest admission for its compact JSON representation. Retained files
+/// must instead supply their actual byte length to `validate_manifest_with_bytes`.
 // r[impl chaoscontrol.debug_query.moment]
 // r[impl chaoscontrol.debug_query.evidence]
 pub fn validate_manifest(
@@ -320,12 +461,39 @@ pub fn validate_manifest(
 ) -> Result<(), SessionError> {
     limits.validate()?;
     manifest.limits.validate()?;
+    let bytes = bounded_json(
+        manifest,
+        limits
+            .max_manifest_bytes
+            .min(manifest.limits.max_manifest_bytes),
+        "manifest bytes",
+    )?;
+    validate_manifest_with_bytes(manifest, limits, bytes.len() as u64)
+}
+
+fn validate_manifest_with_bytes(
+    manifest: &SessionManifest,
+    limits: SessionLimits,
+    manifest_bytes: u64,
+) -> Result<(), SessionError> {
+    limits.validate()?;
+    manifest.limits.validate()?;
+    if manifest_bytes
+        > limits
+            .max_manifest_bytes
+            .min(manifest.limits.max_manifest_bytes)
+    {
+        return Err(SessionError::Bound("manifest bytes"));
+    }
     if manifest.schema_version != SESSION_SCHEMA_VERSION {
         return Err(SessionError::Incompatible("session schema".into()));
     }
+    if manifest.limits_profile != SESSION_LIMITS_PROFILE {
+        return Err(SessionError::Incompatible("session limits profile".into()));
+    }
     if !valid_identity(&manifest.session_id)
         || manifest_identity(manifest)? != manifest.session_id
-        || digest_json(&manifest.configuration)? != manifest.config_identity
+        || configuration_identity(&manifest.configuration)? != manifest.config_identity
     {
         return Err(SessionError::Corrupt("manifest/config identity".into()));
     }
@@ -345,6 +513,32 @@ pub fn validate_manifest(
     }
     if manifest.retained_start_tick > manifest.retained_end_tick {
         return Err(SessionError::Corrupt("retained horizon".into()));
+    }
+    if manifest
+        .checkpoints
+        .first()
+        .map(|checkpoint| checkpoint.tick)
+        != Some(manifest.retained_start_tick)
+    {
+        return Err(SessionError::Corrupt("session start checkpoint".into()));
+    }
+    let replay_ticks = manifest
+        .retained_end_tick
+        .checked_sub(manifest.retained_start_tick)
+        .ok_or(SessionError::Bound("replay ticks"))?;
+    if replay_ticks
+        > limits
+            .max_replay_ticks
+            .min(manifest.limits.max_replay_ticks)
+    {
+        return Err(SessionError::Bound("replay ticks"));
+    }
+    if let Some(finding) = &manifest.finding {
+        validate_finding(
+            finding,
+            manifest.retained_start_tick,
+            manifest.retained_end_tick,
+        )?;
     }
     let mut paths = BTreeMap::<String, (String, u64)>::new();
     let mut total = 0u64;
@@ -368,6 +562,14 @@ pub fn validate_manifest(
                 .checked_add(artifact.bytes)
                 .ok_or(SessionError::Bound("total bytes"))?;
         }
+        if paths
+            .len()
+            .checked_add(1)
+            .ok_or(SessionError::Bound("artifact count"))?
+            > limits.max_artifacts.min(manifest.limits.max_artifacts)
+        {
+            return Err(SessionError::Bound("artifact count"));
+        }
         Ok(())
     };
     if manifest.recording.path != "recording.json" {
@@ -379,6 +581,14 @@ pub fn validate_manifest(
             .max_recording_bytes
             .min(manifest.limits.max_recording_bytes),
     )?;
+    if let Some(finding) = &manifest.finding {
+        admit_artifact(
+            &finding.bug_artifact,
+            limits
+                .max_recording_bytes
+                .min(manifest.limits.max_recording_bytes),
+        )?;
+    }
     let config = &manifest.configuration;
     if config.num_vms == 0
         || config.vm_config.num_vcpus == 0
@@ -448,7 +658,7 @@ pub fn validate_manifest(
         {
             return Err(SessionError::Corrupt("checkpoint path".into()));
         }
-        chaoscontrol_explore::snapshot_store::validate_ref_shape(&checkpoint.snapshot_ref)
+        crate::snapshot_store::validate_ref_shape(&checkpoint.snapshot_ref)
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
         admit_artifact(
             &checkpoint.artifact,
@@ -457,14 +667,6 @@ pub fn validate_manifest(
                 .min(manifest.limits.max_snapshot_bytes),
         )?;
     }
-    let manifest_bytes = bounded_json(
-        manifest,
-        limits
-            .max_manifest_bytes
-            .min(manifest.limits.max_manifest_bytes),
-        "manifest bytes",
-    )?
-    .len() as u64;
     total = total
         .checked_add(manifest_bytes)
         .ok_or(SessionError::Bound("total bytes"))?;
@@ -511,10 +713,76 @@ pub fn validate_manifest(
     Ok(())
 }
 
+fn validate_finding(finding: &SessionFinding, start: u64, end: u64) -> Result<(), SessionError> {
+    finding
+        .assertion_identity
+        .validate_compatibility_alias(finding.assertion_id)
+        .map_err(|error| SessionError::Incompatible(format!("finding identity: {error:?}")))?;
+    crate::snapshot_store::validate_ref_shape(&finding.original_parent)
+        .map_err(snapshot_codec_error)?;
+    if finding.bug_artifact.path != "finding.json"
+        || finding.original_parent_tick != start
+        || finding.command.is_empty()
+        || end
+            .checked_sub(start)
+            .is_none_or(|ticks| ticks > finding.requested_ticks)
+        || finding.reproduction_exit_status != if finding.target_failed { 0 } else { 1 }
+    {
+        return Err(SessionError::Corrupt("finding provenance/outcome".into()));
+    }
+    Ok(())
+}
+
+fn validate_finding_carrier(finding: &SessionFinding, bytes: &[u8]) -> Result<(), SessionError> {
+    // This projection validates provenance only; explorer remains the owner of
+    // the full bug carrier and its schedule/oracle admission.
+    #[derive(Deserialize)]
+    struct Binding {
+        bug_id: u64,
+        assertion_id: u64,
+        assertion_identity: chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+        replay_parent_snapshot_ref: ReplayParentSnapshotRef,
+        replay_parent_depth: u32,
+    }
+    let binding: Binding = serde_json::from_slice(bytes)
+        .map_err(|error| SessionError::Corrupt(format!("finding carrier: {error}")))?;
+    if binding.bug_id != finding.bug_id
+        || binding.assertion_id != finding.assertion_id
+        || binding.assertion_identity != finding.assertion_identity
+        || binding.replay_parent_snapshot_ref != finding.original_parent
+        || binding.replay_parent_depth != finding.original_parent_depth
+    {
+        return Err(SessionError::Corrupt(
+            "finding carrier provenance mismatch".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn configuration_identity(
+    config: &SessionConfiguration,
+) -> Result<String, SessionError> {
+    digest_json(&("chaoscontrol.exact-session.configuration.v1", config))
+}
+
+fn schedule_identity(
+    schedule: &chaoscontrol_fault::schedule::FaultSchedule,
+) -> Result<String, SessionError> {
+    digest_json(&(
+        "chaoscontrol.exact-session.fault-schedule.v1",
+        schedule.faults(),
+    ))
+}
+
 fn validate_configuration(
     recording: &Recording,
     config: &SessionConfiguration,
 ) -> Result<(), SessionError> {
+    if config.vm_config.num_vcpus > 1 && !config.vm_config.cpu.hide_tsc {
+        return Err(SessionError::Incompatible(
+            "SMP exact sessions require the effective deterministic-jiffies CPU policy".into(),
+        ));
+    }
     let recorded = &recording.config;
     if recorded.num_vms != config.num_vms
         || recorded.vm_memory_size != config.vm_config.memory_size
@@ -525,10 +793,24 @@ fn validate_configuration(
         || recorded.quantum != config.quantum
         || recording.seed != config.seed
         || recorded.random_faults != config.random_faults
-        || digest_json(recording.schedule.faults())? != config.schedule_identity
+        || schedule_identity(&recording.schedule)? != config.schedule_identity
     {
         return Err(SessionError::Incompatible(
             "recording/controller configuration mismatch".into(),
+        ));
+    }
+    if config.vm_config.num_vcpus > 1
+        && recording.schedule_rounds.iter().any(|round| {
+            round.traces.len() != config.num_vms
+                || round
+                    .traces
+                    .iter()
+                    .enumerate()
+                    .any(|(index, trace)| trace.vm_index != index)
+        })
+    {
+        return Err(SessionError::Corrupt(
+            "missing per-VM SMP round evidence".into(),
         ));
     }
     Ok(())
@@ -545,12 +827,76 @@ fn validate_checkpoint(
         .map_err(SessionError::Incompatible)?;
     SimulationController::validate_pending_snapshot(snapshot)
         .map_err(|error| SessionError::Incompatible(error.to_string()))?;
-    for (vm, _) in &snapshot.vm_snapshots {
+    for (vm_index, (vm, _)) in snapshot.vm_snapshots.iter().enumerate() {
         vm.validate_kernel_restore(config.vm_config.num_vcpus)
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
         vm.memory
             .validate_for_guest_size(config.vm_config.memory_size)
             .map_err(SessionError::Incompatible)?;
+        validate_checkpoint_scheduler(
+            recording,
+            checkpoint.tick,
+            vm_index,
+            &vm.scheduler_snapshot,
+            config.vm_config.num_vcpus,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_checkpoint_scheduler(
+    recording: &Recording,
+    tick: u64,
+    vm_index: usize,
+    scheduler: &chaoscontrol_vmm::scheduler::SchedulerSnapshot,
+    num_vcpus: usize,
+) -> Result<(), SessionError> {
+    scheduler
+        .validate()
+        .map_err(|error| SessionError::Corrupt(format!("checkpoint scheduler: {error}")))?;
+    if scheduler.state.num_vcpus != num_vcpus {
+        return Err(SessionError::Incompatible(
+            "checkpoint scheduler vCPU count".into(),
+        ));
+    }
+    if num_vcpus <= 1 {
+        return Ok(());
+    }
+    let boundary = recording
+        .schedule_rounds
+        .partition_point(|round| round.tick <= tick);
+    if let Some(round) = boundary
+        .checked_sub(1)
+        .map(|index| &recording.schedule_rounds[index])
+    {
+        let trace = round
+            .traces
+            .iter()
+            .find(|trace| trace.vm_index == vm_index)
+            .map(|trace| &trace.trace)
+            .ok_or_else(|| SessionError::Corrupt("missing checkpoint SMP prefix".into()))?;
+        let state_id = trace
+            .records
+            .last()
+            .map_or(trace.initial_state_id, |record| record.post_state_id);
+        if scheduler.state_id != state_id {
+            return Err(SessionError::Corrupt(
+                "checkpoint scheduler differs from recorded SMP prefix".into(),
+            ));
+        }
+    }
+    if let Some(round) = recording.schedule_rounds.get(boundary) {
+        let trace = round
+            .traces
+            .iter()
+            .find(|trace| trace.vm_index == vm_index)
+            .map(|trace| &trace.trace)
+            .ok_or_else(|| SessionError::Corrupt("missing checkpoint SMP suffix".into()))?;
+        if scheduler.state_id != trace.initial_state_id {
+            return Err(SessionError::Corrupt(
+                "checkpoint scheduler differs from recorded SMP suffix start".into(),
+            ));
+        }
     }
     Ok(())
 }
@@ -564,6 +910,33 @@ pub struct ExactSession {
     limits: SessionLimits,
 }
 impl ExactSession {
+    pub fn limits(&self) -> SessionLimits {
+        self.limits
+    }
+    pub fn host_deadline_ms(&self) -> u64 {
+        self.limits
+            .host_deadline_ms
+            .min(self.manifest.limits.host_deadline_ms)
+    }
+    pub fn validate_target(&self, tick: u64) -> Result<(), SessionError> {
+        if tick < self.manifest.retained_start_tick || tick > self.manifest.retained_end_tick {
+            return Err(SessionError::Incompatible(
+                "target outside retained horizon".into(),
+            ));
+        }
+        let ticks = tick
+            .checked_sub(self.manifest.retained_start_tick)
+            .ok_or(SessionError::Bound("replay ticks"))?;
+        if ticks
+            > self
+                .limits
+                .max_replay_ticks
+                .min(self.manifest.limits.max_replay_ticks)
+        {
+            return Err(SessionError::Bound("replay ticks"));
+        }
+        Ok(())
+    }
     pub fn manifest(&self) -> &SessionManifest {
         &self.manifest
     }
@@ -654,12 +1027,14 @@ impl ExactSession {
     fn revalidate_retained(&self) -> Result<(), SessionError> {
         let bytes = read_bounded(
             open_relative(&self.root, MANIFEST_NAME)?,
-            self.limits.max_manifest_bytes,
+            self.limits
+                .max_manifest_bytes
+                .min(self.limits.max_total_bytes),
             MANIFEST_NAME,
         )?;
         let manifest: SessionManifest = serde_json::from_slice(&bytes)
             .map_err(|error| SessionError::Corrupt(error.to_string()))?;
-        validate_manifest(&manifest, self.limits)?;
+        validate_manifest_with_bytes(&manifest, self.limits, bytes.len() as u64)?;
         if manifest.session_id != self.manifest.session_id {
             return Err(SessionError::Drift(MANIFEST_NAME.into()));
         }
@@ -677,6 +1052,14 @@ impl ExactSession {
                 &mut std::io::sink(),
             )?;
         }
+        if let Some(finding) = &self.manifest.finding {
+            verify_streamed_artifact(
+                &self.root,
+                &finding.bug_artifact,
+                self.limits.max_recording_bytes,
+                &mut std::io::sink(),
+            )?;
+        }
         Ok(())
     }
     /// Restore the selected checkpoint and replay only the retained exact
@@ -688,6 +1071,7 @@ impl ExactSession {
         moment
             .validate()
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
+        self.validate_target(moment.tick)?;
         if moment.session_id.as_deref() != Some(self.manifest.session_id.as_str())
             || moment.retained_start_tick != self.manifest.retained_start_tick
             || moment.retained_end_tick != self.manifest.retained_end_tick
@@ -718,9 +1102,6 @@ impl ExactSession {
             }
         }
         let restored = self.restore_controller(checkpoint.id)?;
-        if checkpoint.tick == moment.tick {
-            return Ok(restored);
-        }
         let RestoredController {
             controller,
             _artifacts,
@@ -730,6 +1111,9 @@ impl ExactSession {
             selected_tick: _,
         } = restored;
         let mut runner = crate::replay::RealSimulationRunner::from_controller(controller);
+        runner
+            .set_execution_deadline(self.host_deadline_ms())
+            .map_err(|error| SessionError::Incompatible(error.to_string()))?;
         crate::replay::advance_exact_runner(&self.recording, &mut runner, moment.tick)
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
         let mut controller = runner.into_controller();
@@ -801,6 +1185,13 @@ pub struct RestoredController {
     selected_tick: u64,
 }
 impl RestoredController {
+    /// Transfer the admitted controller and its sealed inputs to exact replay.
+    pub(crate) fn into_runner(self) -> crate::replay::RealSimulationRunner {
+        crate::replay::RealSimulationRunner::from_restored_controller(
+            self.controller,
+            self._artifacts,
+        )
+    }
     pub fn controller(&self) -> &SimulationController {
         &self.controller
     }
@@ -852,9 +1243,56 @@ pub fn save_recorder_with_branches(
     limits: SessionLimits,
     branches: &[SessionBranch],
 ) -> Result<SessionManifest, SessionError> {
-    if !recorder.matches_checkpoint_guest_artifacts(controller.loaded_guest_artifact_identities()) {
+    save_recorder_complete(recorder, controller, directory, limits, branches, None)
+}
+
+/// Publish a finding-derived session only after its original carrier and all
+/// exact replay inputs have been retained and validated.
+pub fn save_recorder_with_finding(
+    recorder: &Recorder,
+    controller: &SimulationController,
+    directory: &Path,
+    limits: SessionLimits,
+    finding: &SessionFinding,
+    bug_bytes: &[u8],
+) -> Result<SessionManifest, SessionError> {
+    limits.validate()?;
+    if bug_bytes.len() as u64 > limits.max_recording_bytes {
+        return Err(SessionError::Bound("finding bytes"));
+    }
+    validate_finding_carrier(finding, bug_bytes)?;
+    if finding.bug_artifact.path != "finding.json"
+        || finding.bug_artifact.bytes != bug_bytes.len() as u64
+        || finding.bug_artifact.digest != digest_bytes(bug_bytes)
+    {
+        return Err(SessionError::Corrupt("finding artifact binding".into()));
+    }
+    save_recorder_complete(
+        recorder,
+        controller,
+        directory,
+        limits,
+        &[],
+        Some((finding, bug_bytes)),
+    )
+}
+
+fn save_recorder_complete(
+    recorder: &Recorder,
+    controller: &SimulationController,
+    directory: &Path,
+    limits: SessionLimits,
+    branches: &[SessionBranch],
+    finding: Option<(&SessionFinding, &[u8])>,
+) -> Result<SessionManifest, SessionError> {
+    let config = controller.config();
+    let configuration = SessionConfiguration::capture(config)?;
+    if !recorder.matches_checkpoint_provenance(
+        controller.loaded_guest_artifact_identities(),
+        &configuration_identity(&configuration)?,
+    ) {
         return Err(SessionError::Incompatible(
-            "recorded checkpoint/controller guest-input provenance mismatch".into(),
+            "recorded checkpoint/controller input or configuration provenance mismatch".into(),
         ));
     }
     let recording = recorder.recording();
@@ -863,16 +1301,30 @@ pub fn save_recorder_with_branches(
             "recording/controller horizon mismatch".into(),
         ));
     }
-    let config = controller.config();
     limits.validate()?;
     validate_recording(recording).map_err(|error| SessionError::Corrupt(format!("{error:?}")))?;
-    let configuration = SessionConfiguration::capture(config)?;
     validate_configuration(recording, &configuration)?;
     if recording.checkpoints.is_empty() {
         return Err(SessionError::MissingCheckpoint(0));
     }
     if recording.checkpoints.len() > limits.max_checkpoints {
         return Err(SessionError::Bound("checkpoint count"));
+    }
+    validate_session_recording(recording, recording.checkpoints.all()[0].tick, limits)?;
+    let artifact_count = recording
+        .checkpoints
+        .len()
+        .checked_add(2)
+        .and_then(|count| {
+            count.checked_add(
+                1 + usize::from(config.initrd_path.is_some())
+                    + usize::from(config.disk_image_path.is_some()),
+            )
+        })
+        .and_then(|count| count.checked_add(usize::from(finding.is_some())))
+        .ok_or(SessionError::Bound("artifact count"))?;
+    if artifact_count > limits.max_artifacts {
+        return Err(SessionError::Bound("artifact count"));
     }
     let retained_memory = (config.vm_config.memory_size as u64)
         .checked_mul(config.num_vms as u64)
@@ -883,6 +1335,16 @@ pub fn save_recorder_with_branches(
     }
     for checkpoint in recording.checkpoints.all() {
         validate_checkpoint(recording, checkpoint, &configuration)?;
+        if let Some((finding, _)) = finding {
+            checkpoint
+                .snapshot
+                .as_ref()
+                .ok_or(SessionError::MissingCheckpoint(checkpoint.id))?
+                .validate_assertion_evidence(configuration.num_vms, &finding.assertion_identity)
+                .map_err(|error| {
+                    SessionError::Incompatible(format!("finding assertion binding: {error:?}"))
+                })?;
+        }
     }
     let recording_bytes = bounded_json(recording, limits.max_recording_bytes, "recording bytes")?;
     let mut retained_bytes = recording_bytes.len() as u64;
@@ -893,6 +1355,23 @@ pub fn save_recorder_with_branches(
     mkdir_child(&root, "artifacts")?;
     mkdir_child(&root, "snapshots")?;
     let recording_artifact = write_artifact(&root, "recording.json", &recording_bytes)?;
+    if let Some((provenance, bytes)) = finding {
+        if bytes.len() as u64 > limits.max_recording_bytes {
+            return Err(SessionError::Bound("finding bytes"));
+        }
+        retained_bytes = retained_bytes
+            .checked_add(bytes.len() as u64)
+            .ok_or(SessionError::Bound("total bytes"))?;
+        if retained_bytes > limits.max_total_bytes {
+            return Err(SessionError::Bound("total bytes"));
+        }
+        validate_finding(
+            provenance,
+            recording.checkpoints.all()[0].tick,
+            recording.total_ticks,
+        )?;
+        write_artifact(&root, "finding.json", bytes)?;
+    }
     let mut guest_artifacts = Vec::new();
     for (role, path) in [
         (GuestArtifactRole::Kernel, Some(config.kernel_path.as_str())),
@@ -920,6 +1399,7 @@ pub fn save_recorder_with_branches(
                 &mut retained,
                 limits.max_artifact_bytes.min(remaining),
                 path,
+                None,
                 if requires_loaded_identity {
                     Some(&mut loaded_hash)
                 } else {
@@ -974,7 +1454,7 @@ pub fn save_recorder_with_branches(
         let decoded_remaining = limits
             .max_total_bytes
             .saturating_sub(decoded_payload_bytes)
-            .min(MAX_SESSION_DECODED_SNAPSHOT_BYTES);
+            .min(limits.max_decoded_snapshot_bytes);
         let (reference, bytes, decoded_bytes) = encode_snapshot_artifact_with_limits(
             snapshot,
             0,
@@ -1019,20 +1499,22 @@ pub fn save_recorder_with_branches(
     };
     let mut manifest = SessionManifest {
         schema_version: SESSION_SCHEMA_VERSION,
+        limits_profile: SESSION_LIMITS_PROFILE.into(),
         session_id: String::new(),
-        config_identity: digest_json(&configuration)?,
+        config_identity: configuration_identity(&configuration)?,
         configuration,
         recording: recording_artifact,
         guest_artifacts,
+        finding: finding.map(|(finding, _)| finding.clone()),
         checkpoints,
         branches,
-        retained_start_tick: 0,
+        retained_start_tick: recording.checkpoints.all()[0].tick,
         retained_end_tick: recording.total_ticks,
         limits,
     };
     manifest.session_id = manifest_identity(&manifest)?;
-    validate_manifest(&manifest, limits)?;
     let bytes = bounded_json(&manifest, limits.max_manifest_bytes, "manifest bytes")?;
+    validate_manifest_with_bytes(&manifest, limits, bytes.len() as u64)?;
     write_artifact(&root, MANIFEST_NAME, &bytes)?;
     root.sync_all()?;
     Ok(manifest)
@@ -1080,24 +1562,43 @@ fn load_from_directory(root: File, limits: SessionLimits) -> Result<ExactSession
         SessionError::MissingArtifact(_) => SessionError::MissingSession,
         other => other,
     })?;
-    let manifest_bytes = read_bounded(manifest_file, limits.max_manifest_bytes, MANIFEST_NAME)?;
+    let manifest_bytes = read_bounded(
+        manifest_file,
+        limits.max_manifest_bytes.min(limits.max_total_bytes),
+        MANIFEST_NAME,
+    )?;
     let manifest: SessionManifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| SessionError::Corrupt(error.to_string()))?;
-    validate_manifest(&manifest, limits)?;
+    validate_manifest_with_bytes(&manifest, limits, manifest_bytes.len() as u64)?;
+    let limits = limits.intersect(manifest.limits);
     let recording_bytes = read_verified(&root, &manifest.recording, limits.max_recording_bytes)?;
     let mut recording: Recording = serde_json::from_slice(&recording_bytes)
         .map_err(|error| SessionError::Corrupt(error.to_string()))?;
     validate_configuration(&recording, &manifest.configuration)?;
-    if recording.total_ticks != manifest.retained_end_tick || manifest.retained_start_tick != 0 {
+    validate_session_recording(&recording, manifest.retained_start_tick, limits)?;
+    if recording.total_ticks != manifest.retained_end_tick {
         return Err(SessionError::Corrupt("recording horizon".into()));
     }
+    if let Some(finding) = &manifest.finding {
+        let bytes = read_verified(&root, &finding.bug_artifact, limits.max_recording_bytes)?;
+        validate_finding_carrier(finding, &bytes)?;
+    }
+    let mut retained_disk = None;
     for guest in &manifest.guest_artifacts {
-        verify_streamed_artifact(
-            &root,
-            &guest.artifact,
-            limits.max_artifact_bytes,
-            &mut std::io::sink(),
-        )?;
+        if guest.role == GuestArtifactRole::Disk {
+            retained_disk = Some(sealed_verified_artifact(
+                &root,
+                &guest.artifact,
+                limits.max_artifact_bytes,
+            )?);
+        } else {
+            verify_streamed_artifact(
+                &root,
+                &guest.artifact,
+                limits.max_artifact_bytes,
+                &mut std::io::sink(),
+            )?;
+        }
     }
     let mut store = CheckpointStore::new();
     let mut decoded_payload_bytes = 0u64;
@@ -1107,7 +1608,11 @@ fn load_from_directory(root: File, limits: SessionLimits) -> Result<ExactSession
             .max_total_bytes
             .min(manifest.limits.max_total_bytes)
             .saturating_sub(decoded_payload_bytes)
-            .min(MAX_SESSION_DECODED_SNAPSHOT_BYTES);
+            .min(
+                limits
+                    .max_decoded_snapshot_bytes
+                    .min(manifest.limits.max_decoded_snapshot_bytes),
+            );
         let (artifact, decoded_bytes) = decode_snapshot_artifact_with_limit(
             &checkpoint.snapshot_ref,
             &bytes,
@@ -1137,7 +1642,24 @@ fn load_from_directory(root: File, limits: SessionLimits) -> Result<ExactSession
     validate_recording(&recording).map_err(|error| SessionError::Corrupt(format!("{error:?}")))?;
     for checkpoint in recording.checkpoints.all() {
         validate_checkpoint(&recording, checkpoint, &manifest.configuration)?;
+        if let Some(finding) = &manifest.finding {
+            checkpoint
+                .snapshot
+                .as_ref()
+                .ok_or(SessionError::MissingCheckpoint(checkpoint.id))?
+                .validate_assertion_evidence(
+                    manifest.configuration.num_vms,
+                    &finding.assertion_identity,
+                )
+                .map_err(|error| {
+                    SessionError::Incompatible(format!("finding assertion binding: {error:?}"))
+                })?;
+        }
     }
+    if let Some(disk) = retained_disk {
+        validate_disk_base(&recording, &disk)?;
+    }
+    validate_session_recording(&recording, manifest.retained_start_tick, limits)?;
     Ok(ExactSession {
         root,
         manifest,
@@ -1145,10 +1667,8 @@ fn load_from_directory(root: File, limits: SessionLimits) -> Result<ExactSession
         limits,
     })
 }
-fn snapshot_codec_error(
-    error: chaoscontrol_explore::snapshot_store::SnapshotStoreError,
-) -> SessionError {
-    use chaoscontrol_explore::snapshot_store::SnapshotStoreError;
+fn snapshot_codec_error(error: crate::snapshot_store::SnapshotStoreError) -> SessionError {
+    use crate::snapshot_store::SnapshotStoreError;
     match error {
         SnapshotStoreError::TooLarge { .. } | SnapshotStoreError::DecompressedTooLarge { .. } => {
             SessionError::Bound("snapshot codec bytes")
@@ -1312,21 +1832,29 @@ fn open_relative(root: &File, path: &str) -> Result<File, SessionError> {
     }
     Ok(file)
 }
-fn read_bounded(mut file: File, limit: u64, path: &str) -> Result<Vec<u8>, SessionError> {
+fn read_bounded(file: File, limit: u64, path: &str) -> Result<Vec<u8>, SessionError> {
+    read_file_bytes(file, limit, path, None)
+}
+fn read_file_bytes(
+    mut file: File,
+    limit: u64,
+    path: &str,
+    expected_bytes: Option<u64>,
+) -> Result<Vec<u8>, SessionError> {
     let before = file.metadata()?;
     if !before.is_file() {
         return Err(SessionError::Path(path.into()));
+    }
+    if expected_bytes.is_some_and(|bytes| bytes != before.len()) {
+        return Err(SessionError::Drift(path.into()));
     }
     if before.len() > limit {
         return Err(SessionError::Bound("file bytes"));
     }
     let mut bytes = Vec::with_capacity(before.len() as usize);
     Read::by_ref(&mut file)
-        .take(limit + 1)
+        .take(before.len())
         .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 > limit {
-        return Err(SessionError::Bound("file bytes"));
-    }
     if bytes.len() as u64 != before.len() || file.metadata()?.len() != before.len() {
         return Err(SessionError::Drift(path.into()));
     }
@@ -1337,7 +1865,12 @@ fn read_verified(
     artifact: &SessionArtifact,
     limit: u64,
 ) -> Result<Vec<u8>, SessionError> {
-    let bytes = read_bounded(open_relative(root, &artifact.path)?, limit, &artifact.path)?;
+    let bytes = read_file_bytes(
+        open_relative(root, &artifact.path)?,
+        limit,
+        &artifact.path,
+        Some(artifact.bytes),
+    )?;
     if bytes.len() as u64 != artifact.bytes || digest_bytes(&bytes) != artifact.digest {
         return Err(SessionError::Drift(artifact.path.clone()));
     }
@@ -1408,7 +1941,14 @@ fn verify_streamed_artifact(
     sink: &mut impl Write,
 ) -> Result<(), SessionError> {
     let input = open_relative(root, &artifact.path)?;
-    let (digest, bytes) = stream_copy(&input, sink, limit, &artifact.path, None)?;
+    let (digest, bytes) = stream_copy(
+        &input,
+        sink,
+        limit,
+        &artifact.path,
+        Some(artifact.bytes),
+        None,
+    )?;
     if digest != artifact.digest || bytes != artifact.bytes {
         return Err(SessionError::Drift(artifact.path.clone()));
     }
@@ -1419,6 +1959,7 @@ fn stream_copy(
     sink: &mut impl Write,
     limit: u64,
     path: &str,
+    expected_bytes: Option<u64>,
     mut extra_hash: Option<&mut blake3::Hasher>,
 ) -> Result<(String, u64), SessionError> {
     use std::os::unix::fs::FileExt;
@@ -1426,6 +1967,9 @@ fn stream_copy(
     let metadata = input.metadata()?;
     if !metadata.is_file() {
         return Err(SessionError::Path(path.into()));
+    }
+    if expected_bytes.is_some_and(|bytes| bytes != metadata.len()) {
+        return Err(SessionError::Drift(path.into()));
     }
     if metadata.len() > limit {
         return Err(SessionError::Bound("guest artifact bytes"));
@@ -1446,8 +1990,7 @@ fn stream_copy(
         }
         offset += read as u64;
     }
-    let mut sentinel = [0];
-    if input.read_at(&mut sentinel, offset)? != 0 || input.metadata()?.len() != metadata.len() {
+    if input.metadata()?.len() != metadata.len() {
         return Err(SessionError::Drift(path.into()));
     }
     Ok((format!("b3:{}", hasher.finalize().to_hex()), offset))

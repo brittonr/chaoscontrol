@@ -1,23 +1,35 @@
 //! Interactive debugger REPL for destructive analysis.
 //!
-//! Boots a live VM from a recording, then accepts commands to navigate
-//! time, inspect state, and modify memory/registers ("what if" analysis).
+//! Restores an admitted exact session, then accepts navigation, bounded state
+//! observation, and explicitly counterfactual memory/register edits.
 
 use crate::debugger::{Debugger, EventFilter};
-use crate::recording::Recording;
 use crate::replay::{MemoryModification, RegisterModification, ReplayError, SimulationRunner};
 use chaoscontrol_vmm::registers::Register;
 use std::collections::BTreeMap;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Read, Write};
 
-/// Run an interactive debug session on a recording.
-///
-/// Reads commands from stdin, writes output to stdout. Returns when
-/// the user types `quit` or stdin closes.
-pub fn run_interactive<R: SimulationRunner>(recording: Recording) -> Result<(), ReplayError> {
-    let mut debugger = Debugger::<R>::new(recording);
+/// Read interactive commands from stdin. No command invokes a host shell.
+pub fn run_interactive<R: SimulationRunner>(debugger: Debugger<R>) -> Result<(), ReplayError> {
+    run_commands(debugger, io::stdin().lock(), false)
+}
+
+/// Deterministic proof input: the same commands, failing at the first error.
+pub fn run_script<R: SimulationRunner>(
+    debugger: Debugger<R>,
+    input: impl BufRead,
+) -> Result<(), ReplayError> {
+    run_commands(debugger, input, true)
+}
+
+fn run_commands<R: SimulationRunner>(
+    mut debugger: Debugger<R>,
+    mut input: impl BufRead,
+    scripted: bool,
+) -> Result<(), ReplayError> {
     let mut stdout = io::stdout();
-    let stdin = io::stdin();
+    let byte_limit = debugger.observation_limit();
+    let mut script_bytes = 0_u64;
 
     println!("ChaosControl interactive debugger");
     println!(
@@ -34,12 +46,37 @@ pub fn run_interactive<R: SimulationRunner>(recording: Recording) -> Result<(), 
     let mut pending_reg: Vec<RegisterModification> = Vec::new();
 
     loop {
-        print!("(tick {}) > ", debugger.state().tick);
-        stdout.flush().ok();
+        if !scripted {
+            print!(
+                "(tick {}, verified={}, counterfactual={}) > ",
+                debugger.state().tick,
+                debugger.state().verified_original,
+                debugger.state().counterfactual
+            );
+            stdout.flush().map_err(|error| ReplayError::Runner {
+                message: error.to_string(),
+            })?;
+        }
 
         let mut line = String::new();
-        if stdin.lock().read_line(&mut line).unwrap_or(0) == 0 {
-            break; // EOF
+        let bytes = input
+            .by_ref()
+            .take(byte_limit.saturating_add(1))
+            .read_line(&mut line)
+            .map_err(|error| ReplayError::Runner {
+                message: error.to_string(),
+            })?;
+        script_bytes = script_bytes.saturating_add(bytes as u64);
+        if bytes as u64 > byte_limit || (scripted && script_bytes > byte_limit) {
+            return Err(ReplayError::InvalidState {
+                message: "inspection command input exceeds admitted byte bound".into(),
+            });
+        }
+        if bytes == 0 {
+            break;
+        }
+        if scripted {
+            println!("> {}", line.trim());
         }
         let line = line.trim();
         if line.is_empty() {
@@ -82,13 +119,17 @@ pub fn run_interactive<R: SimulationRunner>(recording: Recording) -> Result<(), 
                 cmd_whatif(&mut debugger, &mut pending_mem, &mut pending_reg, &parts)
             }
 
-            _ => {
-                println!("Unknown command: {cmd}. Type 'help' for commands.");
-                Ok(())
-            }
+            _ => Err(ReplayError::InvalidState {
+                message: format!(
+                    "unknown debugger command {cmd}; no host shell commands are supported"
+                ),
+            }),
         };
 
         if let Err(e) = result {
+            if scripted {
+                return Err(e);
+            }
             println!("Error: {e}");
         }
     }
@@ -137,7 +178,7 @@ fn parse_u64(s: &str) -> Result<u64, String> {
 }
 
 fn parse_usize(s: &str) -> Result<usize, String> {
-    parse_u64(s).map(|v| v as usize)
+    parse_u64(s).and_then(|value| usize::try_from(value).map_err(|error| error.to_string()))
 }
 
 // ─── Navigation ────────────────────────────────────────────────
@@ -220,7 +261,11 @@ fn cmd_regs<R: SimulationRunner>(dbg: &Debugger<R>, parts: &[&str]) -> Result<()
         .map_err(|e| ReplayError::InvalidState { message: e })?
         .unwrap_or(0);
     let state = dbg.read_registers(vm, vcpu)?;
-    println!("VM{vm} vCPU{vcpu}:");
+    println!(
+        "VM{vm} vCPU{vcpu}: verified_original={}, counterfactual={}",
+        dbg.state().verified_original,
+        dbg.state().counterfactual
+    );
     println!("{state}");
     Ok(())
 }
@@ -241,6 +286,11 @@ fn cmd_mem<R: SimulationRunner>(dbg: &Debugger<R>, parts: &[&str]) -> Result<(),
         .unwrap_or(64);
 
     let data = dbg.read_memory(vm, addr, size)?;
+    println!(
+        "Memory VM{vm} @ {addr:#x}: verified_original={}, counterfactual={}",
+        dbg.state().verified_original,
+        dbg.state().counterfactual
+    );
     hex_dump(addr, &data);
     Ok(())
 }
@@ -334,6 +384,9 @@ fn cmd_state<R: SimulationRunner>(dbg: &Debugger<R>) -> Result<(), ReplayError> 
     println!("tick: {}", s.tick);
     println!("checkpoint: #{}", s.checkpoint_id);
     println!("VMs: {:?}", s.vm_statuses);
+    println!("verified_original: {}", s.verified_original);
+    println!("live_state_available: {}", s.live_state_available);
+    println!("counterfactual: {}", s.counterfactual);
     if !s.events_at_tick.is_empty() {
         println!("Events at this tick:");
         for ev in &s.events_at_tick {
@@ -362,7 +415,10 @@ fn cmd_poke<R: SimulationRunner>(
 
     // Apply live
     dbg.poke_memory(vm, addr, &data)?;
-    println!("Wrote {} byte(s) to VM{vm} @ {addr:#x}", data.len());
+    println!(
+        "Counterfactual: wrote {} byte(s) to VM{vm} @ {addr:#x}",
+        data.len()
+    );
 
     // Also record for counterfactual
     pending_mem.push(MemoryModification {
@@ -391,7 +447,7 @@ fn cmd_setreg<R: SimulationRunner>(
     let value = parse_u64(parts[4]).map_err(|e| ReplayError::InvalidState { message: e })?;
 
     dbg.set_register(vm, vcpu, reg, value)?;
-    println!("Set VM{vm} vCPU{vcpu} {reg} = {value:#x}");
+    println!("Counterfactual: set VM{vm} vCPU{vcpu} {reg} = {value:#x}");
 
     // Record for counterfactual
     let mut changes = BTreeMap::new();

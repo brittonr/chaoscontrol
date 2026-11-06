@@ -16,10 +16,6 @@ mod workspace;
 pub use workspace::*;
 mod sdk;
 pub use sdk::envelopes_from_sdk_lifecycle;
-mod frontier;
-pub use frontier::{
-    timeline_from_frontier_entries, timeline_from_frontier_trace, FrontierTimelineProjection,
-};
 
 pub const EVENT_ENVELOPE_SCHEMA: &str = "chaoscontrol.event-envelope.v1";
 pub const EVENT_QUERY_RECEIPT_SCHEMA: &str = "chaoscontrol.event-query-receipt.v1";
@@ -235,8 +231,9 @@ pub fn envelopes_from_fault_controls(
 
 /// Build canonical envelopes from a retained fault-stage trace.
 ///
-/// Round deltas supply exact round ticks. Without deltas only selection facts
-/// on exact simulation-tick boundaries are supported; later stages cannot be timed.
+/// Round deltas supply exact round ticks, including empty slices for rounds
+/// without stages. Without deltas only selection facts on exact simulation-tick
+/// boundaries are supported; later stages cannot be timed.
 pub fn envelopes_from_fault_stages(
     source_id: [u8; 32],
     events: &[FaultStageEvent],
@@ -258,7 +255,7 @@ pub fn envelopes_from_fault_stages(
     let mut prior_tick = None;
     for delta in deltas {
         if delta.event_start != end
-            || delta.event_end <= end
+            || delta.event_end < end
             || delta.event_end > events.len() as u64
             || prior_tick.is_some_and(|tick| tick >= delta.tick)
         {
@@ -3021,7 +3018,10 @@ fn moment_of(query: &EventQuery) -> Result<Option<u64>, EventQueryError> {
     }
 }
 
-fn ordered_timeline(facts: &[TimelineFact]) -> Result<Vec<TimelineFact>, EventQueryError> {
+/// Validate generic timeline facts and return deterministic parent-before-child
+/// ordering under the shared hard node bound. Product adapters enforce their
+/// selected lower profile limits before calling this pure admission helper.
+pub fn ordered_timeline(facts: &[TimelineFact]) -> Result<Vec<TimelineFact>, EventQueryError> {
     if facts.len() > MAX_TIMELINE_NODES {
         return Err(EventQueryError::TimelineBound);
     }
@@ -4357,6 +4357,57 @@ mod tests {
             .unwrap_err(),
             EventQueryError::InvalidEvent
         );
+    }
+
+    #[test]
+    fn empty_fault_round_deltas_preserve_stage_positions_and_ticks() {
+        let (ledger, mut deltas, _) = fault_stage_fixture();
+        deltas.insert(
+            0,
+            FaultRoundTraceDelta {
+                tick: 1,
+                event_start: 0,
+                event_end: 0,
+            },
+        );
+        deltas.push(FaultRoundTraceDelta {
+            tick: 8,
+            event_start: 1,
+            event_end: 1,
+        });
+        let envelopes =
+            envelopes_from_fault_stages([9; 32], &ledger.events, &deltas, &ledger).unwrap();
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0].source_sequence, 0);
+        assert_eq!(envelopes[0].tick, 7);
+        assert_eq!(
+            envelopes[0].payload_digest,
+            *blake3::hash(&serde_json::to_vec(&ledger.events[0]).unwrap()).as_bytes()
+        );
+
+        for invalid in [
+            FaultRoundTraceDelta {
+                tick: 8,
+                event_start: 1,
+                event_end: 0,
+            },
+            FaultRoundTraceDelta {
+                tick: 8,
+                event_start: 0,
+                event_end: 0,
+            },
+            FaultRoundTraceDelta {
+                tick: 7,
+                event_start: 1,
+                event_end: 1,
+            },
+        ] {
+            deltas[2] = invalid;
+            assert_eq!(
+                envelopes_from_fault_stages([9; 32], &ledger.events, &deltas, &ledger).unwrap_err(),
+                EventQueryError::InvalidEvent
+            );
+        }
     }
 
     #[test]

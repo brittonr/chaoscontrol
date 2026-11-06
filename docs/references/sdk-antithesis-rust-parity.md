@@ -299,6 +299,19 @@ change the assertion oracle or prove exploration quality.
   is rejected rather than silently merged. Explicit null/nonboolean metadata
   is invalid. Historical documents remain readable; older closed-record
   consumers need an upgrade to read documents containing the new field.
+- The same closed Rust and Nickel summary contracts admit optional
+  `distinct_failing_assertions` and `liveness_gaps` campaign diagnostics. Omitted
+  fields retain zero/empty producer defaults; explicit null, malformed types,
+  unknown summary/gap fields, duplicate gap fingerprints, invalid bounded
+  messages, and incoherent gap kind/hit counts are rejected. A `sometimes` gap
+  retains an evaluated but unsatisfied branch observation; a `reachable` gap
+  has zero hits. Its hit count is the retained observation, not a sum over all
+  campaign branches. These campaign facts are not recomputed from the current
+  assertion rows and may describe other branches: the distinct safety-finding
+  count is neither a count of failed row verdicts nor a count of liveness gaps.
+  They do not alter descriptor/catalog authority or allow legacy/fatal evidence
+  to promote, and a bounded liveness gap is not a safety bug, replay proof, or
+  whole-system correctness claim.
 - Strict local quality observation/progress lists follow the same admitted
   verdict semantics. A zero-hit `AlwaysOrUnreachable` property no longer creates
   a contradictory unobserved-site blocker; its coverage row still reports zero

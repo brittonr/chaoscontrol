@@ -16,7 +16,6 @@ use chaoscontrol_explore::branch_recovery::{
     decide_after_watchdog, host_watchdog_vcpu, RecoverySnapshot, WatchdogDecision,
     MAX_BRANCH_WATCHDOG_ATTEMPTS,
 };
-use chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::{OracleReport, Verdict};
 use chaoscontrol_fault::outcomes::{
@@ -25,6 +24,7 @@ use chaoscontrol_fault::outcomes::{
 };
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 use chaoscontrol_protocol::identity::AssertionKind;
+use chaoscontrol_replay::snapshot_store::{FileSnapshotStore, SnapshotStore};
 use chaoscontrol_vmm::controller::{
     SimulationConfig, SimulationController, SimulationSnapshot, VmStatus,
 };

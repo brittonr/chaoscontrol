@@ -89,6 +89,14 @@ std.contract.custom (fun label value =>
         && P.unique_by (fun capability => capability) row.required_capabilities
         && std.array.length row.retained_artifacts > 0
         && !(selects_legacy_diagnostic row.command.args)
+        && (row.kind != "deterministic-smp" || (
+          row.command.program == "nix"
+          && row.command.args == [
+            "run", ".#vm-determinism-drift", "--",
+            "--out", "%ROW_OUT%/smp", "--runs", "2",
+            "--", "--case", "single-vm-2vcpu",
+          ]
+        ))
       ) checked.rows in
       let base_rows_present = std.array.all (fun required_kind =>
         std.array.any (fun row => row.kind == required_kind && row.required) checked.rows

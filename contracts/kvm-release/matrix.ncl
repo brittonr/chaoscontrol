@@ -63,15 +63,19 @@ let RequiredCapabilities = ["kvm", "x86_64-linux"] in
       required = true,
       required_capabilities = RequiredCapabilities,
       command = {
-        program = "cargo",
-        args = ["test", "-p", "chaoscontrol-vmm", "--test", "deterministic_smp_kvm"],
+        program = "nix",
+        args = [
+          "run", ".#vm-determinism-drift", "--",
+          "--out", "%ROW_OUT%/smp", "--runs", "2",
+          "--", "--case", "single-vm-2vcpu",
+        ],
       },
       limits = {
         timeout_seconds = FocusedKvmTimeoutSeconds,
         max_artifacts = MaximumRowArtifacts,
         max_artifact_bytes = MaximumFocusedArtifactBytes,
       },
-      retained_artifacts = ["stdout.log", "stderr.log"],
+      retained_artifacts = ["stdout.log", "stderr.log", "smp/**"],
     },
     {
       id = "serialized-snapshot-replay",

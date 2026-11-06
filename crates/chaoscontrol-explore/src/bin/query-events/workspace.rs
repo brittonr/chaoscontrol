@@ -93,6 +93,16 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
             output,
         } => {
             let limits = SessionLimits::default();
+            limits.validate().map_err(|error| error.to_string())?;
+            let capture_ticks = bootstrap_ticks
+                .checked_add(history_ticks)
+                .ok_or("capture horizon overflow")?;
+            if capture_ticks > limits.max_replay_ticks {
+                return Err("capture exceeds reviewed replay tick bound".into());
+            }
+            let deadline = std::time::Instant::now()
+                .checked_add(std::time::Duration::from_millis(limits.host_deadline_ms))
+                .ok_or("capture host deadline overflow")?;
             let memory_size = memory_mib
                 .checked_mul(MEBIBYTE)
                 .ok_or("capture memory size overflow")?;
@@ -109,7 +119,9 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
                 || history_ticks > MAX_MOMENT_TICKS
                 || checkpoint_interval == 0
                 || checkpoint_interval > history_ticks
-                || history_ticks / checkpoint_interval > limits.max_checkpoints as u64
+                || (history_ticks / checkpoint_interval)
+                    .checked_add(1)
+                    .is_none_or(|count| count > limits.max_checkpoints as u64)
             {
                 return Err(
                     "capture topology, horizon, quantum, or checkpoint bound is invalid".into(),
@@ -172,14 +184,22 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
             controller
                 .init_thread_timers()
                 .map_err(|error| error.to_string())?;
+            // Retain bootstrap too: no pre-checkpoint trace history is inferred.
+            recorder
+                .start_controller_session(&mut controller)
+                .map_err(|error| error.to_string())?;
             let mut serial = vec![String::new(); vms];
             let mut serial_bytes = 0_usize;
+            let mut checkpoint_serial_bytes = 0u64;
             loop {
                 capture_round(
                     &mut controller,
                     &mut recorder,
                     &mut serial,
                     &mut serial_bytes,
+                    deadline,
+                    limits,
+                    checkpoint_serial_bytes,
                 )?;
                 let ready = (0..vms).all(|index| {
                     controller
@@ -196,9 +216,6 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
             // This propagates actual per-VM admission, just as the controller's
             // bootstrap helper does. It never invents guest setup completion.
             controller.force_setup_complete();
-            recorder
-                .start_at_tick(controller.tick())
-                .map_err(|error| format!("{error:?}"))?;
             let stop = controller
                 .tick()
                 .checked_add(history_ticks)
@@ -213,8 +230,20 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
                     &mut recorder,
                     &mut serial,
                     &mut serial_bytes,
+                    deadline,
+                    limits,
+                    checkpoint_serial_bytes,
                 )?;
                 if controller.tick() >= checkpoint_tick {
+                    checkpoint_serial_bytes = checkpoint_serial_bytes
+                        .checked_add(serial_bytes as u64)
+                        .ok_or("capture output accounting overflow")?;
+                    if checkpoint_serial_bytes
+                        .checked_add(serial_bytes as u64)
+                        .is_none_or(|bytes| bytes > limits.max_output_bytes)
+                    {
+                        return Err("capture retained output bound exceeded".into());
+                    }
                     recorder
                         .on_controller_tick(&mut controller, serial.clone())
                         .map_err(|error| error.to_string())?;
@@ -316,8 +345,17 @@ fn capture_round(
     recorder: &mut Recorder,
     serial: &mut [String],
     serial_bytes: &mut usize,
+    deadline: std::time::Instant,
+    limits: SessionLimits,
+    checkpoint_serial_bytes: u64,
 ) -> Result<(), String> {
+    if std::time::Instant::now() >= deadline {
+        return Err("capture host execution deadline exceeded (operational failure)".into());
+    }
     let round = controller.step_round().map_err(|error| error.to_string())?;
+    if std::time::Instant::now() >= deadline {
+        return Err("capture host execution deadline exceeded (operational failure)".into());
+    }
     recorder
         .record_round(&round, controller.fault_outcomes())
         .map_err(|error| format!("invalid captured round: {error:?}"))?;
@@ -340,6 +378,12 @@ fn capture_round(
             .ok_or("serial byte accounting overflow")?;
         if *serial_bytes > MAX_CAPTURE_SERIAL_BYTES {
             return Err("capture serial byte bound exceeded".into());
+        }
+        if checkpoint_serial_bytes
+            .checked_add(*serial_bytes as u64)
+            .is_none_or(|bytes| bytes > limits.max_output_bytes)
+        {
+            return Err("capture retained output bound exceeded".into());
         }
         if !text.is_empty() {
             retained.push_str(&text);

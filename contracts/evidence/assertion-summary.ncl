@@ -208,11 +208,24 @@ let AssertionRecord = {
 let CatalogStatus = std.contract.from_predicate (fun value =>
   value == "accepted" || value == "legacy-ambiguous" || value == "fatal-conflict"
 ) in
+# Campaign facts are diagnostic aggregates, not assertion identity authority.
+let LivenessGapShape = {
+  fingerprint | Fingerprint,
+  kind | AssertionKind,
+  message | BoundedString MaxMessageBytes,
+  hit_count | U64,
+} in
+let LivenessGapSemantics = std.contract.from_predicate (fun value =>
+  (value.kind == "sometimes" && value.hit_count > 0)
+  || (value.kind == "reachable" && value.hit_count == 0)
+) in
 let SummaryShape = {
   schema | ExactString "chaoscontrol.assertion-summary.v2",
   catalog_status | CatalogStatus,
   collision_safe_evidence | Bool,
   assertions | Array AssertionRecord | Array AssertionSemantics | BoundedAssertionArray,
+  liveness_gaps | Array LivenessGapShape | Array LivenessGapSemantics | optional,
+  distinct_failing_assertions | U64 | optional,
 } in
 let UniqueBy = fun select values =>
   std.array.all (fun item =>
@@ -220,6 +233,11 @@ let UniqueBy = fun select values =>
       select candidate == select item
     ) values) == 1
   ) values
+in
+let CampaignFactsCoherent = fun value =>
+  if std.record.has_field "liveness_gaps" value then
+    UniqueBy (fun gap => gap.fingerprint) value.liveness_gaps
+  else true
 in
 let StrictMetadataMatches = fun assertion =>
   let descriptor = assertion.identity.descriptor in
@@ -274,7 +292,7 @@ in
 std.contract.custom (fun label value =>
   std.contract.check SummaryShape label value
   |> match {
-    'Ok checked => if SummaryClassification checked then 'Ok checked else 'Error {},
+    'Ok checked => if SummaryClassification checked && CampaignFactsCoherent checked then 'Ok checked else 'Error {},
     'Error error => 'Error error,
   }
 )

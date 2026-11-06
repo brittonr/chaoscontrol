@@ -1,7 +1,7 @@
 //! End-to-end integration tests for ChaosControl.
 //!
-//! Tests the full stack: VM boot, determinism, multi-VM controller,
-//! fault injection, coverage bitmap, snapshot/restore.
+//! Tests the full stack: single-vCPU VM boot, determinism, multi-VM controller,
+//! fault injection, coverage bitmap, snapshot/restore, and strict SMP rejection.
 //!
 //! Usage:
 //!   
@@ -16,7 +16,8 @@ use chaoscontrol_vmm::controller::{
     NetworkStats, SimulationConfig, SimulationController, VmStatus,
 };
 use chaoscontrol_vmm::dlog::{dlog_diff, dlog_diff_structural, DiffResult};
-use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+use chaoscontrol_vmm::scheduler::core::{ProgressMode, ScheduleError};
+use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig, VmError};
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
@@ -28,6 +29,32 @@ fn strip_timestamp(line: &str) -> &str {
         &line[pos + 2..]
     } else {
         line
+    }
+}
+
+/// Production SMP admission must fail before kernel loading or guest execution.
+fn rejects_event_entry_inexact_smp(num_vcpus: usize, mode: ProgressMode) -> bool {
+    let config = VmConfig {
+        num_vcpus,
+        smp_progress_mode: mode,
+        ..Default::default()
+    };
+    match DeterministicVm::new(config) {
+        Err(VmError::Schedule {
+            source:
+                ScheduleError::MissingCapability {
+                    capability:
+                        "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
+                },
+        }) => true,
+        Err(error) => {
+            eprintln!("    Wrong SMP admission error: {error}");
+            false
+        }
+        Ok(_) => {
+            eprintln!("    SMP was admitted without event-entry-exact instruction boundaries");
+            false
+        }
     }
 }
 
@@ -1572,229 +1599,34 @@ fn main() {
     });
 
     // ═══════════════════════════════════════════════════════════════
-    //  Test 23: SMP boot — 2 vCPUs online
-    // ═══════════════════════════════════════════════════════════════
-    run_test!("SMP boot: 2 vCPUs detected and brought online", {
-        let config = VmConfig {
-            num_vcpus: 2,
-            ..Default::default()
-        };
-        let mut vm = DeterministicVm::new(config).expect("create 2-vCPU VM");
-        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
-        assert_eq!(vm.num_vcpus(), 2, "VM should have 2 vCPUs");
-
-        // Run enough exits for the SMP boot to complete.
-        // SMP boot typically completes within ~70K exits.
-        let mut all_output = String::new();
-        for _ in 0..20 {
-            let (_, halted) = vm.run_bounded(10_000).expect("run");
-            all_output.push_str(&vm.take_serial_output());
-            if all_output.contains("Brought up") || halted {
-                break;
-            }
-        }
-
-        // Check that both CPUs came online
-        let brought_up = all_output.contains("Brought up 1 node, 2 CPUs");
-        let has_bogomips = all_output.contains("Total of 2 processors activated");
-        let has_topology = all_output.contains("Allowing 2 present CPUs");
-
-        if !brought_up {
-            eprintln!("    Did not find 'Brought up 1 node, 2 CPUs' in serial output");
-            for line in all_output.lines() {
-                let stripped = strip_timestamp(line);
-                if stripped.contains("CPU")
-                    || stripped.contains("smp")
-                    || stripped.contains("SMP")
-                    || stripped.contains("Brought")
-                    || stripped.contains("APIC")
-                {
-                    eprintln!("    | {}", stripped);
-                }
-            }
-        }
-
-        brought_up && has_bogomips && has_topology
-    });
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Test 24: SMP determinism — two runs produce same exit counts
+    //  Tests 23–25: strict production SMP admission, not execution evidence
     // ═══════════════════════════════════════════════════════════════
     run_test!(
-        "SMP determinism: identical 2-vCPU runs produce same serial",
+        "Exact 2-vCPU admission rejects missing event-entry capability",
+        { rejects_event_entry_inexact_smp(2, ProgressMode::ExactSingleStep) }
+    );
+    run_test!(
+        "Exact 4/8-vCPU admission rejects missing event-entry capability",
         {
-            let make_vm = || {
-                let config = VmConfig {
-                    num_vcpus: 2,
-                    ..Default::default()
-                };
-                let mut vm = DeterministicVm::new(config).expect("create VM");
-                vm.load_kernel(kernel, Some(initrd)).expect("load");
-                vm
-            };
-
-            // Run two identical VMs through SMP boot
-            let run_vm = |vm: &mut DeterministicVm| -> (u64, u64, String) {
-                let mut output = String::new();
-                for _ in 0..20 {
-                    let (_, halted) = vm.run_bounded(10_000).expect("run");
-                    output.push_str(&vm.take_serial_output());
-                    if output.contains("Brought up") || halted {
-                        break;
-                    }
-                }
-                (vm.exit_count(), vm.virtual_tsc(), output)
-            };
-
-            let mut vm1 = make_vm();
-            let mut vm2 = make_vm();
-            let (exits1, vtsc1, out1) = run_vm(&mut vm1);
-            let (exits2, vtsc2, out2) = run_vm(&mut vm2);
-
-            let exits_match = exits1 == exits2;
-            let vtsc_match = vtsc1 == vtsc2;
-            // Serial comparison: strip non-deterministic lines caused by
-            // PIT channel 2 calibration (reads hardware TSC/PIT, varies
-            // with wall-clock timing). Exits/vtsc are the authoritative
-            // determinism check; serial is informational.
-            let strip = |s: &str| -> String {
-                let re_ts = regex::Regex::new(r"\[\s*\d+\.\d+\]\s*").unwrap();
-                let re_mem = regex::Regex::new(r"Memory: \d+K/\d+K available").unwrap();
-                let re_tsc = regex::Regex::new(
-                    r"tsc: (Detected [\d.]+ MHz processor|Fast TSC calibration.*)",
-                )
-                .unwrap();
-                let s = re_ts.replace_all(s, "");
-                let s = re_mem.replace_all(&s, "Memory: STRIPPED");
-                re_tsc.replace_all(&s, "tsc: STRIPPED").to_string()
-            };
-            let serial_match = strip(&out1) == strip(&out2);
-
-            if !exits_match {
-                eprintln!("    Exit counts differ: {} vs {}", exits1, exits2);
+            let mut all_rejected = true;
+            for count in [4, 8] {
+                // Exercise every count even if an earlier assertion fails.
+                all_rejected =
+                    rejects_event_entry_inexact_smp(count, ProgressMode::ExactSingleStep)
+                        && all_rejected;
             }
-            if !vtsc_match {
-                eprintln!("    Virtual TSC differs: {} vs {}", vtsc1, vtsc2);
-            }
-            if !serial_match {
-                eprintln!(
-                    "    Serial output differs (lengths: {} vs {})",
-                    out1.len(),
-                    out2.len()
-                );
-                let lines1: Vec<&str> = out1.lines().collect();
-                let lines2: Vec<&str> = out2.lines().collect();
-                for (i, (l1, l2)) in lines1.iter().zip(lines2.iter()).enumerate() {
-                    if l1 != l2 {
-                        eprintln!("    First diff at line {}:", i);
-                        eprintln!("      run1: {}", l1);
-                        eprintln!("      run2: {}", l2);
-                        break;
-                    }
-                }
-            }
-
-            exits_match && vtsc_match && serial_match
+            all_rejected
         }
     );
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Test 25: SMP snapshot/restore determinism
-    // ═══════════════════════════════════════════════════════════════
     run_test!(
-        "SMP snapshot/restore: two restores produce identical execution",
+        "PMU SMP admission rejects missing exact-remainder capability",
         {
-            let config = VmConfig {
-                num_vcpus: 2,
-                ..Default::default()
-            };
-            let mut vm = DeterministicVm::new(config).expect("create 2-vCPU VM");
-            vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
-
-            // Boot to SMP online (~70K exits)
-            let mut boot_output = String::new();
-            for _ in 0..20 {
-                let (_, halted) = vm.run_bounded(10_000).expect("boot run");
-                boot_output.push_str(&vm.take_serial_output());
-                if boot_output.contains("Brought up") || halted {
-                    break;
-                }
-            }
-
-            if !boot_output.contains("Brought up 1 node, 2 CPUs") {
-                eprintln!("    SMP boot failed — cannot test snapshot/restore");
-                return false;
-            }
-
-            // Snapshot after SMP boot
-            let snapshot = vm.snapshot().expect("snapshot");
-            let snap_exits = vm.exit_count();
-            let _snap_vtsc = vm.virtual_tsc();
-
-            // Restore #1 and run 20K more exits (branch A)
-            vm.restore(&snapshot).expect("restore 1");
-            let restored_exits_1 = vm.exit_count();
-            vm.take_serial_output(); // clear
-            vm.run_bounded(20_000).expect("branch A run");
-            let exits_a = vm.exit_count();
-            let vtsc_a = vm.virtual_tsc();
-            let output_a = vm.take_serial_output();
-
-            // Restore #2 and run 20K more exits (branch B)
-            vm.restore(&snapshot).expect("restore 2");
-            let restored_exits_2 = vm.exit_count();
-            vm.take_serial_output(); // clear
-            vm.run_bounded(20_000).expect("branch B run");
-            let exits_b = vm.exit_count();
-            let vtsc_b = vm.virtual_tsc();
-            let output_b = vm.take_serial_output();
-
-            // Verify restore correctness: exit counts match snapshot
-            let restore_ok_1 = restored_exits_1 == snap_exits;
-            let restore_ok_2 = restored_exits_2 == snap_exits;
-
-            // Core property: two restores produce identical execution
-            let exits_match = exits_a == exits_b;
-            let vtsc_match = vtsc_a == vtsc_b;
-
-            // Strip non-deterministic lines for serial comparison
-            let strip = |s: &str| -> String {
-                let re_ts = regex::Regex::new(r"\[\s*\d+\.\d+\]\s*").unwrap();
-                let re_mem = regex::Regex::new(r"Memory: \d+K/\d+K available").unwrap();
-                let re_tsc = regex::Regex::new(
-                    r"tsc: (Detected [\d.]+ MHz processor|Fast TSC calibration.*)",
-                )
-                .unwrap();
-                let s = re_ts.replace_all(s, "");
-                let s = re_mem.replace_all(&s, "Memory: STRIPPED");
-                re_tsc.replace_all(&s, "tsc: STRIPPED").to_string()
-            };
-            let serial_match = strip(&output_a) == strip(&output_b);
-
-            if !restore_ok_1 || !restore_ok_2 {
-                eprintln!(
-                    "    Restore exits mismatch: snap={}, r1={}, r2={}",
-                    snap_exits, restored_exits_1, restored_exits_2
-                );
-            }
-            if !exits_match {
-                eprintln!(
-                    "    Post-restore exit counts differ: {} vs {}",
-                    exits_a, exits_b
-                );
-            }
-            if !vtsc_match {
-                eprintln!("    Post-restore vTSC differs: {} vs {}", vtsc_a, vtsc_b);
-            }
-            if !serial_match {
-                eprintln!(
-                    "    Post-restore serial differs (lengths: {} vs {})",
-                    output_a.len(),
-                    output_b.len()
-                );
-            }
-
-            restore_ok_1 && restore_ok_2 && exits_match && vtsc_match && serial_match
+            rejects_event_entry_inexact_smp(
+                2,
+                ProgressMode::PmuAccelerated {
+                    exact_step_margin: 64,
+                },
+            )
         }
     );
 

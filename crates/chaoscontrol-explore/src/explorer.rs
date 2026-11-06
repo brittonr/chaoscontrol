@@ -3152,12 +3152,13 @@ impl Explorer {
             random_faults: self.config.random_faults,
         };
 
-        let snapshot_store = crate::snapshot_store::FileSnapshotStore::new(output_dir);
+        let snapshot_store =
+            chaoscontrol_replay::snapshot_store::FileSnapshotStore::new(output_dir);
         let mut bugs = Vec::new();
         // Memoize only this borrowed checkpoint view. Pointer identity never
         // escapes into an artifact, and depth remains part of the envelope.
         let mut replay_parents =
-            BTreeMap::<_, crate::snapshot_store::ReplayParentSnapshotRef>::new();
+            BTreeMap::<_, chaoscontrol_replay::snapshot_store::ReplayParentSnapshotRef>::new();
         for bug in self.all_bugs() {
             let mut serialized: SerializableBug = bug.into();
             if bug.replay_parent_depth > 0 && serialized.replay_parent_snapshot_ref.is_none() {
@@ -3171,11 +3172,12 @@ impl Explorer {
                 let reference = if let Some(reference) = replay_parents.get(&key) {
                     reference.clone()
                 } else {
-                    let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
-                        &snapshot_store,
-                        snapshot,
-                        bug.replay_parent_depth,
-                    )?;
+                    let reference =
+                        chaoscontrol_replay::snapshot_store::SnapshotStore::put_snapshot(
+                            &snapshot_store,
+                            snapshot,
+                            bug.replay_parent_depth,
+                        )?;
                     replay_parents.insert(key, reference.clone());
                     reference
                 };

@@ -1,6 +1,6 @@
 # Local event queries and static timelines
 
-`query-events`, built from `chaoscontrol-replay`, provides bounded retained-event
+`query-events`, built from `chaoscontrol-explore`, provides bounded retained-event
 queries, exact local session admission, static timelines, and allowlisted guest
 observations. Queries perform no VM effects; observations run only inside an
 explicitly restored guest branch, never through a host shell or hosted service.
@@ -1599,35 +1599,53 @@ the canonical rendering.
 `chaoscontrol_replay::session` keeps exact state separate from recording JSON.
 `save_recorder(&recorder, &controller, directory, limits)` creates a new directory
 from actual captured checkpoints and the controller's complete configuration.
-Record bootstrap rounds through `Recorder::record_round` as well; after every VM
-has actually admitted setup, `Recorder::start_at_tick(bootstrap_tick)` starts the
-checkpoint cadence relative to that tick without dropping bootstrap evidence or
-repeatedly catching up an interval measured from zero. Capture checkpoints with
+For explicit boot capture, call `Recorder::start_controller_session` before guest
+progress and record bootstrap rounds through `Recorder::record_round`. After
+every VM has actually admitted setup, the capture command schedules later
+checkpoints relative to that tick, preserving the initial snapshot and bootstrap
+evidence. `start_at_tick` is an initial-recorder operation, not a cadence reset
+for a recorder that already contains checkpoints.
+The complete bootstrap-plus-history interval shares the reviewed replay-tick
+and operational host-deadline limits. Capture later checkpoints with
 `Recorder::on_controller_tick(&mut controller, serial_output)`: snapshots and the
 controller's loaded guest-input identities are captured inseparably. Arbitrary
 `Recording` values and caller-supplied `on_tick` snapshots cannot establish exact
-provenance. `save_recorder` and `save_recorder_with_branches` verify that private
-capture provenance matches the loaded controller and retained kernel/initrd bytes.
-Configured disk bytes must match every captured block backend's immutable base.
+provenance. Publication verifies that private capture provenance matches the
+loaded controller's complete deterministic configuration and retained kernel/initrd
+bytes. Configured disk bytes must match every captured block backend's immutable
+base on both publication and reload. Each SMP checkpoint's scheduler identity
+must match the recorded prefix end and suffix start, not merely be self-consistent.
 Guest inputs are copied and identity-checked with a fixed 64 KiB buffer, not
 materialized as duplicate kernel/initrd bodies during validation or persistence.
 
 The session manifest binds the exact recording bytes, full configuration, guest
 input artifacts, checkpoint bytes, checkpoint metadata, branch parentage,
 retained horizon and limits. New public identities use `b3:<64 lowercase hex>`.
-Snapshots reuse the existing exploration `FileSnapshotStore` envelope and bounded
-CBOR/zstd encoder/decoder, with capability-relative session I/O rather than a
-second snapshot format or the store's path-based shell. Its internal
-legacy SHA256 reference remains intact for store interoperability; the session
-independently requires a BLAKE3 identity of those same artifact bytes. The replay
-crate's exploration dependency is confined to this persistence shell and codec;
-the moment/query core does not invoke exploration, filesystem or VM execution.
+Snapshots use `chaoscontrol_replay::snapshot_store::FileSnapshotStore` and its
+bounded CBOR/zstd encoder/decoder. Both its store shell and exact-session I/O pin
+no-follow directory capabilities through reads, publication, and collection;
+there is no second snapshot format. Its legacy SHA256
+reference remains intact for store interoperability; the session independently
+requires a BLAKE3 identity of those same artifact bytes. The dependency direction
+is exclusively `explore -> replay`: the query-events composition binary and
+Explorer-owned `frontier_timeline` adapter live in explore, while generic query,
+timeline, exact-session and snapshot-store APIs stay in replay. Build the stable
+binary with `cargo build -p chaoscontrol-explore --bin query-events`.
 
-Session defaults/caps are 4 MiB manifest JSON, 16 MiB recording JSON, 512 MiB per
-guest input, 256 MiB per **compressed** snapshot, 4 GiB total retained artifact
-bytes, 128 checkpoints and 128 branch records. The existing codec separately caps
-each decompressed snapshot at 2 GiB. The declared 4 GiB total also independently
-caps aggregate decompressed snapshot payloads, including repeated disk bases.
+The Nickel-backed `exact-local-v1` profile in `contracts/persisted-debugger/`
+is exported to a checked-in JSON projection embedded by `SessionLimits::default()`.
+Rust revalidates it at session boundaries; the manifest's required `limits_profile`
+and numeric caps are both bound by its session identity. Unknown or omitted
+profile names fail admission. Caps are 4 MiB manifest JSON, 16 MiB
+recording JSON, 512 MiB per guest input, 256 MiB per **compressed** snapshot,
+4 GiB total retained bytes, 128 checkpoints, 128 branch records and 256 artifacts.
+Each decoded snapshot is capped at 2 GiB; aggregate decoded payloads independently
+share the 4 GiB total. Per-VM schedule traces and replay intervals are capped at
+65,536 records/ticks, output at 16 MiB, and host execution at 600,000 ms. Host
+deadlines are operational failures, not deterministic guest configuration.
+Complete round coverage includes explicitly empty fault and schedule slices;
+omitted ticks cannot certify a continuation. These are admission limits only:
+the exact execution configuration must still be captured, never inferred.
 Each encode/decode receives only its remaining aggregate budget, rejecting a
 compression bomb before it can allocate beyond that bound. Aggregate configured
 guest memory is checked before decode as well. Bounds may be lowered, not raised
@@ -1635,6 +1653,27 @@ above these caps. Compression does not
 waive a limit; a snapshot exceeding the existing codec's limits is unsupported
 and rejected explicitly. Session JSON is published last and existing directories
 are never overwritten, so an interrupted capture is not an exact session.
+
+Manifest byte limits and total retained-byte accounting charge the actual file,
+including JSON whitespace and escapes. Artifact lengths must match their inventory
+before body reads or copies; declared lengths also bound streaming operations.
+
+For a finding, use `chaoscontrol-explore reproduce` with
+`--debug-recording-output <new-directory> --debug-recording-profile exact-local-v1
+--debug-recording-checkpoint-interval <ticks>` alongside the original reproduction
+inputs. The output begins after the explicit new counterfactual-run setup, with a
+fresh outcome ledger; original finding and parent identities remain provenance.
+Capture deadlines or publication errors invalidate recording, not the established
+reproduction verdict or exit status. Budget cadence against the requested horizon:
+the conservative admission charges checkpoint count times configured guest memory.
+
+After the producer exits, `chaoscontrol-replay replay --recording <directory>`
+and `chaoscontrol-replay inspect --recording <directory> --script <commands>`
+reload the same admitted session. Scripted `goto`, `regs`, `mem`, `rewind`, and
+`step` fail on invalid state rather than publishing an unverified position.
+Legacy recording JSON remains diagnostic-only for exact navigation. These local
+operations do not establish a new accepted replay verdict or general SMP Linux
+boot support; the non-default SMP finding proof remains a separate acceptance gate.
 
 `load_session(directory, limits)` pins directory components and regular files
 with capability-relative `openat` and `O_NOFOLLOW`, validates manifest/config and
@@ -1662,6 +1701,11 @@ branch identities; receipt validation must retain and revalidate this context.
 checkpoint. `restore_moment(&context)` additionally advances to a selected retained
 tick using the existing exact fault-stage, pause-control and SMP replay checks.
 Construction loads inputs and restores state without stepping a fallback boot.
+After continuation evidence and exact arrival validate, replay and inspection
+settle pending KVM I/O completion with the snapshot path's immediate-exit
+boundary. This does not execute the next guest instruction, advance the scheduler,
+or copy RAM. Zero-step checkpoint selections use the same idempotent boundary.
+A settlement failure invalidates the attempt before any verified state is exposed.
 The returned `RestoredController` owns sealed, immutable verified guest input
 capabilities for its entire lifetime. `SimulationController::new_from_files` and
 the VM's file-capability loader consume these descriptors directly; they do not

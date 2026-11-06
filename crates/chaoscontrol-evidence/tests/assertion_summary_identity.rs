@@ -416,3 +416,43 @@ fn must_hit_does_not_relax_counter_integrity() {
         }
     }
 }
+
+#[test]
+fn campaign_facts_are_typed_diagnostics_not_identity_authority() {
+    let descriptor = descriptor("org.example.guest", "stable-key", COMPATIBILITY_ID);
+    let mut summary = strict_summary(&[descriptor]);
+    summary["distinct_failing_assertions"] = json!(4);
+    summary["liveness_gaps"] = json!([{
+        "fingerprint": "03".repeat(32),
+        "kind": "sometimes",
+        "message": "leader elected",
+        "hit_count": 2
+    }]);
+    validate_assertion_summary_for_promotion(&summary)
+        .expect("campaign diagnostics do not change identity authority");
+    let mut duplicate = summary.clone();
+    let gap = duplicate["liveness_gaps"][0].clone();
+    duplicate["liveness_gaps"]
+        .as_array_mut()
+        .expect("gaps")
+        .push(gap);
+    assert!(validate_assertion_summary(&duplicate).is_err());
+    for (field, value) in [
+        ("hit_count", json!(0)),
+        ("kind", json!("always")),
+        ("unexpected", json!(true)),
+    ] {
+        let mut malformed = summary.clone();
+        malformed["liveness_gaps"][0][field] = value;
+        assert!(validate_assertion_summary(&malformed).is_err());
+    }
+    for field in ["distinct_failing_assertions", "liveness_gaps"] {
+        let mut malformed = summary.clone();
+        malformed[field] = Value::Null;
+        assert!(validate_assertion_summary(&malformed).is_err());
+    }
+    summary["catalog_status"] = json!("fatal-conflict");
+    summary["collision_safe_evidence"] = json!(false);
+    validate_assertion_summary(&summary).expect("fatal diagnostic summary");
+    assert!(validate_assertion_summary_for_promotion(&summary).is_err());
+}

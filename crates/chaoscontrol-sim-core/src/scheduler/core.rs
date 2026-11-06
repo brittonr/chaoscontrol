@@ -42,7 +42,7 @@ impl fmt::Debug for ScheduleStateId {
 /// Declared source of deterministic guest-instruction progress.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProgressMode {
-    /// Portable correctness baseline: KVM exits after each guest instruction.
+    /// Exact guest-instruction boundaries, requiring backend admission for SMP.
     ExactSingleStep,
     /// PMU overflow approaches the boundary, then exact single-step finishes it.
     PmuAccelerated {
@@ -53,11 +53,13 @@ pub enum ProgressMode {
     LegacyWallClock,
 }
 
-/// Capabilities established by the imperative KVM/perf shell.
+/// Capabilities established by the execution backend, not control acceptance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProgressCapabilities {
-    /// KVM guest-debug single-step can be enabled.
-    pub exact_single_step: bool,
+    /// Exact instruction boundaries through IRQ, NMI and synchronous exception
+    /// entry as well as ordinary execution. KVM debug-control acceptance alone
+    /// does not establish this capability.
+    pub event_entry_exact_single_step: bool,
     /// The PMU counts guest instructions while excluding host instructions.
     pub guest_instruction_pmu: bool,
     /// PMU overflow can interrupt `KVM_RUN`.
@@ -501,23 +503,23 @@ pub fn reconfigure_policy(
     Ok(configured)
 }
 
-/// Validate a requested progress mode against shell-probed capabilities.
+/// Validate a requested progress mode against backend-established capabilities.
 pub fn validate_progress_capabilities(
     mode: ProgressMode,
     capabilities: ProgressCapabilities,
 ) -> Result<(), ScheduleError> {
     match mode {
         ProgressMode::ExactSingleStep => {
-            if !capabilities.exact_single_step {
+            if !capabilities.event_entry_exact_single_step {
                 return Err(ScheduleError::MissingCapability {
-                    capability: "KVM exact single-step",
+                    capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
                 });
             }
         }
         ProgressMode::PmuAccelerated { .. } => {
-            if !capabilities.exact_single_step {
+            if !capabilities.event_entry_exact_single_step {
                 return Err(ScheduleError::MissingCapability {
-                    capability: "KVM exact single-step",
+                    capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
                 });
             }
             if !capabilities.guest_instruction_pmu {
@@ -1715,9 +1717,44 @@ mod tests {
     }
 
     #[test]
+    // r[verify chaoscontrol.event_entry_exact.admission]
+    fn exact_and_pmu_remainder_require_event_entry_exactness() {
+        let unavailable = ProgressCapabilities {
+            event_entry_exact_single_step: false,
+            guest_instruction_pmu: true,
+            pmu_overflow: true,
+        };
+        for mode in [
+            ProgressMode::ExactSingleStep,
+            ProgressMode::PmuAccelerated {
+                exact_step_margin: PMU_MARGIN,
+            },
+        ] {
+            assert_eq!(
+                validate_progress_capabilities(mode, unavailable),
+                Err(ScheduleError::MissingCapability {
+                    capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry",
+                })
+            );
+            // A hypothetical backend contract tests this pure validator; no
+            // production KVM provider reports this capability as available.
+            assert_eq!(
+                validate_progress_capabilities(
+                    mode,
+                    ProgressCapabilities {
+                        event_entry_exact_single_step: true,
+                        ..unavailable
+                    },
+                ),
+                Ok(())
+            );
+        }
+    }
+
+    #[test]
     fn unavailable_and_legacy_progress_modes_fail_closed() {
         let no_pmu = ProgressCapabilities {
-            exact_single_step: true,
+            event_entry_exact_single_step: true,
             guest_instruction_pmu: false,
             pmu_overflow: false,
         };

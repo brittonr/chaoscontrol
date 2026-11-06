@@ -16,6 +16,22 @@ pub const RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const REQUIRED_WORKER_ARCH: &str = "x86_64";
 pub const MAX_MATRIX_ARTIFACT_BYTES: u64 = 1024 * 1024 * 1024;
 
+// r[impl chaoscontrol.event_entry_exact.evidence]
+/// Actual production execution, not the portable rejection/low-level KVM suite.
+pub const STRICT_SMP_COMMAND_PROGRAM: &str = "nix";
+pub const STRICT_SMP_COMMAND_ARGS: [&str; 10] = [
+    "run",
+    ".#vm-determinism-drift",
+    "--",
+    "--out",
+    "%ROW_OUT%/smp",
+    "--runs",
+    "2",
+    "--",
+    "--case",
+    "single-vm-2vcpu",
+];
+
 const BLAKE3_PREFIX: &str = "blake3:";
 const BLAKE3_HEX_CHARS: usize = 64;
 const MAX_MATRIX_ROWS: usize = 32;
@@ -371,6 +387,19 @@ fn validate_matrix_row(
         issues,
         format!("matrix row command is invalid: {}", row.id),
     );
+    if row.kind == RowKind::DeterministicSmp {
+        push_unless(
+            row.command.program == STRICT_SMP_COMMAND_PROGRAM
+                && row
+                    .command
+                    .args
+                    .iter()
+                    .map(String::as_str)
+                    .eq(STRICT_SMP_COMMAND_ARGS),
+            issues,
+            "deterministic SMP requires the production actual-run command; diagnostics and rejection tests are not positive evidence",
+        );
+    }
     push_unless(
         row.limits.timeout_seconds > 0 && row.limits.timeout_seconds <= MAX_TIMEOUT_SECONDS,
         issues,

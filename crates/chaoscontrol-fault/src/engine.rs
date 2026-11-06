@@ -576,6 +576,17 @@ impl FaultEngine {
         Ok(())
     }
 
+    /// Start an independently retained continuation, excluding the parent's
+    /// outcome history while preserving counterfactual setup and run identity.
+    pub fn begin_recorded_counterfactual_run(
+        &mut self,
+        schedule: FaultSchedule,
+    ) -> Result<(), FaultSelectionError> {
+        self.begin_counterfactual_run(schedule)?;
+        self.outcomes = FaultOutcomeLedger::default();
+        Ok(())
+    }
+
     /// End the current test run.
     pub fn end_run(&mut self) {
         if self.catalog_builder.take().is_some() {
@@ -2176,6 +2187,57 @@ mod tests {
         engine.rebind_fresh_run_at(schedule, 9);
         engine.force_setup_complete();
         assert_eq!(engine.poll_faults(0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn recorded_counterfactual_run_excludes_inherited_outcomes_without_changing_setup() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule.clone()),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        engine.poll_fault_attempts(0).unwrap();
+        assert!(!engine.fault_outcomes().events.is_empty());
+        let before = engine.snapshot().run_sequence();
+        engine
+            .begin_recorded_counterfactual_run(schedule.clone())
+            .unwrap();
+        assert_eq!(engine.fault_outcomes(), &FaultOutcomeLedger::default());
+        assert!(engine.is_setup_complete());
+        assert_eq!(engine.snapshot().run_sequence(), before + 1);
+        assert_eq!(
+            engine.snapshot().run_id(),
+            fault_run_id(engine.config.seed, before + 1, schedule.identity())
+        );
+        let attempts = engine.poll_fault_attempts(0).unwrap();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(engine.fault_outcomes().events.len(), 1);
+        assert_eq!(engine.fault_outcomes().events[0].attempt_id, attempts[0].id);
+        engine
+            .validate_orchestration_snapshot(&engine.snapshot())
+            .unwrap();
+    }
+
+    #[test]
+    fn ordinary_counterfactual_run_preserves_ancestral_outcomes() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule.clone()),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        engine.poll_fault_attempts(0).unwrap();
+        let inherited = engine.fault_outcomes().clone();
+        engine.begin_counterfactual_run(schedule).unwrap();
+        assert_eq!(engine.fault_outcomes(), &inherited);
+        assert!(engine.is_setup_complete());
     }
 
     #[test]

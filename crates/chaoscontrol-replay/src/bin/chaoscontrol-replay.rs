@@ -1,22 +1,27 @@
 //! ChaosControl Replay CLI — time-travel debugging and bug triage
 
+use chaoscontrol_replay::debugger::Debugger;
 use chaoscontrol_replay::recording::{RecordedEvent, Recording};
 use chaoscontrol_replay::replay::{RealSimulationRunner, ReplayEngine, ReplayError};
 use chaoscontrol_replay::serialize::{
     format_triage_markdown, load_recording, save_triage_json, save_triage_report, SerializeError,
 };
+use chaoscontrol_replay::session::{load_session, ExactSession, SessionError, SessionLimits};
 use chaoscontrol_replay::triage::TriageEngine;
 use clap::{Parser, Subcommand};
 use snafu::Snafu;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// CLI errors for the replay binary.
 #[derive(Debug, Snafu)]
 enum CliError {
-    #[snafu(display("Replay error"), context(false))]
+    #[snafu(display("Replay error: {source}"), context(false))]
     Replay { source: ReplayError },
     #[snafu(display("Serialization error"), context(false))]
     Serialize { source: SerializeError },
+    #[snafu(display("Exact session admission: {source}"), context(false))]
+    Session { source: SessionError },
     #[snafu(display("I/O error"), context(false))]
     Io { source: std::io::Error },
     #[snafu(display("JSON error"), context(false))]
@@ -38,11 +43,11 @@ struct Cli {
 enum Commands {
     /// Replay a recorded session
     Replay {
-        /// Path to recording file
+        /// Directory containing an exact persisted session (not recording JSON)
         #[arg(short, long)]
         recording: PathBuf,
 
-        /// Checkpoint ID to start from (default: beginning)
+        /// Checkpoint ID to start from (default: retained session start)
         #[arg(short, long)]
         checkpoint: Option<u64>,
 
@@ -98,7 +103,7 @@ enum Commands {
 
     /// Debug session at a specific tick
     Debug {
-        /// Path to recording file
+        /// Directory containing an exact persisted session
         #[arg(short, long)]
         recording: PathBuf,
 
@@ -113,9 +118,13 @@ enum Commands {
 
     /// Interactive debugger with memory/register inspection and modification
     Inspect {
-        /// Path to recording file
+        /// Directory containing an exact persisted session
         #[arg(short, long)]
         recording: PathBuf,
+
+        /// Read deterministic debugger commands from a bounded file; stop on error
+        #[arg(long)]
+        script: Option<PathBuf>,
     },
 
     /// Determinism log tools (dump, diff, stats)
@@ -207,7 +216,7 @@ fn main() {
             tick,
             format,
         } => cmd_debug(recording, tick, format),
-        Commands::Inspect { recording } => cmd_inspect(recording),
+        Commands::Inspect { recording, script } => cmd_inspect(recording, script),
         Commands::Dlog { cmd } => match cmd {
             DlogCommands::Dump { file, from, count } => cmd_dlog_dump(file, from, count),
             DlogCommands::Diff {
@@ -230,22 +239,24 @@ fn cmd_replay(
     checkpoint_id: Option<u64>,
     ticks: Option<u64>,
 ) -> Result<(), CliError> {
-    println!("Loading recording from {:?}...", recording_path);
-    let recording = load_recording(&recording_path)?;
-
-    let ticks_to_run = ticks.unwrap_or(recording.total_ticks);
-
-    println!(
-        "Replaying {} ticks from {}...",
-        ticks_to_run,
-        if let Some(cp) = checkpoint_id {
-            format!("checkpoint {}", cp)
-        } else {
-            "beginning".to_string()
+    let session = Arc::new(load_session(&recording_path, SessionLimits::default())?);
+    let start = match checkpoint_id {
+        Some(id) => {
+            session
+                .recording()
+                .checkpoints
+                .get(id)
+                .ok_or(ReplayError::CheckpointNotFound { id })?
+                .tick
         }
+        None => session.manifest().retained_start_tick,
+    };
+    let ticks_to_run = ticks.unwrap_or(session.manifest().retained_end_tick - start);
+    println!(
+        "Exact session {}: replaying {ticks_to_run} ticks from {start}",
+        session.manifest().session_id
     );
-
-    let engine = ReplayEngine::<RealSimulationRunner>::new(recording);
+    let engine = ReplayEngine::<RealSimulationRunner>::from_session(session);
     let result = engine.replay_from(checkpoint_id, ticks_to_run)?;
 
     println!("\n=== Replay Results ===");
@@ -464,82 +475,38 @@ fn debug_json(recording: &Recording, digest: &str, tick: u64) -> serde_json::Val
         "events": events,
         "serial_output": checkpoint.map(|cp| cp.serial_output.clone()).unwrap_or_default(),
         "non_claims": [
-            "This inspects a recorded session; it is not a live VM or replay verdict.",
+            "A verified read-only seek is not an accepted replay verdict or correctness proof.",
             "Event text is a bounded projection around the requested tick, capped at 500 events.",
-            "A nearest checkpoint is not proof that the recording is replayable."
+            "Metadata is diagnostic; exact restore and continuation admission run before publishing a verified position.",
         ],
     })
 }
 
 fn cmd_debug(recording_path: PathBuf, tick: u64, format: DebugFormat) -> Result<(), CliError> {
-    let recording = load_recording(&recording_path)?;
+    let session = Arc::new(load_session(&recording_path, SessionLimits::default())?);
+    let mut debugger = Debugger::<RealSimulationRunner>::from_session(session.clone());
+    let state = debugger.goto(tick)?;
+    let registers = debugger.read_registers(0, 0)?;
     if format == DebugFormat::Json {
-        let bytes = std::fs::read(&recording_path)?;
-        let digest = format!("b3:{}", blake3::hash(&bytes).to_hex());
-        let json = debug_json(&recording, &digest, tick);
+        let mut json = debug_json(session.recording(), session.recording_identity(), tick);
+        json["verified_original"] = serde_json::json!(state.verified_original);
+        json["live_state_available"] = serde_json::json!(state.live_state_available);
+        json["counterfactual"] = serde_json::json!(state.counterfactual);
+        json["restored_checkpoint_id"] = serde_json::json!(state.checkpoint_id);
+        json["registers_vm0_vcpu0"] = serde_json::json!({
+            "rip": registers.rip, "rsp": registers.rsp, "rax": registers.rax,
+        });
         println!("{}", serde_json::to_string_pretty(&json)?);
-        return Ok(());
+    } else {
+        println!(
+            "Verified original session {} at tick {} (checkpoint #{})",
+            session.manifest().session_id,
+            state.tick,
+            state.checkpoint_id
+        );
+        println!("VM0 vCPU0: {registers}");
+        println!("This read-only seek is not a replay verdict or correctness claim.");
     }
-
-    println!("=== Debug State at Tick {} ===", tick);
-
-    // Find nearest checkpoint
-    let checkpoint = recording.checkpoints.at_or_before(tick);
-    match checkpoint {
-        Some(cp) => {
-            println!(
-                "\nNearest checkpoint: #{} at tick {} ({} ticks before target)",
-                cp.id,
-                cp.tick,
-                tick.saturating_sub(cp.tick)
-            );
-        }
-        None => {
-            println!("\nNo checkpoint before tick {}", tick);
-        }
-    }
-
-    // Show events around this tick
-    let window = 50;
-    let start_tick = tick.saturating_sub(window);
-    let end_tick = tick + window;
-
-    println!("\nEvents around tick {} (±{} tick window):", tick, window);
-    let mut found_any = false;
-    for event in &recording.events {
-        let event_tick = event_tick(event);
-        if event_tick >= start_tick && event_tick <= end_tick {
-            found_any = true;
-            let marker = if event_tick == tick { " <--" } else { "" };
-            println!("  [{:>10}] {}{}", event_tick, format_event(event), marker);
-        }
-    }
-    if !found_any {
-        println!("  (no events in this window)");
-    }
-
-    // Show serial output snippet
-    if let Some(cp) = checkpoint {
-        println!("\nSerial output (from checkpoint):");
-        for (i, output) in cp.serial_output.iter().enumerate() {
-            if !output.is_empty() {
-                let tail = if output.len() > 200 {
-                    format!(
-                        "...{}",
-                        chaoscontrol_replay::text::suffix_at_char_boundary(output, 200)
-                    )
-                } else {
-                    output.clone()
-                };
-                println!(
-                    "  VM{}: {}",
-                    i,
-                    tail.lines().collect::<Vec<_>>().join("\n       ")
-                );
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -597,9 +564,22 @@ fn format_event(event: &RecordedEvent) -> String {
     }
 }
 
-fn cmd_inspect(recording_path: PathBuf) -> Result<(), CliError> {
-    let recording = load_recording(&recording_path)?;
-    chaoscontrol_replay::inspect::run_interactive::<RealSimulationRunner>(recording)?;
+fn cmd_inspect(recording_path: PathBuf, script: Option<PathBuf>) -> Result<(), CliError> {
+    let session: Arc<ExactSession> =
+        Arc::new(load_session(&recording_path, SessionLimits::default())?);
+    let debugger = Debugger::<RealSimulationRunner>::from_session(session.clone());
+    if let Some(path) = script {
+        let file = std::fs::File::open(path)?;
+        if file.metadata()?.len() > session.limits().max_output_bytes {
+            return Err(ReplayError::InvalidState {
+                message: "inspection script exceeds admitted output/input byte bound".into(),
+            }
+            .into());
+        }
+        chaoscontrol_replay::inspect::run_script(debugger, std::io::BufReader::new(file))?;
+    } else {
+        chaoscontrol_replay::inspect::run_interactive(debugger)?;
+    }
     Ok(())
 }
 
@@ -690,6 +670,48 @@ mod tests {
             oracle_report: None,
             total_ticks: 5000,
         }
+    }
+
+    // r[verify chaoscontrol.replay_debugger.claim_boundary]
+    #[test]
+    fn historical_metadata_is_diagnostic_only_for_exact_commands() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("recording.json");
+        chaoscontrol_replay::serialize::save_recording(&test_recording(), &path).unwrap();
+        cmd_info(path.clone()).unwrap();
+        cmd_events(path.clone(), EventFilterType::All, None, None).unwrap();
+        assert!(matches!(
+            cmd_replay(path.clone(), None, Some(1)),
+            Err(CliError::Session { .. })
+        ));
+        assert!(matches!(
+            cmd_debug(path.clone(), 0, DebugFormat::Json),
+            Err(CliError::Session { .. })
+        ));
+        assert!(matches!(
+            cmd_inspect(path, None),
+            Err(CliError::Session { .. })
+        ));
+    }
+
+    #[test]
+    fn inspect_script_is_an_explicit_cli_input_not_a_shell() {
+        let parsed = Cli::try_parse_from([
+            "chaoscontrol-replay",
+            "inspect",
+            "--recording",
+            "retained-session",
+            "--script",
+            "navigation.commands",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            Commands::Inspect {
+                script: Some(_),
+                ..
+            }
+        ));
     }
 
     #[test]

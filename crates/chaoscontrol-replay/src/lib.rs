@@ -20,7 +20,9 @@
 //! ```no_run
 //! use chaoscontrol_replay::recording::{Recorder, RecordingConfig};
 //! use chaoscontrol_replay::replay::ReplayEngine;
+//! use chaoscontrol_replay::session::{load_session, SessionLimits};
 //! use chaoscontrol_fault::schedule::FaultSchedule;
+//! use std::{path::Path, sync::Arc};
 //!
 //! // Create a recorder
 //! let config = RecordingConfig {
@@ -38,27 +40,27 @@
 //! let schedule = FaultSchedule::new();
 //! let mut recorder = Recorder::new(config, schedule, 42);
 //!
-//! // During simulation:
-//! // recorder.on_tick(tick, || controller.snapshot_all(), serial_output);
-//! // recorder.record_event(...);
+//! // During simulation, capture controller-owned checkpoints and completed rounds:
+//! // recorder.on_controller_tick(&mut controller, serial_output)?;
+//! // recorder.record_round(&round, controller.fault_outcome_ledger())?;
+//! // Persist with session::save_recorder(&recorder, &controller, directory, limits).
+//! // Caller-supplied on_tick snapshots and recording JSON are diagnostic only.
 //!
-//! // Finish recording
-//! // let recording = recorder.finish(oracle_report);
-//!
-//! // Later, replay from any checkpoint
-//! // let engine = ReplayEngine::new(recording);
-//! // let result = engine.replay_from(Some(checkpoint_id), 500)?;
+//! let session = Arc::new(load_session(Path::new("retained-session"), SessionLimits::default())?);
+//! let engine = ReplayEngine::from_session(session);
+//! let result = engine.replay_from(None, 500)?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! # Example: Time-Travel Debugging
 //!
 //! ```no_run
 //! use chaoscontrol_replay::debugger::{Debugger, EventFilter};
-//! use chaoscontrol_replay::recording::Recording;
+//! use chaoscontrol_replay::session::{load_session, SessionLimits};
+//! use std::{path::Path, sync::Arc};
 //!
-//! // Load a recording
-//! // let recording = load_recording("session.json")?;
-//! // let mut debugger = Debugger::new(recording);
+//! let session = Arc::new(load_session(Path::new("retained-session"), SessionLimits::default())?);
+//! let mut debugger = Debugger::from_session(session);
 //!
 //! // Jump to the bug
 //! // debugger.goto_bug(bug_id)?;
@@ -73,6 +75,7 @@
 //!
 //! // Inspect serial output
 //! // let output = debugger.serial_output(vm_index);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! # Example: Bug Triage
@@ -153,6 +156,8 @@
 //! - [`debugger`] — Time-travel debugger (Debugger, DebugState)
 //! - [`triage`] — Automatic bug triage (TriageEngine, TriageReport)
 //! - [`serialize`] — Save/load recordings and reports
+//! - [`session`] — Exact persisted-session admission and publication
+//! - [`snapshot_store`] — Shared bounded CBOR/zstd store and SHA256 reference codec
 
 pub mod checkpoint;
 pub mod debugger;
@@ -164,6 +169,7 @@ pub mod recording;
 pub mod replay;
 pub mod serialize;
 pub mod session;
+pub mod snapshot_store;
 pub mod text;
 pub mod triage;
 

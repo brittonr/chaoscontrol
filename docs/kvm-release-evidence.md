@@ -18,6 +18,20 @@ Two more rows build and bind the release binaries and the Raft guest. A PMU clai
 
 Each row has an exact argument vector. It also has a timeout, an artifact-count limit, and an artifact-byte limit.
 
+The deterministic-SMP row is the production actual-run command
+`nix run .#vm-determinism-drift -- --out %ROW_OUT%/smp --runs 2 -- --case single-vm-2vcpu`.
+It uses the packaged guest inputs, production VM admission, and bounded repeated
+execution. Rust and Nickel reject any replacement command for this row, including
+the `deterministic_smp_kvm` diagnostic/negative-test suite. Passing portable rejection
+tests or a limited direct-KVM fixture is not positive deterministic-SMP evidence.
+
+**The current portable KVM backend cannot pass this row.** It has no exact
+guest-instruction boundary capability across IRQ/NMI/synchronous exception entry;
+guest-debug controls and PMU exact remainder do not supply one. Both strict SMP
+modes reject before KVM or guest mutation. The actual-run command consequently
+exits nonzero and the required row blocks release eligibility. An unavailable KVM
+worker likewise produces a nonpassing row, never a silently skipped positive.
+
 ## Worker command
 
 First, check the projection and the adversarial fixtures:
@@ -48,6 +62,11 @@ The runner records host architecture, kernel release, KVM API version, source st
 Legacy-diagnostic frontier-policy output never counts. The Rust and Nickel matrix checks reject a row whose command selects `--frontier-policy legacy-diagnostic`. A receipt row that ran such a command, or that retained a `frontier-policy.json` diagnostic receipt, produces `blocked` with the `legacy-diagnostic-output` blocker. Rows run exploration with the default Campaign policy.
 
 The portable workflow validates code and the matrix. It does not claim KVM behavior. The separate `kvm-release` job runs only on the `chaoscontrol-kvm` worker label.
+
+The committed receipt fixtures are synthetic classifier inputs, not observed
+execution or claims that a portable worker possesses strict event-entry exactness.
+Historical receipts retain their dated verdicts and identities; they do not prove
+this capability or current-source release eligibility.
 
 ## Outputs
 

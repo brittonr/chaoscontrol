@@ -5,7 +5,7 @@
   "receipt": {
     "schema_version": 1,
     "matrix_profile": "required-kvm-release-v1",
-    "matrix_identity": "blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0",
+    "matrix_identity": "blake3:88eca4c682970b016ad6c85d7f17122427deb01b2df057e4aa8719d3e57ad4f6",
     "source": {
       "revision": "fixture-revision",
       "dirty": false
@@ -107,24 +107,34 @@
           "x86_64-linux"
         ],
         "command": {
-          "program": "cargo",
+          "program": "nix",
           "args": [
-            "test",
-            "-p",
-            "chaoscontrol-vmm",
-            "--test",
-            "deterministic_smp_kvm"
+            "run",
+            ".#vm-determinism-drift",
+            "--",
+            "--out",
+            "%ROW_OUT%/smp",
+            "--runs",
+            "2",
+            "--",
+            "--case",
+            "single-vm-2vcpu"
           ]
         },
         "executed_argv": [
-          "cargo",
-          "test",
-          "-p",
-          "chaoscontrol-vmm",
-          "--test",
-          "deterministic_smp_kvm"
+          "nix",
+          "run",
+          ".#vm-determinism-drift",
+          "--",
+          "--out",
+          "%ROW_OUT%/smp",
+          "--runs",
+          "2",
+          "--",
+          "--case",
+          "single-vm-2vcpu"
         ],
-        "command_identity": "blake3:cc65d089fc1e4fc8b5a735fe27e797e00f98374351099e5c256a6a5b1c7116ac",
+        "command_identity": "blake3:0157027d0ca0ceb40b02321ee6f91a0542fd73a7bd29e13a97c9aca74b998c7d",
         "started_unix_seconds": 100,
         "finished_unix_seconds": 101,
         "status": "passed",

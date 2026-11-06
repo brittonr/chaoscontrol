@@ -37,3 +37,17 @@ Evidence: `evidence/2026-11-06-workspace-proof.ncl` exports successfully through
 Verification execution is complete, not all-green repository readiness: the final affected matrix reports 2726 passed, six failed, and 16 ignored across 196 targets. Both failing targets are the separate assertion-summary producer/consumer mismatch (`distinct_failing_assertions`/`liveness_gaps`). Final Octet reports 395 warnings and one `explicit_defaults` error in `chaoscontrol-smr/src/storage_schedule.rs:306`. Clippy with warnings denied, Rust/Nix formatting, the two-positive/six-negative Nickel fixture check, and Nix check-graph evaluation pass. These unrelated failures are retained, not suppressed or promoted. No archive, replay, complete-capture, assertion-quality, public-build, or release claim follows from the checked task boxes.
 
 Native validation and proposal/design/tasks gates pass. The sync plan is blocked by `change_dependency.unsatisfied_dependency: dependency add-persisted-debugger-replay is not archived`. No sync or archive was executed and no dependency was removed. Accepted-spec-only traceability retains five dangling new requirement IDs until that prerequisite permits sync. The prerequisite's broader explorer producer, replay/inspect navigation cutover, shared-store ownership migration, and non-default SMP proof are not claimed by this workspace receipt.
+
+Prerequisite integration update (2026-11-06): the assertion-summary contract
+mismatch and storage-scheduling policy error above are resolved in the affected
+matrix. The persisted-debugger receipt at
+`../add-persisted-debugger-replay/evidence/2026-11-06-persisted-proof.ncl` records
+2,703 passing tests, 14 ignored, passing warnings-denied Clippy, and the passing
+repaired-Cargo Nix Octet rail (3,879 warnings, zero errors). Exact replay/inspect
+now share snapshot-normalized KVM observation boundaries; real single-vCPU
+checkpoint and continuation register/memory comparisons agree. The original
+workspace receipt remains dated evidence, not rewritten current-source proof.
+The prerequisite's non-default SMP Linux execution and before-change baseline
+evidence remain open. A fresh workspace sync dry run remains blocked by the
+unarchived prerequisite; no sync, archive, dependency removal, or readiness
+promotion was executed.

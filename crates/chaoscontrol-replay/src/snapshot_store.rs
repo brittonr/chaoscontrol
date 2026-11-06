@@ -1,17 +1,24 @@
 //! Persisted replay parent snapshot artifact references and stores.
 //!
+//! r[impl chaoscontrol.replay_debugger.shared_store]
+//!
 //! The public evidence boundary is a small JSON reference. Snapshot bytes stay
 //! Rust-derived runtime artifacts; Nickel/checkers validate refs, digests, and
-//! bounded paths rather than owning VM internals.
+//! bounded paths rather than owning VM internals. Filesystem operations pin
+//! no-follow directory capabilities before encoding, reading, or collecting;
+//! renaming or symlinking an ancestor cannot redirect an in-flight operation.
 
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::Snafu;
-use std::fs::{self, OpenOptions};
+use std::ffi::{CStr, CString, OsStr, OsString};
+use std::fs::File;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub use chaoscontrol_replay_evidence_core::dto::ReplayParentSnapshotRef;
 use chaoscontrol_replay_evidence_core::validate as core_validate;
@@ -133,24 +140,7 @@ impl Write for BoundedSnapshotBytes {
     }
 }
 
-fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, SnapshotStoreError> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .map_err(|source| {
-            if source.kind() == std::io::ErrorKind::NotFound {
-                SnapshotStoreError::Missing {
-                    path: display_path.to_string(),
-                }
-            } else if source.raw_os_error() == Some(libc::ELOOP) {
-                SnapshotStoreError::NotRegular {
-                    path: display_path.to_string(),
-                }
-            } else {
-                SnapshotStoreError::Io { source }
-            }
-        })?;
+fn read_snapshot_bytes(mut file: File, display_path: &str) -> Result<Vec<u8>, SnapshotStoreError> {
     let metadata = file
         .metadata()
         .map_err(|source| SnapshotStoreError::Io { source })?;
@@ -256,27 +246,34 @@ impl FileSnapshotStore {
         }
     }
 
-    fn snapshots_dir(&self) -> PathBuf {
-        self.root.join(SNAPSHOT_DIR)
+    fn snapshots_directory(&self, create: bool) -> Result<File, SnapshotStoreError> {
+        let root = open_directory(&self.root, create)?;
+        open_child_directory(&root, OsStr::new(SNAPSHOT_DIR), create)
     }
 
     fn resolve_ref(
         &self,
         reference: &ReplayParentSnapshotRef,
-    ) -> Result<PathBuf, SnapshotStoreError> {
+    ) -> Result<(File, OsString), SnapshotStoreError> {
         validate_ref_shape(reference)?;
-        let snapshots_dir = self.snapshots_dir();
-        match fs::symlink_metadata(&snapshots_dir) {
-            Ok(metadata) if !metadata.file_type().is_dir() => {
-                return Err(SnapshotStoreError::NotDirectory {
-                    path: snapshots_dir.display().to_string(),
-                });
+        let directory = self
+            .snapshots_directory(false)
+            .map_err(|error| match error {
+                SnapshotStoreError::Io { source }
+                    if source.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    SnapshotStoreError::Missing {
+                        path: reference.path.clone(),
+                    }
+                }
+                error => error,
+            })?;
+        let name = Path::new(&reference.path).file_name().ok_or_else(|| {
+            SnapshotStoreError::PathEscape {
+                path: reference.path.clone(),
             }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(source) => return Err(SnapshotStoreError::Io { source }),
-        }
-        Ok(self.root.join(&reference.path))
+        })?;
+        Ok((directory, name.to_os_string()))
     }
 }
 
@@ -286,53 +283,17 @@ impl SnapshotStore for FileSnapshotStore {
         snapshot: &SimulationSnapshot,
         replay_parent_depth: u32,
     ) -> Result<ReplayParentSnapshotRef, SnapshotStoreError> {
-        let snapshots_dir = self.snapshots_dir();
-        fs::create_dir_all(&snapshots_dir).map_err(|source| SnapshotStoreError::Io { source })?;
-        let snapshots_metadata = fs::symlink_metadata(&snapshots_dir)
-            .map_err(|source| SnapshotStoreError::Io { source })?;
-        if !snapshots_metadata.file_type().is_dir() {
-            return Err(SnapshotStoreError::NotDirectory {
-                path: snapshots_dir.display().to_string(),
-            });
-        }
-        let (reference, bytes) =
-            encode_snapshot_artifact(snapshot, replay_parent_depth, MAX_COMPRESSED_SNAPSHOT_BYTES)?;
-        let rel = &reference.path;
-        let final_path = self.root.join(rel);
-        let parent = final_path.parent().ok_or_else(|| SnapshotStoreError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "snapshot destination has no parent",
-            ),
-        })?;
-        let directory =
-            fs::File::open(parent).map_err(|source| SnapshotStoreError::Io { source })?;
-        let mut temporary = tempfile::NamedTempFile::new_in(parent)
-            .map_err(|source| SnapshotStoreError::Io { source })?;
-        temporary
-            .write_all(&bytes)
-            .map_err(|source| SnapshotStoreError::Io { source })?;
-        temporary
-            .as_file()
-            .sync_all()
-            .map_err(|source| SnapshotStoreError::Io { source })?;
-        temporary
-            .persist(&final_path)
-            .map_err(|error| SnapshotStoreError::Io {
-                source: error.error,
-            })?;
-        directory
-            .sync_all()
-            .map_err(|source| SnapshotStoreError::Io { source })?;
-        Ok(reference)
+        let directory = self.snapshots_directory(true)?;
+        put_snapshot_in_directory(&directory, snapshot, replay_parent_depth)
     }
 
     fn get_snapshot_artifact(
         &self,
         reference: &ReplayParentSnapshotRef,
     ) -> Result<SnapshotArtifactEnvelope, SnapshotStoreError> {
-        let path = self.resolve_ref(reference)?;
-        let bytes = read_snapshot_bytes(&path, &reference.path)?;
+        let (directory, name) = self.resolve_ref(reference)?;
+        let file = open_snapshot_file(&directory, &name, &reference.path)?;
+        let bytes = read_snapshot_bytes(file, &reference.path)?;
         decode_snapshot_artifact(reference, &bytes)
     }
 
@@ -347,43 +308,255 @@ impl SnapshotStore for FileSnapshotStore {
         for reference in keep {
             validate_ref_shape(reference)?;
         }
-        let keep: std::collections::BTreeSet<String> =
-            keep.iter().map(|r| r.path.clone()).collect();
-        let mut removed = 0;
-        let dir = self.snapshots_dir();
-        let metadata = match fs::symlink_metadata(&dir) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-            Err(source) => return Err(SnapshotStoreError::Io { source }),
-        };
-        if !metadata.file_type().is_dir() {
-            return Err(SnapshotStoreError::NotDirectory {
-                path: dir.display().to_string(),
-            });
-        }
-        let mut entries = list_snapshot_entries(&dir)?;
-        entries.sort_by_key(std::fs::DirEntry::file_name);
-        for entry in &entries {
-            if !entry
-                .file_type()
-                .map_err(|source| SnapshotStoreError::Io { source })?
-                .is_file()
+        let directory = match self.snapshots_directory(false) {
+            Ok(directory) => directory,
+            Err(SnapshotStoreError::Io { source })
+                if source.kind() == std::io::ErrorKind::NotFound =>
             {
-                return Err(SnapshotStoreError::NotRegular {
-                    path: entry.path().display().to_string(),
+                return Ok(0)
+            }
+            Err(error) => return Err(error),
+        };
+        gc_in_directory(&directory, keep)
+    }
+}
+
+fn c_name(name: &OsStr) -> Result<CString, SnapshotStoreError> {
+    CString::new(name.as_bytes()).map_err(|_| SnapshotStoreError::PathEscape {
+        path: name.to_string_lossy().into_owned(),
+    })
+}
+
+fn open_at(directory: &File, name: &OsStr, flags: i32) -> std::io::Result<File> {
+    let name = CString::new(name.as_bytes()).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in snapshot path")
+    })?;
+    // SAFETY: the directory and NUL-terminated leaf remain live; a successful
+    // openat returns a new, uniquely owned descriptor. Never follow a leaf link.
+    let fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            flags | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+            0o600,
+        )
+    };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: fd is a newly opened descriptor, owned by this File only.
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn open_child_directory(
+    parent: &File,
+    name: &OsStr,
+    create: bool,
+) -> Result<File, SnapshotStoreError> {
+    let flags = libc::O_RDONLY | libc::O_DIRECTORY;
+    let result = match open_at(parent, name, flags) {
+        Err(error) if create && error.kind() == std::io::ErrorKind::NotFound => {
+            let child = c_name(name)?;
+            // SAFETY: live parent capability and NUL-terminated component.
+            if unsafe { libc::mkdirat(parent.as_raw_fd(), child.as_ptr(), 0o700) } < 0 {
+                let source = std::io::Error::last_os_error();
+                if source.kind() != std::io::ErrorKind::AlreadyExists {
+                    return Err(SnapshotStoreError::Io { source });
+                }
+            }
+            // Reopening never follows a substitute link, including one installed
+            // between mkdirat and openat.
+            open_at(parent, name, flags)
+        }
+        result => result,
+    };
+    result.map_err(|source| {
+        if matches!(
+            source.raw_os_error(),
+            Some(libc::ELOOP) | Some(libc::ENOTDIR)
+        ) {
+            SnapshotStoreError::NotDirectory {
+                path: name.to_string_lossy().into_owned(),
+            }
+        } else {
+            SnapshotStoreError::Io { source }
+        }
+    })
+}
+
+fn open_directory(path: &Path, create: bool) -> Result<File, SnapshotStoreError> {
+    let mut directory = File::open(if path.is_absolute() { "/" } else { "." })
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    for component in path.components() {
+        match component {
+            Component::RootDir | Component::CurDir => (),
+            // A caller-selected root may contain `..`; walk it through the
+            // pinned parent too, rather than resolving any path prefix again.
+            Component::Normal(name) => directory = open_child_directory(&directory, name, create)?,
+            Component::ParentDir => {
+                directory = open_child_directory(&directory, OsStr::new(".."), false)?;
+            }
+            Component::Prefix(_) => {
+                return Err(SnapshotStoreError::PathEscape {
+                    path: path.display().to_string(),
                 });
             }
         }
-        for entry in entries {
-            let rel = format!("{SNAPSHOT_DIR}/{}", entry.file_name().to_string_lossy());
-            if !keep.contains(&rel) {
-                fs::remove_file(entry.path())
-                    .map_err(|source| SnapshotStoreError::Io { source })?;
-                removed += 1;
-            }
-        }
-        Ok(removed)
     }
+    Ok(directory)
+}
+
+fn open_snapshot_file(
+    directory: &File,
+    name: &OsStr,
+    display_path: &str,
+) -> Result<File, SnapshotStoreError> {
+    open_at(directory, name, libc::O_RDONLY).map_err(|source| {
+        if source.kind() == std::io::ErrorKind::NotFound {
+            SnapshotStoreError::Missing {
+                path: display_path.into(),
+            }
+        } else if source.raw_os_error() == Some(libc::ELOOP) {
+            SnapshotStoreError::NotRegular {
+                path: display_path.into(),
+            }
+        } else {
+            SnapshotStoreError::Io { source }
+        }
+    })
+}
+
+struct StagedSnapshot<'a> {
+    directory: &'a File,
+    name: CString,
+    file: File,
+    published: bool,
+}
+
+impl Drop for StagedSnapshot<'_> {
+    fn drop(&mut self) {
+        if !self.published {
+            // SAFETY: cleanup is relative to the same pinned staging directory;
+            // unlinkat cannot follow a substituted leaf or ancestor symlink.
+            unsafe { libc::unlinkat(self.directory.as_raw_fd(), self.name.as_ptr(), 0) };
+        }
+    }
+}
+
+fn put_snapshot_in_directory(
+    directory: &File,
+    snapshot: &SimulationSnapshot,
+    replay_parent_depth: u32,
+) -> Result<ReplayParentSnapshotRef, SnapshotStoreError> {
+    let (reference, bytes) =
+        encode_snapshot_artifact(snapshot, replay_parent_depth, MAX_COMPRESSED_SNAPSHOT_BYTES)?;
+    static NEXT_STAGING_FILE: AtomicU64 = AtomicU64::new(0);
+    let staging_name = format!(
+        ".snapshot-{}-{}.tmp",
+        std::process::id(),
+        NEXT_STAGING_FILE.fetch_add(1, Ordering::Relaxed),
+    );
+    // Exclusive creation fails closed on collisions; no unbounded retry or
+    // pathname-based temporary-file API can re-resolve our pinned directory.
+    let file = open_at(
+        directory,
+        OsStr::new(&staging_name),
+        libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
+    )
+    .map_err(|source| SnapshotStoreError::Io { source })?;
+    let mut staged = StagedSnapshot {
+        directory,
+        name: c_name(OsStr::new(&staging_name))?,
+        file,
+        published: false,
+    };
+    staged
+        .file
+        .write_all(&bytes)
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    staged
+        .file
+        .sync_all()
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    let destination = c_name(Path::new(&reference.path).file_name().ok_or_else(|| {
+        SnapshotStoreError::PathEscape {
+            path: reference.path.clone(),
+        }
+    })?)?;
+    // SAFETY: source and destination are leaf names in the same live directory
+    // capability. Replacement is atomic and never follows a destination symlink.
+    if unsafe {
+        libc::renameat(
+            directory.as_raw_fd(),
+            staged.name.as_ptr(),
+            directory.as_raw_fd(),
+            destination.as_ptr(),
+        )
+    } < 0
+    {
+        return Err(SnapshotStoreError::Io {
+            source: std::io::Error::last_os_error(),
+        });
+    }
+    staged.published = true;
+    directory
+        .sync_all()
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    Ok(reference)
+}
+
+fn gc_in_directory(
+    directory: &File,
+    keep: &[ReplayParentSnapshotRef],
+) -> Result<usize, SnapshotStoreError> {
+    let keep: std::collections::BTreeSet<&OsStr> = keep
+        .iter()
+        .filter_map(|reference| Path::new(&reference.path).file_name())
+        .collect();
+    let mut entries = list_snapshot_entries(directory)?;
+    entries.sort();
+    // Preserve all-or-nothing preflight for non-files and the entry bound.
+    // fstatat checks the leaf itself, never a target behind a link.
+    for name in &entries {
+        let leaf = c_name(name)?;
+        let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
+        // SAFETY: valid directory, C name, and writable stat output.
+        if unsafe {
+            libc::fstatat(
+                directory.as_raw_fd(),
+                leaf.as_ptr(),
+                metadata.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        } < 0
+        {
+            return Err(SnapshotStoreError::Io {
+                source: std::io::Error::last_os_error(),
+            });
+        }
+        // SAFETY: successful fstatat initialized metadata.
+        if unsafe { metadata.assume_init() }.st_mode & libc::S_IFMT != libc::S_IFREG {
+            return Err(SnapshotStoreError::NotRegular {
+                path: format!("{SNAPSHOT_DIR}/{}", name.to_string_lossy()),
+            });
+        }
+    }
+    let mut removed = 0;
+    for name in entries {
+        if !keep.contains(name.as_os_str()) {
+            let leaf = c_name(&name)?;
+            // SAFETY: only a leaf can be removed from the pinned directory.
+            // A concurrent replacement with a symlink removes the link itself,
+            // not its target; a replacement directory is rejected by unlinkat.
+            if unsafe { libc::unlinkat(directory.as_raw_fd(), leaf.as_ptr(), 0) } < 0 {
+                return Err(SnapshotStoreError::Io {
+                    source: std::io::Error::last_os_error(),
+                });
+            }
+            removed += 1;
+        }
+    }
+    Ok(removed)
 }
 
 /// Encode using the file store's existing CBOR/zstd envelope and legacy store
@@ -540,15 +713,56 @@ pub fn decode_snapshot_artifact_with_limit(
     Ok((artifact, decompressed.len() as u64))
 }
 
-fn list_snapshot_entries(dir: &Path) -> Result<Vec<fs::DirEntry>, SnapshotStoreError> {
+fn list_snapshot_entries(directory: &File) -> Result<Vec<OsString>, SnapshotStoreError> {
+    // Open "." relative to the capability for an independent directory offset.
+    // dup/try_clone would share offsets and make repeated scans incomplete.
+    let scan = open_at(
+        directory,
+        OsStr::new("."),
+        libc::O_RDONLY | libc::O_DIRECTORY,
+    )
+    .map_err(|source| SnapshotStoreError::Io { source })?;
+    let fd = scan.into_raw_fd();
+    // SAFETY: fd is an owned directory descriptor; fdopendir owns it on success.
+    let stream = unsafe { libc::fdopendir(fd) };
+    if stream.is_null() {
+        let source = std::io::Error::last_os_error();
+        // SAFETY: fdopendir failed, so ownership of fd was not transferred.
+        unsafe { libc::close(fd) };
+        return Err(SnapshotStoreError::Io { source });
+    }
+    struct DirectoryStream(*mut libc::DIR);
+    impl Drop for DirectoryStream {
+        fn drop(&mut self) {
+            // SAFETY: this wrapper uniquely owns the successful fdopendir.
+            unsafe { libc::closedir(self.0) };
+        }
+    }
+    let stream = DirectoryStream(stream);
     let mut entries = Vec::new();
-    for entry in fs::read_dir(dir).map_err(|source| SnapshotStoreError::Io { source })? {
+    loop {
+        // SAFETY: errno is thread-local and stream is live and exclusively used.
+        unsafe { *libc::__errno_location() = 0 };
+        let entry = unsafe { libc::readdir(stream.0) };
+        if entry.is_null() {
+            let source = std::io::Error::last_os_error();
+            if source.raw_os_error() != Some(0) {
+                return Err(SnapshotStoreError::Io { source });
+            }
+            break;
+        }
+        // SAFETY: readdir returned a live entry with a NUL-terminated d_name;
+        // copy it before the next readdir can overwrite that storage.
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) }.to_bytes();
+        if name == b"." || name == b".." {
+            continue;
+        }
         if entries.len() >= MAX_SNAPSHOT_DIRECTORY_ENTRIES {
             return Err(SnapshotStoreError::Io {
                 source: std::io::Error::other("snapshot directory entry bound exceeded"),
             });
         }
-        entries.push(entry.map_err(|source| SnapshotStoreError::Io { source })?);
+        entries.push(OsStr::from_bytes(name).to_os_string());
     }
     Ok(entries)
 }
@@ -616,6 +830,7 @@ pub mod host_snapshot_store_redb {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn gc_rejects_non_files_before_deleting() {
@@ -639,12 +854,13 @@ mod tests {
         for index in 0..MAX_SNAPSHOT_DIRECTORY_ENTRIES {
             std::fs::write(root.path().join(format!("entry-{index}")), b"").unwrap();
         }
+        let directory = open_directory(root.path(), false).unwrap();
         assert_eq!(
-            list_snapshot_entries(root.path()).unwrap().len(),
+            list_snapshot_entries(&directory).unwrap().len(),
             MAX_SNAPSHOT_DIRECTORY_ENTRIES
         );
         std::fs::write(root.path().join("one-too-many"), b"").unwrap();
-        assert!(list_snapshot_entries(root.path()).is_err());
+        assert!(list_snapshot_entries(&directory).is_err());
     }
 
     fn dummy_snapshot(tick: u64) -> SimulationSnapshot {
@@ -926,7 +1142,8 @@ mod tests {
 
     #[test]
     fn reads_reject_length_changes() {
-        assert!(read_snapshot_bytes(Path::new("/proc/self/cmdline"), "proc").is_err());
+        let file = File::open("/proc/self/cmdline").unwrap();
+        assert!(read_snapshot_bytes(file, "proc").is_err());
     }
 
     #[test]
@@ -1035,6 +1252,163 @@ mod tests {
     }
 
     #[test]
+    fn all_operations_reject_symlinked_roots_and_ancestors() {
+        for ancestor in [false, true] {
+            let sandbox = tempfile::tempdir().unwrap();
+            let outside = tempfile::tempdir().unwrap();
+            let outside_root = if ancestor {
+                outside.path().join("run")
+            } else {
+                outside.path().to_path_buf()
+            };
+            let outside_store = FileSnapshotStore::new(&outside_root);
+            let reference = outside_store.put_snapshot(&dummy_snapshot(17), 0).unwrap();
+            let link = sandbox.path().join("link");
+            std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+            let selected = if ancestor { link.join("run") } else { link };
+            let store = FileSnapshotStore::new(selected);
+
+            assert!(matches!(
+                store.get_snapshot_artifact(&reference),
+                Err(SnapshotStoreError::NotDirectory { .. })
+            ));
+            assert!(!store.has_snapshot(&reference));
+            assert!(matches!(
+                store.put_snapshot(&dummy_snapshot(18), 0),
+                Err(SnapshotStoreError::NotDirectory { .. })
+            ));
+            assert!(matches!(
+                store.gc_unreferenced(&[]),
+                Err(SnapshotStoreError::NotDirectory { .. })
+            ));
+            assert_eq!(outside_store.get_snapshot(&reference).unwrap().tick, 17);
+            assert_eq!(
+                fs::read_dir(outside_root.join(SNAPSHOT_DIR))
+                    .unwrap()
+                    .count(),
+                1
+            );
+        }
+    }
+
+    // Deterministically substitute a selected directory after the production
+    // shell has pinned it. Both real-directory replacement and symlink
+    // redirection must leave the in-flight operation on its original inode.
+    fn substitute_directory(sandbox: &Path, ancestor: bool, symlink: bool) -> (PathBuf, PathBuf) {
+        let run = sandbox.join("run");
+        let selected = if ancestor {
+            run
+        } else {
+            run.join(SNAPSHOT_DIR)
+        };
+        let detached = sandbox.join("detached");
+        fs::rename(&selected, &detached).unwrap();
+        let replacement = if symlink {
+            let outside = sandbox.join("outside");
+            fs::create_dir(&outside).unwrap();
+            std::os::unix::fs::symlink(&outside, &selected).unwrap();
+            outside
+        } else {
+            fs::create_dir(&selected).unwrap();
+            selected
+        };
+        if ancestor {
+            let replacement_snapshots = replacement.join(SNAPSHOT_DIR);
+            fs::create_dir(&replacement_snapshots).unwrap();
+            (detached.join(SNAPSHOT_DIR), replacement_snapshots)
+        } else {
+            (detached, replacement)
+        }
+    }
+
+    #[test]
+    fn publication_stays_in_pinned_directory_after_substitution() {
+        for ancestor in [false, true] {
+            for symlink in [false, true] {
+                let sandbox = tempfile::tempdir().unwrap();
+                let store = FileSnapshotStore::new(sandbox.path().join("run"));
+                let directory = store.snapshots_directory(true).unwrap();
+                let (detached, replacement) =
+                    substitute_directory(sandbox.path(), ancestor, symlink);
+
+                let reference =
+                    put_snapshot_in_directory(&directory, &dummy_snapshot(29), 2).unwrap();
+                let name = Path::new(&reference.path).file_name().unwrap();
+                let bytes = fs::read(detached.join(name)).unwrap();
+                assert_eq!(
+                    decode_snapshot_artifact(&reference, &bytes).unwrap().tick,
+                    29
+                );
+                assert_eq!(fs::read_dir(&replacement).unwrap().count(), 0);
+                // Staging and publication both used the retained capability.
+                assert_eq!(fs::read_dir(&detached).unwrap().count(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn reads_stay_in_pinned_directory_after_substitution() {
+        for ancestor in [false, true] {
+            for symlink in [false, true] {
+                let sandbox = tempfile::tempdir().unwrap();
+                let store = FileSnapshotStore::new(sandbox.path().join("run"));
+                let reference = store.put_snapshot(&dummy_snapshot(31), 1).unwrap();
+                let (directory, name) = store.resolve_ref(&reference).unwrap();
+                let (_, replacement) = substitute_directory(sandbox.path(), ancestor, symlink);
+                fs::write(replacement.join(&name), b"substitute").unwrap();
+
+                let file = open_snapshot_file(&directory, &name, &reference.path).unwrap();
+                let bytes = read_snapshot_bytes(file, &reference.path).unwrap();
+                assert_eq!(
+                    decode_snapshot_artifact(&reference, &bytes).unwrap().tick,
+                    31
+                );
+                assert_eq!(fs::read(replacement.join(&name)).unwrap(), b"substitute");
+                assert!(store.get_snapshot_artifact(&reference).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn gc_stays_in_pinned_directory_after_substitution() {
+        for ancestor in [false, true] {
+            for symlink in [false, true] {
+                let sandbox = tempfile::tempdir().unwrap();
+                let store = FileSnapshotStore::new(sandbox.path().join("run"));
+                let kept = store.put_snapshot(&dummy_snapshot(37), 0).unwrap();
+                let orphan = store.put_snapshot(&dummy_snapshot(41), 0).unwrap();
+                let directory = store.snapshots_directory(false).unwrap();
+                let (detached, replacement) =
+                    substitute_directory(sandbox.path(), ancestor, symlink);
+                let orphan_name = Path::new(&orphan.path).file_name().unwrap();
+                let kept_name = Path::new(&kept.path).file_name().unwrap();
+                fs::write(replacement.join(orphan_name), b"outside orphan").unwrap();
+                fs::write(replacement.join(kept_name), b"outside kept").unwrap();
+
+                assert_eq!(
+                    gc_in_directory(&directory, std::slice::from_ref(&kept)).unwrap(),
+                    1
+                );
+                assert!(!detached.join(orphan_name).exists());
+                assert!(detached.join(kept_name).is_file());
+                assert_eq!(
+                    fs::read(replacement.join(orphan_name)).unwrap(),
+                    b"outside orphan"
+                );
+                assert_eq!(
+                    fs::read(replacement.join(kept_name)).unwrap(),
+                    b"outside kept"
+                );
+                // Repeated enumeration must start at zero on the pinned inode.
+                assert_eq!(
+                    gc_in_directory(&directory, std::slice::from_ref(&kept)).unwrap(),
+                    0
+                );
+            }
+        }
+    }
+
+    #[test]
     fn repeated_snapshot_publication_leaves_no_temporary_files() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileSnapshotStore::new(dir.path());
@@ -1050,42 +1424,5 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(names.len(), 1);
         assert!(names[0].ends_with(".snapshot.bin"));
-    }
-
-    #[test]
-    fn saved_bug_fixture_loads_restorable_parent_snapshot() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = FileSnapshotStore::new(dir.path());
-        let snapshot = dummy_snapshot(99);
-        let reference = store.put_snapshot(&snapshot, 1).unwrap();
-        let bug = crate::checkpoint::SerializableBug {
-            bug_id: 7,
-            assertion_id: 42,
-            assertion_identity: Some(crate::test_support::assertion_identity(42)),
-            fallback_scope: None,
-            process_instances: Default::default(),
-            marker_context: None,
-            assertion_location: "fixture assertion".to_string(),
-            schedule: (&chaoscontrol_fault::schedule::FaultSchedule::new()).into(),
-            tick: 101,
-            replay_parent_depth: 1,
-            replay_parent_snapshot_ref: Some(reference.clone()),
-            dedup_key: None,
-            schedule_variant: None,
-            scenario_config: None,
-            scenario_summary: None,
-            random_faults: false,
-        };
-        let bug_path = dir.path().join("bug_0.json");
-        fs::write(&bug_path, serde_json::to_vec_pretty(&bug).unwrap()).unwrap();
-
-        let loaded_bug: crate::checkpoint::SerializableBug =
-            serde_json::from_slice(&fs::read(&bug_path).unwrap()).unwrap();
-        let loaded = store
-            .get_snapshot(loaded_bug.replay_parent_snapshot_ref.as_ref().unwrap())
-            .unwrap();
-
-        assert_eq!(loaded.tick, 99);
-        assert_eq!(loaded.vm_snapshots.len(), 0);
     }
 }

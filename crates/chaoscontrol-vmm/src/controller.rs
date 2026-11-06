@@ -636,6 +636,8 @@ impl SimulationController {
         initrd: Option<&std::fs::File>,
         disk: Option<&std::fs::File>,
     ) -> Result<Self, VmError> {
+        // Reject unsupported strict SMP before guest file reads or log creation.
+        DeterministicVm::validate_production_progress(&config.vm_config)?;
         info!(
             "Creating simulation: {} VMs, seed={}, quantum={}",
             config.num_vms, config.seed, config.quantum
@@ -1143,7 +1145,7 @@ impl SimulationController {
             let mut schedule_traces = Vec::new();
             for (vm_index, slot) in self.vms.iter_mut().enumerate() {
                 let trace = slot.vm.take_schedule_trace()?;
-                if !trace.records.is_empty() {
+                if self.config.vm_config.num_vcpus > 1 {
                     schedule_traces.push(VmScheduleTrace { vm_index, trace });
                 }
             }
@@ -2568,6 +2570,22 @@ impl SimulationController {
         Ok(())
     }
 
+    /// Canonicalize exact inspection after a completed, validated continuation.
+    /// This is the snapshot immediate-exit boundary, not a scheduling round:
+    /// no tick, fault, device dispatch, or SMP trace advancement is performed.
+    pub fn settle_exact_observation(&mut self) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
+        for slot in &mut self.vms {
+            if let Err(error) = slot.vm.settle_exact_observation() {
+                // Earlier VMs may already have completed pending exit bookkeeping.
+                // A partial or poisoned boundary cannot be restored or observed.
+                self.latch_round_failure_at(self.tick, self.tick, &error);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
     /// Snapshot all VMs and simulation state.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all(&mut self) -> Result<SimulationSnapshot, VmError> {
@@ -3379,10 +3397,29 @@ impl SimulationController {
     ) -> Result<(), VmError> {
         self.ensure_controller_healthy()?;
         self.fault_engine
-            .begin_counterfactual_run(schedule)
+            .begin_counterfactual_run(schedule.clone())
             .map_err(|error| VmError::Snapshot {
                 message: format!("counterfactual fault run failed: {error}"),
-            })
+            })?;
+        // Exact-session configuration describes this new run, not bootstrap.
+        self.config.schedule = schedule;
+        Ok(())
+    }
+
+    /// Begin a fresh retained continuation with no inherited fault ledger.
+    /// The original parent remains provenance rather than recorded history.
+    pub fn begin_recorded_counterfactual_fault_run(
+        &mut self,
+        schedule: FaultSchedule,
+    ) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
+        self.fault_engine
+            .begin_recorded_counterfactual_run(schedule.clone())
+            .map_err(|error| VmError::Snapshot {
+                message: format!("recorded counterfactual fault run failed: {error}"),
+            })?;
+        self.config.schedule = schedule;
+        Ok(())
     }
 
     /// Set the explicit campaign policy for rejected fault attempts.
@@ -3731,6 +3768,40 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    // r[verify chaoscontrol.event_entry_exact.early]
+    fn strict_smp_rejects_before_guest_reads_and_dlog_directory_creation() {
+        let root = tempfile::tempdir().unwrap();
+        let log_dir = root.path().join("must-not-create");
+        for mode in [
+            crate::scheduler::core::ProgressMode::ExactSingleStep,
+            crate::scheduler::core::ProgressMode::PmuAccelerated {
+                exact_step_margin: 1,
+            },
+        ] {
+            let config = SimulationConfig {
+                num_vms: 1,
+                kernel_path: root.path().join("missing-kernel").display().to_string(),
+                dlog_dir: Some(log_dir.clone()),
+                vm_config: VmConfig {
+                    num_vcpus: 2,
+                    smp_progress_mode: mode,
+                    ..VmConfig::default()
+                },
+                ..SimulationConfig::default()
+            };
+            assert!(matches!(
+                SimulationController::new(config),
+                Err(VmError::Schedule {
+                    source: crate::scheduler::core::ScheduleError::MissingCapability {
+                        capability: "exact guest-instruction boundaries across IRQ/NMI/synchronous exception entry"
+                    }
+                })
+            ));
+            assert!(!log_dir.exists());
+        }
+    }
+
+    #[test]
     fn guest_artifact_identity_hashes_streamed_file_bytes() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("kernel");
@@ -4016,6 +4087,8 @@ mod tests {
         assert_eq!(controller.fault_outcomes().counters.applied, 0);
     }
 
+    // Partial diagnostic model fixture for controller poison tests, not strict
+    // production SMP admission or positive event-entry execution evidence.
     fn deterministic_smp_test_controller() -> SimulationController {
         const VM_COUNT: usize = 2;
         const VCPU_COUNT: usize = 2;
@@ -4031,7 +4104,7 @@ mod tests {
                 vm_id,
                 ..Default::default()
             };
-            let vm = DeterministicVm::new(vm_config).expect("create deterministic SMP test VM");
+            let vm = crate::vm::diagnostic_fixtures::partial_smp_vm(vm_config);
             vms.push(VmSlot {
                 vm,
                 status: VmStatus::Running,

@@ -380,3 +380,162 @@ fn pending_class_mismatch_and_empty_v2_summaries_are_rejected() {
         CatalogValidationStatus::FatalConflict
     );
 }
+
+fn campaign_facts_summary() -> serde_json::Value {
+    let report = campaign(
+        vec![strict_detail()],
+        CatalogValidationStatus::Accepted,
+        true,
+        Vec::new(),
+    );
+    let summary = AssertionSummaryV2::from_campaign(&report).expect("strict summary");
+    let mut value = serde_json::to_value(summary).expect("summary JSON");
+    // Campaign aggregates need not describe the current assertion row or its verdict.
+    value["distinct_failing_assertions"] = serde_json::json!(4);
+    value["liveness_gaps"] = serde_json::json!([
+        {
+            "fingerprint": "03".repeat(32),
+            "kind": "sometimes",
+            "message": "leader elected",
+            "hit_count": 2
+        },
+        {
+            "fingerprint": "04".repeat(32),
+            "kind": "reachable",
+            "message": "recovery reached",
+            "hit_count": 0
+        }
+    ]);
+    value
+}
+
+#[test]
+fn campaign_facts_preserve_identity_authority_and_optional_field_compatibility() {
+    let value = campaign_facts_summary();
+    for omitted in [
+        None,
+        Some("liveness_gaps"),
+        Some("distinct_failing_assertions"),
+    ] {
+        let mut value = value.clone();
+        if let Some(field) = omitted {
+            value.as_object_mut().expect("summary object").remove(field);
+        }
+        let parsed: AssertionSummaryV2 =
+            serde_json::from_value(value.clone()).expect("producer accepts campaign facts");
+        let round_trip = serde_json::to_value(parsed).expect("producer serializes facts");
+        validate_assertion_summary(&round_trip).expect("consumer accepts campaign facts");
+        validate_assertion_summary_for_promotion(&round_trip)
+            .expect("campaign facts do not alter accepted identity authority");
+    }
+    let parsed: AssertionSummaryV2 = serde_json::from_value(value.clone()).expect("summary");
+    assert_eq!(parsed.liveness_gaps().len(), 2);
+    assert_eq!(parsed.distinct_failing_assertions(), 4);
+
+    let mut fatal = value;
+    fatal["catalog_status"] = serde_json::json!("fatal-conflict");
+    fatal["collision_safe_evidence"] = serde_json::json!(false);
+    assert!(serde_json::from_value::<AssertionSummaryV2>(fatal.clone()).is_ok());
+    validate_assertion_summary(&fatal).expect("fatal campaign facts remain diagnostic");
+    assert!(validate_assertion_summary_for_promotion(&fatal).is_err());
+
+    let mut legacy = fatal;
+    legacy["catalog_status"] = serde_json::json!("legacy-ambiguous");
+    legacy["assertions"][0]
+        .as_object_mut()
+        .expect("assertion")
+        .remove("identity");
+    assert!(serde_json::from_value::<AssertionSummaryV2>(legacy.clone()).is_ok());
+    validate_assertion_summary(&legacy).expect("legacy campaign facts remain diagnostic");
+    assert!(validate_assertion_summary_for_promotion(&legacy).is_err());
+}
+
+#[test]
+fn producer_and_consumer_reject_malformed_or_incoherent_campaign_facts() {
+    use serde_json::{json, Value};
+
+    let base = campaign_facts_summary();
+    let mut cases = Vec::new();
+    for field in ["distinct_failing_assertions", "liveness_gaps"] {
+        for malformed in [Value::Null, json!("4"), json!(-1), json!(1.5), json!({})] {
+            let mut value = base.clone();
+            value[field] = malformed;
+            cases.push(value);
+        }
+    }
+    for (field, malformed) in [
+        ("fingerprint", json!("not-a-fingerprint")),
+        ("fingerprint", json!("AB".repeat(32))),
+        ("fingerprint", Value::Null),
+        ("kind", json!("always")),
+        ("kind", json!("unreachable")),
+        ("kind", json!("unknown")),
+        ("kind", Value::Null),
+        ("message", json!("")),
+        ("message", json!("has\ncontrol")),
+        (
+            "message",
+            json!("é".repeat(chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES / 2 + 1)),
+        ),
+        ("message", Value::Null),
+        ("hit_count", json!(0)),
+        ("hit_count", json!(-1)),
+        ("hit_count", json!(1.5)),
+        ("hit_count", json!("2")),
+        ("hit_count", Value::Null),
+        ("unexpected", json!(true)),
+    ] {
+        let mut value = base.clone();
+        value["liveness_gaps"][0][field] = malformed;
+        cases.push(value);
+    }
+    for field in ["fingerprint", "kind", "message", "hit_count"] {
+        let mut value = base.clone();
+        value["liveness_gaps"][0]
+            .as_object_mut()
+            .expect("gap")
+            .remove(field);
+        cases.push(value);
+    }
+    let mut reached = base.clone();
+    reached["liveness_gaps"][1]["hit_count"] = json!(1);
+    cases.push(reached);
+    let mut duplicate = base.clone();
+    duplicate["liveness_gaps"][1] = duplicate["liveness_gaps"][0].clone();
+    cases.push(duplicate);
+    let mut unknown = base.clone();
+    unknown["unexpected"] = json!(true);
+    cases.push(unknown);
+    let mut spoofed = base.clone();
+    spoofed["assertions"][0]["message"] = json!("spoofed identity metadata");
+    cases.push(spoofed);
+
+    for value in cases {
+        assert!(
+            serde_json::from_value::<AssertionSummaryV2>(value.clone()).is_err(),
+            "producer: {value}"
+        );
+        assert!(
+            validate_assertion_summary(&value).is_err(),
+            "consumer: {value}"
+        );
+        assert!(
+            validate_assertion_summary_for_promotion(&value).is_err(),
+            "promotion: {value}"
+        );
+    }
+}
+
+#[test]
+fn campaign_gap_metadata_accepts_exact_byte_and_counter_boundaries() {
+    let mut value = campaign_facts_summary();
+    value["liveness_gaps"][0]["message"] = serde_json::json!(
+        "é".repeat(chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES / 2)
+    );
+    value["liveness_gaps"][0]["hit_count"] = serde_json::json!(u64::MAX);
+    value["distinct_failing_assertions"] = serde_json::json!(usize::MAX);
+    let parsed: AssertionSummaryV2 =
+        serde_json::from_value(value.clone()).expect("exact producer boundaries");
+    assert_eq!(parsed.distinct_failing_assertions(), usize::MAX);
+    validate_assertion_summary_for_promotion(&value).expect("exact consumer boundaries");
+}

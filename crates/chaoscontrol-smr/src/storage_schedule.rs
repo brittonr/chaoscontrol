@@ -304,8 +304,12 @@ pub struct StorageRecoveryCampaignInput {
     pub safety: Vec<crate::storage_recovery::StorageRecoveryObservation>,
     pub progress: Vec<crate::storage_recovery::RecoveryProgressInput>,
     /// Optional staged writes executed before the schedules.
-    #[serde(default)]
+    #[serde(default = "no_campaign_writes")]
     pub writes: Vec<StorageRecoveryWrite>,
+}
+
+fn no_campaign_writes() -> Vec<StorageRecoveryWrite> {
+    Vec::new()
 }
 
 /// One armed disk fault for a campaign write attempt.

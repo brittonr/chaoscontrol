@@ -264,7 +264,7 @@ pub struct Recording {
     /// Canonical bounded fault-stage trace.
     #[serde(default = "empty_fault_stage_events")]
     pub fault_stage_events: Vec<FaultStageEvent>,
-    /// Non-empty per-round slices of the canonical fault-stage trace.
+    /// Every completed round, including explicitly empty canonical slices.
     #[serde(default = "empty_fault_round_deltas")]
     pub fault_round_deltas: Vec<FaultRoundTraceDelta>,
     /// Authoritative ledger that supplies the canonical trace.
@@ -314,7 +314,7 @@ fn default_disk_image_path() -> Option<String> {
     None
 }
 
-/// A non-empty trace slice produced by one simulation round.
+/// An exact fault-ledger slice produced by one completed simulation round.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FaultRoundTraceDelta {
     pub tick: u64,
@@ -322,7 +322,7 @@ pub struct FaultRoundTraceDelta {
     pub event_end: u64,
 }
 
-/// Non-empty exact SMP traces emitted during one simulation round.
+/// Exact SMP traces emitted during one completed round (possibly empty).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordedScheduleRound {
     /// Simulation tick that produced the traces.
@@ -394,6 +394,12 @@ pub enum RecordedEvent {
     },
 }
 
+#[derive(Clone, PartialEq, Eq)]
+struct CheckpointProvenance {
+    guest_artifact_ids: Vec<[u8; 32]>,
+    configuration_identity: String,
+}
+
 /// A recording session that captures checkpoints during execution.
 pub struct Recorder {
     config: RecordingConfig,
@@ -402,7 +408,7 @@ pub struct Recorder {
     next_checkpoint_id: u64,
     // Never serialized or exposed through Recording: only controller-owned
     // checkpoint capture can establish this capability.
-    checkpoint_guest_artifact_ids: Option<Vec<[u8; 32]>>,
+    checkpoint_provenance: Option<CheckpointProvenance>,
 }
 
 impl Recorder {
@@ -426,7 +432,7 @@ impl Recorder {
         Self {
             next_checkpoint_tick,
             next_checkpoint_id: 0,
-            checkpoint_guest_artifact_ids: None,
+            checkpoint_provenance: None,
             recording: Recording {
                 session_id,
                 timestamp,
@@ -459,6 +465,20 @@ impl Recorder {
         self.on_tick_with_provenance(tick, snapshot_fn, serial_output, None);
     }
 
+    /// Begin a fresh continuation at the controller's current, pre-progress
+    /// state. Checkpoint bytes and guest-input provenance are captured together.
+    pub fn start_controller_session(
+        &mut self,
+        controller: &mut SimulationController,
+    ) -> Result<(), VmError> {
+        self.start_at_tick(controller.tick())
+            .map_err(|error| VmError::Snapshot {
+                message: format!("invalid session start: {error:?}"),
+            })?;
+        self.next_checkpoint_tick = controller.tick();
+        self.on_controller_tick(controller, Vec::new())
+    }
+
     /// Capture an exact checkpoint directly from its loaded controller.
     /// Snapshot bytes and guest-input provenance are acquired together; neither
     /// recording metadata nor the closure-based `on_tick` can forge this binding.
@@ -470,11 +490,19 @@ impl Recorder {
         let tick = controller.tick();
         if tick >= self.next_checkpoint_tick {
             let snapshot = controller.snapshot_all()?;
+            let configuration = crate::session::SessionConfiguration::capture(controller.config())
+                .and_then(|configuration| crate::session::configuration_identity(&configuration))
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("checkpoint configuration provenance: {error}"),
+                })?;
             self.on_tick_with_provenance(
                 tick,
                 || snapshot,
                 serial_output,
-                Some(controller.loaded_guest_artifact_identities()),
+                Some((
+                    controller.loaded_guest_artifact_identities(),
+                    &configuration,
+                )),
             );
         } else {
             self.recording.total_ticks = tick;
@@ -482,8 +510,19 @@ impl Recorder {
         Ok(())
     }
 
-    pub(crate) fn matches_checkpoint_guest_artifacts(&self, identities: &[[u8; 32]]) -> bool {
-        !identities.is_empty() && self.checkpoint_guest_artifact_ids.as_deref() == Some(identities)
+    pub(crate) fn matches_checkpoint_provenance(
+        &self,
+        identities: &[[u8; 32]],
+        configuration_identity: &str,
+    ) -> bool {
+        !identities.is_empty()
+            && self
+                .checkpoint_provenance
+                .as_ref()
+                .is_some_and(|provenance| {
+                    provenance.guest_artifact_ids == identities
+                        && provenance.configuration_identity == configuration_identity
+                })
     }
 
     fn on_tick_with_provenance(
@@ -491,7 +530,7 @@ impl Recorder {
         tick: u64,
         snapshot_fn: impl FnOnce() -> SimulationSnapshot,
         serial_output: Vec<String>,
-        identities: Option<&[[u8; 32]]>,
+        provenance: Option<(&[[u8; 32]], &str)>,
     ) {
         self.recording.total_ticks = tick;
 
@@ -499,11 +538,18 @@ impl Recorder {
         if tick >= self.next_checkpoint_tick {
             let snapshot = snapshot_fn();
             if self.recording.checkpoints.is_empty() {
-                self.checkpoint_guest_artifact_ids = identities.map(|ids| ids.to_vec());
-            } else if self.checkpoint_guest_artifact_ids.as_deref() != identities {
-                // Once any checkpoint is unbound or comes from different guest
-                // inputs, later capture must never reestablish exactness.
-                self.checkpoint_guest_artifact_ids = None;
+                self.checkpoint_provenance = provenance.map(
+                    |(identities, configuration_identity)| CheckpointProvenance {
+                        guest_artifact_ids: identities.to_vec(),
+                        configuration_identity: configuration_identity.into(),
+                    },
+                );
+            } else if !provenance.is_some_and(|(identities, configuration_identity)| {
+                self.matches_checkpoint_provenance(identities, configuration_identity)
+            }) {
+                // Once any checkpoint is unbound or comes from different inputs
+                // or configuration, later capture cannot reestablish exactness.
+                self.checkpoint_provenance = None;
             }
 
             // Collect events since last checkpoint
@@ -554,9 +600,7 @@ impl Recorder {
         self.recording.fault_stage_events = ledger.events.clone();
         self.recording.fault_round_deltas = next.round_deltas;
         self.recording.fault_outcome_ledger = ledger.clone();
-        if let Some(schedule_round) = next.schedule_round {
-            self.recording.schedule_rounds.push(schedule_round);
-        }
+        self.recording.schedule_rounds.push(next.schedule_round);
         self.recording.total_ticks = self.recording.total_ticks.max(round.tick);
         Ok(())
     }
@@ -593,7 +637,7 @@ impl Recorder {
 struct PlannedRecordedRound {
     fault_fired: Vec<RecordedEvent>,
     round_deltas: Vec<FaultRoundTraceDelta>,
-    schedule_round: Option<RecordedScheduleRound>,
+    schedule_round: RecordedScheduleRound,
 }
 
 fn plan_recorded_round(
@@ -641,21 +685,20 @@ fn plan_recorded_round(
     }
 
     let mut round_deltas = recording.fault_round_deltas.clone();
-    if event_start != event_end {
-        if round_deltas
+    if round_deltas.len() >= MAX_RECORDED_SCHEDULE_ROUNDS
+        || round_deltas
             .last()
             .is_some_and(|delta| delta.tick >= round.tick)
-        {
-            return Err(RecordingValidationError::InvalidRoundDelta);
-        }
-        round_deltas.push(FaultRoundTraceDelta {
-            tick: round.tick,
-            event_start: u64::try_from(event_start)
-                .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
-            event_end: u64::try_from(event_end)
-                .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
-        });
+    {
+        return Err(RecordingValidationError::InvalidRoundDelta);
     }
+    round_deltas.push(FaultRoundTraceDelta {
+        tick: round.tick,
+        event_start: u64::try_from(event_start)
+            .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
+        event_end: u64::try_from(event_end)
+            .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
+    });
     let schedule_round = plan_schedule_round(recording, round)?;
     Ok(PlannedRecordedRound {
         fault_fired,
@@ -667,14 +710,12 @@ fn plan_recorded_round(
 fn plan_schedule_round(
     recording: &Recording,
     round: &RoundResult,
-) -> Result<Option<RecordedScheduleRound>, RecordingValidationError> {
-    if round.schedule_traces.is_empty() {
-        return Ok(None);
-    }
-    if recording
-        .schedule_rounds
-        .last()
-        .is_some_and(|prior| prior.tick >= round.tick)
+) -> Result<RecordedScheduleRound, RecordingValidationError> {
+    if recording.schedule_rounds.len() >= MAX_RECORDED_SCHEDULE_ROUNDS
+        || recording
+            .schedule_rounds
+            .last()
+            .is_some_and(|prior| prior.tick >= round.tick)
     {
         return Err(RecordingValidationError::InvalidScheduleRound);
     }
@@ -715,7 +756,6 @@ fn plan_schedule_round(
     for vm_trace in &round.schedule_traces {
         if vm_trace.vm_index >= recording.config.num_vms
             || prior_vm.is_some_and(|prior| prior >= vm_trace.vm_index)
-            || vm_trace.trace.records.is_empty()
         {
             return Err(RecordingValidationError::InvalidScheduleRound);
         }
@@ -732,10 +772,10 @@ fn plan_schedule_round(
         prior_vm = Some(vm_trace.vm_index);
     }
 
-    Ok(Some(RecordedScheduleRound {
+    Ok(RecordedScheduleRound {
         tick: round.tick,
         traces: round.schedule_traces.clone(),
-    }))
+    })
 }
 
 pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidationError> {
@@ -827,9 +867,10 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
                 }
                 scheduled_prefix.push(entry_index);
             }
-            FaultAttemptSource::Random => {
+            FaultAttemptSource::Random if !recording.config.random_faults => {
                 return Err(RecordingValidationError::AttemptSourceMismatch);
             }
+            FaultAttemptSource::Random => {}
         }
     }
     scheduled_prefix.sort_unstable();
@@ -863,7 +904,7 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
             return Err(RecordingValidationError::EvidenceBeyondHorizon);
         }
         if delta.event_start != expected_start
-            || delta.event_start >= delta.event_end
+            || delta.event_start > delta.event_end
             || usize::try_from(delta.event_end).map_or(true, |event_end| {
                 event_end > recording.fault_stage_events.len()
             })
@@ -907,7 +948,6 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
     for schedule_round in &recording.schedule_rounds {
         if schedule_round.tick > recording.total_ticks
             || prior_schedule_tick.is_some_and(|tick| tick >= schedule_round.tick)
-            || schedule_round.traces.is_empty()
             || schedule_round.traces.len() > recording.config.num_vms
             || schedule_round.traces.len() > MAX_SCHEDULE_VCPUS
         {
@@ -917,7 +957,6 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
         for vm_trace in &schedule_round.traces {
             if vm_trace.vm_index >= recording.config.num_vms
                 || prior_vm.is_some_and(|vm| vm >= vm_trace.vm_index)
-                || vm_trace.trace.records.is_empty()
             {
                 return Err(RecordingValidationError::InvalidScheduleRound);
             }
@@ -1177,54 +1216,191 @@ mod tests {
         assert!(recorder.recording.checkpoints.is_empty());
     }
 
+    fn provenance(
+        identities: &[[u8; 32]],
+        config: &chaoscontrol_vmm::controller::SimulationConfig,
+    ) -> CheckpointProvenance {
+        let configuration = crate::session::SessionConfiguration::capture(config).unwrap();
+        CheckpointProvenance {
+            guest_artifact_ids: identities.to_vec(),
+            configuration_identity: crate::session::configuration_identity(&configuration).unwrap(),
+        }
+    }
+
     #[test]
     fn exact_checkpoint_provenance_rejects_changed_kernel_or_initrd_at_same_tick() {
         let mut config = test_config();
         config.initrd_path = Some("/test/initrd".into());
         let mut recorder = Recorder::new(config, FaultSchedule::new(), 42);
-        let loaded_a = [[1; 32], [2; 32]];
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&loaded_a));
-        recorder.on_tick_with_provenance(1000, dummy_snapshot, vec![], Some(&loaded_a));
+        let loaded_a = provenance(&[[1; 32], [2; 32]], &Default::default());
+        let matches = |recorder: &Recorder, ids: &[[u8; 32]]| {
+            recorder.matches_checkpoint_provenance(ids, &loaded_a.configuration_identity)
+        };
+        assert!(!matches(&recorder, &loaded_a.guest_artifact_ids));
+        recorder.on_tick_with_provenance(
+            1000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_a.guest_artifact_ids,
+                &loaded_a.configuration_identity,
+            )),
+        );
 
-        // The recording/configured paths and horizon remain identical. Only
-        // controller B's actually loaded bytes differ from checkpoint A's inputs.
+        // Identical paths and horizon do not excuse different loaded bytes.
         assert_eq!(recorder.recording().total_ticks, 1000);
-        assert!(recorder.matches_checkpoint_guest_artifacts(&loaded_a));
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&[[3; 32], [2; 32]]));
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&[[1; 32], [3; 32]]));
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&[[1; 32]]));
+        assert!(matches(&recorder, &loaded_a.guest_artifact_ids));
+        assert!(!matches(&recorder, &[[3; 32], [2; 32]]));
+        assert!(!matches(&recorder, &[[1; 32], [3; 32]]));
+        assert!(!matches(&recorder, &[[1; 32]]));
 
-        recorder.on_tick_with_provenance(2000, dummy_snapshot, vec![], Some(&loaded_a));
-        assert!(recorder.matches_checkpoint_guest_artifacts(&loaded_a));
+        recorder.on_tick_with_provenance(
+            2000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_a.guest_artifact_ids,
+                &loaded_a.configuration_identity,
+            )),
+        );
+        assert!(matches(&recorder, &loaded_a.guest_artifact_ids));
+    }
+
+    #[test]
+    fn exact_checkpoint_provenance_binds_complete_loaded_configuration() {
+        let config = chaoscontrol_vmm::controller::SimulationConfig::default();
+        let loaded_a = provenance(&[[1; 32]], &config);
+        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
+        recorder.on_tick_with_provenance(
+            1000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_a.guest_artifact_ids,
+                &loaded_a.configuration_identity,
+            )),
+        );
+        assert!(recorder.matches_checkpoint_provenance(
+            &loaded_a.guest_artifact_ids,
+            &loaded_a.configuration_identity
+        ));
+
+        // This setting is absent from RecordingConfig, but changes continuation.
+        let mut changed = config.clone();
+        changed.vm_config.cpu.tsc_advance_per_tick += 1;
+        let loaded_b = provenance(&loaded_a.guest_artifact_ids, &changed);
+        assert!(!recorder.matches_checkpoint_provenance(
+            &loaded_b.guest_artifact_ids,
+            &loaded_b.configuration_identity
+        ));
+        recorder.on_tick_with_provenance(
+            2000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_b.guest_artifact_ids,
+                &loaded_b.configuration_identity,
+            )),
+        );
+        recorder.on_tick_with_provenance(
+            3000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_a.guest_artifact_ids,
+                &loaded_a.configuration_identity,
+            )),
+        );
+        assert!(!recorder.matches_checkpoint_provenance(
+            &loaded_a.guest_artifact_ids,
+            &loaded_a.configuration_identity
+        ));
     }
 
     #[test]
     fn mixing_checkpoint_provenance_cannot_regain_exactness() {
-        let loaded_a = [[1; 32]];
-        let loaded_b = [[2; 32]];
+        let loaded_a = provenance(&[[1; 32]], &Default::default());
+        let loaded_b = provenance(&[[2; 32]], &Default::default());
         let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
-        recorder.on_tick_with_provenance(1000, dummy_snapshot, vec![], Some(&loaded_a));
-        recorder.on_tick_with_provenance(2000, dummy_snapshot, vec![], Some(&loaded_b));
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&loaded_a));
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&loaded_b));
-        recorder.on_tick_with_provenance(3000, dummy_snapshot, vec![], Some(&loaded_a));
-        assert!(!recorder.matches_checkpoint_guest_artifacts(&loaded_a));
+        recorder.on_tick_with_provenance(
+            1000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_a.guest_artifact_ids,
+                &loaded_a.configuration_identity,
+            )),
+        );
+        recorder.on_tick_with_provenance(
+            2000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_b.guest_artifact_ids,
+                &loaded_b.configuration_identity,
+            )),
+        );
+        assert!(!recorder.matches_checkpoint_provenance(
+            &loaded_a.guest_artifact_ids,
+            &loaded_a.configuration_identity
+        ));
+        assert!(!recorder.matches_checkpoint_provenance(
+            &loaded_b.guest_artifact_ids,
+            &loaded_b.configuration_identity
+        ));
+        recorder.on_tick_with_provenance(
+            3000,
+            dummy_snapshot,
+            vec![],
+            Some((
+                &loaded_a.guest_artifact_ids,
+                &loaded_a.configuration_identity,
+            )),
+        );
+        assert!(!recorder.matches_checkpoint_provenance(
+            &loaded_a.guest_artifact_ids,
+            &loaded_a.configuration_identity
+        ));
     }
 
     #[test]
     fn caller_supplied_snapshots_never_establish_exact_provenance() {
-        let loaded = [[1; 32]];
+        let loaded = provenance(&[[1; 32]], &Default::default());
         let mut unbound = Recorder::new(test_config(), FaultSchedule::new(), 42);
         unbound.on_tick(1000, dummy_snapshot, vec![]);
-        unbound.on_tick_with_provenance(2000, dummy_snapshot, vec![], Some(&loaded));
-        assert!(!unbound.matches_checkpoint_guest_artifacts(&loaded));
+        unbound.on_tick_with_provenance(
+            2000,
+            dummy_snapshot,
+            vec![],
+            Some((&loaded.guest_artifact_ids, &loaded.configuration_identity)),
+        );
+        assert!(!unbound.matches_checkpoint_provenance(
+            &loaded.guest_artifact_ids,
+            &loaded.configuration_identity
+        ));
 
         let mut bound = Recorder::new(test_config(), FaultSchedule::new(), 42);
-        bound.on_tick_with_provenance(1000, dummy_snapshot, vec![], Some(&loaded));
+        bound.on_tick_with_provenance(
+            1000,
+            dummy_snapshot,
+            vec![],
+            Some((&loaded.guest_artifact_ids, &loaded.configuration_identity)),
+        );
         bound.on_tick(2000, dummy_snapshot, vec![]);
-        assert!(!bound.matches_checkpoint_guest_artifacts(&loaded));
-        bound.on_tick_with_provenance(3000, dummy_snapshot, vec![], Some(&loaded));
-        assert!(!bound.matches_checkpoint_guest_artifacts(&loaded));
+        assert!(!bound.matches_checkpoint_provenance(
+            &loaded.guest_artifact_ids,
+            &loaded.configuration_identity
+        ));
+        bound.on_tick_with_provenance(
+            3000,
+            dummy_snapshot,
+            vec![],
+            Some((&loaded.guest_artifact_ids, &loaded.configuration_identity)),
+        );
+        assert!(!bound.matches_checkpoint_provenance(
+            &loaded.guest_artifact_ids,
+            &loaded.configuration_identity
+        ));
     }
 
     #[test]
@@ -1311,6 +1487,58 @@ mod tests {
             [RecordedEvent::FaultFired { tick: 1, .. }]
         ));
         validate_recording(&recorder.recording).unwrap();
+    }
+
+    // r[verify chaoscontrol.replay_debugger.producer]
+    #[test]
+    fn completed_empty_rounds_survive_serialization_and_reject_duplicate_ticks() {
+        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
+        recorder.start_at_tick(50).unwrap();
+        let ledger = FaultOutcomeLedger::default();
+        let mut round = RoundResult {
+            tick: 51,
+            vms_running: 1,
+            vms_halted: 0,
+            faults_fired: Vec::new(),
+            fault_outcomes: Vec::new(),
+            messages_delivered: 0,
+            schedule_traces: Vec::new(),
+        };
+        recorder.record_round(&round, &ledger).unwrap();
+        round.tick = 52;
+        recorder.record_round(&round, &ledger).unwrap();
+        let bytes = serde_json::to_vec(recorder.recording()).unwrap();
+        let retained: Recording = serde_json::from_slice(&bytes).unwrap();
+        validate_recording(&retained).unwrap();
+        assert_eq!(
+            retained
+                .fault_round_deltas
+                .iter()
+                .map(|delta| (delta.tick, delta.event_start, delta.event_end))
+                .collect::<Vec<_>>(),
+            vec![(51, 0, 0), (52, 0, 0)]
+        );
+        assert_eq!(
+            retained
+                .schedule_rounds
+                .iter()
+                .map(|round| round.tick)
+                .collect::<Vec<_>>(),
+            vec![51, 52]
+        );
+        assert!(retained
+            .schedule_rounds
+            .iter()
+            .all(|round| round.traces.is_empty()));
+        assert!(recorder.record_round(&round, &ledger).is_err());
+        assert_eq!(
+            recorder.recording().fault_round_deltas,
+            retained.fault_round_deltas
+        );
+        assert_eq!(
+            recorder.recording().schedule_rounds,
+            retained.schedule_rounds
+        );
     }
 
     #[test]
@@ -1464,12 +1692,15 @@ mod tests {
             FaultAttemptSource::Random,
             Fault::ProcessKill { target: 0 },
         );
-        let recording = selected_recording(schedule, TEST_SEED, &[attempt]);
+        let mut recording = selected_recording(schedule, TEST_SEED, &[attempt]);
 
         assert_eq!(
             validate_recording(&recording),
             Err(RecordingValidationError::AttemptSourceMismatch)
         );
+        recording.config.random_faults = true;
+        validate_recording(&recording)
+            .expect("explicit seed-derived random-fault policy is retained");
     }
 
     #[test]

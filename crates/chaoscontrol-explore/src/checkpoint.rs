@@ -14,9 +14,11 @@
 use crate::assertion_checkpoints::AssertionCheckpointSelectorState;
 use crate::corpus::BugReport;
 use crate::explorer::FrontierPolicy;
-use crate::snapshot_store::{FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore};
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+use chaoscontrol_replay::snapshot_store::{
+    FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore,
+};
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fs;
@@ -54,7 +56,7 @@ pub enum CheckpointError {
 
     #[snafu(display("snapshot store error"), context(false))]
     SnapshotStore {
-        source: crate::snapshot_store::SnapshotStoreError,
+        source: chaoscontrol_replay::snapshot_store::SnapshotStoreError,
     },
 
     #[snafu(display("checkpoint contains invalid bug identity"), context(false))]
@@ -1040,7 +1042,7 @@ impl TryFrom<&SerializableBug> for BugReport {
             return Err(crate::bug::identity::BugIdentityError::MalformedCarrier);
         }
         if let Some(reference) = &bug.replay_parent_snapshot_ref {
-            crate::snapshot_store::validate_ref_shape(reference)
+            chaoscontrol_replay::snapshot_store::validate_ref_shape(reference)
                 .map_err(|_| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
         }
         Ok(Self {
@@ -1267,7 +1269,7 @@ pub enum CheckpointBugExportError {
 
     #[snafu(display("snapshot store error"), context(false))]
     SnapshotStore {
-        source: crate::snapshot_store::SnapshotStoreError,
+        source: chaoscontrol_replay::snapshot_store::SnapshotStoreError,
     },
 
     #[snafu(display("checkpoint bug {bug_id} cannot export for replay: {reason}"))]
@@ -1874,7 +1876,7 @@ pub fn inspect_snapshot<P: AsRef<Path>>(
         .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
     if artifact.replay_parent_depth != inspection.bug.replay_parent_depth {
         return Err(CheckpointBugExportError::SnapshotStore {
-            source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+            source: chaoscontrol_replay::snapshot_store::SnapshotStoreError::MetadataMismatch {
                 field: "replay_parent_depth",
             },
         });
@@ -2089,7 +2091,7 @@ pub fn plan_restore_with_snapshot_check<P: AsRef<Path>>(
             .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
         if artifact.replay_parent_depth != inspection.bug.replay_parent_depth {
             return Err(CheckpointBugExportError::SnapshotStore {
-                source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                source: chaoscontrol_replay::snapshot_store::SnapshotStoreError::MetadataMismatch {
                     field: "replay_parent_depth",
                 },
             });
@@ -2208,7 +2210,7 @@ pub fn load_parent_snapshot<P: AsRef<Path>>(
         .map_err(|source| CheckpointBugExportError::SnapshotStore { source })?;
     if artifact.replay_parent_depth != inspection.bug.replay_parent_depth {
         return Err(CheckpointBugExportError::SnapshotStore {
-            source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+            source: chaoscontrol_replay::snapshot_store::SnapshotStoreError::MetadataMismatch {
                 field: "replay_parent_depth",
             },
         });
@@ -2413,18 +2415,20 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
             let artifact = source_snapshot_store.get_snapshot_artifact(reference)?;
             if artifact.replay_parent_depth != bug.replay_parent_depth {
                 return Err(CheckpointBugExportError::SnapshotStore {
-                    source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
-                        field: "replay_parent_depth",
-                    },
+                    source:
+                        chaoscontrol_replay::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                            field: "replay_parent_depth",
+                        },
                 });
             }
             let output_reference = output_snapshot_store
                 .put_snapshot(&artifact.snapshot, artifact.replay_parent_depth)?;
             if output_reference != *reference {
                 return Err(CheckpointBugExportError::SnapshotStore {
-                    source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
-                        field: "exported_reference",
-                    },
+                    source:
+                        chaoscontrol_replay::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                            field: "exported_reference",
+                        },
                 });
             }
             snapshot_refs_validated += 1;
@@ -2491,13 +2495,15 @@ mod tests {
         let path = directory.path().join("bug.json");
         let mut bug = minimal_bug(1);
         bug.replay_parent_depth = 1;
-        bug.replay_parent_snapshot_ref = Some(crate::snapshot_store::ReplayParentSnapshotRef {
-            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
-            digest: "sha256:not-hex".to_string(),
-            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
-            schema_version: crate::snapshot_store::SNAPSHOT_SCHEMA_VERSION,
-            path: "snapshots/x.snapshot.bin".to_string(),
-        });
+        bug.replay_parent_snapshot_ref = Some(
+            chaoscontrol_replay::snapshot_store::ReplayParentSnapshotRef {
+                store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
+                digest: "sha256:not-hex".to_string(),
+                codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
+                schema_version: chaoscontrol_replay::snapshot_store::SNAPSHOT_SCHEMA_VERSION,
+                path: "snapshots/x.snapshot.bin".to_string(),
+            },
+        );
         fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
             .expect("write bug fixture");
 
@@ -4181,9 +4187,9 @@ mod tests {
         let mut bug = minimal_bug(1);
         bug.replay_parent_depth = 1;
         bug.replay_parent_snapshot_ref = Some(ReplayParentSnapshotRef {
-            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
             digest: format!("sha256:{}", "0".repeat(64)),
-            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
             schema_version: 2,
             path: format!("snapshots/{}.snapshot.bin", "0".repeat(64)),
         });
@@ -4209,9 +4215,9 @@ mod tests {
 
     fn snapshot_ref(path_suffix: &str, digest_hex: &str) -> ReplayParentSnapshotRef {
         ReplayParentSnapshotRef {
-            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
             digest: format!("sha256:{digest_hex}"),
-            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
             schema_version: 2,
             path: format!("snapshots/{path_suffix}.snapshot.bin"),
         }
@@ -4581,9 +4587,9 @@ mod tests {
         let mut bug = minimal_bug(1);
         bug.replay_parent_depth = 1;
         bug.replay_parent_snapshot_ref = Some(ReplayParentSnapshotRef {
-            store: crate::snapshot_store::FILE_STORE_KIND.to_string(),
+            store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
             digest: format!("sha256:{}", "0".repeat(64)),
-            codec: crate::snapshot_store::SNAPSHOT_CODEC.to_string(),
+            codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
             schema_version: 2,
             path: format!("snapshots/{}.snapshot.bin", "0".repeat(64)),
         });

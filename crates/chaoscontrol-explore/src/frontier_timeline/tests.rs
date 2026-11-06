@@ -1,7 +1,8 @@
 use super::*;
-use chaoscontrol_explore::coverage::CoverageBitmap;
+use crate::coverage::CoverageBitmap;
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_replay::event_query::render_timeline_dot;
 use chaoscontrol_vmm::controller::{NetworkFabric, SimulationSnapshot};
 
 fn entry(id: u64, parent: Option<u64>, tick: u64, depth: u32) -> FrontierEntry {

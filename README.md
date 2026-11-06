@@ -14,15 +14,21 @@ See [release preparation and remaining prerequisites](docs/release-preparation.m
 Current-source release checks must pass before any production claim; dated
 receipts below retain their original verdicts and are not current release approval.
 
-The required KVM matrix has a passing receipt on clean
-`3c90ca7832a14fd2c5d79e47cb16a19e8393db6b`: all seven rows passed with
-`ReleaseEligible`, and the independent validator agreed (`rows=7 positive=1
-negative=11`). The [receipt](dogfood-results/kvm-release-evidence-20261104/release-receipt.json)
+**Current strict SMP execution is blocked.** Portable KVM does not provide exact
+guest-instruction boundaries across IRQ/NMI/synchronous exception entry. Both
+exact-single-step and PMU exact-remainder configurations reject before KVM or guest
+mutation; single-vCPU execution and the pure scheduler are unchanged. Passing
+portable rejection tests or bounded low-level KVM diagnostics is not positive SMP
+execution evidence and cannot make the required release matrix eligible.
+
+The [2026-11-04 receipt](dogfood-results/kvm-release-evidence-20261104/release-receipt.json)
 and [summary](dogfood-results/kvm-release-evidence-20261104/release-summary.md)
-are retained. That receipt proves only the recorded worker, commands, bounds, and
-artifact identities. Private/nonportable dependencies, MCP smoke applicability, the
-original planted-finding initrd, and the absent authenticated release profile still
-block public distribution and production use.
+retain their original seven-row `ReleaseEligible` verdict on
+`3c90ca7832a14fd2c5d79e47cb16a19e8393db6b`. They are historical observations of
+the recorded worker, commands, bounds, and artifacts, not proof of exact event-entry
+boundaries or current release eligibility. Private/nonportable dependencies, MCP
+smoke applicability, the original planted-finding initrd, and the absent
+authenticated release profile also block public distribution and production use.
 
 <details>
 <summary>Historical production-readiness evidence (2026-10-15 through 2026-10-25)</summary>
@@ -117,7 +123,8 @@ Use the Nix development shell for the pinned Campaign dependency. It supplies a 
 
 ## Local event queries
 
-`query-events` exposes bounded queries, receipt validation, and static Markdown
+`query-events` (built by `chaoscontrol-explore`, with its pure query core in
+`chaoscontrol-replay`) exposes bounded queries, receipt validation, and static Markdown
 or DOT timelines over recordings, dlogs, event envelopes, branch markers, and
 canonical fault-stage traces. Queries include canonical tick, exact elapsed-tick, ratio and difference projections, numeric field
 ratios and thresholds, global or explicitly keyed running match counts, numeric totals and extrema, projection narrowing, priority-preserving tick deduplication,

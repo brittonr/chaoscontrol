@@ -94,6 +94,7 @@ pub mod diagnostic_run;
 pub mod explorer;
 pub mod findings;
 pub mod frontier;
+pub mod frontier_timeline;
 pub mod input_tree;
 pub mod investigation;
 pub mod marker_branching;
@@ -114,7 +115,6 @@ pub mod report;
 #[cfg(feature = "dashboard")]
 pub mod server;
 pub mod signal;
-pub mod snapshot_store;
 pub mod symbolized_coverage;
 #[cfg(test)]
 mod test_support;

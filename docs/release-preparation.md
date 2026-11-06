@@ -121,6 +121,33 @@ nix develop -c cargo run -p chaoscontrol-evidence \
   --expected-revision "$CANDIDATE_REVISION"
 ```
 
+### Current strict SMP blocker
+
+Portable KVM has no admitted capability for **exact guest-instruction boundaries
+across IRQ/NMI/synchronous exception entry**. `SET_GUEST_DEBUG` and bounded
+single-step loops do not establish that capability. Production construction rejects
+both `ExactSingleStep` and PMU exact-remainder SMP before KVM or guest mutation.
+Single-vCPU execution and the pure scheduler remain unchanged.
+
+The required `deterministic-smp` row now selects the production actual-run rail:
+
+```sh
+nix run .#vm-determinism-drift -- --out "$MATRIX_OUT/deterministic-smp/smp" \
+  --runs 2 -- --case single-vm-2vcpu
+```
+
+It must reach real production admission and execute the selected bounded repeats
+to pass. With the current backend, rejection exits nonzero, the row is nonpassing,
+and the matrix is `Blocked`; a missing worker prerequisite is likewise nonpassing.
+There is no coarse-mode fallback or capability fabricated from debug/PMU support.
+Rust and Nickel matrix admission require this command for the SMP row: the
+`deterministic_smp_kvm` suite's portable negative tests and limited low-level KVM
+diagnostics cannot replace it, even if those tests pass. Synthetic contract fixtures
+test receipt classification only and are never actual execution evidence.
+
+The dated receipts below are immutable. Their original verdicts do not establish
+exact event-entry boundaries and do not override this current-source blocker.
+
 Use pueue for long builds/campaigns. Keep source, matrix, executable, config,
 artifacts and verdict identities together in the existing Nickel-backed evidence
 format. Retain raw logs locally. Do not silently substitute a rebuilt initrd,

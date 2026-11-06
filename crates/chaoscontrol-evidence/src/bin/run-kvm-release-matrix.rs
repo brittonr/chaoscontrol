@@ -855,6 +855,51 @@ mod publication_tests {
         }
     }
 
+    // r[verify chaoscontrol.event_entry_exact.evidence]
+    #[test]
+    fn rejected_production_smp_command_is_failed_not_passed() {
+        use chaoscontrol_evidence::kvm_release::{
+            STRICT_SMP_COMMAND_ARGS, STRICT_SMP_COMMAND_PROGRAM,
+        };
+        use std::os::unix::process::ExitStatusExt;
+
+        let args = STRICT_SMP_COMMAND_ARGS.map(str::to_string);
+        let result = completed_execution(
+            STRICT_SMP_COMMAND_PROGRAM,
+            &args,
+            ExitStatus::from_raw(1 << 8),
+        );
+        assert_eq!(result.status, RowStatus::Failed);
+        assert_eq!(result.exit_code, Some(1));
+    }
+
+    #[test]
+    fn unavailable_smp_worker_is_unsupported_without_running_the_command() {
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("output");
+        fs::create_dir(&output).unwrap();
+        let worker = WorkerFacts {
+            architecture: "x86_64".to_string(),
+            kernel_release: "fixture-kernel".to_string(),
+            kvm_api_version: None,
+            capabilities: Vec::new(),
+        };
+        let mut row = artifact_row();
+        row.command = chaoscontrol_evidence::kvm_release::CommandSpec {
+            program: chaoscontrol_evidence::kvm_release::STRICT_SMP_COMMAND_PROGRAM.to_string(),
+            args: chaoscontrol_evidence::kvm_release::STRICT_SMP_COMMAND_ARGS
+                .map(str::to_string)
+                .to_vec(),
+        };
+        let receipt = run_row(root.path(), &output, &worker, &row).unwrap();
+        assert_eq!(receipt.status, RowStatus::Unsupported);
+        assert_eq!(receipt.exit_code, None);
+        assert!(receipt
+            .notes
+            .iter()
+            .any(|note| note.contains("lacks required capabilities")));
+    }
+
     #[test]
     fn input_reads_reject_length_changes() {
         assert!(read_bytes(Path::new("/proc/self/cmdline"), u64::MAX).is_err());

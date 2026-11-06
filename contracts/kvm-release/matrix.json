@@ -75,13 +75,18 @@
     {
       "command": {
         "args": [
-          "test",
-          "-p",
-          "chaoscontrol-vmm",
-          "--test",
-          "deterministic_smp_kvm"
+          "run",
+          ".#vm-determinism-drift",
+          "--",
+          "--out",
+          "%ROW_OUT%/smp",
+          "--runs",
+          "2",
+          "--",
+          "--case",
+          "single-vm-2vcpu"
         ],
-        "program": "cargo"
+        "program": "nix"
       },
       "id": "deterministic-smp",
       "kind": "deterministic-smp",
@@ -97,7 +102,8 @@
       ],
       "retained_artifacts": [
         "stdout.log",
-        "stderr.log"
+        "stderr.log",
+        "smp/**"
       ]
     },
     {

@@ -311,9 +311,9 @@ let Registry = {
     {
       id = "snapshot-reference",
       ownership = "rust-derived",
-      owner = "chaoscontrol-explore snapshot_store",
+      owner = "chaoscontrol-replay snapshot_store",
       source_paths = [
-        "crates/chaoscontrol-explore/src/snapshot_store.rs",
+        "crates/chaoscontrol-replay/src/snapshot_store.rs",
         "contracts/evidence/snapshot-ref.ncl",
       ],
       artifact_paths = [
@@ -322,7 +322,7 @@ let Registry = {
         "dogfood-results/*/receipt.json",
       ],
       validation_commands = [
-        "cargo test -p chaoscontrol-explore snapshot_store",
+        "cargo test -p chaoscontrol-replay snapshot_store",
         "check-evidence-contracts --root .",
       ],
       fixture_coverage = [

@@ -3357,6 +3357,28 @@ mod tests {
         fs::write(path, bytes).expect("write untrusted checkpoint fixture");
     }
 
+    #[test]
+    fn read_only_investigation_never_rewrites_the_checkpoint() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("checkpoint.json");
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1), minimal_bug(2)]);
+        write_untrusted_checkpoint(&path, &checkpoint);
+        let before = fs::read(&path).expect("read original");
+        let selector = BugSelector {
+            index: Some(0),
+            dedup_key: None,
+        };
+        list_bugs_with_filter(&path, BugListFilter::default()).expect("list");
+        inspect_bug(&path, selector).expect("inspect");
+        bind_moment(&path, selector, Some(1000)).expect("moment");
+        plan_restore_with_snapshot_check(&path, selector, false).expect("plan");
+        let after = fs::read(&path).expect("read after");
+        assert_eq!(
+            before, after,
+            "read-only investigation rewrote the checkpoint"
+        );
+    }
+
     fn minimal_bug(bug_id: u64) -> SerializableBug {
         let assertion_id = bug_id + 100;
         SerializableBug {

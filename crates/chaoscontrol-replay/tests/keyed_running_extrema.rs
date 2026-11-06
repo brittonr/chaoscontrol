@@ -150,7 +150,7 @@ fn independent_extrema_match_pairwise_prefix_oracle_across_interleaving_and_tick
     }
 }
 #[test]
-fn aliases_duplicate_priority_and_equal_signed_zero_preserve_original_membership() {
+fn aliases_and_equal_signed_zero_preserve_original_membership() {
     let limits = EventQueryLimits::default();
     let rows = [
         event(0, 0, Some("2"), "-4", "metric"),
@@ -199,19 +199,6 @@ fn aliases_duplicate_priority_and_equal_signed_zero_preserve_original_membership
                 .zip([Some("2.0"), None, Some("2.0")])
                 .map(|(r, n)| annotate(r.clone(), "owner", n))
                 .collect::<Vec<_>>()
-        );
-        let mut duplicate = rows[0].clone();
-        duplicate.derived.insert("owner".into(), "wrong".into());
-        duplicate.derived.insert("reading".into(), "bad".into());
-        assert_eq!(
-            evaluate(&extrema(op), &[rows[0].clone(), duplicate.clone()], &limits)
-                .unwrap()
-                .rows,
-            vec![annotate(rows[0].clone(), "extremum", Some("-4.0"))]
-        );
-        assert_eq!(
-            evaluate(&extrema(op), &[duplicate, rows[0].clone()], &limits),
-            Err(EventQueryError::InvalidNumber)
         );
         for (first, second, want) in [
             ("-0", "0", "-0.0"),

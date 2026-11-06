@@ -334,3 +334,347 @@ pub(crate) fn parse_trace(text: &str) -> Result<Vec<TraceRecord>, TraceParseErro
         })
         .collect()
 }
+
+/// Absolute bounds for read-only frontier-trace inspection.
+pub const MAX_FRONTIER_TRACE_VIEW_RECORDS: usize = 10_000;
+pub const MAX_FRONTIER_TRACE_VIEW_BYTES: usize = 8 * 1024 * 1024;
+
+/// Retained product-decision positions, not simulation-time or causal edges.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontierDecisionView {
+    pub source_sequence: u64,
+    pub kind: String,
+    pub round: Option<u64>,
+    pub selected_entry: Option<u64>,
+    pub admitted: Vec<u64>,
+    pub pruned: Vec<u64>,
+    pub retained: Vec<u64>,
+}
+
+/// A read-only projection decoded with the producer's exact private schema.
+/// This format does not retain simulation ticks or branch-parent identities.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrontierTraceSummary {
+    pub records: u64,
+    pub rounds: u64,
+    pub stopped: bool,
+    pub truncated: bool,
+    pub root_present: bool,
+    pub simulation_ticks_present: bool,
+    pub branch_parentage_present: bool,
+    pub decisions: Vec<FrontierDecisionView>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrontierTraceViewError {
+    InputBound,
+    InvalidRecord,
+    InvalidShape,
+}
+
+impl std::fmt::Display for FrontierTraceViewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::InputBound => "frontier trace exceeds inspection bounds",
+            Self::InvalidRecord => "frontier trace record is malformed or unsupported",
+            Self::InvalidShape => "frontier trace order, positions or accounting are invalid",
+        })
+    }
+}
+
+impl std::error::Error for FrontierTraceViewError {}
+
+/// Decode retained decision facts without inferring VM ticks or fork edges.
+/// A well-formed prefix without its stop is explicitly truncated; malformed
+/// partial JSON is rejected, never silently discarded as a complete record.
+pub fn inspect_frontier_trace(
+    bytes: &[u8],
+    max_records: usize,
+) -> Result<FrontierTraceSummary, FrontierTraceViewError> {
+    use FrontierTraceViewError::{InputBound, InvalidRecord, InvalidShape};
+    if max_records == 0
+        || max_records > MAX_FRONTIER_TRACE_VIEW_RECORDS
+        || bytes.len() > MAX_FRONTIER_TRACE_VIEW_BYTES
+    {
+        return Err(InputBound);
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| InvalidRecord)?;
+    let mut lines = text.lines();
+    let first = lines.next().ok_or(InvalidShape)?;
+    let header: TraceRecord = serde_json::from_str(first).map_err(|_| InvalidRecord)?;
+    let TraceRecord::Header {
+        schema,
+        max_rounds,
+        max_frontier,
+        branch_factor,
+        mode,
+        ..
+    } = header
+    else {
+        return Err(InvalidShape);
+    };
+    if schema != TRACE_SCHEMA
+        || max_frontier == 0
+        || max_frontier > MAX_FRONTIER_TRACE_VIEW_RECORDS
+        || branch_factor > MAX_FRONTIER_TRACE_VIEW_RECORDS
+        || !matches!(mode.as_str(), "fault-schedule" | "input-tree" | "hybrid")
+    {
+        return Err(InvalidShape);
+    }
+    let mut view = FrontierTraceSummary {
+        records: 1,
+        rounds: 0,
+        stopped: false,
+        truncated: true,
+        root_present: false,
+        simulation_ticks_present: false,
+        branch_parentage_present: false,
+        decisions: vec![FrontierDecisionView {
+            source_sequence: 0,
+            kind: "header".into(),
+            round: None,
+            selected_entry: None,
+            admitted: vec![],
+            pruned: vec![],
+            retained: vec![],
+        }],
+    };
+    for line in lines {
+        if view.records as usize >= max_records {
+            return Err(InputBound);
+        }
+        if view.stopped {
+            return Err(InvalidShape);
+        }
+        let record: TraceRecord = serde_json::from_str(line).map_err(|_| InvalidRecord)?;
+        let sequence = view.records;
+        let (kind, round, selected, admitted, pruned, retained) = match record {
+            TraceRecord::Root {
+                proposals,
+                retained,
+            } if sequence == 1 => {
+                if proposals.len() > MAX_FRONTIER_TRACE_VIEW_RECORDS {
+                    return Err(InputBound);
+                }
+                view.root_present = true;
+                ("root", None, None, vec![], vec![], retained)
+            }
+            TraceRecord::Round(round) if view.root_present => {
+                if round.round != view.rounds
+                    || view.rounds >= max_rounds
+                    || !matches!(round.outcome.as_str(), OUTCOME_EXECUTED | OUTCOME_SKIPPED)
+                    || round.branches.len() > MAX_FRONTIER_TRACE_VIEW_RECORDS
+                {
+                    return Err(InvalidShape);
+                }
+                if round.selection.is_some_and(|selected| {
+                    view.decisions
+                        .last()
+                        .is_none_or(|previous| !previous.retained.contains(&selected.seq))
+                }) {
+                    return Err(InvalidShape);
+                }
+                if round.admitted.len() > MAX_FRONTIER_TRACE_VIEW_RECORDS
+                    || round.pruned.len() > MAX_FRONTIER_TRACE_VIEW_RECORDS
+                    || round
+                        .branches
+                        .iter()
+                        .any(|branch| branch.proposals.len() > MAX_FRONTIER_TRACE_VIEW_RECORDS)
+                {
+                    return Err(InputBound);
+                }
+                view.rounds += 1;
+                (
+                    "round",
+                    Some(round.round),
+                    round.selection.map(|s| s.seq),
+                    round.admitted,
+                    round.pruned,
+                    round.retained,
+                )
+            }
+            TraceRecord::Stop {
+                rounds_completed, ..
+            } if view.root_present => {
+                if rounds_completed != view.rounds {
+                    return Err(InvalidShape);
+                }
+                view.stopped = true;
+                view.truncated = false;
+                ("stop", None, None, vec![], vec![], vec![])
+            }
+            _ => return Err(InvalidShape),
+        };
+        if retained.len() > max_frontier {
+            return Err(InputBound);
+        }
+        if retained.windows(2).any(|pair| pair[0].seq >= pair[1].seq)
+            || retained
+                .iter()
+                .any(|entry| !f64::from_bits(entry.score_bits).is_finite())
+        {
+            return Err(InvalidShape);
+        }
+        let retained: Vec<_> = retained.iter().map(|entry| entry.seq).collect();
+        view.decisions.push(FrontierDecisionView {
+            source_sequence: sequence,
+            kind: kind.into(),
+            round,
+            selected_entry: selected,
+            admitted,
+            pruned,
+            retained,
+        });
+        view.records += 1;
+    }
+    Ok(view)
+}
+
+#[cfg(test)]
+mod view_tests {
+    use super::*;
+
+    fn fixture() -> Vec<TraceRecord> {
+        let config = ExplorerConfig {
+            max_rounds: 1,
+            max_frontier: 16,
+            ..ExplorerConfig::default()
+        };
+        let score_bits = 1.0_f64.to_bits();
+        vec![
+            TraceRecord::header(&config, None),
+            TraceRecord::Root {
+                proposals: vec![TraceProposal {
+                    score_bits,
+                    marker: false,
+                    assertion: None,
+                }],
+                retained: vec![RetainedEntry {
+                    seq: 10,
+                    times_selected: 0,
+                    score_bits,
+                }],
+            },
+            TraceRecord::Round(TraceRound {
+                round: 0,
+                mode: "fault-schedule".into(),
+                outcome: OUTCOME_EXECUTED.into(),
+                draws: Some(TraceDraws {
+                    unit_bits: 0.5_f64.to_bits(),
+                    index: None,
+                }),
+                selection: Some(TraceSelection {
+                    seq: 10,
+                    explore: false,
+                }),
+                work: Some(SelectionWork {
+                    candidates_examined: 1,
+                    eligible_candidates: 1,
+                }),
+                branches: vec![TraceBranch {
+                    slot: "variant:0".into(),
+                    new_edges: 1,
+                    snapshot: true,
+                    new_bugs: 0,
+                    proposals: vec![TraceProposal {
+                        score_bits,
+                        marker: false,
+                        assertion: None,
+                    }],
+                }],
+                admitted: vec![11],
+                pruned: vec![],
+                retained: vec![
+                    RetainedEntry {
+                        seq: 10,
+                        times_selected: 1,
+                        score_bits,
+                    },
+                    RetainedEntry {
+                        seq: 11,
+                        times_selected: 0,
+                        score_bits,
+                    },
+                ],
+            }),
+            TraceRecord::Stop {
+                stop: ExplorationStop::Completed,
+                rounds_completed: 1,
+            },
+        ]
+    }
+
+    fn encode(records: &[TraceRecord]) -> Vec<u8> {
+        records
+            .iter()
+            .map(|record| serde_json::to_string(record).unwrap() + "\n")
+            .collect::<String>()
+            .into_bytes()
+    }
+
+    #[test]
+    fn producer_records_project_exact_decision_positions_without_inferred_time_or_parentage() {
+        let records = fixture();
+        let bytes = encode(&records);
+        let view = inspect_frontier_trace(&bytes, 4).unwrap();
+        assert_eq!(view.records, 4);
+        assert_eq!(view.rounds, 1);
+        assert!(!view.truncated);
+        assert!(view.stopped && view.root_present);
+        assert!(!view.simulation_ticks_present && !view.branch_parentage_present);
+        assert_eq!(view.decisions[2].source_sequence, 2);
+        assert_eq!(view.decisions[2].round, Some(0));
+        assert_eq!(view.decisions[2].selected_entry, Some(10));
+        assert_eq!(view.decisions[2].admitted, [11]);
+        assert_eq!(view.decisions[2].retained, [10, 11]);
+        assert_eq!(inspect_frontier_trace(&bytes, 4).unwrap(), view);
+        let prefix = inspect_frontier_trace(&encode(&records[..3]), 4).unwrap();
+        assert!(prefix.truncated && !prefix.stopped);
+    }
+
+    #[test]
+    fn malformed_reordered_missing_and_over_bound_trace_records_fail() {
+        let records = fixture();
+        assert_eq!(
+            inspect_frontier_trace(&encode(&records), 3).unwrap_err(),
+            FrontierTraceViewError::InputBound
+        );
+        let mut reordered = records.clone();
+        reordered.swap(1, 2);
+        assert_eq!(
+            inspect_frontier_trace(&encode(&reordered), 4).unwrap_err(),
+            FrontierTraceViewError::InvalidShape
+        );
+        let mut wrong = records.clone();
+        if let TraceRecord::Round(round) = &mut wrong[2] {
+            round.selection.as_mut().unwrap().seq = 999;
+        }
+        assert_eq!(
+            inspect_frontier_trace(&encode(&wrong), 4).unwrap_err(),
+            FrontierTraceViewError::InvalidShape
+        );
+        let mut wrong = records.clone();
+        if let TraceRecord::Stop {
+            rounds_completed, ..
+        } = &mut wrong[3]
+        {
+            *rounds_completed = 2;
+        }
+        assert_eq!(
+            inspect_frontier_trace(&encode(&wrong), 4).unwrap_err(),
+            FrontierTraceViewError::InvalidShape
+        );
+        let mut partial = encode(&records[..3]);
+        partial.extend_from_slice(b"{\"kind\":");
+        assert_eq!(
+            inspect_frontier_trace(&partial, 4).unwrap_err(),
+            FrontierTraceViewError::InvalidRecord
+        );
+        assert_eq!(
+            inspect_frontier_trace(&vec![b'x'; MAX_FRONTIER_TRACE_VIEW_BYTES + 1], 4).unwrap_err(),
+            FrontierTraceViewError::InputBound
+        );
+    }
+}

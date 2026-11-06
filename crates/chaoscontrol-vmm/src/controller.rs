@@ -50,26 +50,40 @@ use std::collections::VecDeque;
 use vm_memory::{Bytes, GuestAddress};
 
 const MAX_PENDING_PROCESS_OBSERVATIONS: usize = 4_096;
-const GUEST_ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.guest-artifact.v1";
+pub const GUEST_ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.guest-artifact.v1";
 
 fn guest_artifact_identity(path: &str) -> Result<[u8; 32], VmError> {
-    use std::io::Read;
-
-    const BUFFER_BYTES: usize = 64 * 1024;
-    let mut file = std::fs::File::open(path).map_err(|error| VmError::DiskImage {
+    let file = std::fs::File::open(path).map_err(|error| VmError::DiskImage {
         message: format!("read guest artifact {path}: {error}"),
     })?;
+    guest_artifact_file_identity(&file)
+}
+
+fn guest_artifact_file_identity(file: &std::fs::File) -> Result<[u8; 32], VmError> {
+    use std::os::unix::fs::FileExt;
+    const BUFFER_BYTES: usize = 64 * 1024;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(VmError::DiskImage {
+            message: "guest artifact capability is not regular".into(),
+        });
+    }
+    let mut offset = 0;
     let mut hasher = blake3::Hasher::new();
     hasher.update(GUEST_ARTIFACT_IDENTITY_DOMAIN);
     let mut buffer = [0_u8; BUFFER_BYTES];
     loop {
-        let read = file.read(&mut buffer).map_err(|error| VmError::DiskImage {
-            message: format!("read guest artifact {path}: {error}"),
-        })?;
+        let read = file.read_at(&mut buffer, offset)?;
         if read == 0 {
             break;
         }
         hasher.update(&buffer[..read]);
+        offset += read as u64;
+    }
+    if offset != metadata.len() || file.metadata()?.len() != metadata.len() {
+        return Err(VmError::DiskImage {
+            message: "guest artifact changed while hashing".into(),
+        });
     }
     Ok(*hasher.finalize().as_bytes())
 }
@@ -595,6 +609,33 @@ impl SimulationController {
 
     /// Create a new simulation with N VMs.
     pub fn new(config: SimulationConfig) -> Result<Self, VmError> {
+        Self::new_with_files(config, None, None, None)
+    }
+
+    /// Construct from already-admitted regular-file capabilities. Path loading
+    /// policy is unchanged; descriptors are never reopened through proc symlinks.
+    pub fn new_from_files(
+        config: SimulationConfig,
+        kernel: &std::fs::File,
+        initrd: Option<&std::fs::File>,
+        disk: Option<&std::fs::File>,
+    ) -> Result<Self, VmError> {
+        if config.initrd_path.is_some() != initrd.is_some()
+            || config.disk_image_path.is_some() != disk.is_some()
+        {
+            return Err(VmError::DiskImage {
+                message: "guest file capability inventory differs from configuration".into(),
+            });
+        }
+        Self::new_with_files(config, Some(kernel), initrd, disk)
+    }
+
+    fn new_with_files(
+        config: SimulationConfig,
+        kernel: Option<&std::fs::File>,
+        initrd: Option<&std::fs::File>,
+        disk: Option<&std::fs::File>,
+    ) -> Result<Self, VmError> {
         info!(
             "Creating simulation: {} VMs, seed={}, quantum={}",
             config.num_vms, config.seed, config.quantum
@@ -614,10 +655,20 @@ impl SimulationController {
             .fail();
         }
 
-        let mut guest_artifact_ids = vec![guest_artifact_identity(&config.kernel_path)?];
-        if let Some(initrd_path) = config.initrd_path.as_deref() {
-            guest_artifact_ids.push(guest_artifact_identity(initrd_path)?);
+        let mut guest_artifact_ids = vec![if let Some(kernel) = kernel {
+            guest_artifact_file_identity(kernel)?
+        } else {
+            guest_artifact_identity(&config.kernel_path)?
+        }];
+        if let Some(initrd) = initrd {
+            guest_artifact_ids.push(guest_artifact_file_identity(initrd)?);
+        } else if let Some(path) = config.initrd_path.as_deref() {
+            guest_artifact_ids.push(guest_artifact_identity(path)?);
         }
+        let disk_image = disk
+            .map(crate::devices::block::read_image_handle)
+            .transpose()?
+            .map(std::sync::Arc::new);
 
         // Create fault engine with shared seed and num_vms
         let engine_config = fault_engine_config(&config);
@@ -646,8 +697,12 @@ impl SimulationController {
                 vm_config.dlog_path = Some(dir.join(format!("vm_{i}.dlog")));
             }
 
-            let mut vm = DeterministicVm::new(vm_config)?;
-            vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;
+            let mut vm = DeterministicVm::new_with_disk_image(vm_config, disk_image.clone())?;
+            if let Some(kernel) = kernel {
+                vm.load_kernel_from_files(kernel, initrd)?;
+            } else {
+                vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;
+            }
 
             // Take initial snapshot for restart capability
             let initial_snapshot = vm.snapshot()?;
@@ -2697,7 +2752,7 @@ impl SimulationController {
                 .vm
                 .validate_fault_engine_snapshot(vm_snapshot)?;
         }
-        self.validate_pending_snapshot(snapshot)?;
+        Self::validate_pending_snapshot(snapshot)?;
 
         let starting_tick = self.tick;
         let restore_round = starting_tick.saturating_add(1);
@@ -2773,7 +2828,9 @@ impl SimulationController {
         Ok(())
     }
 
-    fn validate_pending_snapshot(&self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
+    /// Validate retained controller/network pending state without a live VM or
+    /// any I/O. Persisted-session admission uses the same restore invariants.
+    pub fn validate_pending_snapshot(snapshot: &SimulationSnapshot) -> Result<(), VmError> {
         let vm_count = snapshot.vm_snapshots.len();
         SimulationCoreSnapshot {
             schema_version: CORE_SNAPSHOT_SCHEMA_VERSION,
@@ -3070,7 +3127,7 @@ impl SimulationController {
                 .vm
                 .validate_fault_engine_snapshot(vm_snapshot)?;
         }
-        self.validate_pending_snapshot(snapshot)?;
+        Self::validate_pending_snapshot(snapshot)?;
 
         let starting_tick = self.tick;
         let restore_round = starting_tick.saturating_add(1);
@@ -3178,6 +3235,23 @@ impl SimulationController {
     /// Get the immutable simulation configuration.
     pub fn config(&self) -> &SimulationConfig {
         &self.config
+    }
+
+    /// Immutable identities of the actually loaded kernel and optional initrd,
+    /// in that order. Checkpoint recorders retain these alongside capture rather
+    /// than reconstructing provenance from paths or configuration metadata.
+    pub fn loaded_guest_artifact_identities(&self) -> &[[u8; 32]] {
+        &self.guest_artifact_ids
+    }
+
+    /// Compare a streamed, domain-separated identity with the artifact actually
+    /// loaded when the controller was constructed, without copying its bytes.
+    pub fn matches_loaded_guest_artifact_identity(
+        &self,
+        index: usize,
+        identity: &[u8; 32],
+    ) -> bool {
+        self.guest_artifact_ids.get(index) == Some(identity)
     }
 
     /// Get current simulation tick.

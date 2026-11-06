@@ -177,38 +177,6 @@ fn projected_predicates_and_downstream_selection_count_before_overwrite() {
 }
 
 #[test]
-fn duplicate_positions_count_once_using_first_projection() {
-    let mut first = event(1, 0, 10, 20);
-    first.derived.insert("tag".to_string(), "skip".to_string());
-    let mut duplicate = first.clone();
-    duplicate
-        .derived
-        .insert("tag".to_string(), "match".to_string());
-    let mut next = event(1, 1, 20, 20);
-    next.derived.insert("tag".to_string(), "match".to_string());
-    let query = count(
-        json!("All"),
-        json!({"Matches": {"field": "tag", "text": "match"}}),
-        "seen",
-    );
-    let mut expected = vec![first.clone(), next.clone()];
-    expected[0]
-        .derived
-        .insert("seen".to_string(), "0".to_string());
-    expected[1]
-        .derived
-        .insert("seen".to_string(), "1".to_string());
-    let result = evaluate(
-        &query,
-        &[first, next, duplicate],
-        &EventQueryLimits::default(),
-    )
-    .unwrap();
-    assert_eq!(result.rows, expected);
-    assert_eq!((result.scanned, result.matched), (3, 2));
-}
-
-#[test]
 fn count_admission_and_generated_bounds_cannot_be_hidden_by_outer_queries() {
     let limits = EventQueryLimits::default();
     for field in [

@@ -38,7 +38,8 @@
       # Same commits through the public GitHub endpoint; the resulting lock
       # NAR identities must match the prior ones exactly.
       inputs.artifactAuthSource.url = "github:OnixResearch/onix-artifact/c932138d880ddf4c2967f4c024b489b5c0022bf1";
-      inputs.cairn.inputs.artifact.url = "github:OnixResearch/onix-artifact/e41340bec587b6d049b5cc518ec7db925dde84be";
+      inputs.cairn.inputs.artifact.url =
+        "github:OnixResearch/onix-artifact/e41340bec587b6d049b5cc518ec7db925dde84be";
     };
     advisory-db = {
       url = "github:RustSec/advisory-db";
@@ -235,6 +236,7 @@
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
               isArchitectureFixture = pkgs.lib.hasPrefix "contracts/architecture-modules/fixtures/" relPath;
               isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
+              isDebugWorkspaceFixture = pkgs.lib.hasPrefix "contracts/debug-query-workspace/" relPath;
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isCampaignCutover = pkgs.lib.hasPrefix "contracts/campaign-cutover/" relPath;
               isFlakeInput = relPath == "flake.nix" || relPath == "flake.lock";
@@ -248,6 +250,7 @@
             || isEvidenceFixture
             || isArchitectureFixture
             || isPropertyCoverageFixture
+            || isDebugWorkspaceFixture
             || isKvmReleaseMatrix
             || isCampaignCutover
             || isFlakeInput
@@ -596,6 +599,37 @@
                 (cd root && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > $out
               '';
 
+          # Reviewed observation policy binds the exact built supervisor, never a
+          # placeholder executable identity. The host consumes the same allowlist.
+          debugObservationBundle =
+            pkgs.runCommand "chaoscontrol-debug-observation-bundle"
+              {
+                nativeBuildInputs = [
+                  pkgs.cpio
+                  pkgs.nickel
+                  pkgs.b3sum
+                  pkgs.jq
+                ];
+              }
+              ''
+                mkdir -p root/{dev,proc,sys,sys/kernel/debug,etc/chaoscontrol,data,run}
+                cp ${guest-supervisor}/bin/chaoscontrol-guest-supervisor root/init
+                chmod +x root/init
+                cp ${./contracts/guest-processes/fixtures/valid/cooperating-processes.json} \
+                  root/etc/chaoscontrol/process-manifest.json
+                b3sum --raw root/init | od -An -v -tu1 \
+                  | jq -Rs '[scan("[0-9]+") | tonumber]' > digest.json
+                printf '{ executable_blake3 = import "%s/digest.json" }\n' "$PWD" > binding.ncl
+                nickel export --format json \
+                  ${./contracts}/debug-query-workspace/examples/shared-state-observation.ncl binding.ncl \
+                  --apply-contract ${./contracts}/debug-query-workspace/observation-profile.ncl > profile.json
+                jq '[.]' profile.json > root/etc/chaoscontrol/observation-profiles.json
+                mkdir -p "$out"
+                cp root/etc/chaoscontrol/observation-profiles.json "$out/observation-profiles.json"
+                cp profile.json "$out/profile.json"
+                (cd root && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
+              '';
+
           # --- Disk image builder ---
 
           redb-disk-image =
@@ -698,49 +732,55 @@
                 cp .config $out
               '';
 
-          minimalBootInitrd = pkgs.runCommand "chaoscontrol-minimal-boot-initrd"
-            {
-              nativeBuildInputs = [ pkgs.cpio pkgs.gzip ];
-            }
-            ''
-              mkdir -p root
-              cp ${pkgs.pkgsStatic.busybox}/bin/busybox root/busybox
-              chmod 0755 root/busybox
-              cat > root/init <<'INIT'
-              #!/busybox sh
-              /busybox mount -t proc proc /proc
-              /busybox mount -t sysfs sysfs /sys
-              /busybox mount -t devtmpfs devtmpfs /dev
-              echo minimal-boot-ok
-              /busybox poweroff -f
-              INIT
-              chmod 0755 root/init
-              cd root
-              find . -print0 | cpio --null -o -H newc \
-                | gzip -9 > $out
-            '';
+          minimalBootInitrd =
+            pkgs.runCommand "chaoscontrol-minimal-boot-initrd"
+              {
+                nativeBuildInputs = [
+                  pkgs.cpio
+                  pkgs.gzip
+                ];
+              }
+              ''
+                mkdir -p root
+                cp ${pkgs.pkgsStatic.busybox}/bin/busybox root/busybox
+                chmod 0755 root/busybox
+                cat > root/init <<'INIT'
+                #!/busybox sh
+                /busybox mount -t proc proc /proc
+                /busybox mount -t sysfs sysfs /sys
+                /busybox mount -t devtmpfs devtmpfs /dev
+                echo minimal-boot-ok
+                /busybox poweroff -f
+                INIT
+                chmod 0755 root/init
+                cd root
+                find . -print0 | cpio --null -o -H newc \
+                  | gzip -9 > $out
+              '';
 
-          hardenedMinimalKernel = (pkgs.linuxManualConfig {
-            inherit (pkgs.linuxPackages_latest.kernel) src version modDirVersion;
-            configfile = hardenedMinimalKernelConfig;
-            allowImportFromDerivation = true;
-            kernelPatches = [
-              {
-                name = "runtime-tsc-capability";
-                patch = ./nix/linux-runtime-tsc-capability.patch;
-              }
-              {
-                name = "ftrace-offset-validation";
-                patch = ./nix/linux-ftrace-offset-validation.patch;
-              }
-            ];
-          }).overrideAttrs (old: {
-            # A non-modular manual kernel installs only bzImage; keep the ELF
-            # vmlinux that ChaosControl's loader needs.
-            postInstall = (old.postInstall or "") + ''
-              cp vmlinux $out/vmlinux
-            '';
-          });
+          hardenedMinimalKernel =
+            (pkgs.linuxManualConfig {
+              inherit (pkgs.linuxPackages_latest.kernel) src version modDirVersion;
+              configfile = hardenedMinimalKernelConfig;
+              allowImportFromDerivation = true;
+              kernelPatches = [
+                {
+                  name = "runtime-tsc-capability";
+                  patch = ./nix/linux-runtime-tsc-capability.patch;
+                }
+                {
+                  name = "ftrace-offset-validation";
+                  patch = ./nix/linux-ftrace-offset-validation.patch;
+                }
+              ];
+            }).overrideAttrs
+              (old: {
+                # A non-modular manual kernel installs only bzImage; keep the ELF
+                # vmlinux that ChaosControl's loader needs.
+                postInstall = (old.postInstall or "") + ''
+                  cp vmlinux $out/vmlinux
+                '';
+              });
 
           mkKernel =
             {
@@ -799,7 +839,13 @@
             }:
             let
               kernel = mkKernel {
-                inherit virtioBlk virtioNet kcov hardening extraConfig;
+                inherit
+                  virtioBlk
+                  virtioNet
+                  kcov
+                  hardening
+                  extraConfig
+                  ;
               };
             in
             pkgs.runCommand "chaoscontrol-vmlinux" { } ''
@@ -1668,6 +1714,7 @@
 
           packages = {
             cargo-exact-revisions = cargoExactRevisions;
+            debug-observation-bundle = debugObservationBundle;
             vm-cohort-octet-workspace = vmCohortAdapterOctetWorkspace;
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
@@ -1728,12 +1775,11 @@
             hardened-kernel-config = (mkKernel { hardening = true; }).configfile;
             hardened-minimal-kernel-config = hardenedMinimalKernelConfig;
             minimal-boot-initrd = minimalBootInitrd;
-            hardened-minimal-vmlinux =
-              pkgs.runCommand "chaoscontrol-hardened-minimal-vmlinux" { } ''
-                mkdir -p $out
-                cp --dereference ${hardenedMinimalKernel}/vmlinux $out/vmlinux
-                chmod 0444 $out/vmlinux
-              '';
+            hardened-minimal-vmlinux = pkgs.runCommand "chaoscontrol-hardened-minimal-vmlinux" { } ''
+              mkdir -p $out
+              cp --dereference ${hardenedMinimalKernel}/vmlinux $out/vmlinux
+              chmod 0444 $out/vmlinux
+            '';
 
             raft-sim = mkChaosTest {
               name = "raft-sim";
@@ -1828,6 +1874,33 @@
           checks = {
             # Build the full workspace
             package = chaoscontrol;
+
+            debug-query-workspace-contracts =
+              pkgs.runCommand "chaoscontrol-debug-query-workspace-contracts"
+                {
+                  nativeBuildInputs = [
+                    pkgs.nickel
+                    pkgs.gnugrep
+                  ];
+                }
+                ''
+                  fixtures=${./contracts}/debug-query-workspace/fixtures
+                  for fixture in "$fixtures"/valid/*.ncl; do
+                    nickel export --format json "$fixture" > /dev/null
+                  done
+                  for fixture in "$fixtures"/invalid/*.ncl; do
+                    if nickel export --format json "$fixture" > /dev/null 2> rejection; then
+                      echo "invalid observation fixture accepted: $fixture" >&2
+                      exit 1
+                    fi
+                    if ! grep -Fq 'contract broken' rejection; then
+                      cat rejection >&2
+                      echo "fixture did not reach its contract boundary: $fixture" >&2
+                      exit 1
+                    fi
+                  done
+                  touch "$out"
+                '';
 
             # Repository-owned package, artifact, template, prior-grant, and
             # third-party license boundary.
@@ -2639,78 +2712,85 @@
             fresh-rust-workload-proof = mkApp "Build a Rust scaffold and run the bounded onboarding proof classification." "${freshRustWorkloadProof}/bin/fresh-rust-workload-proof";
             check-kvm-release-matrix = mkApp "Validate the typed KVM release matrix and adversarial receipt fixtures." "${chaoscontrol}/bin/check-kvm-release-matrix";
             kvm-release-matrix = mkApp "Run the required bounded KVM release matrix and emit one receipt." "${chaoscontrol}/bin/run-kvm-release-matrix";
-            fuzz-smoke = mkApp "Run a bounded libFuzzer smoke over guest-controlled protocol frames and virtio planners (nightly toolchain, network required)." "${pkgs.writeShellApplication {
-              name = "fuzz-smoke";
-              runtimeInputs = [
-                pkgs.rust-bin.nightly.latest.default
-                pkgs.clang
-                pkgs.git
-                pkgs.coreutils
-              ];
-              text = ''
-                exec bash ${./scripts/fuzz-smoke.sh} "$@"
-              '';
-            }}/bin/fuzz-smoke";
-            minimal-boot-smoke = mkApp "Boot the minimal allnoconfig kernel with a static busybox init and require its marker." "${pkgs.writeShellApplication {
-              name = "minimal-boot-smoke";
-              runtimeInputs = [ pkgs.coreutils pkgs.gnugrep ];
-              text = ''
-                set -euo pipefail
-                log="$(mktemp)"
-                pid=""
-                cleanup() {
-                  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-                    kill -TERM "$pid" 2>/dev/null || true
+            fuzz-smoke = mkApp "Run a bounded libFuzzer smoke over guest-controlled protocol frames and virtio planners (nightly toolchain, network required)." "${
+              pkgs.writeShellApplication {
+                name = "fuzz-smoke";
+                runtimeInputs = [
+                  pkgs.rust-bin.nightly.latest.default
+                  pkgs.clang
+                  pkgs.git
+                  pkgs.coreutils
+                ];
+                text = ''
+                  exec bash ${./scripts/fuzz-smoke.sh} "$@"
+                '';
+              }
+            }/bin/fuzz-smoke";
+            minimal-boot-smoke = mkApp "Boot the minimal allnoconfig kernel with a static busybox init and require its marker." "${
+              pkgs.writeShellApplication {
+                name = "minimal-boot-smoke";
+                runtimeInputs = [
+                  pkgs.coreutils
+                  pkgs.gnugrep
+                ];
+                text = ''
+                  set -euo pipefail
+                  log="$(mktemp)"
+                  pid=""
+                  cleanup() {
+                    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                      kill -TERM "$pid" 2>/dev/null || true
+                      sleep 1
+                      kill -KILL "$pid" 2>/dev/null || true
+                      wait "$pid" 2>/dev/null || true
+                    fi
+                    rm -f "$log"
+                  }
+                  trap cleanup EXIT
+                  ${chaoscontrol}/bin/boot ${hardenedMinimalKernel}/vmlinux ${minimalBootInitrd} >"$log" 2>&1 &
+                  pid=$!
+                  marker=0
+                  for _ in $(seq 1 60); do
+                    if grep -q 'minimal-boot-ok' "$log"; then
+                      marker=1
+                      break
+                    fi
+                    if ! kill -0 "$pid" 2>/dev/null; then
+                      break
+                    fi
                     sleep 1
-                    kill -KILL "$pid" 2>/dev/null || true
-                    wait "$pid" 2>/dev/null || true
+                  done
+                  if [ "$marker" -ne 1 ]; then
+                    echo "minimal boot smoke: init marker missing" >&2
+                    tail -40 "$log" >&2
+                    exit 1
                   fi
-                  rm -f "$log"
-                }
-                trap cleanup EXIT
-                ${chaoscontrol}/bin/boot ${hardenedMinimalKernel}/vmlinux ${minimalBootInitrd} >"$log" 2>&1 &
-                pid=$!
-                marker=0
-                for _ in $(seq 1 60); do
-                  if grep -q 'minimal-boot-ok' "$log"; then
-                    marker=1
-                    break
+                  for _ in $(seq 1 20); do
+                    if ! kill -0 "$pid" 2>/dev/null; then
+                      break
+                    fi
+                    sleep 1
+                  done
+                  if kill -0 "$pid" 2>/dev/null; then
+                    echo "minimal boot smoke: VM did not stop after the init halt" >&2
+                    tail -20 "$log" >&2
+                    exit 1
                   fi
-                  if ! kill -0 "$pid" 2>/dev/null; then
-                    break
+                  status=0
+                  wait "$pid" || status=$?
+                  if [ "$status" -ne 0 ]; then
+                    echo "minimal boot smoke: VM exited with status $status" >&2
+                    tail -20 "$log" >&2
+                    exit "$status"
                   fi
-                  sleep 1
-                done
-                if [ "$marker" -ne 1 ]; then
-                  echo "minimal boot smoke: init marker missing" >&2
-                  tail -40 "$log" >&2
-                  exit 1
-                fi
-                for _ in $(seq 1 20); do
-                  if ! kill -0 "$pid" 2>/dev/null; then
-                    break
+                  if grep -q 'Power off not available: System halted instead' "$log"; then
+                    echo "minimal boot smoke: ok (init ran; VM halted instead of powering off)"
+                  else
+                    echo "minimal boot smoke: ok (init ran)"
                   fi
-                  sleep 1
-                done
-                if kill -0 "$pid" 2>/dev/null; then
-                  echo "minimal boot smoke: VM did not stop after the init halt" >&2
-                  tail -20 "$log" >&2
-                  exit 1
-                fi
-                status=0
-                wait "$pid" || status=$?
-                if [ "$status" -ne 0 ]; then
-                  echo "minimal boot smoke: VM exited with status $status" >&2
-                  tail -20 "$log" >&2
-                  exit "$status"
-                fi
-                if grep -q 'Power off not available: System halted instead' "$log"; then
-                  echo "minimal boot smoke: ok (init ran; VM halted instead of powering off)"
-                else
-                  echo "minimal boot smoke: ok (init ran)"
-                fi
-              '';
-            }}/bin/minimal-boot-smoke";
+                '';
+              }
+            }/bin/minimal-boot-smoke";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             vm-determinism-matrix = mkApp "Run the bounded hide-tsc VM determinism matrix rail and emit receipts." "${vmDeterminismMatrix}/bin/vm-determinism-matrix";

@@ -1,51 +1,112 @@
 # Local event queries and static timelines
 
-`query-events`, built from `chaoscontrol-replay`, is a bounded local tool for
-querying retained execution evidence. It performs no network, hosted, or
-arbitrary-code work.
+`query-events`, built from `chaoscontrol-replay`, provides bounded retained-event
+queries, exact local session admission, static timelines, and allowlisted guest
+observations. Queries perform no VM effects; observations run only inside an
+explicitly restored guest branch, never through a host shell or hosted service.
 
 ## Inputs
 
-Pass exactly one source:
+Combine the retained sources needed for the query:
 
-- `--events FILE`: a JSON array of canonical event envelopes.
-- `--recording FILE`: a retained recording; recording events and the canonical
-  fault-stage trace are adapted together.
-- `--dlog FILE`: raw determinism-log bytes.
+- `--events FILE`: canonical event envelopes.
+- `--recording FILE`: metadata recording, including exact fault stages and controls.
+- `--session DIRECTORY`: exact persisted recording/checkpoints/artifacts; mutually
+  exclusive with `--recording` rather than silently choosing one recording.
+- `--dlog FILE --dlog-context FILE`: raw dlog plus explicit VM and per-sequence
+  simulation-tick anchors. Hardware TSC is never inferred as virtual tick time.
 - `--markers FILE`: retained `MarkerEvidenceContext` records.
+- `--sdk-lifecycle FILE --process-manifest FILE --sdk-vm-index N`: an actual
+  supervisor receipt, its admitted process-owner manifest, and explicit VM owner.
 
-Inputs are regular files opened with `O_NOFOLLOW` and bounded to 64 MiB. A dlog
-whose record count exceeds the admitted scan bound is rejected rather than
-partially read.
+File sources retain their exact byte BLAKE3 identity. Source envelopes and the
+additional admitted artifact identities are bound in the workspace moment receipt,
+including empty inputs. Inputs are regular no-follow files, bounded to 64 MiB;
+metadata recordings retain their stricter 16 MiB bound. Combined scan and source
+inventory limits are enforced across all sources. A missing dlog context, unknown
+owner, malformed record or over-bound source fails rather than being omitted.
 
 ## Envelope rules
 
-- Recording events use one source identity; fault-stage events use a distinct
-  domain-separated identity so positions cannot collide.
-- Fault-stage ticks come from round deltas, or from the attempt selection tick
-  for legacy traces without deltas.
-- Branch markers retain their observed tick, owner, identity, and payload
-  digest.
-- Different source-visible content at one `(source_id, source_sequence)` is
-  rejected. Repeated source positions collapse under existing deduplication,
-  retaining the first candidate's query-local projections.
+- Recording positions flatten retained event, fault-stage and control arrays in
+  that order while preserving the original recording artifact identity.
+- Only `Selected` stages may use the retained attempt selection time; later stages
+  require exact round deltas. Missing application/observation time is not guessed.
+- Pause admission/suppression records remain controls, never application or
+  observation. Repeated suppression opportunities are not distinct faults.
+- Branch markers retain their observed tick, owner, identity and payload digest.
+- Every repeated `(source_id, source_sequence)` in retained input is rejected,
+  including identical rows and rows differing only in query-local projections.
+  Deduplication discussed below applies only to computed query branches, not
+  duplicate retained inputs; computed `Union` still retains its first selection.
 - Directly combined `Union`, `DistinctByTick`, `Temporal`, `Intersect` or
   `Difference` children must not span more than one `UpTo` moment.
+- Output directories are opened component-wise without following symlinks and
+  held through publication. Parent traversal is rejected; result/receipt aliases
+  and aliases of admitted inputs cannot overwrite one another.
 
 ## Commands
 
 ```bash
-query-events query --recording recording.json query.json result.json \
-  --receipt receipt.json
+# Explicit capture is the only command here that boots a new guest.
+query-events capture-session --kernel "$KERNEL" --initrd "$BUNDLE/initrd" \
+  --seed 42 --vms 1 --memory-mib 128 --quantum 100 --bootstrap-ticks 10000 \
+  --history-ticks 40 --checkpoint-interval 20 session
 
-query-events validate --recording recording.json query.json result.json receipt.json
+query-events query --session session query.json result.json --receipt receipt.json
+query-events validate --session session query.json result.json receipt.json
 
-query-events timeline --format markdown facts.json timeline.md \
-  --receipt timeline-receipt.json
+query-events prepare-timeline --session session query.json workspace.json \
+  --missing-artifact 'frontier trace was not retained'
+query-events timeline --format markdown workspace.json timeline.md --receipt timeline-receipt.json
+query-events validate-timeline --format markdown workspace.json timeline.md timeline-receipt.json
 
-query-events validate-timeline --format markdown facts.json timeline.md \
-  timeline-receipt.json
+query-events observe --session session --checkpoint 1 --vm-index 0 \
+  --profile "$BUNDLE/profile.json" --admitted-profiles "$BUNDLE/observation-profiles.json" observation.json
+query-events validate-observation --session session --checkpoint 1 --vm-index 0 \
+  --profile "$BUNDLE/profile.json" --admitted-profiles "$BUNDLE/observation-profiles.json" observation.json
 ```
+
+Queries and timeline renders always emit their bounded receipt: to `--receipt`
+when provided, otherwise as JSON on stdout. No receipt is silently discarded.
+
+Build the reviewed observation guest with `nix build .#debug-observation-bundle`.
+`BUNDLE` is that output directory. Its Nickel policy is bound to the exact built
+supervisor executable digest, and the same immutable allowlist is supplied both
+to the guest and to the host admission call. The example reads relative
+`data/cooperating-state`, has absolute deadline tick 5000 and 1024-byte stream
+limits. It requires guest `memfd_create` and sealing; there is no fallback.
+
+`query.json` contains a typed AST such as `"All"`. Optional `--moment FILE` accepts
+`{"selector":{"kind":"checkpoint","value":1},"past_ticks":20,"future_ticks":0,"requires_restored_state":true}`.
+Without it the CLI explicitly selects all retained past, not inferred future state.
+Future/restored requests require exact session/checkpoint admission; metadata-only
+recordings cannot trigger a default boot. Observation commands preserve the
+checkpoint and selected tick separately and reject arbitrary tick drift.
+
+`prepare-timeline` consumes the actual retained checkpoint/lineage facts. Optional
+`--frontier FILE` admits the existing frontier trace: v1 has no simulation tick,
+checkpoint ID or fork parentage, so those gaps remain explicit rather than using
+round/sequence as time. Query and source truncation remain separate facts. The
+timeline input is now `WorkspaceTimelineInput`, not a bare list of graph nodes.
+
+Observation receipts retain bounded stdout/stderr lengths and digests, not raw
+stream contents. Even a declared read-only command perturbs guest scheduling;
+all observations are labeled counterfactual and cannot certify original history,
+complete capture, causal attribution, source correctness, replay or release.
+Outputs cannot overwrite their admitted inputs or exact session artifacts.
+
+Observation admission requires an idle diagnostic port: both queued requests and
+polled requests awaiting their matching receipts count as outstanding. Exact
+snapshots retain that in-flight state; snapshots without this accounting are
+rejected rather than assumed idle. A retained active command cannot complete a
+new observation with the same request digest. SDK stream collection uses owned,
+nonblocking pipes and closes them at command completion/deadline instead of
+waiting for escaped descendants to close their descriptors. Missing EOF marks
+capture incomplete. Optional SDK stream artifacts are bounded regular files
+published beneath pinned, no-follow directories; existing entries are never
+overwritten and must contain the exact admitted bytes.
+
 
 ## Projecting JSON log text
 
@@ -1533,10 +1594,92 @@ A timeline receipt binds the declared format, canonical fact digest, node and
 byte counts, and rendered-output digest. Validation must first supply exactly
 the canonical rendering.
 
+## Exact persisted sessions and moments
+
+`chaoscontrol_replay::session` keeps exact state separate from recording JSON.
+`save_recorder(&recorder, &controller, directory, limits)` creates a new directory
+from actual captured checkpoints and the controller's complete configuration.
+Record bootstrap rounds through `Recorder::record_round` as well; after every VM
+has actually admitted setup, `Recorder::start_at_tick(bootstrap_tick)` starts the
+checkpoint cadence relative to that tick without dropping bootstrap evidence or
+repeatedly catching up an interval measured from zero. Capture checkpoints with
+`Recorder::on_controller_tick(&mut controller, serial_output)`: snapshots and the
+controller's loaded guest-input identities are captured inseparably. Arbitrary
+`Recording` values and caller-supplied `on_tick` snapshots cannot establish exact
+provenance. `save_recorder` and `save_recorder_with_branches` verify that private
+capture provenance matches the loaded controller and retained kernel/initrd bytes.
+Configured disk bytes must match every captured block backend's immutable base.
+Guest inputs are copied and identity-checked with a fixed 64 KiB buffer, not
+materialized as duplicate kernel/initrd bodies during validation or persistence.
+
+The session manifest binds the exact recording bytes, full configuration, guest
+input artifacts, checkpoint bytes, checkpoint metadata, branch parentage,
+retained horizon and limits. New public identities use `b3:<64 lowercase hex>`.
+Snapshots reuse the existing exploration `FileSnapshotStore` envelope and bounded
+CBOR/zstd encoder/decoder, with capability-relative session I/O rather than a
+second snapshot format or the store's path-based shell. Its internal
+legacy SHA256 reference remains intact for store interoperability; the session
+independently requires a BLAKE3 identity of those same artifact bytes. The replay
+crate's exploration dependency is confined to this persistence shell and codec;
+the moment/query core does not invoke exploration, filesystem or VM execution.
+
+Session defaults/caps are 4 MiB manifest JSON, 16 MiB recording JSON, 512 MiB per
+guest input, 256 MiB per **compressed** snapshot, 4 GiB total retained artifact
+bytes, 128 checkpoints and 128 branch records. The existing codec separately caps
+each decompressed snapshot at 2 GiB. The declared 4 GiB total also independently
+caps aggregate decompressed snapshot payloads, including repeated disk bases.
+Each encode/decode receives only its remaining aggregate budget, rejecting a
+compression bomb before it can allocate beyond that bound. Aggregate configured
+guest memory is checked before decode as well. Bounds may be lowered, not raised
+above these caps. Compression does not
+waive a limit; a snapshot exceeding the existing codec's limits is unsupported
+and rejected explicitly. Session JSON is published last and existing directories
+are never overwritten, so an interrupted capture is not an exact session.
+
+`load_session(directory, limits)` pins directory components and regular files
+with capability-relative `openat` and `O_NOFOLLOW`, validates manifest/config and
+all artifact identities, and decodes and validates every checkpoint before
+returning the private `ExactSession` capability. Missing, corrupt, changed,
+legacy/incomplete or incompatible snapshots fail closed. An isolated recording
+JSON file cannot construct that capability. `ExactSession::recording_identity()`
+returns the raw persisted recording's identity for canonical event adaptation;
+empty event sets still retain this source identity and an explicit tick horizon.
+
+`moment::admit_moment(request, retained_history, optional_exact_session)` is pure.
+The typed `MomentRequest` explicitly selects a tick, checkpoint ID or retained
+branch identity and declares `past_ticks`, `future_ticks` and
+`requires_restored_state`. Checked arithmetic rejects underflow/overflow or any
+window outside retained history; each past/future interval is capped at one
+billion ticks. Past-only selections run offline. Future-of-moment selections and
+even zero-width operations needing restored state require the exact session and
+a validated checkpoint at or before the selected tick. The source inventory must
+contain the exact session recording identity. No missing state is inferred and
+there is no default boot fallback. `MomentContext` binds canonical source IDs,
+the selected tick/window, complete retained horizon and any session/checkpoint/
+branch identities; receipt validation must retain and revalidate this context.
+
+`ExactSession::restore_controller(checkpoint_id)` restores precisely that
+checkpoint. `restore_moment(&context)` additionally advances to a selected retained
+tick using the existing exact fault-stage, pause-control and SMP replay checks.
+Construction loads inputs and restores state without stepping a fallback boot.
+The returned `RestoredController` owns sealed, immutable verified guest input
+capabilities for its entire lifetime. `SimulationController::new_from_files` and
+the VM's file-capability loader consume these descriptors directly; they do not
+reopen `/proc/self/fd` symlinks or relax the ordinary loader's `O_NOFOLLOW` policy.
+Restart uses the retained initial snapshot, not a path/boot fallback. The wrapper
+dereferences to `SimulationController`, exposes `controller_mut()`, and retains
+immutable `checkpoint_tick()` and admitted `selected_tick()` facts. Observation
+must reject a controller whose current tick moved outside that selection. Host
+dlog destinations are disabled on restore so the original run is not overwritten.
+`branch_graph_facts()` returns the retained branch root/parentage and sequential
+checkpoint capture edges. Neighboring timestamps or markers do not invent forks.
+These local artifacts do not promote replay, causal, complete-capture or release
+claims. A real VM proof remains evidence only for its recorded inputs and bounds.
+
 ## Non-claims
 
 These commands describe only admitted inputs, limits, and computed rows. They
 do not claim complete event capture, causal attribution, source correctness,
 hosted service support, arbitrary command execution, replay promotion, or
-release eligibility. Guest observation and future-of-moment restore are not
-implemented here.
+release eligibility. Exact-session admission and restored guest execution retain
+their separate prerequisites; historical events alone do not satisfy them.

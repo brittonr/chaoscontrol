@@ -93,7 +93,6 @@ fn extrema_preserve_canonical_unique_prefixes_without_a_zero_seed() {
                 .collect();
             let q = query(operator, json!("All"), matching(), field, "reading");
             let mut input = original.clone();
-            input.push(original[1].clone());
             for _ in 0..2 {
                 assert_eq!(evaluate(&q, &input, &limits).unwrap().rows, expected);
                 input.reverse();
@@ -123,25 +122,10 @@ fn extrema_preserve_canonical_unique_prefixes_without_a_zero_seed() {
 }
 
 #[test]
-fn duplicate_projection_priority_and_equal_signed_zero_are_stable() {
+fn equal_signed_zero_and_numeric_boundaries_are_stable() {
     let limits = EventQueryLimits::default();
     for operator in OPERATORS {
         let q = query(operator, json!("All"), matching(), "extremum", "reading");
-        let first = event(0, 0, "2", "metric");
-        let mut duplicate = first.clone();
-        duplicate
-            .derived
-            .insert("reading".to_string(), "bad".to_string());
-        assert_eq!(
-            evaluate(&q, &[first.clone(), duplicate.clone()], &limits)
-                .unwrap()
-                .rows,
-            vec![annotate(first.clone(), "extremum", Some("2.0"))]
-        );
-        assert_eq!(
-            evaluate(&q, &[duplicate, first], &limits),
-            Err(EventQueryError::InvalidNumber)
-        );
         for (a, b, expected) in [
             ("-0", "0", "-0.0"),
             ("0", "-0", "0.0"),

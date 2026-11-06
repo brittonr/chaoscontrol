@@ -1326,7 +1326,9 @@ impl VmSnapshot {
         })
     }
 
-    fn validate_kernel_restore(&self, vcpu_count: usize) -> Result<(), SnapshotError> {
+    /// Validate retained exact architecture/completeness without allocating KVM
+    /// state. The file-session shell uses this same restore preflight.
+    pub fn validate_kernel_restore(&self, vcpu_count: usize) -> Result<(), SnapshotError> {
         if vcpu_count != self.vcpu_snapshots.len() {
             return VcpuCountMismatchSnafu {
                 snapshot: self.vcpu_snapshots.len(),

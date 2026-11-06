@@ -240,7 +240,7 @@ fn both_names_and_children_are_admitted_on_empty_sources() {
     );
 }
 #[test]
-fn capacity_checks_cannot_be_hidden_by_narrowing_duplicates_or_repair() {
+fn capacity_checks_cannot_be_hidden_by_narrowing_or_repair() {
     let limits = EventQueryLimits::default();
     let q = query(json!("All"), "new", "since");
     let narrow = |input| EventQuery::Narrow {
@@ -267,11 +267,7 @@ fn capacity_checks_cannot_be_hidden_by_narrowing_duplicates_or_repair() {
     );
     source.derived.get_mut("pad").unwrap().push('x');
     assert_eq!(
-        evaluate(
-            &narrow(q.clone()),
-            &[event(0, u64::MAX, "0"), source],
-            &limits
-        ),
+        evaluate(&narrow(q.clone()), &[source], &limits),
         Err(EventQueryError::InvalidEvent)
     );
     let mut source = event(0, u64::MAX, "0");

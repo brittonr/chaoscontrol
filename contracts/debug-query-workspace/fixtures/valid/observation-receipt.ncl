@@ -1,0 +1,25 @@
+# Shape-only review fixture, not execution evidence; Rust binds real identities.
+let D = "1111111111111111111111111111111111111111111111111111111111111111" in
+{
+  schema = "chaoscontrol.observation-receipt.v1",
+  binding = { session_identity = "b3:%{D}", checkpoint_identity = "b3:%{D}", checkpoint_tick = 1170, selected_tick = 1170, vm_index = 0 },
+  profile_identity = D,
+  request_digest = D,
+  deadline_tick = 5000,
+  start_tick = 1170,
+  end_tick = 5000,
+  executed_rounds = 3830,
+  stdout_limit = 1024,
+  stderr_limit = 1024,
+  stdout_bytes = 0,
+  stderr_bytes = 0,
+  stdout_digest = D,
+  stderr_digest = D,
+  diagnostic_receipt = null,
+  output_digest = D,
+  incomplete = true,
+  counterfactual = true,
+  mutates_guest = false,
+  certifies_original_history = false,
+  nonclaim = "local guest-branch observation only; read-only commands may perturb scheduling; not original-history certification, complete capture, causal attribution, source correctness, arbitrary or remote execution, replay promotion, or release eligibility",
+} | (import "../../observation-receipt.ncl")

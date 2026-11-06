@@ -18,7 +18,8 @@ pub fn suffix_at_char_boundary(value: &str, max_bytes: usize) -> &str {
     &value[start..]
 }
 
-/// Escape table-cell delimiters so content cannot rewrite the table shape.
+/// Escape untrusted literal text for Markdown cells and inline fields.
+/// Prevent HTML, links/images, formatting, autolinks and table-shape changes.
 pub fn escape_markdown_cell(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
@@ -26,6 +27,18 @@ pub fn escape_markdown_cell(value: &str) -> String {
             '\r' | '\n' => escaped.push(' '),
             '\\' => escaped.push_str("\\\\"),
             '|' => escaped.push_str("\\|"),
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            // Entities prevent bare URL/email autolink recognition as well as
+            // explicit link syntax; their rendered characters remain literal.
+            ':' => escaped.push_str("&#58;"),
+            '.' => escaped.push_str("&#46;"),
+            '@' => escaped.push_str("&#64;"),
+            '[' | ']' | '(' | ')' | '!' | '`' | '*' | '_' | '{' | '}' | '#' => {
+                escaped.push('\\');
+                escaped.push(character);
+            }
             other => escaped.push(other),
         }
     }
@@ -81,5 +94,27 @@ mod tests {
         assert!(fenced.starts_with("````\n"));
         assert!(fenced.ends_with("\n````\n\n"));
         assert_eq!(flatten_lines("a\r\nb\nc"), "a  b c");
+    }
+
+    #[test]
+    fn markdown_literals_cannot_create_html_links_images_or_autolinks() {
+        let input = "<script src=\"https://evil.test/x\"></script> ![pixel](https://evil.test/p) [link][ref] `code` *strong* &lt; www.evil.test user@evil.test";
+        let escaped = escape_markdown_cell(input);
+        assert!(!escaped.contains("<script"));
+        assert!(!escaped.contains("</script>"));
+        assert!(!escaped.contains("![pixel]("));
+        assert!(!escaped.contains("[link][ref]"));
+        assert!(!escaped.contains("https://"));
+        assert!(!escaped.contains("www."));
+        assert!(!escaped.contains("user@"));
+        assert!(escaped.contains("&lt;script"));
+        assert!(escaped.contains("&amp;lt;"));
+        assert!(escaped.contains("\\!\\[pixel\\]\\(https&#58;//evil&#46;test/p\\)"));
+        assert!(escaped.contains("\\`code\\` \\*strong\\*"));
+        assert_eq!(escape_markdown_cell("|\\\r\n"), "\\|\\\\  ");
+        assert_eq!(
+            escape_markdown_cell("ordinary UTF-8 café"),
+            "ordinary UTF-8 café"
+        );
     }
 }

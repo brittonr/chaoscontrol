@@ -8,6 +8,9 @@ use std::path::Path;
 
 const DEFAULT_MANIFEST: &str = "/etc/chaoscontrol/process-manifest.json";
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const OBSERVATION_PROFILES: &str = "/etc/chaoscontrol/observation-profiles.json";
+const MAX_OBSERVATION_PROFILES: usize = 32;
+const MAX_OBSERVATION_PROFILES_BYTES: u64 = 128 * 1024;
 const MAX_FIXTURE_STATE_BYTES: u64 = 1024 * 1024;
 const FIXTURE_WORKER_MODE: &str = "--fixture-worker";
 const FIXTURE_SHARED_FILE_NAME: &str = "cooperating-state";
@@ -15,9 +18,21 @@ const DEFAULT_FIXTURE_DATA_DIRECTORY: &str = "/data";
 const FIXTURE_COMMIT_MARKER: &str = ".writer-committed-once";
 const FIXTURE_EXIT_MARKER: &str = ".writer-exit-once";
 const FIXTURE_EXIT_STATUS: i32 = 23;
+const OBSERVE_SHARED_STATE_MODE: &str = "--observe-shared-state";
 
 fn main() {
-    let result = if std::env::args().nth(1).as_deref() == Some(FIXTURE_WORKER_MODE) {
+    let result = if std::env::args().nth(1).as_deref() == Some(OBSERVE_SHARED_STATE_MODE) {
+        read_bounded_regular(
+            Path::new(FIXTURE_SHARED_FILE_NAME),
+            MAX_FIXTURE_STATE_BYTES,
+            "observation state",
+        )
+        .and_then(|bytes| {
+            std::io::stdout()
+                .write_all(&bytes)
+                .map_err(|e| e.to_string())
+        })
+    } else if std::env::args().nth(1).as_deref() == Some(FIXTURE_WORKER_MODE) {
         run_fixture_worker()
     } else {
         run()
@@ -117,6 +132,30 @@ fn run() -> Result<(), String> {
         .processes
         .first()
         .map(|process| process.spec.executable.clone());
+    let observation_profiles = if Path::new(OBSERVATION_PROFILES)
+        .try_exists()
+        .map_err(|e| e.to_string())?
+    {
+        let bytes = read_bounded_regular(
+            Path::new(OBSERVATION_PROFILES),
+            MAX_OBSERVATION_PROFILES_BYTES,
+            "observation profiles",
+        )?;
+        let profiles: Vec<chaoscontrol_protocol::diagnostic::ObservationProfile> =
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        if profiles.len() > MAX_OBSERVATION_PROFILES {
+            return Err("observation profile count bound".into());
+        }
+        for (index, profile) in profiles.iter().enumerate() {
+            if profiles[..index].contains(profile) {
+                return Err("duplicate observation profile".into());
+            }
+            profile.request()?;
+        }
+        profiles
+    } else {
+        Vec::new()
+    };
     let manifest_identity = admitted.manifest_identity.clone();
     let shared_storage = chaoscontrol_sdk::supervisor::prepare_guest_shared_storage(&admitted)
         .map_err(|error| format!("shared storage admission: {error:?}"))?;
@@ -140,10 +179,11 @@ fn run() -> Result<(), String> {
                 .apply_fault(&command)
                 .map_err(|error| format!("{error:?}"))?;
         }
-        if let Some(executable) = diagnostic_executable.as_deref() {
-            chaoscontrol_sdk::diagnostic::serve_one_diagnostic(Path::new(executable))
-                .map_err(|error| format!("diagnostic operation: {error}"))?;
-        }
+        chaoscontrol_sdk::diagnostic::serve_one_declared_diagnostic(
+            diagnostic_executable.as_deref().map(Path::new),
+            &observation_profiles,
+        )
+        .map_err(|error| format!("diagnostic operation: {error}"))?;
         supervisor.monitor().map_err(|error| format!("{error:?}"))?;
         supervisor
             .advance_tick()

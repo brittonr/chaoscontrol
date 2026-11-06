@@ -134,6 +134,15 @@ pub struct RealSimulationRunner {
     controller: SimulationController,
 }
 
+impl RealSimulationRunner {
+    pub(crate) fn from_controller(controller: SimulationController) -> Self {
+        Self { controller }
+    }
+    pub(crate) fn into_controller(self) -> SimulationController {
+        self.controller
+    }
+}
+
 impl SimulationRunner for RealSimulationRunner {
     fn create(
         config: &RecordingConfig,
@@ -281,72 +290,8 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         };
 
         let target_tick = checked_recorded_target_tick(&self.recording, start_tick, ticks)?;
-        let mut events = Vec::new();
-        let mut fault_outcomes = Vec::new();
-        let mut stage_event_count = self
-            .recording
-            .fault_round_deltas
-            .iter()
-            .filter(|delta| delta.tick <= start_tick)
-            .map(|delta| delta.event_end)
-            .next_back()
-            .unwrap_or(0);
-        replay_pause_requests(&self.recording, &mut runner, stage_event_count)?;
-        validate_replayed_fault_controls(
-            &self.recording,
-            runner.tick(),
-            stage_event_count,
-            runner.fault_control_events(),
-        )?;
-
-        while runner.tick() < target_tick {
-            let result = runner.step_round().map_err(|e| {
-                RunnerSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-
-            validate_replayed_fault_round(&self.recording, result.tick, &result.fault_outcomes)?;
-            validate_replayed_schedule_round(
-                &self.recording,
-                result.tick,
-                &result.schedule_traces,
-            )?;
-            fault_outcomes.extend(result.fault_outcomes.iter().cloned());
-            stage_event_count += result.fault_outcomes.len() as u64;
-            replay_pause_requests(&self.recording, &mut runner, stage_event_count)?;
-            validate_replayed_fault_controls(
-                &self.recording,
-                runner.tick(),
-                stage_event_count,
-                runner.fault_control_events(),
-            )?;
-
-            // Collect events that occurred this tick
-            for event in &self.recording.events {
-                if event_tick(event) == runner.tick() {
-                    events.push(event.clone());
-                }
-            }
-
-            if result.vms_running == 0 {
-                break;
-            }
-        }
-
-        validate_replayed_fault_interval(
-            &self.recording,
-            start_tick,
-            target_tick,
-            &fault_outcomes,
-        )?;
-        if runner.tick() != target_tick {
-            return InvalidStateSnafu {
-                message: format!("exact replay stopped before tick {target_tick}"),
-            }
-            .fail();
-        }
+        let (events, fault_outcomes) =
+            advance_exact_runner(&self.recording, &mut runner, target_tick)?;
         let oracle_report = runner.report();
         let serial_output: Vec<String> = (0..self.recording.config.num_vms)
             .map(|i| runner.serial_output(i))
@@ -519,6 +464,69 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             message: format!("invalid recorded fault trace: {error:?}"),
         })
     }
+}
+
+/// Advance an already-restored runner using the same exact evidence checks as
+/// replay_from. It never creates a runner or falls back to boot execution.
+pub(crate) fn advance_exact_runner<R: SimulationRunner>(
+    recording: &Recording,
+    runner: &mut R,
+    target_tick: u64,
+) -> Result<(Vec<RecordedEvent>, Vec<FaultStageEvent>), ReplayError> {
+    let start_tick = runner.tick();
+    if target_tick < start_tick {
+        return Err(ReplayError::InvalidState {
+            message: "exact advancement target precedes restored checkpoint".into(),
+        });
+    }
+    checked_recorded_target_tick(recording, start_tick, target_tick - start_tick)?;
+    let mut events = Vec::new();
+    let mut fault_outcomes = Vec::new();
+    let mut stage_event_count = recording
+        .fault_round_deltas
+        .iter()
+        .filter(|delta| delta.tick <= start_tick)
+        .map(|delta| delta.event_end)
+        .next_back()
+        .unwrap_or(0);
+    replay_pause_requests(recording, runner, stage_event_count)?;
+    validate_replayed_fault_controls(
+        recording,
+        runner.tick(),
+        stage_event_count,
+        runner.fault_control_events(),
+    )?;
+    while runner.tick() < target_tick {
+        let result = runner.step_round()?;
+        validate_replayed_fault_round(recording, result.tick, &result.fault_outcomes)?;
+        validate_replayed_schedule_round(recording, result.tick, &result.schedule_traces)?;
+        stage_event_count += result.fault_outcomes.len() as u64;
+        fault_outcomes.extend(result.fault_outcomes);
+        replay_pause_requests(recording, runner, stage_event_count)?;
+        validate_replayed_fault_controls(
+            recording,
+            runner.tick(),
+            stage_event_count,
+            runner.fault_control_events(),
+        )?;
+        events.extend(
+            recording
+                .events
+                .iter()
+                .filter(|event| event_tick(event) == runner.tick())
+                .cloned(),
+        );
+        if result.vms_running == 0 {
+            break;
+        }
+    }
+    validate_replayed_fault_interval(recording, start_tick, target_tick, &fault_outcomes)?;
+    if runner.tick() != target_tick {
+        return Err(ReplayError::InvalidState {
+            message: format!("exact replay stopped before tick {target_tick}"),
+        });
+    }
+    Ok((events, fault_outcomes))
 }
 
 pub(crate) fn validated_checkpoint_snapshot<'a>(

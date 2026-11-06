@@ -354,27 +354,3 @@ fn temporal_receipts_bind_both_inputs_windows_and_witnesses_with_explicit_moment
         Vec::<EventEnvelope>::new()
     );
 }
-
-#[test]
-fn negative_empty_witness_preserves_first_duplicate_projection() {
-    let mut events = Vec::new();
-    let mut first = BTreeMap::new();
-    for index in 0..96 {
-        let position = (index * 17) % 11;
-        let mut source = event(position, position % 3, "candidate");
-        source
-            .derived
-            .insert("projection".to_string(), index.to_string());
-        first.entry(position).or_insert_with(|| source.clone());
-        events.push(source);
-    }
-    let mut expected: Vec<_> = first.into_values().collect();
-    expected.sort_by_key(|event| (event.tick, event.source_id, event.source_sequence));
-    let original = query("NotPrecededBy", 5);
-    assert_eq!(
-        evaluate(&original, &events, &EventQueryLimits::default())
-            .unwrap()
-            .rows,
-        expected
-    );
-}

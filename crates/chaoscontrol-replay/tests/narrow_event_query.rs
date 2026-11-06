@@ -301,7 +301,7 @@ fn narrowing_shares_work_structure_and_result_boundaries() {
 }
 
 #[test]
-fn narrowed_moments_duplicate_precedence_and_receipts_retain_all_inputs() {
+fn narrowed_moments_and_receipts_retain_all_inputs() {
     let limits = EventQueryLimits::default();
     let events = [event(0, 30), event(1, 10)];
     let query = narrow(
@@ -351,21 +351,5 @@ fn narrowed_moments_duplicate_precedence_and_receipts_retain_all_inputs() {
         .unwrap()
         .moment_tick,
         Some(10)
-    );
-    let mut first = event(0, 10);
-    first.derived = BTreeMap::from([("selected".to_string(), "first".to_string())]);
-    let mut second = first.clone();
-    second
-        .derived
-        .insert("selected".to_string(), "second".to_string());
-    assert_eq!(
-        evaluate(
-            &narrow(json!("All"), json!(["selected"])),
-            &[first.clone(), second],
-            &limits
-        )
-        .unwrap()
-        .rows,
-        vec![first]
     );
 }

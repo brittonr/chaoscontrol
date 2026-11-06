@@ -24,7 +24,7 @@ const BYTES_PER_KIB: u64 = 1024;
 const KIB_PER_MIB: u64 = 1024;
 const BYTES_PER_MIB: u64 = BYTES_PER_KIB * KIB_PER_MIB;
 const MAX_COMPRESSED_SNAPSHOT_BYTES: u64 = 256 * BYTES_PER_MIB;
-const MAX_DECOMPRESSED_SNAPSHOT_BYTES: u64 = 2048 * BYTES_PER_MIB;
+pub const MAX_DECOMPRESSED_SNAPSHOT_BYTES: u64 = 2048 * BYTES_PER_MIB;
 const MAX_SNAPSHOT_DIRECTORY_ENTRIES: usize = 4_096;
 const READ_LIMIT_SENTINEL_BYTES: u64 = 1;
 const SNAPSHOT_COMPRESSION_LEVEL: i32 = 3;
@@ -86,16 +86,51 @@ pub enum SnapshotStoreError {
     },
 }
 
+#[cfg(test)]
 fn encode_cbor<T: Serialize>(value: &T) -> Result<Vec<u8>, SnapshotStoreError> {
-    let mut encoded = Vec::new();
-    ciborium::ser::into_writer(value, &mut encoded)
-        .map_err(|source| SnapshotStoreError::CborEncode { source })?;
-    Ok(encoded)
+    encode_cbor_with_limit(value, MAX_DECOMPRESSED_SNAPSHOT_BYTES)
 }
 
-fn decode_cbor<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, SnapshotStoreError> {
-    ciborium::de::from_reader(std::io::Cursor::new(bytes))
-        .map_err(|source| SnapshotStoreError::CborDecode { source })
+fn encode_cbor_with_limit<T: Serialize>(
+    value: &T,
+    maximum_bytes: u64,
+) -> Result<Vec<u8>, SnapshotStoreError> {
+    let mut output = BoundedSnapshotBytes {
+        bytes: Vec::new(),
+        maximum_bytes,
+        exceeded: false,
+    };
+    ciborium::ser::into_writer(value, &mut output).map_err(|source| {
+        if output.exceeded {
+            SnapshotStoreError::DecompressedTooLarge {
+                limit: maximum_bytes,
+            }
+        } else {
+            SnapshotStoreError::CborEncode { source }
+        }
+    })?;
+    Ok(output.bytes)
+}
+
+struct BoundedSnapshotBytes {
+    bytes: Vec<u8>,
+    maximum_bytes: u64,
+    exceeded: bool,
+}
+impl Write for BoundedSnapshotBytes {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if (self.bytes.len() as u64).saturating_add(bytes.len() as u64) > self.maximum_bytes {
+            self.exceeded = true;
+            return Err(std::io::Error::other(
+                "snapshot CBOR exceeds decompressed byte bound",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, SnapshotStoreError> {
@@ -260,35 +295,10 @@ impl SnapshotStore for FileSnapshotStore {
                 path: snapshots_dir.display().to_string(),
             });
         }
-        let envelope = SnapshotArtifactEnvelope {
-            schema_version: SNAPSHOT_SCHEMA_VERSION,
-            codec: SNAPSHOT_CODEC.to_string(),
-            replay_parent_depth,
-            tick: snapshot.tick,
-            vm_count: snapshot.vm_snapshots.len(),
-            snapshot: snapshot.clone(),
-        };
-        let uncompressed = encode_cbor(&envelope)?;
-        if uncompressed.len() as u64 > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
-            return Err(SnapshotStoreError::DecompressedTooLarge {
-                limit: MAX_DECOMPRESSED_SNAPSHOT_BYTES,
-            });
-        }
-        let bytes = zstd::stream::encode_all(
-            std::io::Cursor::new(uncompressed),
-            SNAPSHOT_COMPRESSION_LEVEL,
-        )
-        .map_err(|source| SnapshotStoreError::Io { source })?;
-        if bytes.len() as u64 > MAX_COMPRESSED_SNAPSHOT_BYTES {
-            return Err(SnapshotStoreError::TooLarge {
-                path: "generated snapshot".to_string(),
-                limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
-            });
-        }
-        let digest = digest_bytes(&bytes);
-        let hex = digest.strip_prefix("sha256:").unwrap_or(&digest);
-        let rel = format!("{SNAPSHOT_DIR}/{hex}.snapshot.bin");
-        let final_path = self.root.join(&rel);
+        let (reference, bytes) =
+            encode_snapshot_artifact(snapshot, replay_parent_depth, MAX_COMPRESSED_SNAPSHOT_BYTES)?;
+        let rel = &reference.path;
+        let final_path = self.root.join(rel);
         let parent = final_path.parent().ok_or_else(|| SnapshotStoreError::Io {
             source: std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -314,13 +324,7 @@ impl SnapshotStore for FileSnapshotStore {
         directory
             .sync_all()
             .map_err(|source| SnapshotStoreError::Io { source })?;
-        Ok(ReplayParentSnapshotRef {
-            store: FILE_STORE_KIND.to_string(),
-            digest,
-            codec: SNAPSHOT_CODEC.to_string(),
-            schema_version: SNAPSHOT_SCHEMA_VERSION,
-            path: rel,
-        })
+        Ok(reference)
     }
 
     fn get_snapshot_artifact(
@@ -329,31 +333,7 @@ impl SnapshotStore for FileSnapshotStore {
     ) -> Result<SnapshotArtifactEnvelope, SnapshotStoreError> {
         let path = self.resolve_ref(reference)?;
         let bytes = read_snapshot_bytes(&path, &reference.path)?;
-        let actual = digest_bytes(&bytes);
-        if actual != reference.digest {
-            return Err(SnapshotStoreError::DigestMismatch {
-                path: reference.path.clone(),
-                expected: reference.digest.clone(),
-                actual,
-            });
-        }
-        let decompressed = decompress_snapshot(&bytes, MAX_DECOMPRESSED_SNAPSHOT_BYTES)?;
-        let artifact: SnapshotArtifactEnvelope = decode_cbor(&decompressed)?;
-        if artifact.codec != reference.codec {
-            return Err(SnapshotStoreError::MetadataMismatch { field: "codec" });
-        }
-        if artifact.schema_version != reference.schema_version {
-            return Err(SnapshotStoreError::MetadataMismatch {
-                field: "schema_version",
-            });
-        }
-        if artifact.tick != artifact.snapshot.tick {
-            return Err(SnapshotStoreError::MetadataMismatch { field: "tick" });
-        }
-        if artifact.vm_count != artifact.snapshot.vm_snapshots.len() {
-            return Err(SnapshotStoreError::MetadataMismatch { field: "vm_count" });
-        }
-        Ok(artifact)
+        decode_snapshot_artifact(reference, &bytes)
     }
 
     fn has_snapshot(&self, reference: &ReplayParentSnapshotRef) -> bool {
@@ -404,6 +384,160 @@ impl SnapshotStore for FileSnapshotStore {
         }
         Ok(removed)
     }
+}
+
+/// Encode using the file store's existing CBOR/zstd envelope and legacy store
+/// reference. The caller may lower (never raise) the compressed-byte ceiling.
+/// No filesystem access occurs, allowing a capability-relative output shell.
+pub fn encode_snapshot_artifact(
+    snapshot: &SimulationSnapshot,
+    replay_parent_depth: u32,
+    maximum_bytes: u64,
+) -> Result<(ReplayParentSnapshotRef, Vec<u8>), SnapshotStoreError> {
+    encode_snapshot_artifact_with_limits(
+        snapshot,
+        replay_parent_depth,
+        maximum_bytes,
+        MAX_DECOMPRESSED_SNAPSHOT_BYTES,
+    )
+    .map(|(reference, bytes, _)| (reference, bytes))
+}
+
+/// The file-store encoder with a lower decoded-payload ceiling and exact byte
+/// accounting, for a multi-checkpoint session's aggregate retained-state budget.
+pub fn encode_snapshot_artifact_with_limits(
+    snapshot: &SimulationSnapshot,
+    replay_parent_depth: u32,
+    maximum_bytes: u64,
+    maximum_decoded_bytes: u64,
+) -> Result<(ReplayParentSnapshotRef, Vec<u8>, u64), SnapshotStoreError> {
+    if maximum_decoded_bytes == 0 || maximum_decoded_bytes > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
+        return Err(SnapshotStoreError::DecompressedTooLarge {
+            limit: maximum_decoded_bytes,
+        });
+    }
+    if maximum_bytes == 0 || maximum_bytes > MAX_COMPRESSED_SNAPSHOT_BYTES {
+        return Err(SnapshotStoreError::TooLarge {
+            path: "snapshot write ceiling".into(),
+            limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
+        });
+    }
+    #[derive(Serialize)]
+    struct BorrowedEnvelope<'a> {
+        schema_version: u32,
+        codec: &'static str,
+        replay_parent_depth: u32,
+        tick: u64,
+        vm_count: usize,
+        snapshot: &'a SimulationSnapshot,
+    }
+    let envelope = BorrowedEnvelope {
+        schema_version: SNAPSHOT_SCHEMA_VERSION,
+        codec: SNAPSHOT_CODEC,
+        replay_parent_depth,
+        tick: snapshot.tick,
+        vm_count: snapshot.vm_snapshots.len(),
+        snapshot,
+    };
+    let uncompressed = encode_cbor_with_limit(&envelope, maximum_decoded_bytes)?;
+    let decoded_bytes = uncompressed.len() as u64;
+    let mut compressed = BoundedSnapshotBytes {
+        bytes: Vec::new(),
+        maximum_bytes,
+        exceeded: false,
+    };
+    let compression: Result<(), std::io::Error> = (|| {
+        let mut encoder =
+            zstd::stream::write::Encoder::new(&mut compressed, SNAPSHOT_COMPRESSION_LEVEL)?;
+        encoder.write_all(&uncompressed)?;
+        encoder.finish()?;
+        Ok(())
+    })();
+    if compressed.exceeded {
+        return Err(SnapshotStoreError::TooLarge {
+            path: "generated snapshot".into(),
+            limit: maximum_bytes,
+        });
+    }
+    compression.map_err(|source| SnapshotStoreError::Io { source })?;
+    let bytes = compressed.bytes;
+    let digest = digest_bytes(&bytes);
+    let hex = digest.strip_prefix("sha256:").unwrap_or(&digest);
+    let path = format!("{SNAPSHOT_DIR}/{hex}.snapshot.bin");
+    Ok((
+        ReplayParentSnapshotRef {
+            store: FILE_STORE_KIND.into(),
+            digest,
+            codec: SNAPSHOT_CODEC.into(),
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            path,
+        },
+        bytes,
+        decoded_bytes,
+    ))
+}
+
+/// Decode retained bytes using the same bounded codec and identity checks as
+/// the file store. Capability-relative callers can pin their directory and file
+/// handles before passing bytes; this function performs no filesystem access.
+pub fn decode_snapshot_artifact(
+    reference: &ReplayParentSnapshotRef,
+    bytes: &[u8],
+) -> Result<SnapshotArtifactEnvelope, SnapshotStoreError> {
+    decode_snapshot_artifact_with_limit(reference, bytes, MAX_DECOMPRESSED_SNAPSHOT_BYTES)
+        .map(|(artifact, _)| artifact)
+}
+
+/// Decode with a lower, explicitly accounted decompressed-payload ceiling.
+pub fn decode_snapshot_artifact_with_limit(
+    reference: &ReplayParentSnapshotRef,
+    bytes: &[u8],
+    maximum_decoded_bytes: u64,
+) -> Result<(SnapshotArtifactEnvelope, u64), SnapshotStoreError> {
+    if maximum_decoded_bytes == 0 || maximum_decoded_bytes > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
+        return Err(SnapshotStoreError::DecompressedTooLarge {
+            limit: maximum_decoded_bytes,
+        });
+    }
+    validate_ref_shape(reference)?;
+    if bytes.len() as u64 > MAX_COMPRESSED_SNAPSHOT_BYTES {
+        return Err(SnapshotStoreError::TooLarge {
+            path: reference.path.clone(),
+            limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
+        });
+    }
+    let actual = digest_bytes(bytes);
+    if actual != reference.digest {
+        return Err(SnapshotStoreError::DigestMismatch {
+            path: reference.path.clone(),
+            expected: reference.digest.clone(),
+            actual,
+        });
+    }
+    let decompressed = decompress_snapshot(bytes, maximum_decoded_bytes)?;
+    let mut cursor = std::io::Cursor::new(decompressed.as_slice());
+    let artifact: SnapshotArtifactEnvelope = ciborium::de::from_reader(&mut cursor)
+        .map_err(|source| SnapshotStoreError::CborDecode { source })?;
+    if cursor.position() != decompressed.len() as u64 {
+        return Err(SnapshotStoreError::MetadataMismatch {
+            field: "trailing_bytes",
+        });
+    }
+    if artifact.codec != reference.codec {
+        return Err(SnapshotStoreError::MetadataMismatch { field: "codec" });
+    }
+    if artifact.schema_version != reference.schema_version {
+        return Err(SnapshotStoreError::MetadataMismatch {
+            field: "schema_version",
+        });
+    }
+    if artifact.tick != artifact.snapshot.tick {
+        return Err(SnapshotStoreError::MetadataMismatch { field: "tick" });
+    }
+    if artifact.vm_count != artifact.snapshot.vm_snapshots.len() {
+        return Err(SnapshotStoreError::MetadataMismatch { field: "vm_count" });
+    }
+    Ok((artifact, decompressed.len() as u64))
 }
 
 fn list_snapshot_entries(dir: &Path) -> Result<Vec<fs::DirEntry>, SnapshotStoreError> {

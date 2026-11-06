@@ -52,6 +52,10 @@ use frontier_backend::digests::{
     base_set_id, coverage_digest, oracle_digest, schedule_digest, variant_digest,
 };
 pub use frontier_backend::parity;
+pub use frontier_backend::trace::{
+    inspect_frontier_trace, FrontierDecisionView, FrontierTraceSummary, FrontierTraceViewError,
+    MAX_FRONTIER_TRACE_VIEW_BYTES, MAX_FRONTIER_TRACE_VIEW_RECORDS,
+};
 use frontier_backend::trace::{FrontierTrace, TraceJournal, TraceRecord};
 use frontier_backend::{
     exploration_stop, product_stop, Authorization, AuthorizedRound, BranchDigests, BranchOutcome,

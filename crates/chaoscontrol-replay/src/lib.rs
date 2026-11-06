@@ -158,9 +158,12 @@ pub mod checkpoint;
 pub mod debugger;
 pub mod event_query;
 pub mod inspect;
+pub mod moment;
+pub mod observation;
 pub mod recording;
 pub mod replay;
 pub mod serialize;
+pub mod session;
 pub mod text;
 pub mod triage;
 

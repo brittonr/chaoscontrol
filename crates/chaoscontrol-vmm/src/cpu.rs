@@ -211,7 +211,7 @@ pub enum CpuError {
 /// created with the same `CpuConfig` and the same guest image will
 /// execute identically at the CPU instruction level.
 /// Guest-time advancement mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum TscAdvanceMode {
     /// Advance the virtual TSC per VM exit or scheduling quantum (default).
     #[default]
@@ -258,7 +258,8 @@ pub enum TscModeError {
 /// Whether instruction-progress TSC advancement is implemented or admitted.
 pub const INSTRUCTION_PROGRESS_TSC_ADMITTED: bool = false;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CpuConfig {
     /// TSC frequency exposed to the guest, in kHz.
     ///

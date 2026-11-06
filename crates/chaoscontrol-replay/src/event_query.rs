@@ -12,6 +12,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Write as _;
 
+mod workspace;
+pub use workspace::*;
+mod sdk;
+pub use sdk::envelopes_from_sdk_lifecycle;
+mod frontier;
+pub use frontier::{
+    timeline_from_frontier_entries, timeline_from_frontier_trace, FrontierTimelineProjection,
+};
+
 pub const EVENT_ENVELOPE_SCHEMA: &str = "chaoscontrol.event-envelope.v1";
 pub const EVENT_QUERY_RECEIPT_SCHEMA: &str = "chaoscontrol.event-query-receipt.v1";
 pub const EVENT_QUERY_RESULT_SCHEMA: &str = "chaoscontrol.event-query-result.v1";
@@ -47,6 +56,7 @@ pub enum EventSourceKind {
     Dlog,
     SdkLifecycle,
     Assertion,
+    FaultControl,
     FaultStage,
     Serial,
     BranchMarker,
@@ -59,6 +69,7 @@ impl EventSourceKind {
             Self::Dlog => "dlog",
             Self::SdkLifecycle => "sdk_lifecycle",
             Self::Assertion => "assertion",
+            Self::FaultControl => "fault_control",
             Self::FaultStage => "fault_stage",
             Self::Serial => "serial",
             Self::BranchMarker => "branch_marker",
@@ -110,51 +121,122 @@ fn empty_derived() -> BTreeMap<String, String> {
     BTreeMap::new()
 }
 
-/// Build canonical envelopes from one retained recording.
+/// Adapt an in-memory recording using its canonical serialized BLAKE3 identity.
+/// File callers must use `envelopes_from_recording_source` with the raw artifact digest.
 pub fn envelopes_from_recording(
     recording: &crate::recording::Recording,
 ) -> Result<Vec<EventEnvelope>, EventQueryError> {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(b"chaoscontrol.recording-source.v1\0");
-    hasher.update(recording.session_id.as_bytes());
-    hasher.update(&recording.fault_run_id.0);
-    let source_id = *hasher.finalize().as_bytes();
-    let mut envelopes: Vec<EventEnvelope> = recording
+    let bytes = serde_json::to_vec(recording).map_err(|_| EventQueryError::InvalidEvent)?;
+    envelopes_from_recording_source(recording, *blake3::hash(&bytes).as_bytes())
+}
+
+/// Preserve the supplied recording artifact identity. Source positions flatten
+/// the retained event array, stage array, then control array (in that order).
+pub fn envelopes_from_recording_source(
+    recording: &crate::recording::Recording,
+    source_id: [u8; 32],
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    crate::recording::validate_recording(recording).map_err(|_| EventQueryError::InvalidEvent)?;
+    let count = recording
         .events
-        .iter()
-        .enumerate()
-        .map(|(sequence, event)| envelope_from_recorded_event(source_id, sequence as u64, event))
-        .collect();
-    for envelope in &envelopes {
-        admit_event(envelope)?;
+        .len()
+        .checked_add(recording.fault_stage_events.len())
+        .and_then(|n| n.checked_add(recording.fault_outcome_ledger.control_events.len()))
+        .ok_or(EventQueryError::CounterOverflow)?;
+    if count > MAX_SCANNED_EVENTS {
+        return Err(EventQueryError::ScanBound);
     }
-    let stages: &[FaultStageEvent] = if recording.fault_stage_events.is_empty() {
-        &recording.fault_outcome_ledger.events
-    } else {
-        &recording.fault_stage_events
-    };
-    envelopes.extend(envelopes_from_fault_stages(
-        fault_stage_source_id(recording),
-        stages,
+    let mut envelopes = Vec::with_capacity(count);
+    for (sequence, event) in recording.events.iter().enumerate() {
+        let envelope = envelope_from_recorded_event(source_id, sequence as u64, event)?;
+        if envelope
+            .vm_index
+            .is_some_and(|index| index as usize >= recording.config.num_vms)
+        {
+            return Err(EventQueryError::UnknownOwner);
+        }
+        envelopes.push(envelope);
+    }
+    let stages = envelopes_from_fault_stages(
+        source_id,
+        &recording.fault_stage_events,
         &recording.fault_round_deltas,
         &recording.fault_outcome_ledger,
-    )?);
+    )?;
+    let offset = envelopes.len() as u64;
+    envelopes.extend(stages.into_iter().map(|mut event| {
+        event.source_sequence += offset;
+        event
+    }));
+    let controls = envelopes_from_fault_controls(source_id, &recording.fault_outcome_ledger)?;
+    let offset = envelopes.len() as u64;
+    for mut event in controls {
+        event.source_sequence += offset;
+        if event.tick > recording.total_ticks {
+            return Err(EventQueryError::InvalidEvent);
+        }
+        envelopes.push(event);
+    }
     Ok(envelopes)
 }
 
-/// Stable identity for the canonical fault-stage trace of one recording.
-fn fault_stage_source_id(recording: &crate::recording::Recording) -> [u8; 32] {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(b"chaoscontrol.fault-stage-source.v1\0");
-    hasher.update(recording.session_id.as_bytes());
-    hasher.update(&recording.fault_run_id.0);
-    *hasher.finalize().as_bytes()
+/// Adapt validated pause admission, selection suppression and application
+/// suppression facts. These are control facts, never applied/observed stages.
+pub fn envelopes_from_fault_controls(
+    source_id: [u8; 32],
+    ledger: &FaultOutcomeLedger,
+) -> Result<Vec<EventEnvelope>, EventQueryError> {
+    use chaoscontrol_fault::evidence::FaultControlKind;
+    if source_id == [0; 32] {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    chaoscontrol_fault::outcomes::validate_fault_outcome_ledger(ledger)
+        .map_err(|_| EventQueryError::InvalidEvent)?;
+    if ledger.control_events.len() > MAX_SCANNED_EVENTS {
+        return Err(EventQueryError::ScanBound);
+    }
+    ledger
+        .control_events
+        .iter()
+        .enumerate()
+        .map(|(sequence, event)| {
+            let kind = match &event.kind {
+                FaultControlKind::PauseRequested { .. } => "fault_control_pause_requested",
+                FaultControlKind::SelectionSuppressed { .. } => {
+                    "fault_control_selection_suppressed"
+                }
+                FaultControlKind::ApplicationSuppressed { .. } => {
+                    "fault_control_application_suppressed"
+                }
+            };
+            let payload = serde_json::to_vec(event).map_err(|_| EventQueryError::InvalidEvent)?;
+            let envelope = EventEnvelope {
+                schema: EVENT_ENVELOPE_SCHEMA.to_string(),
+                source_id,
+                source_kind: EventSourceKind::FaultControl,
+                source_sequence: sequence as u64,
+                tick: event.tick,
+                vm_index: None,
+                process: Some("fault_engine".to_string()),
+                thread: None,
+                kind: kind.to_string(),
+                text: kind.to_string(),
+                payload_digest: *blake3::hash(&payload).as_bytes(),
+                details: Some(
+                    serde_json::to_value(event).map_err(|_| EventQueryError::InvalidEvent)?,
+                ),
+                derived: BTreeMap::new(),
+            };
+            admit_event(&envelope)?;
+            Ok(envelope)
+        })
+        .collect()
 }
 
 /// Build canonical envelopes from a retained fault-stage trace.
 ///
-/// Round deltas supply the exact round tick. Legacy traces without deltas use
-/// the attempt selection tick as the only retained time fact.
+/// Round deltas supply exact round ticks. Without deltas only selection facts
+/// on exact simulation-tick boundaries are supported; later stages cannot be timed.
 pub fn envelopes_from_fault_stages(
     source_id: [u8; 32],
     events: &[FaultStageEvent],
@@ -164,11 +246,44 @@ pub fn envelopes_from_fault_stages(
     if source_id == [0; 32] {
         return Err(EventQueryError::InvalidEvent);
     }
+    if events.len() > MAX_SCANNED_EVENTS {
+        return Err(EventQueryError::ScanBound);
+    }
+    chaoscontrol_fault::outcomes::validate_fault_outcome_ledger(ledger)
+        .map_err(|_| EventQueryError::InvalidEvent)?;
+    if events != ledger.events.as_slice() {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    let mut end = 0;
+    let mut prior_tick = None;
+    for delta in deltas {
+        if delta.event_start != end
+            || delta.event_end <= end
+            || delta.event_end > events.len() as u64
+            || prior_tick.is_some_and(|tick| tick >= delta.tick)
+        {
+            return Err(EventQueryError::InvalidEvent);
+        }
+        end = delta.event_end;
+        prior_tick = Some(delta.tick);
+    }
+    if !deltas.is_empty() && end != events.len() as u64 {
+        return Err(EventQueryError::InvalidEvent);
+    }
+    let mut delta_index = 0;
     events
         .iter()
         .enumerate()
         .map(|(index, event)| {
-            let envelope = envelope_from_fault_stage(source_id, index, event, deltas, ledger)?;
+            while deltas
+                .get(delta_index)
+                .is_some_and(|delta| index as u64 >= delta.event_end)
+            {
+                delta_index += 1;
+            }
+            let retained_tick = deltas.get(delta_index).map(|delta| delta.tick);
+            let envelope =
+                envelope_from_fault_stage(source_id, index, event, retained_tick, ledger)?;
             admit_event(&envelope)?;
             Ok(envelope)
         })
@@ -179,7 +294,7 @@ fn envelope_from_fault_stage(
     source_id: [u8; 32],
     index: usize,
     event: &FaultStageEvent,
-    deltas: &[FaultRoundTraceDelta],
+    retained_tick: Option<u64>,
     ledger: &FaultOutcomeLedger,
 ) -> Result<EventEnvelope, EventQueryError> {
     let sequence = u64::try_from(index).map_err(|_| EventQueryError::CounterOverflow)?;
@@ -190,15 +305,28 @@ fn envelope_from_fault_stage(
         .attempts
         .get(&event.attempt_id)
         .ok_or(EventQueryError::InvalidEvent)?;
-    let tick = if deltas.is_empty() {
-        attempt_state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK
+    let tick = if let Some(tick) = retained_tick {
+        tick
     } else {
-        deltas
-            .iter()
-            .find(|delta| sequence >= delta.event_start && sequence < delta.event_end)
-            .map(|delta| delta.tick)
-            .ok_or(EventQueryError::InvalidEvent)?
+        if event.kind != FaultStageKind::Selected
+            || !attempt_state
+                .attempt
+                .selected_at_ns
+                .is_multiple_of(NANOSECONDS_PER_SIMULATION_TICK)
+        {
+            return Err(EventQueryError::AmbiguousTime);
+        }
+        attempt_state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK
     };
+    if event.kind == FaultStageKind::Selected
+        && (!attempt_state
+            .attempt
+            .selected_at_ns
+            .is_multiple_of(NANOSECONDS_PER_SIMULATION_TICK)
+            || attempt_state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK != tick)
+    {
+        return Err(EventQueryError::AmbiguousTime);
+    }
     let stage = fault_stage_name(&event.kind);
     let payload = serde_json::to_vec(event).map_err(|_| EventQueryError::InvalidEvent)?;
     let fault = &attempt_state.attempt.fault;
@@ -209,14 +337,15 @@ fn envelope_from_fault_stage(
         source_sequence: sequence,
         tick,
         vm_index: None,
-        process: None,
+        process: Some("fault_engine".to_string()),
         thread: None,
         kind: format!("fault_stage_{stage}"),
-        text: bounded_text(&format!("{stage} attempt={}", event.attempt_id)),
+        text: format!("{stage} attempt={}", event.attempt_id),
         payload_digest: *blake3::hash(&payload).as_bytes(),
         details: Some(serde_json::json!({
             "attempt_id": event.attempt_id.to_string(),
             "stage": stage,
+            "event": event,
             "selected_at_ns": attempt_state.attempt.selected_at_ns,
             "fault": fault,
         })),
@@ -240,7 +369,7 @@ pub fn envelope_from_recorded_event(
     source_id: [u8; 32],
     source_sequence: u64,
     event: &crate::recording::RecordedEvent,
-) -> EventEnvelope {
+) -> Result<EventEnvelope, EventQueryError> {
     use crate::recording::RecordedEvent;
     let (source_kind, kind, tick, vm_index, text, details) = match event {
         RecordedEvent::FaultFired { tick, fault } => (
@@ -249,7 +378,9 @@ pub fn envelope_from_recorded_event(
             *tick,
             None,
             fault.clone(),
-            Some(serde_json::json!({"fault": fault})),
+            Some(
+                serde_json::json!({"fault": fault, "stage": "selected", "legacy_projection": true}),
+            ),
         ),
         RecordedEvent::AssertionHit {
             tick,
@@ -261,7 +392,7 @@ pub fn envelope_from_recorded_event(
             EventSourceKind::Assertion,
             "assertion_hit",
             *tick,
-            Some(*vm_index as u32),
+            Some(u32::try_from(*vm_index).map_err(|_| EventQueryError::UnknownOwner)?),
             location.clone(),
             Some(serde_json::json!({"assertion_id": assertion_id, "passed": passed})),
         ),
@@ -271,10 +402,10 @@ pub fn envelope_from_recorded_event(
             old_status,
             new_status,
         } => (
-            EventSourceKind::SdkLifecycle,
+            EventSourceKind::Recording,
             "vm_status_change",
             *tick,
-            Some(*vm_index as u32),
+            Some(u32::try_from(*vm_index).map_err(|_| EventQueryError::UnknownOwner)?),
             format!("{old_status}->{new_status}"),
             Some(serde_json::json!({"old": old_status, "new": new_status})),
         ),
@@ -286,7 +417,7 @@ pub fn envelope_from_recorded_event(
             EventSourceKind::Serial,
             "serial_output",
             *tick,
-            Some(*vm_index as u32),
+            Some(u32::try_from(*vm_index).map_err(|_| EventQueryError::UnknownOwner)?),
             data.clone(),
             None,
         ),
@@ -304,51 +435,89 @@ pub fn envelope_from_recorded_event(
             Some(serde_json::json!({"bug_id": bug_id, "checkpoint_id": checkpoint_id})),
         ),
     };
-    let payload = serde_json::to_vec(event).unwrap_or_default();
+    let payload = serde_json::to_vec(event).map_err(|_| EventQueryError::InvalidEvent)?;
     let mut text = text;
     if text.is_empty() {
         text = kind.to_string();
     }
-    text = bounded_text(&text);
-    EventEnvelope {
+    let envelope = EventEnvelope {
         schema: EVENT_ENVELOPE_SCHEMA.to_string(),
         source_id,
         source_kind,
         source_sequence,
         tick,
         vm_index,
-        process: None,
+        process: vm_index
+            .is_none()
+            .then(|| "simulation_controller".to_string()),
         thread: None,
         kind: kind.to_string(),
         text,
         payload_digest: *blake3::hash(&payload).as_bytes(),
         details,
         derived: BTreeMap::new(),
-    }
+    };
+    admit_event(&envelope)?;
+    Ok(envelope)
 }
 
-/// Build canonical envelopes from raw dlog bytes.
-///
-/// The source identity is the BLAKE3 digest of the complete dlog byte stream.
+/// An explicit retained mapping from a dlog source sequence to simulation tick.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DlogTickAnchor {
+    pub source_sequence: u64,
+    pub tick: u64,
+}
+
+/// Dlog headers lack VM identity and use TSC units, not simulation ticks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DlogContext {
+    pub vm_index: u32,
+    pub ticks: Vec<DlogTickAnchor>,
+}
+
+/// Build canonical envelopes from raw bytes and explicit retained owner/time context.
 pub fn envelopes_from_dlog_bytes(
     bytes: &[u8],
     max_records: usize,
+    context: &DlogContext,
 ) -> Result<Vec<EventEnvelope>, EventQueryError> {
     use chaoscontrol_vmm::dlog::{DlogRecord, RECORD_SIZE};
     if !bytes.len().is_multiple_of(RECORD_SIZE) {
         return Err(EventQueryError::InvalidEvent);
     }
-    if max_records == 0 || bytes.len() / RECORD_SIZE > max_records {
+    let count = bytes.len() / RECORD_SIZE;
+    if max_records == 0 || max_records > MAX_SCANNED_EVENTS || count > max_records {
         return Err(EventQueryError::ScanBound);
     }
+    if context.ticks.len() != count {
+        return Err(EventQueryError::AmbiguousTime);
+    }
     let source_id = *blake3::hash(bytes).as_bytes();
-    let mut envelopes = Vec::new();
-    for sequence in 0..bytes.len() / RECORD_SIZE {
-        let start = sequence * RECORD_SIZE;
-        let mut record = [0_u8; RECORD_SIZE];
-        record.copy_from_slice(&bytes[start..start + RECORD_SIZE]);
-        let record = DlogRecord::from_bytes(record);
-        let envelope = envelope_from_dlog(source_id, sequence as u64, &record);
+    let mut envelopes = Vec::with_capacity(count);
+    let mut prior = None;
+    for (chunk, anchor) in bytes
+        .as_chunks::<RECORD_SIZE>()
+        .0
+        .iter()
+        .zip(&context.ticks)
+    {
+        let record = DlogRecord::from_bytes(*chunk);
+        if record.tag().is_none() {
+            return Err(EventQueryError::UnsupportedRecord);
+        }
+        if record.seq != anchor.source_sequence {
+            return Err(EventQueryError::AmbiguousTime);
+        }
+        if prior.is_some_and(|(seq, _)| record.seq <= seq) {
+            return Err(EventQueryError::DuplicateSourcePosition);
+        }
+        if prior.is_some_and(|(_, tick)| anchor.tick < tick) {
+            return Err(EventQueryError::AmbiguousTime);
+        }
+        prior = Some((record.seq, anchor.tick));
+        let envelope = envelope_from_dlog(source_id, &record, context.vm_index, anchor.tick);
         admit_event(&envelope)?;
         envelopes.push(envelope);
     }
@@ -365,6 +534,9 @@ pub fn envelopes_from_markers(
 ) -> Result<Vec<EventEnvelope>, EventQueryError> {
     if source_id == [0; 32] {
         return Err(EventQueryError::InvalidEvent);
+    }
+    if markers.len() > MAX_SCANNED_EVENTS {
+        return Err(EventQueryError::ScanBound);
     }
     markers
         .iter()
@@ -406,8 +578,9 @@ fn envelope_from_marker(
 
 fn envelope_from_dlog(
     source_id: [u8; 32],
-    source_sequence: u64,
     record: &chaoscontrol_vmm::dlog::DlogRecord,
+    vm_index: u32,
+    tick: u64,
 ) -> EventEnvelope {
     let text = format!(
         "tag={} exit={} rip={:#x} vcpu={}",
@@ -417,15 +590,16 @@ fn envelope_from_dlog(
         schema: EVENT_ENVELOPE_SCHEMA.to_string(),
         source_id,
         source_kind: EventSourceKind::Dlog,
-        source_sequence,
-        tick: record.virtual_tsc,
-        vm_index: None,
+        source_sequence: record.seq,
+        tick,
+        vm_index: Some(vm_index),
         process: None,
         thread: Some(u32::from(record.vcpu)),
         kind: format!("dlog_{}", record.tag),
-        text: bounded_text(&text),
+        text,
         payload_digest: *blake3::hash(&record.to_bytes()).as_bytes(),
         details: Some(serde_json::json!({
+            "virtual_tsc": record.virtual_tsc,
             "seq": record.seq,
             "exit_count": record.exit_count,
             "rip": record.rip,
@@ -437,10 +611,6 @@ fn envelope_from_dlog(
         })),
         derived: BTreeMap::new(),
     }
-}
-
-fn bounded_text(value: &str) -> String {
-    crate::text::prefix_at_char_boundary(value, MAX_EVENT_TEXT_BYTES).to_string()
 }
 
 /// Comparison of finite IEEE-754 binary64 values (JavaScript Number semantics).
@@ -832,6 +1002,9 @@ pub enum EventQueryError {
     OperationBound,
     InvalidEvent,
     InvalidResult,
+    UnknownOwner,
+    AmbiguousTime,
+    UnsupportedRecord,
     DuplicateSourcePosition,
     InvalidPredicate,
     InvalidText,
@@ -867,9 +1040,12 @@ impl core::fmt::Display for EventQueryError {
             Self::OperationBound => "event query operations exceed the bound",
             Self::InvalidEvent => "event envelope schema or identity is invalid",
             Self::InvalidResult => "event query result is malformed or inconsistent",
-            Self::DuplicateSourcePosition => {
-                "two events claim one source position with different content"
+            Self::UnknownOwner => {
+                "event owner is missing, unknown, or outside the declared VM bounds"
             }
+            Self::AmbiguousTime => "event has no exact retained simulation tick",
+            Self::UnsupportedRecord => "retained record format or tag is unsupported",
+            Self::DuplicateSourcePosition => "retained events repeat or reverse a source position",
             Self::InvalidPredicate => "event predicate is malformed or unsupported",
             Self::InvalidText => "event text is empty, over-bound, or contains controls",
             Self::InvalidJsonText => "event text is not valid JSON within parser bounds",
@@ -927,8 +1103,18 @@ pub fn admit_event(event: &EventEnvelope) -> Result<(), EventQueryError> {
     if event.schema != EVENT_ENVELOPE_SCHEMA || event.source_id == [0; 32] {
         return Err(EventQueryError::InvalidEvent);
     }
+    if event.vm_index.is_none() && event.process.is_none() {
+        return Err(EventQueryError::UnknownOwner);
+    }
     validate_text(&event.kind)?;
-    validate_text(&event.text)?;
+    if event.text.len() > MAX_EVENT_TEXT_BYTES
+        || event
+            .text
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+    {
+        return Err(EventQueryError::InvalidText);
+    }
     if let Some(process) = &event.process {
         validate_text(process)?;
     }
@@ -954,41 +1140,20 @@ pub fn admit_event(event: &EventEnvelope) -> Result<(), EventQueryError> {
     Ok(())
 }
 
-/// Reject two distinct records that claim one source position.
-///
-/// Byte-identical repeats are allowed so a union can collapse them; any
-/// content difference at the same `(source_id, source_sequence)` is ambiguous.
+/// Reject every repeated source position at input admission. Union results can
+/// collapse repeated selections internally; retained inputs cannot repeat records.
 fn validate_source_positions(events: &[EventEnvelope]) -> Result<(), EventQueryError> {
     let mut positions: BTreeMap<([u8; 32], u64), &EventEnvelope> = BTreeMap::new();
     for event in events {
         let position = (event.source_id, event.source_sequence);
         match positions.get(&position) {
-            Some(existing) if !same_source_content(existing, event) => {
-                return Err(EventQueryError::DuplicateSourcePosition);
-            }
-            Some(_) => {}
+            Some(_) => return Err(EventQueryError::DuplicateSourcePosition),
             None => {
                 positions.insert(position, event);
             }
         }
     }
     Ok(())
-}
-
-/// Compare source-visible content; `derived` is query-local and excluded.
-fn same_source_content(left: &EventEnvelope, right: &EventEnvelope) -> bool {
-    left.schema == right.schema
-        && left.source_id == right.source_id
-        && left.source_kind == right.source_kind
-        && left.source_sequence == right.source_sequence
-        && left.tick == right.tick
-        && left.vm_index == right.vm_index
-        && left.process == right.process
-        && left.thread == right.thread
-        && left.kind == right.kind
-        && left.text == right.text
-        && left.payload_digest == right.payload_digest
-        && left.details == right.details
 }
 
 /// Evaluate one query over admitted events.
@@ -1097,7 +1262,7 @@ pub fn receipt_for(
     } else if result.matched != rows_len {
         return Err(EventQueryError::InvalidResult);
     }
-    validate_source_positions(&result.rows)?;
+    validate_source_positions(&result.rows).map_err(|_| EventQueryError::InvalidResult)?;
     if !result
         .rows
         .windows(2)
@@ -1109,6 +1274,9 @@ pub fn receipt_for(
         admit_event(row)?;
     }
     serialized_rows_bytes(&result.rows, limits.max_result_bytes)?;
+    if evaluate(query, events, limits)? != *result {
+        return Err(EventQueryError::ResultDrift);
+    }
     let rows = serde_json::to_vec(&result.rows).map_err(|_| EventQueryError::Digest)?;
     let rows_digest = *blake3::hash(&rows).as_bytes();
     let mut source_ids: Vec<[u8; 32]> = events.iter().map(|event| event.source_id).collect();
@@ -1143,12 +1311,11 @@ struct EventSourceFingerprint<'a> {
     text: &'a str,
     payload_digest: [u8; 32],
     details: Option<&'a serde_json::Value>,
+    derived: &'a BTreeMap<String, String>,
 }
 
-/// Digest every source-visible field in canonical source order.
-///
-/// `derived` is query-local and excluded so a prior projection cannot change
-/// the receipt for otherwise identical inputs.
+/// Digest all admitted input fields in canonical source order, including
+/// projections when projected events are supplied as a subsequent query input.
 fn events_digest(events: &[EventEnvelope]) -> Result<[u8; 32], EventQueryError> {
     let mut ordered: Vec<&EventEnvelope> = events.iter().collect();
     ordered.sort_by_key(|event| (event.source_id, event.source_sequence));
@@ -1168,6 +1335,7 @@ fn events_digest(events: &[EventEnvelope]) -> Result<[u8; 32], EventQueryError> 
             text: &event.text,
             payload_digest: event.payload_digest,
             details: event.details.as_ref(),
+            derived: &event.derived,
         };
         let bytes = serde_json::to_vec(&fingerprint).map_err(|_| EventQueryError::Digest)?;
         let length = u64::try_from(bytes.len()).map_err(|_| EventQueryError::CounterOverflow)?;
@@ -1294,7 +1462,12 @@ fn render_timeline_markdown_ordered(ordered: &[TimelineFact]) -> Result<String, 
 
 /// Escape DOT label delimiters so one fact cannot rewrite the graph shape.
 fn escape_dot_label(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 /// Render a bounded static DOT graph.
@@ -1324,6 +1497,9 @@ fn render_timeline_dot_ordered(ordered: &[TimelineFact]) -> Result<String, Event
         }
     }
     output.push_str("}\n");
+    if output.len() > MAX_TIMELINE_BYTES {
+        return Err(EventQueryError::TimelineByteBound);
+    }
     Ok(output)
 }
 
@@ -3019,8 +3195,10 @@ mod tests {
             .derived
             .insert("projection".to_string(), "x".to_string());
         identical.push(repeat);
-        let result = evaluate(&EventQuery::All, &identical, &EventQueryLimits::default()).unwrap();
-        assert_eq!(result.matched, 4);
+        assert_eq!(
+            evaluate(&EventQuery::All, &identical, &EventQueryLimits::default()).unwrap_err(),
+            EventQueryError::DuplicateSourcePosition
+        );
     }
 
     #[test]
@@ -3994,7 +4172,7 @@ mod tests {
             location: "leader elected".to_string(),
             passed: true,
         };
-        let envelope = envelope_from_recorded_event([5; 32], 3, &event);
+        let envelope = envelope_from_recorded_event([5; 32], 3, &event).unwrap();
         assert_eq!(envelope.source_kind, EventSourceKind::Assertion);
         assert_eq!(envelope.kind, "assertion_hit");
         assert_eq!(envelope.tick, 42);
@@ -4007,8 +4185,10 @@ mod tests {
             vm_index: 0,
             data: "x".repeat(MAX_EVENT_TEXT_BYTES + 100),
         };
-        let envelope = envelope_from_recorded_event([5; 32], 4, &long);
-        assert_eq!(envelope.text.len(), MAX_EVENT_TEXT_BYTES);
+        assert_eq!(
+            envelope_from_recorded_event([5; 32], 4, &long).unwrap_err(),
+            EventQueryError::InvalidText
+        );
     }
 
     #[test]
@@ -4024,37 +4204,50 @@ mod tests {
     }
 
     #[test]
-    fn bounded_text_stays_on_utf8_boundaries() {
-        let value = format!("{}\u{e9}", "a".repeat(MAX_EVENT_TEXT_BYTES - 1));
-        let bounded = bounded_text(&value);
-        assert!(bounded.len() <= MAX_EVENT_TEXT_BYTES);
-        assert!(value.is_char_boundary(bounded.len()));
-    }
-
-    #[test]
     fn dlog_bytes_become_canonical_envelopes() {
         use chaoscontrol_vmm::dlog::{DlogRecord, DlogTag, RECORD_SIZE};
         let record = DlogRecord::new(7, 100, 42, 0x200, DlogTag::IoOut, 0).with_port(0x10);
         let bytes = record.to_bytes();
-        let envelopes = envelopes_from_dlog_bytes(&bytes, 10).unwrap();
+        let context = DlogContext {
+            vm_index: 2,
+            ticks: vec![DlogTickAnchor {
+                source_sequence: 7,
+                tick: 3,
+            }],
+        };
+        let envelopes = envelopes_from_dlog_bytes(&bytes, 10, &context).unwrap();
         assert_eq!(envelopes.len(), 1);
         assert_eq!(envelopes[0].source_kind, EventSourceKind::Dlog);
-        assert_eq!(envelopes[0].tick, 100);
+        assert_eq!(envelopes[0].tick, 3);
+        assert_eq!(envelopes[0].vm_index, Some(2));
+        assert_eq!(envelopes[0].source_sequence, 7);
+        assert_eq!(envelopes[0].details.as_ref().unwrap()["virtual_tsc"], 100);
         admit_event(&envelopes[0]).unwrap();
         assert_eq!(envelopes[0].kind, format!("dlog_{}", record.tag));
         assert_ne!(envelopes[0].payload_digest, [0; 32]);
         assert_eq!(
-            envelopes_from_dlog_bytes(&bytes[..RECORD_SIZE - 1], 10).unwrap_err(),
+            envelopes_from_dlog_bytes(&bytes[..RECORD_SIZE - 1], 10, &context).unwrap_err(),
             EventQueryError::InvalidEvent
         );
 
         let mut two_records = bytes.to_vec();
         two_records.extend_from_slice(&bytes);
         assert_eq!(
-            envelopes_from_dlog_bytes(&two_records, 1).unwrap_err(),
+            envelopes_from_dlog_bytes(&two_records, 1, &context).unwrap_err(),
             EventQueryError::ScanBound
         );
-        assert_eq!(envelopes_from_dlog_bytes(&two_records, 2).unwrap().len(), 2);
+        let mut duplicate_context = context.clone();
+        duplicate_context.ticks.push(context.ticks[0].clone());
+        assert_eq!(
+            envelopes_from_dlog_bytes(&two_records, 2, &duplicate_context).unwrap_err(),
+            EventQueryError::DuplicateSourcePosition
+        );
+        let mut unknown_time = context.clone();
+        unknown_time.ticks.clear();
+        assert_eq!(
+            envelopes_from_dlog_bytes(&bytes, 10, &unknown_time).unwrap_err(),
+            EventQueryError::AmbiguousTime
+        );
     }
 
     fn fault_stage_fixture() -> (
@@ -4239,7 +4432,7 @@ mod tests {
             .iter()
             .map(|event| event.source_id)
             .collect::<BTreeSet<_>>();
-        assert_eq!(source_ids.len(), 2);
+        assert_eq!(source_ids.len(), 1);
     }
 
     #[test]

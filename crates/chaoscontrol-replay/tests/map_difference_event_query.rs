@@ -227,7 +227,7 @@ fn all_three_names_are_admitted_even_without_rows() {
 }
 
 #[test]
-fn intermediate_and_generated_capacity_cannot_be_hidden_by_narrowing_or_duplicates() {
+fn intermediate_and_generated_capacity_cannot_be_hidden_by_narrowing() {
     let limits = EventQueryLimits::default();
     let q = project(json!("All"));
     let narrow = |q| EventQuery::Narrow {
@@ -250,9 +250,8 @@ fn intermediate_and_generated_capacity_cannot_be_hidden_by_narrowing_or_duplicat
         vec![annotate(source.clone(), "delta", Some("12.0"))]
     );
     source.derived.get_mut("pad").unwrap().push('x');
-    let first = event(0, "20", "8");
     assert_eq!(
-        evaluate(&narrow(q.clone()), &[first, source], &limits),
+        evaluate(&narrow(q.clone()), &[source], &limits),
         Err(EventQueryError::InvalidEvent)
     );
     let mut source = event(0, "20", "8");

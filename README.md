@@ -124,6 +124,14 @@ ratios and thresholds, global or explicitly keyed running match counts, numeric 
 intersection/difference, regex selection, temporal witness correlation and nearest earlier/later-witness value annotation with optional explicit key matching. See the [local event query guide](docs/local-event-query.md)
 for inputs, limits, receipt fields, and non-claims.
 
+The same CLI explicitly captures exact local sessions, admits checkpoint/tick/branch
+moments, and runs reviewed, allowlisted observation profiles only inside restored
+guests. Checkpoints bind to the controller's actually loaded guest inputs; missing
+or corrupt state never triggers a default boot. Observation receipts are always
+counterfactual, including read-only commands. The guide includes the immutable
+`debug-observation-bundle`, command/receipt validation, limits, and compatibility
+boundaries. This does not change the release status above.
+
 ## Design comparisons
 
 [`docs/capsem-comparison.md`](docs/capsem-comparison.md) compares Capsem's

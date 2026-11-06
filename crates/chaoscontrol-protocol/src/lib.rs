@@ -199,6 +199,9 @@ pub const CMD_DIAGNOSTIC_REQUEST: u8 = 0x60;
 /// Guest supervisor: report one canonical diagnostic receipt.
 pub const CMD_DIAGNOSTIC_REPORT: u8 = 0x61;
 
+/// Guest supervisor: read the controller simulation tick (not host time).
+pub const CMD_DIAGNOSTIC_TICK: u8 = 0x62;
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Status codes
 // ═══════════════════════════════════════════════════════════════════════

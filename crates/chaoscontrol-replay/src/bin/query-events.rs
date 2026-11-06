@@ -2,103 +2,145 @@
 
 use chaoscontrol_protocol::branch_marker::MarkerEvidenceContext;
 use chaoscontrol_replay::event_query::{
-    envelopes_from_dlog_bytes, envelopes_from_markers, envelopes_from_recording, evaluate,
-    receipt_for, render_timeline_dot, render_timeline_markdown, timeline_receipt, validate_receipt,
-    validate_timeline_receipt, EventEnvelope, EventQuery, EventQueryLimits, EventQueryReceipt,
-    EventQueryResult, TimelineFact, TimelineReceipt, MAX_TIMELINE_BYTES,
+    envelopes_from_dlog_bytes, envelopes_from_markers, envelopes_from_recording_source,
+    envelopes_from_sdk_lifecycle, evaluate_at_moment, render_workspace_timeline,
+    validate_workspace_query_receipt, validate_workspace_timeline_receipt, workspace_query_receipt,
+    workspace_timeline_receipt, DlogContext, EventEnvelope, EventQuery, EventQueryLimits,
+    EventQueryResult, WorkspaceQueryReceipt, WorkspaceTimelineInput, WorkspaceTimelineReceipt,
+    MAX_TIMELINE_BYTES,
 };
+use chaoscontrol_replay::moment::{
+    admit_moment, MomentContext, MomentRequest, MomentSelector, RetainedHistory,
+};
+use chaoscontrol_replay::session::{load_session, ExactSession, SessionLimits};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+fn emit_receipt<T: Serialize>(value: &T) -> Result<(), String> {
+    let mut writer = BoundedJsonOutput {
+        bytes: Vec::new(),
+        limit: MAX_INPUT_BYTES as usize,
+    };
+    serde_json::to_writer(&mut writer, value).map_err(|error| error.to_string())?;
+    let mut stdout = std::io::stdout().lock();
+    stdout
+        .write_all(&writer.bytes)
+        .and_then(|()| stdout.write_all(b"\n"))
+        .map_err(|error| error.to_string())
+}
+
+#[path = "query-events/publication.rs"]
+mod publication;
+#[path = "query-events/workspace.rs"]
+mod workspace;
+
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Parser)]
-#[command(about = "Query retained events or render a static timeline")]
+#[command(
+    about = "Query retained events, render static timelines, or observe an exact restored guest"
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
 }
 
+#[derive(Debug, Clone, Default, clap::Args)]
+struct SourceArgs {
+    /// Retained canonical event envelopes.
+    #[arg(long)]
+    events: Option<PathBuf>,
+    /// Metadata recording; mutually exclusive with an exact session recording.
+    #[arg(long)]
+    recording: Option<PathBuf>,
+    #[arg(long)]
+    dlog: Option<PathBuf>,
+    /// Explicit VM/tick anchors; hardware TSC is not a simulation tick.
+    #[arg(long, requires = "dlog")]
+    dlog_context: Option<PathBuf>,
+    #[arg(long)]
+    markers: Option<PathBuf>,
+    /// Actual retained supervisor lifecycle receipt artifact.
+    #[arg(long, requires_all = ["process_manifest", "sdk_vm_index"])]
+    sdk_lifecycle: Option<PathBuf>,
+    /// Admitted owner manifest for the lifecycle receipt.
+    #[arg(long, requires = "sdk_lifecycle")]
+    process_manifest: Option<PathBuf>,
+    /// Explicit VM owner for the lifecycle receipt.
+    #[arg(long, requires = "sdk_lifecycle")]
+    sdk_vm_index: Option<u32>,
+    /// Exact persisted session, required for future/restored moment admission.
+    #[arg(long, conflicts_with = "recording")]
+    session: Option<PathBuf>,
+    /// Explicit selector and past/future horizons; absent means all retained past.
+    #[arg(long)]
+    moment: Option<PathBuf>,
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Evaluate one typed query over event envelopes.
+    /// Query admitted retained sources within one explicit moment horizon.
     Query {
-        /// Optional JSON array of event envelopes.
-        #[arg(long)]
-        events: Option<PathBuf>,
-        /// Optional retained recording JSON file.
-        #[arg(long)]
-        recording: Option<PathBuf>,
-        /// Optional raw dlog file.
-        #[arg(long)]
-        dlog: Option<PathBuf>,
-        /// Optional JSON array of retained branch-marker evidence.
-        #[arg(long)]
-        markers: Option<PathBuf>,
-        /// Query JSON file.
+        #[command(flatten)]
+        sources: SourceArgs,
         query: PathBuf,
-        /// Output result JSON file.
         output: PathBuf,
-        /// Optional receipt JSON file.
+        /// Write the bounded receipt here; otherwise emit it as JSON on stdout.
         #[arg(long)]
         receipt: Option<PathBuf>,
-        /// Optional limits JSON file.
         #[arg(long)]
         limits: Option<PathBuf>,
     },
-    /// Validate a query result and receipt against the admitted inputs.
+    /// Re-admit current artifacts/moment and validate the exact result and receipt.
     Validate {
-        /// Optional JSON array of event envelopes.
-        #[arg(long)]
-        events: Option<PathBuf>,
-        /// Optional retained recording JSON file.
-        #[arg(long)]
-        recording: Option<PathBuf>,
-        /// Optional raw dlog file.
-        #[arg(long)]
-        dlog: Option<PathBuf>,
-        /// Optional JSON array of retained branch-marker evidence.
-        #[arg(long)]
-        markers: Option<PathBuf>,
-        /// Query JSON file.
+        #[command(flatten)]
+        sources: SourceArgs,
         query: PathBuf,
-        /// Result JSON file to validate.
         result: PathBuf,
-        /// Receipt JSON file to validate.
         receipt: PathBuf,
-        /// Optional limits JSON file.
         #[arg(long)]
         limits: Option<PathBuf>,
     },
-    /// Validate a timeline receipt against its facts and rendered output.
+    /// Validate a static workspace timeline and its bound source/horizon receipt.
     ValidateTimeline {
-        /// JSON array of timeline facts.
+        /// WorkspaceTimelineInput JSON, including query, graph, gaps and limits.
         facts: PathBuf,
-        /// Rendered output format.
         #[arg(long, value_enum, default_value_t = TimelineFormat::Markdown)]
         format: TimelineFormat,
-        /// Rendered Markdown or DOT file.
         rendered: PathBuf,
-        /// Receipt JSON file to validate.
         receipt: PathBuf,
     },
-    /// Render a static timeline.
+    /// Render a self-contained static workspace timeline or branch graph.
     Timeline {
-        /// JSON array of timeline facts.
         facts: PathBuf,
-        /// Output format.
         #[arg(long, value_enum, default_value_t = TimelineFormat::Markdown)]
         format: TimelineFormat,
-        /// Output file.
         output: PathBuf,
-        /// Optional receipt JSON file.
         #[arg(long)]
         receipt: Option<PathBuf>,
     },
+    /// Build a bound query/timeline input from the actual retained session graph.
+    PrepareTimeline {
+        #[command(flatten)]
+        sources: SourceArgs,
+        query: PathBuf,
+        output: PathBuf,
+        #[arg(long)]
+        limits: Option<PathBuf>,
+        #[arg(long)]
+        timeline_limits: Option<PathBuf>,
+        /// Retained frontier trace; missing virtual time/parentage remain explicit gaps.
+        #[arg(long)]
+        frontier: Option<PathBuf>,
+        #[arg(long)]
+        missing_artifact: Vec<String>,
+    },
+    #[command(flatten)]
+    Workspace(workspace::WorkspaceCommand),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -130,10 +172,7 @@ fn run() -> Result<(), String> {
 fn execute(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Query {
-            events,
-            recording,
-            dlog,
-            markers,
+            sources,
             query,
             output,
             receipt,
@@ -144,46 +183,42 @@ fn execute(cli: Cli) -> Result<(), String> {
             if let Some(receipt) = receipt.as_deref() {
                 outputs.push(("receipt", receipt));
             }
-            ensure_outputs_do_not_overwrite_inputs(
-                &outputs,
-                &[
-                    ("events", events.as_deref()),
-                    ("recording", recording.as_deref()),
-                    ("dlog", dlog.as_deref()),
-                    ("markers", markers.as_deref()),
-                    ("query", Some(query.as_path())),
-                    ("limits", limits.as_deref()),
-                ],
-            )?;
+            let mut inputs = sources.input_paths();
+            inputs.push(("query", Some(query.as_path())));
+            inputs.push(("limits", limits.as_deref()));
+            ensure_outputs_do_not_overwrite_inputs(&outputs, &inputs)?;
+            sources.reject_session_outputs(&outputs)?;
+            let publication =
+                publication::Publications::admit(&outputs, sources.session.as_deref())?;
             let limits = read_limits(limits)?;
-            let events = load_events(events, recording, dlog, markers, &limits)?;
+            let (events, moment, _) = load_workspace_inputs(&sources, &limits)?;
             let query: EventQuery = read_json(&query)?;
-            let result = evaluate(&query, &events, &limits).map_err(|error| error.to_string())?;
-            write_json(&output, &result)?;
-            if let Some(receipt_path) = receipt {
-                let receipt = receipt_for(&query, &events, &result, &limits)
-                    .map_err(|error| error.to_string())?;
-                write_json(&receipt_path, &receipt)?;
+            let result = evaluate_at_moment(&query, &events, &limits, &moment)
+                .map_err(|error| error.to_string())?;
+            let evidence = workspace_query_receipt(&query, &events, &result, &limits, &moment)
+                .map_err(|error| error.to_string())?;
+            publication.json(&output, &result, MAX_INPUT_BYTES)?;
+            if let Some(path) = receipt {
+                publication.json(&path, &evidence, MAX_INPUT_BYTES)?;
+            } else {
+                emit_receipt(&evidence)?;
             }
         }
         Command::Validate {
-            events,
-            recording,
-            dlog,
-            markers,
+            sources,
             query,
             result,
             receipt,
             limits,
         } => {
             let limits = read_limits(limits)?;
-            let events = load_events(events, recording, dlog, markers, &limits)?;
+            let (events, moment, _) = load_workspace_inputs(&sources, &limits)?;
             let query: EventQuery = read_json(&query)?;
             let result: EventQueryResult = read_json(&result)?;
-            let receipt: EventQueryReceipt = read_json(&receipt)?;
-            validate_receipt(&receipt, &query, &events, &result, &limits)
+            let receipt: WorkspaceQueryReceipt = read_json(&receipt)?;
+            validate_workspace_query_receipt(&receipt, &query, &events, &result, &limits, &moment)
                 .map_err(|error| error.to_string())?;
-            println!("receipt validated");
+            println!("workspace query receipt validated");
         }
         Command::ValidateTimeline {
             facts,
@@ -191,16 +226,14 @@ fn execute(cli: Cli) -> Result<(), String> {
             rendered,
             receipt,
         } => {
-            let facts: Vec<TimelineFact> = read_json(&facts)?;
-            let rendered = String::from_utf8(read_bytes_with_limit(
-                &rendered,
-                u64::try_from(MAX_TIMELINE_BYTES).map_err(|_| "timeline bound overflow")?,
-            )?)
-            .map_err(|_| "rendered timeline is not UTF-8".to_string())?;
-            let receipt: TimelineReceipt = read_json(&receipt)?;
-            validate_timeline_receipt(&receipt, &facts, format.as_str(), &rendered)
+            let input: WorkspaceTimelineInput = read_json(&facts)?;
+            let rendered =
+                String::from_utf8(read_bytes_with_limit(&rendered, MAX_TIMELINE_BYTES as u64)?)
+                    .map_err(|_| "rendered timeline is not UTF-8".to_string())?;
+            let receipt: WorkspaceTimelineReceipt = read_json(&receipt)?;
+            validate_workspace_timeline_receipt(&receipt, &input, format.as_str(), &rendered)
                 .map_err(|error| error.to_string())?;
-            println!("timeline receipt validated");
+            println!("workspace timeline receipt validated");
         }
         Command::Timeline {
             facts,
@@ -210,29 +243,93 @@ fn execute(cli: Cli) -> Result<(), String> {
         } => {
             ensure_distinct_outputs(&output, &receipt)?;
             let mut outputs = vec![("rendered", output.as_path())];
-            if let Some(receipt) = receipt.as_deref() {
-                outputs.push(("receipt", receipt));
+            if let Some(path) = receipt.as_deref() {
+                outputs.push(("receipt", path));
             }
-            ensure_outputs_do_not_overwrite_inputs(&outputs, &[("facts", Some(facts.as_path()))])?;
-            let facts: Vec<TimelineFact> = read_json(&facts)?;
-            let rendered = match format {
-                TimelineFormat::Markdown => render_timeline_markdown(&facts),
-                TimelineFormat::Dot => render_timeline_dot(&facts),
-            }
-            .map_err(|error| error.to_string())?;
-            let receipt = match receipt {
-                Some(path) => Some((
-                    path,
-                    timeline_receipt(&facts, format.as_str(), &rendered)
-                        .map_err(|error| error.to_string())?,
-                )),
-                None => None,
-            };
-            write_bytes(&output, rendered.as_bytes())?;
-            if let Some((path, receipt)) = receipt {
-                write_json(&path, &receipt)?;
+            ensure_outputs_do_not_overwrite_inputs(
+                &outputs,
+                &[("workspace input", Some(facts.as_path()))],
+            )?;
+            let publication = publication::Publications::admit(&outputs, None)?;
+            let input: WorkspaceTimelineInput = read_json(&facts)?;
+            let rendered = render_workspace_timeline(&input, format.as_str())
+                .map_err(|error| error.to_string())?;
+            let evidence = workspace_timeline_receipt(&input, format.as_str(), &rendered)
+                .map_err(|error| error.to_string())?;
+            publication.bytes(&output, rendered.as_bytes())?;
+            if let Some(path) = receipt {
+                publication.json(&path, &evidence, MAX_INPUT_BYTES)?;
+            } else {
+                emit_receipt(&evidence)?;
             }
         }
+        Command::PrepareTimeline {
+            sources,
+            query,
+            output,
+            limits,
+            timeline_limits,
+            frontier,
+            missing_artifact,
+        } => {
+            let outputs = [("workspace timeline input", output.as_path())];
+            let mut inputs = sources.input_paths();
+            inputs.extend([
+                ("query", Some(query.as_path())),
+                ("query limits", limits.as_deref()),
+                ("timeline limits", timeline_limits.as_deref()),
+            ]);
+            inputs.push(("frontier trace", frontier.as_deref()));
+            ensure_outputs_do_not_overwrite_inputs(&outputs, &inputs)?;
+            sources.reject_session_outputs(&outputs)?;
+            let publication =
+                publication::Publications::admit(&outputs, sources.session.as_deref())?;
+            let limits = read_limits(limits)?;
+            let (events, mut moment, mut facts) = load_workspace_inputs(&sources, &limits)?;
+            let timeline_limits: chaoscontrol_replay::event_query::TimelineLimits =
+                match timeline_limits {
+                    Some(path) => read_json(&path)?,
+                    None => chaoscontrol_replay::event_query::TimelineLimits::default(),
+                };
+            let mut gaps = missing_artifact;
+            let mut source_truncated = false;
+            if let Some(path) = frontier {
+                let bytes = read_bytes(&path)?;
+                let projection = chaoscontrol_replay::event_query::timeline_from_frontier_trace(
+                    &bytes,
+                    &timeline_limits,
+                )
+                .map_err(|error| error.to_string())?;
+                moment.source_ids.push(format!(
+                    "b3:{}",
+                    blake3::Hash::from(projection.source_id).to_hex()
+                ));
+                moment.source_ids.sort();
+                moment.source_ids.dedup();
+                source_truncated = projection.truncated;
+                facts.extend(projection.facts);
+                gaps.extend(projection.missing_artifacts);
+            }
+            let query: EventQuery = read_json(&query)?;
+            let result = evaluate_at_moment(&query, &events, &limits, &moment)
+                .map_err(|error| error.to_string())?;
+            let evidence = workspace_query_receipt(&query, &events, &result, &limits, &moment)
+                .map_err(|error| error.to_string())?;
+            let input = WorkspaceTimelineInput {
+                facts,
+                events,
+                query_receipt: evidence.query,
+                query_result: result,
+                moment,
+                missing_artifacts: gaps,
+                source_truncated,
+                limits: timeline_limits,
+                claim: chaoscontrol_replay::event_query::TimelineClaim::RetainedFactsOnly,
+            };
+            render_workspace_timeline(&input, "markdown").map_err(|error| error.to_string())?;
+            publication.json(&output, &input, MAX_INPUT_BYTES)?;
+        }
+        Command::Workspace(command) => workspace::execute(command)?,
     }
     Ok(())
 }
@@ -241,8 +338,11 @@ fn same_output_path(left: &Path, right: &Path) -> bool {
     if left == right {
         return true;
     }
-    match (std::path::absolute(left), std::path::absolute(right)) {
-        (Ok(left), Ok(right)) => left == right,
+    match (
+        publication::resolved_entry(left),
+        publication::resolved_entry(right),
+    ) {
+        (Some(left), Some(right)) => left == right,
         _ => false,
     }
 }
@@ -282,36 +382,254 @@ fn read_limits(path: Option<PathBuf>) -> Result<EventQueryLimits, String> {
     }
 }
 
-fn load_events(
-    events: Option<PathBuf>,
-    recording: Option<PathBuf>,
-    dlog: Option<PathBuf>,
-    markers: Option<PathBuf>,
-    limits: &EventQueryLimits,
-) -> Result<Vec<EventEnvelope>, String> {
-    match (events, recording, dlog, markers) {
-        (Some(path), None, None, None) => read_json(&path),
-        (None, Some(path), None, None) => {
-            let recording = chaoscontrol_replay::serialize::load_recording(&path)
-                .map_err(|error| error.to_string())?;
-            envelopes_from_recording(&recording).map_err(|error| error.to_string())
-        }
-        (None, None, Some(path), None) => {
-            let bytes = read_bytes(&path)?;
-            envelopes_from_dlog_bytes(&bytes, limits.max_scanned_events)
-                .map_err(|error| error.to_string())
-        }
-        (None, None, None, Some(path)) => {
-            let markers: Vec<MarkerEvidenceContext> = read_json(&path)?;
-            let bytes = serde_json::to_vec(&markers).map_err(|error| error.to_string())?;
-            envelopes_from_markers(*blake3::hash(&bytes).as_bytes(), &markers)
-                .map_err(|error| error.to_string())
-        }
-        (None, None, None, None) => {
-            Err("pass --recording, --dlog, --events, or --markers".to_string())
-        }
-        _ => Err("pass exactly one input source".to_string()),
+impl SourceArgs {
+    fn input_paths(&self) -> Vec<(&'static str, Option<&Path>)> {
+        vec![
+            ("events", self.events.as_deref()),
+            ("recording", self.recording.as_deref()),
+            ("dlog", self.dlog.as_deref()),
+            ("dlog context", self.dlog_context.as_deref()),
+            ("markers", self.markers.as_deref()),
+            ("SDK lifecycle", self.sdk_lifecycle.as_deref()),
+            ("process manifest", self.process_manifest.as_deref()),
+            ("moment", self.moment.as_deref()),
+        ]
     }
+
+    fn reject_session_outputs(&self, outputs: &[(&str, &Path)]) -> Result<(), String> {
+        if let Some(session) = &self.session {
+            reject_session_outputs(session, outputs)?;
+        }
+        Ok(())
+    }
+}
+
+fn reject_session_outputs(session: &Path, outputs: &[(&str, &Path)]) -> Result<(), String> {
+    let root = session.canonicalize().map_err(|error| error.to_string())?;
+    for (_, output) in outputs {
+        let parent = output
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let parent = parent.canonicalize().map_err(|error| error.to_string())?;
+        if parent.starts_with(&root) {
+            return Err(
+                "query/observation output must not modify its exact session artifacts".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+struct LoadedSources {
+    events: Vec<EventEnvelope>,
+    identities: std::collections::BTreeSet<[u8; 32]>,
+    recording: Option<chaoscontrol_replay::recording::Recording>,
+}
+
+impl LoadedSources {
+    fn add_identity(&mut self, identity: [u8; 32]) -> Result<(), String> {
+        self.identities.insert(identity);
+        if self.identities.len() > chaoscontrol_replay::moment::MAX_MOMENT_SOURCES {
+            return Err("retained source identity inventory exceeds its bound".into());
+        }
+        Ok(())
+    }
+    fn read(&mut self, path: &Path, bound: u64) -> Result<Vec<u8>, String> {
+        let bytes = read_bytes_with_limit(path, bound)?;
+        self.add_identity(*blake3::hash(&bytes).as_bytes())?;
+        Ok(bytes)
+    }
+
+    fn append(
+        &mut self,
+        rows: Vec<EventEnvelope>,
+        limits: &EventQueryLimits,
+    ) -> Result<(), String> {
+        if self
+            .events
+            .len()
+            .checked_add(rows.len())
+            .is_none_or(|count| count > limits.max_scanned_events)
+        {
+            return Err("combined source event scan bound exceeded".into());
+        }
+        for row in &rows {
+            self.add_identity(row.source_id)?;
+        }
+        self.events.extend(rows);
+        Ok(())
+    }
+}
+
+fn source_digest(identity: &str) -> Result<[u8; 32], String> {
+    let hex = identity
+        .strip_prefix("b3:")
+        .ok_or("source identity is not BLAKE3")?;
+    Ok(*blake3::Hash::from_hex(hex)
+        .map_err(|error| error.to_string())?
+        .as_bytes())
+}
+
+fn load_workspace_inputs(
+    sources: &SourceArgs,
+    limits: &EventQueryLimits,
+) -> Result<
+    (
+        Vec<EventEnvelope>,
+        MomentContext,
+        Vec<chaoscontrol_replay::event_query::TimelineFact>,
+    ),
+    String,
+> {
+    limits.validate().map_err(|error| error.to_string())?;
+    if sources.session.is_some() && sources.recording.is_some() {
+        return Err(
+            "an exact session cannot be combined with a different metadata recording".into(),
+        );
+    }
+    if sources.dlog.is_some() != sources.dlog_context.is_some() {
+        return Err("--dlog requires --dlog-context with exact VM/tick anchors".into());
+    }
+    let mut loaded = LoadedSources {
+        events: Vec::new(),
+        identities: std::collections::BTreeSet::new(),
+        recording: None,
+    };
+    let session: Option<ExactSession> = sources
+        .session
+        .as_ref()
+        .map(|path| load_session(path, SessionLimits::default()).map_err(|error| error.to_string()))
+        .transpose()?;
+    if let Some(session) = &session {
+        loaded.add_identity(source_digest(session.recording_identity())?)?;
+        loaded.add_identity(source_digest(&session.manifest().session_id)?)?;
+        loaded.append(
+            envelopes_from_recording_source(
+                session.recording(),
+                source_digest(session.recording_identity())?,
+            )
+            .map_err(|error| error.to_string())?,
+            limits,
+        )?;
+    }
+    if let Some(path) = &sources.events {
+        let bytes = loaded.read(path, MAX_INPUT_BYTES)?;
+        loaded.append(
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?,
+            limits,
+        )?;
+    }
+    if let Some(path) = &sources.recording {
+        let bytes = loaded.read(
+            path,
+            chaoscontrol_replay::serialize::MAX_RECORDING_JSON_BYTES as u64,
+        )?;
+        let recording = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        chaoscontrol_replay::recording::validate_recording(&recording)
+            .map_err(|error| format!("invalid recording: {error:?}"))?;
+        loaded.append(
+            envelopes_from_recording_source(&recording, *blake3::hash(&bytes).as_bytes())
+                .map_err(|error| error.to_string())?,
+            limits,
+        )?;
+        loaded.recording = Some(recording);
+    }
+    if let (Some(path), Some(context)) = (&sources.dlog, &sources.dlog_context) {
+        let bytes = loaded.read(path, MAX_INPUT_BYTES)?;
+        let context_bytes = loaded.read(context, MAX_INPUT_BYTES)?;
+        let context: DlogContext =
+            serde_json::from_slice(&context_bytes).map_err(|error| error.to_string())?;
+        loaded.append(
+            envelopes_from_dlog_bytes(&bytes, limits.max_scanned_events, &context)
+                .map_err(|error| error.to_string())?,
+            limits,
+        )?;
+    }
+    if let Some(path) = &sources.markers {
+        let bytes = loaded.read(path, MAX_INPUT_BYTES)?;
+        let markers: Vec<MarkerEvidenceContext> =
+            serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        loaded.append(
+            envelopes_from_markers(*blake3::hash(&bytes).as_bytes(), &markers)
+                .map_err(|error| error.to_string())?,
+            limits,
+        )?;
+    }
+    if let Some(path) = &sources.sdk_lifecycle {
+        let bytes = loaded.read(path, MAX_INPUT_BYTES)?;
+        let manifest_path = sources
+            .process_manifest
+            .as_deref()
+            .ok_or("--sdk-lifecycle requires --process-manifest")?;
+        let vm_index = sources
+            .sdk_vm_index
+            .ok_or("--sdk-lifecycle requires --sdk-vm-index")?;
+        let manifest_bytes = loaded.read(manifest_path, MAX_INPUT_BYTES)?;
+        let manifest =
+            serde_json::from_slice(&manifest_bytes).map_err(|error| error.to_string())?;
+        let receipt = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        loaded.append(
+            envelopes_from_sdk_lifecycle(
+                *blake3::hash(&bytes).as_bytes(),
+                vm_index,
+                &manifest,
+                &receipt,
+            )
+            .map_err(|error| error.to_string())?,
+            limits,
+        )?;
+    }
+    if loaded.identities.is_empty() {
+        return Err("provide at least one retained source or exact session".into());
+    }
+    let identities = loaded
+        .identities
+        .into_iter()
+        .map(|id| format!("b3:{}", blake3::Hash::from(id).to_hex()))
+        .collect();
+    let history = if let Some(session) = &session {
+        RetainedHistory::from_session(session, identities).map_err(|error| error.to_string())?
+    } else if let Some(recording) = &loaded.recording {
+        RetainedHistory::from_recording(recording, identities).map_err(|error| error.to_string())?
+    } else {
+        RetainedHistory {
+            source_ids: identities,
+            start_tick: loaded
+                .events
+                .iter()
+                .map(|event| event.tick)
+                .min()
+                .unwrap_or(0),
+            end_tick: loaded
+                .events
+                .iter()
+                .map(|event| event.tick)
+                .max()
+                .unwrap_or(0),
+            checkpoints: Vec::new(),
+            branches: Vec::new(),
+        }
+    };
+    let request = match &sources.moment {
+        Some(path) => read_json(path)?,
+        None => MomentRequest {
+            selector: MomentSelector::Tick(history.end_tick),
+            past_ticks: history
+                .end_tick
+                .checked_sub(history.start_tick)
+                .ok_or("invalid retained horizon")?,
+            future_ticks: 0,
+            requires_restored_state: false,
+        },
+    };
+    let moment =
+        admit_moment(&request, &history, session.as_ref()).map_err(|error| error.to_string())?;
+    let facts = session
+        .as_ref()
+        .map(ExactSession::branch_graph_facts)
+        .unwrap_or_default();
+    Ok((loaded.events, moment, facts))
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
@@ -355,94 +673,109 @@ fn read_bytes_with_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
-    write_json_with_limit(path, value, MAX_INPUT_BYTES)
-}
-
+#[cfg(test)]
 fn write_json_with_limit<T: Serialize>(path: &Path, value: &T, limit: u64) -> Result<(), String> {
-    let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > limit {
-        return Err(format!("{} exceeds the input byte bound", path.display()));
-    }
-    write_bytes(path, &bytes)
+    let limit = usize::try_from(limit).map_err(|_| "JSON output bound is not addressable")?;
+    let mut writer = BoundedJsonOutput {
+        bytes: Vec::new(),
+        limit,
+    };
+    serde_json::to_writer(&mut writer, value)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    write_bytes(path, &writer.bytes)
 }
 
-fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if !metadata.file_type().is_file() => {
-            return Err(format!("{}: output is not a regular file", path.display()))
+struct BoundedJsonOutput {
+    bytes: Vec<u8>,
+    limit: usize,
+}
+
+impl Write for BoundedJsonOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self
+            .bytes
+            .len()
+            .checked_add(bytes.len())
+            .is_none_or(|length| length > self.limit)
+        {
+            return Err(std::io::Error::other("JSON output byte bound exceeded"));
         }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("{}: {error}", path.display())),
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
     }
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let directory =
-        std::fs::File::open(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)
-        .map_err(|error| format!("{}: {error}", parent.display()))?;
-    temporary
-        .write_all(bytes)
-        .and_then(|()| temporary.as_file().sync_all())
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    temporary
-        .persist(path)
-        .map_err(|error| format!("{}: {}", path.display(), error.error))?;
-    directory
-        .sync_all()
-        .map_err(|error| format!("{}: {error}", parent.display()))
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    publication::Publications::admit(&[("output", path)], None)?.bytes(path, bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn write_timeline_input(path: &Path) {
+        use chaoscontrol_replay::event_query::{
+            TimelineClaim, TimelineFact, TimelineLimits, EVENT_ENVELOPE_SCHEMA,
+        };
+        let source = [1; 32];
+        let events = vec![EventEnvelope {
+            schema: EVENT_ENVELOPE_SCHEMA.to_string(),
+            source_id: source,
+            source_kind: chaoscontrol_replay::event_query::EventSourceKind::Recording,
+            source_sequence: 0,
+            tick: 0,
+            vm_index: Some(0),
+            process: None,
+            thread: None,
+            kind: "root".into(),
+            text: "root".into(),
+            payload_digest: *blake3::hash(b"root").as_bytes(),
+            details: None,
+            derived: std::collections::BTreeMap::new(),
+        }];
+        let moment = MomentContext {
+            tick: 0,
+            start_tick: 0,
+            end_tick: 0,
+            retained_start_tick: 0,
+            retained_end_tick: 0,
+            source_ids: vec![format!("b3:{}", blake3::Hash::from(source).to_hex())],
+            session_id: None,
+            checkpoint_id: None,
+            branch_id: None,
+        };
+        let query = EventQuery::All;
+        let limits = EventQueryLimits::default();
+        let result = evaluate_at_moment(&query, &events, &limits, &moment).unwrap();
+        let evidence = workspace_query_receipt(&query, &events, &result, &limits, &moment).unwrap();
+        let input = WorkspaceTimelineInput {
+            facts: vec![TimelineFact {
+                id: 1,
+                parent: None,
+                tick: 0,
+                kind: "root".into(),
+                label: "root".into(),
+            }],
+            events,
+            query_receipt: evidence.query,
+            query_result: result,
+            moment,
+            missing_artifacts: Vec::new(),
+            limits: TimelineLimits::default(),
+            claim: TimelineClaim::RetainedFactsOnly,
+            source_truncated: false,
+        };
+        std::fs::write(path, serde_json::to_vec(&input).unwrap()).unwrap();
+    }
+
     #[test]
     fn input_reads_reject_length_changes() {
         assert!(read_bytes(Path::new("/proc/self/cmdline")).is_err());
-    }
-
-    #[test]
-    fn cli_exposes_a_version() {
-        use clap::CommandFactory;
-        assert!(Cli::command().get_version().is_some());
-    }
-
-    #[test]
-    fn query_accepts_optional_events_input() {
-        let cli = Cli::try_parse_from([
-            "query-events",
-            "query",
-            "--events",
-            "events.json",
-            "query.json",
-            "out.json",
-        ])
-        .expect("query arguments parse");
-        match cli.command {
-            Command::Query {
-                events,
-                query,
-                output,
-                recording,
-                dlog,
-                markers,
-                ..
-            } => {
-                assert_eq!(events, Some(PathBuf::from("events.json")));
-                assert_eq!(query, PathBuf::from("query.json"));
-                assert_eq!(output, PathBuf::from("out.json"));
-                assert_eq!(recording, None);
-                assert_eq!(dlog, None);
-                assert_eq!(markers, None);
-            }
-            Command::Timeline { .. }
-            | Command::Validate { .. }
-            | Command::ValidateTimeline { .. } => panic!("expected query command"),
-        }
     }
 
     #[test]
@@ -454,16 +787,16 @@ mod tests {
         let receipt = temp.path().join("receipt.json");
         std::fs::write(
             &events,
-            r#"[{"schema":"chaoscontrol.event-envelope.v1","source_id":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"source_kind":"recording","source_sequence":0,"tick":10,"kind":"assert","text":"one","payload_digest":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}]"#,
+            r#"[{"schema":"chaoscontrol.event-envelope.v1","source_id":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"source_kind":"recording","source_sequence":0,"tick":10,"vm_index":0,"kind":"assert","text":"one","payload_digest":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}]"#,
         )
         .unwrap();
         std::fs::write(&query, r#""All""#).unwrap();
         execute(Cli {
             command: Command::Query {
-                events: Some(events.clone()),
-                recording: None,
-                dlog: None,
-                markers: None,
+                sources: SourceArgs {
+                    events: Some(events.clone()),
+                    ..SourceArgs::default()
+                },
                 query: query.clone(),
                 output: result.clone(),
                 receipt: Some(receipt.clone()),
@@ -473,10 +806,10 @@ mod tests {
         .unwrap();
         execute(Cli {
             command: Command::Validate {
-                events: Some(events.clone()),
-                recording: None,
-                dlog: None,
-                markers: None,
+                sources: SourceArgs {
+                    events: Some(events.clone()),
+                    ..SourceArgs::default()
+                },
                 query: query.clone(),
                 result: result.clone(),
                 receipt: receipt.clone(),
@@ -487,14 +820,15 @@ mod tests {
 
         let mut tampered: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
-        tampered["rows"] = serde_json::json!(tampered["rows"].as_u64().unwrap() + 1);
+        tampered["query"]["rows"] =
+            serde_json::json!(tampered["query"]["rows"].as_u64().unwrap() + 1);
         std::fs::write(&receipt, serde_json::to_vec(&tampered).unwrap()).unwrap();
         assert!(execute(Cli {
             command: Command::Validate {
-                events: Some(events),
-                recording: None,
-                dlog: None,
-                markers: None,
+                sources: SourceArgs {
+                    events: Some(events),
+                    ..SourceArgs::default()
+                },
                 query,
                 result,
                 receipt,
@@ -510,11 +844,7 @@ mod tests {
         let facts = temp.path().join("facts.json");
         let rendered = temp.path().join("out.md");
         let receipt = temp.path().join("receipt.json");
-        std::fs::write(
-            &facts,
-            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
-        )
-        .unwrap();
+        write_timeline_input(&facts);
         execute(Cli {
             command: Command::Timeline {
                 facts: facts.clone(),
@@ -551,11 +881,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let facts = temp.path().join("facts.json");
         let receipt = temp.path().join("receipt.json");
-        std::fs::write(
-            &facts,
-            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
-        )
-        .unwrap();
+        write_timeline_input(&facts);
         assert!(execute(Cli {
             command: Command::Timeline {
                 facts,
@@ -596,11 +922,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let facts = temp.path().join("facts.json");
         let output = temp.path().join("out.md");
-        std::fs::write(
-            &facts,
-            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
-        )
-        .unwrap();
+        write_timeline_input(&facts);
         assert!(execute(Cli {
             command: Command::Timeline {
                 facts: facts.clone(),
@@ -656,10 +978,10 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(execute(Cli {
             command: Command::Query {
-                events: Some(link),
-                recording: None,
-                dlog: None,
-                markers: None,
+                sources: SourceArgs {
+                    events: Some(link),
+                    ..SourceArgs::default()
+                },
                 query: temp.path().join("query.json"),
                 output: temp.path().join("out.json"),
                 receipt: None,
@@ -696,11 +1018,7 @@ mod tests {
         let facts = temp.path().join("facts.json");
         let target = temp.path().join("target.md");
         let link = temp.path().join("out.md");
-        std::fs::write(
-            &facts,
-            r#"[{"id":1,"tick":0,"kind":"root","label":"root"}]"#,
-        )
-        .unwrap();
+        write_timeline_input(&facts);
         std::fs::write(&target, b"original").unwrap();
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(execute(Cli {
@@ -728,100 +1046,5 @@ mod tests {
     fn query_requires_query_and_output() {
         assert!(Cli::try_parse_from(["query-events", "query"]).is_err());
         assert!(Cli::try_parse_from(["query-events", "query", "query.json"]).is_err());
-    }
-
-    #[test]
-    fn validate_timeline_accepts_rendered_receipt() {
-        let cli = Cli::try_parse_from([
-            "query-events",
-            "validate-timeline",
-            "--format",
-            "markdown",
-            "facts.json",
-            "out.md",
-            "receipt.json",
-        ])
-        .expect("validate-timeline arguments parse");
-        match cli.command {
-            Command::ValidateTimeline {
-                facts,
-                format,
-                rendered,
-                receipt,
-            } => {
-                assert_eq!(facts, PathBuf::from("facts.json"));
-                assert!(matches!(format, TimelineFormat::Markdown));
-                assert_eq!(rendered, PathBuf::from("out.md"));
-                assert_eq!(receipt, PathBuf::from("receipt.json"));
-            }
-            Command::Query { .. } | Command::Validate { .. } | Command::Timeline { .. } => {
-                panic!("expected validate-timeline command")
-            }
-        }
-    }
-
-    #[test]
-    fn timeline_accepts_a_receipt() {
-        let cli = Cli::try_parse_from([
-            "query-events",
-            "timeline",
-            "--format",
-            "dot",
-            "--receipt",
-            "receipt.json",
-            "facts.json",
-            "out.dot",
-        ])
-        .expect("timeline arguments parse");
-        match cli.command {
-            Command::Timeline {
-                facts,
-                format,
-                output,
-                receipt,
-            } => {
-                assert_eq!(facts, PathBuf::from("facts.json"));
-                assert!(matches!(format, TimelineFormat::Dot));
-                assert_eq!(output, PathBuf::from("out.dot"));
-                assert_eq!(receipt, Some(PathBuf::from("receipt.json")));
-            }
-            Command::Query { .. } | Command::Validate { .. } | Command::ValidateTimeline { .. } => {
-                panic!("expected timeline command")
-            }
-        }
-    }
-
-    #[test]
-    fn validate_requires_result_and_receipt() {
-        let cli = Cli::try_parse_from([
-            "query-events",
-            "validate",
-            "--events",
-            "events.json",
-            "query.json",
-            "result.json",
-            "receipt.json",
-        ])
-        .expect("validate arguments parse");
-        match cli.command {
-            Command::Validate {
-                events,
-                query,
-                result,
-                receipt,
-                ..
-            } => {
-                assert_eq!(events, Some(PathBuf::from("events.json")));
-                assert_eq!(query, PathBuf::from("query.json"));
-                assert_eq!(result, PathBuf::from("result.json"));
-                assert_eq!(receipt, PathBuf::from("receipt.json"));
-            }
-            Command::Query { .. } | Command::Timeline { .. } | Command::ValidateTimeline { .. } => {
-                panic!("expected validate command")
-            }
-        }
-        assert!(
-            Cli::try_parse_from(["query-events", "validate", "query.json", "result.json"]).is_err()
-        );
     }
 }

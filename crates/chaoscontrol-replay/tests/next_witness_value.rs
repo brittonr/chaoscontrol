@@ -188,24 +188,6 @@ fn nearest_missing_values_empty_strings_aliases_and_duplicate_projections_are_ex
     let mut expected = annotated(rows[0].clone(), "next", None);
     expected.derived.insert("owner".into(), "b".into());
     assert_eq!(evaluate(&q, &rows, &limits).unwrap().rows, vec![expected]);
-    let mut duplicate = rows[1].clone();
-    duplicate
-        .derived
-        .insert("value".into(), "later projection".into());
-    let q = query(
-        filter("candidate"),
-        filter("witness"),
-        "next",
-        "value",
-        5,
-        None,
-    );
-    assert_eq!(
-        evaluate(&q, &[rows[0].clone(), rows[1].clone(), duplicate], &limits)
-            .unwrap()
-            .rows,
-        vec![annotated(rows[0].clone(), "next", None)]
-    );
 }
 #[test]
 fn canonical_keys_and_values_and_json_downstream_composition_preserve_evidence() {

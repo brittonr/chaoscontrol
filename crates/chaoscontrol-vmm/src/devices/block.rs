@@ -209,6 +209,24 @@ pub enum BlockSnapshotValidationError {
 }
 
 impl BlockSnapshot {
+    /// Compare an admitted disk capability against the immutable base using a
+    /// fixed buffer, without cloning the base or materializing the disk again.
+    pub fn matches_base_image_file(&self, file: &std::fs::File) -> std::io::Result<bool> {
+        use std::os::unix::fs::FileExt;
+        const BUFFER_BYTES: usize = 64 * 1024;
+        if file.metadata()?.len() != self.base.len() as u64 {
+            return Ok(false);
+        }
+        let mut buffer = [0; BUFFER_BYTES];
+        for (index, expected) in self.base.chunks(BUFFER_BYTES).enumerate() {
+            file.read_exact_at(&mut buffer[..expected.len()], (index * BUFFER_BYTES) as u64)?;
+            if &buffer[..expected.len()] != expected {
+                return Ok(false);
+            }
+        }
+        Ok(file.metadata()?.len() == self.base.len() as u64)
+    }
+
     pub fn device_size(&self) -> Result<u64, BlockSnapshotValidationError> {
         u64::try_from(self.base.len()).map_err(|_| BlockSnapshotValidationError::DeviceSizeOverflow)
     }
@@ -444,13 +462,19 @@ pub struct DeterministicBlock {
 }
 
 fn read_image_file(path: &str) -> std::io::Result<Vec<u8>> {
-    use std::io::Read;
     use std::os::unix::fs::OpenOptionsExt;
 
     let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;
+    read_image_handle(&file)
+}
+
+/// Read an already-admitted regular file capability with the path intake bounds.
+/// Does not reopen a descriptor through a symlink path.
+pub fn read_image_handle(file: &std::fs::File) -> std::io::Result<Vec<u8>> {
+    use std::os::unix::fs::FileExt;
     let metadata = file.metadata()?;
     if !metadata.file_type().is_file() {
         return Err(std::io::Error::new(
@@ -464,11 +488,13 @@ fn read_image_file(path: &str) -> std::io::Result<Vec<u8>> {
             "block image exceeds the byte limit",
         ));
     }
-    let capacity = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
-    let mut bytes = Vec::with_capacity(capacity);
-    file.take(metadata.len().saturating_add(1))
-        .read_to_end(&mut bytes)?;
-    if bytes.len() as u64 != metadata.len() {
+    let capacity = usize::try_from(metadata.len())
+        .map_err(|_| std::io::Error::other("block image exceeds platform size"))?;
+    let mut bytes = vec![0; capacity];
+    file.read_exact_at(&mut bytes, 0)?;
+    let mut sentinel = [0];
+    if file.read_at(&mut sentinel, metadata.len())? != 0 || file.metadata()?.len() != metadata.len()
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "block image changed while reading",
@@ -503,8 +529,13 @@ impl DeterministicBlock {
 
     /// Create a block device pre-loaded with `data` (e.g. a disk image).
     pub fn from_image(data: Vec<u8>) -> Self {
+        Self::from_shared_image(Arc::new(data))
+    }
+
+    /// Share the immutable admitted base among VMs with independent overlays.
+    pub fn from_shared_image(data: Arc<Vec<u8>>) -> Self {
         Self {
-            base: Arc::new(data),
+            base: data,
             dirty: BTreeMap::new(),
             volatile: BTreeMap::new(),
             failed_clean: BTreeSet::new(),

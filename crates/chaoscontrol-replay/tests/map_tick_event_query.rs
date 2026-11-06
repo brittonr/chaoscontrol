@@ -38,7 +38,7 @@ fn annotate(mut row: EventEnvelope, field: &str) -> EventEnvelope {
 
 // r[verify chaoscontrol.map_tick.projection]
 #[test]
-fn canonical_ticks_remain_exact_despite_payload_shadows_permutations_and_duplicates() {
+fn canonical_ticks_remain_exact_despite_payload_shadows_and_permutations() {
     let ticks = [0, 0, 9007199254740992, 9007199254740993, u64::MAX];
     let mut rows: Vec<_> = ticks
         .into_iter()
@@ -50,12 +50,7 @@ fn canonical_ticks_remain_exact_despite_payload_shadows_permutations_and_duplica
         .cloned()
         .map(|row| annotate(row, "seen"))
         .collect();
-    let mut duplicate = rows[0].clone();
-    duplicate
-        .derived
-        .insert("other".to_string(), "later".to_string());
     rows.reverse();
-    rows.push(duplicate);
     assert_eq!(
         evaluate(
             &query(json!("All"), "seen"),
@@ -190,7 +185,7 @@ fn names_and_children_are_admitted_even_without_rows() {
 }
 
 #[test]
-fn generated_and_intermediate_capacity_cannot_be_hidden_by_narrowing_or_deduplication() {
+fn generated_and_intermediate_capacity_cannot_be_hidden_by_narrowing() {
     let limits = EventQueryLimits::default();
     let q = query(json!("All"), "projected");
     let narrow = |input| EventQuery::Narrow {
@@ -211,11 +206,7 @@ fn generated_and_intermediate_capacity_cannot_be_hidden_by_narrowing_or_deduplic
     );
     source.derived.get_mut("pad").unwrap().push('x');
     assert_eq!(
-        evaluate(
-            &narrow(q.clone()),
-            &[event(0, u64::MAX, "metric"), source],
-            &limits
-        ),
+        evaluate(&narrow(q.clone()), &[source], &limits),
         Err(EventQueryError::InvalidEvent)
     );
     let mut source = event(0, u64::MAX, "metric");

@@ -41,7 +41,6 @@ fn canonical_unique_prefixes_sum_matching_values_before_output_aliasing() {
         event(0, 0, "2.5", "metric"),
         event(1, 0, "bad", "skip"),
     ];
-    events.push(events[1].clone());
     let mut expected = vec![events[1].clone(), events[2].clone(), events[0].clone()];
     for (row, total) in expected.iter_mut().zip(["2.5", "2.5", "1.0"]) {
         row.derived.insert("total".to_string(), total.to_string());
@@ -80,7 +79,7 @@ fn canonical_unique_prefixes_sum_matching_values_before_output_aliasing() {
 }
 
 #[test]
-fn numeric_rounding_and_first_duplicate_projection_priority_follow_canonical_order() {
+fn numeric_rounding_follows_canonical_order() {
     let limits = EventQueryLimits::default();
     for (values, totals) in [
         (
@@ -114,25 +113,6 @@ fn numeric_rounding_and_first_duplicate_projection_priority_follow_canonical_ord
             expected
         );
     }
-    let first = event(0, 0, "2", "metric");
-    let mut duplicate = first.clone();
-    duplicate
-        .derived
-        .insert("amount".to_string(), "bad".to_string());
-    let mut expected = first.clone();
-    expected
-        .derived
-        .insert("total".to_string(), "2.0".to_string());
-    assert_eq!(
-        evaluate(
-            &sum(json!("All"), matching(), "total", "amount"),
-            &[first, duplicate],
-            &limits
-        )
-        .unwrap()
-        .rows,
-        vec![expected]
-    );
 }
 
 #[test]

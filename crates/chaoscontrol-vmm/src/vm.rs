@@ -255,7 +255,8 @@ const DEFAULT_EMPTY_DISK_BYTES: usize = 16 * BYTES_PER_MIB_USIZE;
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Configuration for creating a [`DeterministicVm`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VmConfig {
     /// Guest memory size in bytes (default: 256 MB).
     pub memory_size: usize,
@@ -812,6 +813,8 @@ pub struct DeterministicVm {
 
     // Execution statistics
     exit_count: u64,
+    /// Rebound by the controller before each round, including after restore.
+    diagnostic_controller_tick: Option<u64>,
     io_exit_count: u64,
     /// Total exits since the last SDK hypercall.
     /// When this exceeds an idle threshold AND setup_complete has been
@@ -906,10 +909,22 @@ fn open_boot_file(path: &std::path::Path, limit: u64) -> io::Result<File> {
     Ok(file)
 }
 
+#[cfg(test)]
 fn read_boot_file(path: &std::path::Path, limit: u64) -> io::Result<Vec<u8>> {
-    use std::io::Read;
+    read_boot_handle(&open_boot_file(path, limit)?, limit)
+}
 
-    let file = open_boot_file(path, limit)?;
+fn read_boot_handle(file: &File, limit: u64) -> io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "boot file capability is not a bounded regular file",
+        ));
+    }
+    let mut file = file.try_clone()?;
+    file.seek(SeekFrom::Start(0))?;
     let expected = file.metadata()?.len();
     let capacity = usize::try_from(expected)
         .unwrap_or(0)
@@ -1031,6 +1046,13 @@ impl DeterministicVm {
     /// console. The VM is ready for [`load_kernel`](Self::load_kernel)
     /// after construction.
     pub fn new(config: VmConfig) -> Result<Self, VmError> {
+        Self::new_with_disk_image(config, None)
+    }
+
+    pub(crate) fn new_with_disk_image(
+        config: VmConfig,
+        disk_image: Option<std::sync::Arc<Vec<u8>>>,
+    ) -> Result<Self, VmError> {
         let runtime_capacity_limits = runtime_capacity_limits(&config)?;
         let runtime_capacity_plan =
             plan_runtime_capacity(&runtime_capacity_limits).map_err(|error| {
@@ -1226,6 +1248,7 @@ impl DeterministicVm {
             config.cpu.seed,
             config.disk_image_path.as_deref(),
             config.vm_id,
+            disk_image,
         )?;
 
         // Open determinism log writer if requested.
@@ -1380,6 +1403,7 @@ impl DeterministicVm {
             host_watchdog_retries: 0,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
+            diagnostic_controller_tick: None,
             io_exit_count: 0,
             exits_since_last_sdk: 0,
             panic_detected: false,
@@ -1493,6 +1517,7 @@ impl DeterministicVm {
         seed: u64,
         disk_image_path: Option<&str>,
         vm_id: usize,
+        disk_image: Option<std::sync::Arc<Vec<u8>>>,
     ) -> Result<Vec<VirtioMmioDevice>, VmError> {
         use crate::devices::block::DeterministicBlock;
         use crate::devices::net::DeterministicNet;
@@ -1503,14 +1528,18 @@ impl DeterministicVm {
         let mut devices = Vec::new();
 
         // Device 0: virtio-blk
-        let disk = match disk_image_path {
-            Some(path) => {
-                info!("Loading disk image: {}", path);
-                DeterministicBlock::from_image_file(path).map_err(|e| VmError::DiskImage {
-                    message: e.to_string(),
-                })?
+        let disk = if let Some(image) = disk_image {
+            DeterministicBlock::from_shared_image(image)
+        } else {
+            match disk_image_path {
+                Some(path) => {
+                    info!("Loading disk image: {}", path);
+                    DeterministicBlock::from_image_file(path).map_err(|e| VmError::DiskImage {
+                        message: e.to_string(),
+                    })?
+                }
+                None => DeterministicBlock::new(DEFAULT_EMPTY_DISK_BYTES),
             }
-            None => DeterministicBlock::new(DEFAULT_EMPTY_DISK_BYTES),
         };
         info!(
             "  Block device: {} bytes ({} MB)",
@@ -1649,8 +1678,31 @@ impl DeterministicVm {
     ) -> Result<(), VmError> {
         info!("Loading kernel from {}", kernel_path);
 
-        let mut kernel_file =
-            open_boot_file(std::path::Path::new(kernel_path), MAX_KERNEL_FILE_BYTES)?;
+        let kernel_file = open_boot_file(std::path::Path::new(kernel_path), MAX_KERNEL_FILE_BYTES)?;
+        let initrd_file = initrd_path
+            .map(|path| open_boot_file(std::path::Path::new(path), self.memory_ceiling_bytes))
+            .transpose()?;
+        self.load_kernel_from_files(&kernel_file, initrd_file.as_ref())
+    }
+
+    /// Load already-admitted bounded regular file capabilities without reopening
+    /// them through paths. The ordinary path loader retains O_NOFOLLOW policy.
+    pub fn load_kernel_from_files(
+        &mut self,
+        kernel: &File,
+        initrd: Option<&File>,
+    ) -> Result<(), VmError> {
+        use std::io::{Seek, SeekFrom};
+        let metadata = kernel.metadata()?;
+        if !metadata.is_file() || metadata.len() > MAX_KERNEL_FILE_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "kernel capability is not a bounded regular file",
+            )
+            .into());
+        }
+        let mut kernel_file = kernel.try_clone()?;
+        kernel_file.seek(SeekFrom::Start(0))?;
 
         // Load kernel using linux-loader
         let kernel_load_result = Elf::load(
@@ -1670,10 +1722,8 @@ impl DeterministicVm {
         );
 
         // Load initrd if provided (place it after the kernel, page-aligned)
-        let initrd_info = if let Some(initrd_path) = initrd_path {
-            info!("Loading initrd from {}", initrd_path);
-            let initrd_data =
-                read_boot_file(std::path::Path::new(initrd_path), self.memory_ceiling_bytes)?;
+        let initrd_info = if let Some(initrd) = initrd {
+            let initrd_data = read_boot_handle(initrd, self.memory_ceiling_bytes)?;
             let initrd_addr = (kernel_end + 4095) & !4095;
             self.memory
                 .inner()
@@ -3311,6 +3361,7 @@ impl DeterministicVm {
                 message: "guest memory size exceeds resource-observation bounds".to_string(),
             })?;
         self.exit_count = snapshot.exit_count;
+        self.diagnostic_controller_tick = None;
         self.io_exit_count = snapshot.io_exit_count;
         self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
         self.panic_detected = snapshot.panic_detected;
@@ -3497,6 +3548,7 @@ impl DeterministicVm {
                 message: "guest memory size exceeds resource-observation bounds".to_string(),
             })?;
         self.exit_count = snapshot.exit_count;
+        self.diagnostic_controller_tick = None;
         self.io_exit_count = snapshot.io_exit_count;
         self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
         self.panic_detected = snapshot.panic_detected;
@@ -5012,7 +5064,13 @@ impl DeterministicVm {
 
     /// Emit a tick marker into the dlog (called by the controller).
     pub fn dlog_tick_marker(&mut self, tick: u64) {
+        self.bind_diagnostic_tick(tick);
         self.dlog_emit(self.dlog_record(DlogTag::TickMarker).with_data_u64(tick));
+    }
+
+    /// Bind controller time before dispatching restored guest diagnostics.
+    pub fn bind_diagnostic_tick(&mut self, tick: u64) {
+        self.diagnostic_controller_tick = Some(tick);
     }
 
     /// Hash selected guest memory pages and emit MemoryHash dlog records.
@@ -5233,6 +5291,11 @@ impl DeterministicVm {
             match self.fault_engine.write_diagnostic_request(&mut page) {
                 Ok(present) => (u64::from(present), chaoscontrol_protocol::STATUS_OK),
                 Err(_) => (0, chaoscontrol_protocol::STATUS_ERROR),
+            }
+        } else if page.command == chaoscontrol_protocol::CMD_DIAGNOSTIC_TICK {
+            match self.diagnostic_controller_tick {
+                Some(tick) => (tick, chaoscontrol_protocol::STATUS_OK),
+                None => (0, chaoscontrol_protocol::STATUS_ERROR),
             }
         } else {
             self.fault_engine.handle_hypercall(&page)

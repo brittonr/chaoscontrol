@@ -1,18 +1,20 @@
 //! Guest diagnostic request contract.
 //!
-//! Defines the versioned host-to-supervisor request used to run one admitted
-//! diagnostic operation inside the guest. Admission is lexical and bounded: an
-//! exact executable identity, a bounded argument vector, and a bounded timeout.
-//! The contract does not execute anything, authorize an executable, or claim
-//! that a request produced evidence. The supervisor supplies the executable path
-//! from its admitted manifest and verifies it against ``executable`` before running.
+//! One bounded host-to-supervisor diagnostic channel. Versions 1/2 carry a
+//! legacy diagnostic with wall-time watchdog; version 3 carries an exact declared
+//! observation profile with relative paths, explicit environment, virtual-tick
+//! deadline, and output bounds. The guest independently admits that profile.
+//! This pure contract executes nothing and does not certify output correctness.
 
 // r[impl chaoscontrol.guest_diagnostic.request_admission]
-/// Current diagnostic request encoding version (bounded stdin supported).
+/// Legacy diagnostic encoding version with bounded stdin.
 pub const DIAGNOSTIC_PROTOCOL_VERSION: u16 = 2;
 
 /// Legacy diagnostic request version without stdin.
 pub const DIAGNOSTIC_PROTOCOL_VERSION_V1: u16 = 1;
+
+/// Declared observation requests carry a canonical profile in `stdin`.
+pub const OBSERVATION_PROTOCOL_VERSION: u16 = 3;
 
 /// Maximum encoded stdin bytes for version 2 requests.
 pub const MAX_DIAGNOSTIC_STDIN_BYTES: usize = 4096;
@@ -33,8 +35,7 @@ pub const MAX_DIAGNOSTIC_CAPTURE_BYTES: usize = 64 * 1024;
 pub const MAX_DIAGNOSTIC_TIMEOUT_MS: u32 = 30_000;
 
 /// Largest admitted request encoding: header, arguments, and timeout.
-pub const MAX_DIAGNOSTIC_REQUEST_BYTES: usize =
-    2 + 32 + 2 + MAX_DIAGNOSTIC_TOTAL_ARG_BYTES + 2 * MAX_DIAGNOSTIC_ARGS + 4;
+pub const MAX_DIAGNOSTIC_REQUEST_BYTES: usize = crate::PAYLOAD_MAX;
 
 /// One admitted diagnostic request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,9 +46,9 @@ pub struct DiagnosticRequest {
     pub executable: [u8; 32],
     /// Arguments, excluding the executable.
     pub argv: Vec<String>,
-    /// Bounded stdin bytes; must be empty for version 1 requests.
+    /// Bounded stdin in v2, canonical observation profile in v3; empty in v1.
     pub stdin: Vec<u8>,
-    /// Wall-clock bound for the operation.
+    /// Legacy watchdog; v3 requires the fixed sentinel but uses only virtual ticks.
     pub timeout_ms: u32,
 }
 
@@ -102,6 +103,8 @@ pub enum DiagnosticError {
         /// Encoded size found.
         found: usize,
     },
+    /// The observation profile is malformed, over-bound, or differs from its envelope.
+    InvalidObservation,
 }
 
 /// Admit one request without encoding it.
@@ -112,7 +115,10 @@ pub fn admit(
     stdin: &[u8],
     timeout_ms: u32,
 ) -> Result<(), DiagnosticError> {
-    if version != DIAGNOSTIC_PROTOCOL_VERSION && version != DIAGNOSTIC_PROTOCOL_VERSION_V1 {
+    if version != DIAGNOSTIC_PROTOCOL_VERSION
+        && version != DIAGNOSTIC_PROTOCOL_VERSION_V1
+        && version != OBSERVATION_PROTOCOL_VERSION
+    {
         return Err(DiagnosticError::UnsupportedVersion { found: version });
     }
     if version == DIAGNOSTIC_PROTOCOL_VERSION_V1 && !stdin.is_empty() {
@@ -124,7 +130,7 @@ pub fn admit(
     if executable.iter().all(|byte| *byte == 0) {
         return Err(DiagnosticError::MissingExecutable);
     }
-    if argv.is_empty() {
+    if argv.is_empty() && version != OBSERVATION_PROTOCOL_VERSION {
         return Err(DiagnosticError::MissingArguments);
     }
     if argv.len() > MAX_DIAGNOSTIC_ARGS {
@@ -153,7 +159,156 @@ pub fn admit(
     if encoded_len > crate::PAYLOAD_MAX {
         return Err(DiagnosticError::RequestTooLarge { found: encoded_len });
     }
+    if version == OBSERVATION_PROTOCOL_VERSION {
+        let profile: ObservationProfile =
+            serde_json::from_slice(stdin).map_err(|_| DiagnosticError::InvalidObservation)?;
+        profile
+            .validate()
+            .map_err(|_| DiagnosticError::InvalidObservation)?;
+        if profile.executable_blake3 != *executable
+            || profile.argv != argv
+            || timeout_ms != MAX_DIAGNOSTIC_TIMEOUT_MS
+            || serde_json::to_vec(&profile).map_err(|_| DiagnosticError::InvalidObservation)?
+                != stdin
+        {
+            return Err(DiagnosticError::InvalidObservation);
+        }
+    }
     Ok(())
+}
+
+/// Fully declared guest command. Identity is BLAKE3 of canonical JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationProfile {
+    pub executable: String,
+    pub executable_blake3: [u8; 32],
+    pub argv: Vec<String>,
+    pub environment: std::collections::BTreeMap<String, String>,
+    pub working_directory: String,
+    pub deadline_tick: u64,
+    pub stdout_limit: u32,
+    pub stderr_limit: u32,
+    pub mutates_guest: bool,
+}
+
+pub const MAX_OBSERVATION_ENV: usize = 16;
+pub const MAX_OBSERVATION_ENV_BYTES: usize = 2048;
+pub const MAX_OBSERVATION_PATH_BYTES: usize = 256;
+pub const MAX_OBSERVATION_TICKS: u64 = 1_000_000;
+
+/// Only normalized, nonempty relative paths; `.` is permitted only for cwd.
+pub fn admit_observation_path(path: &str, directory: bool) -> Result<(), String> {
+    if directory && path == "." {
+        return Ok(());
+    }
+    if path.is_empty()
+        || path.len() > MAX_OBSERVATION_PATH_BYTES
+        || path.starts_with('/')
+        || path.contains('\\')
+        || path.contains('\0')
+        || path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("observation path must be normalized and relative".into());
+    }
+    Ok(())
+}
+
+impl ObservationProfile {
+    pub fn validate(&self) -> Result<(), String> {
+        admit_observation_path(&self.executable, false)?;
+        admit_observation_path(&self.working_directory, true)?;
+        if self.executable_blake3 == [0; 32]
+            || self.deadline_tick == 0
+            || self.argv.len() > MAX_DIAGNOSTIC_ARGS
+            || self.environment.len() > MAX_OBSERVATION_ENV
+            || self.stdout_limit == 0
+            || self.stderr_limit == 0
+            || self.stdout_limit as usize > MAX_DIAGNOSTIC_CAPTURE_BYTES
+            || self.stderr_limit as usize > MAX_DIAGNOSTIC_CAPTURE_BYTES
+        {
+            return Err("observation identity or limits are invalid".into());
+        }
+        let mut total = 0usize;
+        for argument in &self.argv {
+            if argument.is_empty()
+                || argument.len() > MAX_DIAGNOSTIC_ARG_BYTES
+                || argument.contains('\0')
+                || argument.starts_with('/')
+                || argument.contains('\\')
+                || argument.split('/').any(|part| part == "..")
+            {
+                return Err("observation argument escapes profile bounds".into());
+            }
+            total = total
+                .checked_add(argument.len())
+                .ok_or("argument overflow")?;
+        }
+        if total > MAX_DIAGNOSTIC_TOTAL_ARG_BYTES {
+            return Err("argument byte bound".into());
+        }
+        let mut env_bytes = 0usize;
+        for (key, value) in &self.environment {
+            if key.is_empty()
+                || key.len() > 128
+                || !key
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+                || key.starts_with("LD_")
+                || key.starts_with("DYLD_")
+                || matches!(key.as_str(), "PATH" | "ENV" | "BASH_ENV" | "SHELLOPTS")
+                || value.contains('\0')
+                || value.len() > MAX_DIAGNOSTIC_ARG_BYTES
+            {
+                return Err("observation environment is not admitted".into());
+            }
+            env_bytes = env_bytes
+                .checked_add(key.len() + value.len())
+                .ok_or("environment overflow")?;
+        }
+        if env_bytes > MAX_OBSERVATION_ENV_BYTES {
+            return Err("environment byte bound".into());
+        }
+        Ok(())
+    }
+
+    pub fn identity(&self) -> Result<String, String> {
+        self.validate()?;
+        let bytes = serde_json::to_vec(self).map_err(|e| e.to_string())?;
+        Ok(blake3::hash(&bytes).to_hex().to_string())
+    }
+
+    pub fn request(&self) -> Result<DiagnosticRequest, String> {
+        self.validate()?;
+        let request = DiagnosticRequest {
+            version: OBSERVATION_PROTOCOL_VERSION,
+            executable: self.executable_blake3,
+            argv: self.argv.clone(),
+            stdin: serde_json::to_vec(self).map_err(|e| e.to_string())?,
+            timeout_ms: MAX_DIAGNOSTIC_TIMEOUT_MS,
+        };
+        encode_request(&request).map_err(|e| format!("{e:?}"))?;
+        Ok(request)
+    }
+}
+
+/// Decode a v3 profile and reject drift between envelope and command.
+pub fn observation_profile(
+    request: &DiagnosticRequest,
+) -> Result<Option<ObservationProfile>, String> {
+    if request.version != OBSERVATION_PROTOCOL_VERSION {
+        return Ok(None);
+    }
+    let profile: ObservationProfile =
+        serde_json::from_slice(&request.stdin).map_err(|e| e.to_string())?;
+    profile.validate()?;
+    let expected = profile.request()?;
+    if expected != *request {
+        return Err("observation profile/request drift".into());
+    }
+    Ok(Some(profile))
 }
 
 /// Encode one admitted request in canonical little-endian form.
@@ -170,6 +325,11 @@ pub fn encode_request(request: &DiagnosticRequest) -> Result<Vec<u8>, Diagnostic
             + 2
             + request.argv.iter().map(String::len).sum::<usize>()
             + 2 * request.argv.len()
+            + if request.version == DIAGNOSTIC_PROTOCOL_VERSION_V1 {
+                0
+            } else {
+                2 + request.stdin.len()
+            }
             + 4,
     );
     encoded.extend_from_slice(&request.version.to_le_bytes());
@@ -288,7 +448,7 @@ pub struct DiagnosticReceipt {
     pub status: DiagnosticReceiptStatus,
     /// Exit code when the process reported one.
     pub exit_code: Option<i32>,
-    /// Whether either captured stream exceeded its bound.
+    /// Whether a stream exceeded its bound or complete capture could not be established.
     pub truncated: bool,
     // r[impl chaoscontrol.guest_diagnostic.receipt_counterfactual]
     /// Whether the execution is a counterfactual guest-branch perturbation.
@@ -489,10 +649,10 @@ mod tests {
     #[test]
     fn version_and_identity_are_admitted() {
         let mut value = request();
-        value.version = 3;
+        value.version = 4;
         assert_eq!(
             encode_request(&value),
-            Err(DiagnosticError::UnsupportedVersion { found: 3 })
+            Err(DiagnosticError::UnsupportedVersion { found: 4 })
         );
         value.version = DIAGNOSTIC_PROTOCOL_VERSION;
         value.executable = [0; 32];

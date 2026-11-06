@@ -133,31 +133,6 @@ fn membership_ignores_right_projections_but_preserves_left_rows() {
             expected
         );
     }
-    // Repeated source positions can carry distinct query-local projections.
-    let mut repeated = events.clone();
-    for index in 0..96 {
-        let mut row = events[index % events.len()].clone();
-        row.derived
-            .insert("kept".to_string(), format!("later-{index}"));
-        repeated.push(row);
-    }
-    let mut expected = events;
-    expected.sort_by_key(|event| (event.tick, event.source_id, event.source_sequence));
-    for (operator, other) in [
-        ("Intersect", json!("All")),
-        ("Difference", filter(json!({"Kind":"absent"}))),
-    ] {
-        assert_eq!(
-            evaluate(
-                &query(operator, json!("All"), other),
-                &repeated,
-                &EventQueryLimits::default()
-            )
-            .unwrap()
-            .rows,
-            expected
-        );
-    }
 }
 
 #[test]

@@ -4333,6 +4333,7 @@ mod tests {
         assert_ne!(status, VmStatus::Paused);
     }
 
+    // r[verify chaoscontrol.fault_mechanisms.cpu_throttle]
     #[test]
     fn cpu_throttle_clamps_budget_and_releases_at_tick() {
         let mut controller = adapter_test_controller();

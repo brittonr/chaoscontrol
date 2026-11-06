@@ -616,13 +616,6 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["Symbolized coverage does not prove source correctness, complete coverage, causality, or release eligibility.", "Missing catalogs remain explicit rather than inferred."],
     },
     {
-      change = "expand-deterministic-fault-mechanisms",
-      owner = "chaoscontrol-fault",
-      target_state = "experimental",
-      evidence_prerequisite = "Directional network faults, virtual-budget CPU throttling, typed custom effects, pause control, deterministic overlap, stage evidence, and positive and negative fixtures must pass.",
-      non_claims = ["No host-level fault injection, unbounded scripts, or ambient command execution.", "No universal fault coverage, Antithesis parity, or release claim."],
-    },
-    {
       change = "add-local-debug-query-workspace",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

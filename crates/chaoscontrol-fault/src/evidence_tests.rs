@@ -272,6 +272,7 @@ fn receipt_retains_directional_candidates_precedence_and_scoped_heal() {
     validate_fault_mechanism_receipt(&ledger, SEED, PROFILE, &decoded).unwrap();
 }
 
+// r[verify chaoscontrol.fault_mechanisms.nonclaims]
 #[test]
 fn receipt_rejects_identity_target_count_precedence_and_stage_drift() {
     let mut ledger = FaultOutcomeLedger::default();

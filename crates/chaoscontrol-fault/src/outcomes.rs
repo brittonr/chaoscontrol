@@ -1960,12 +1960,16 @@ pub struct FaultAttemptState {
     pub observed_operations: BTreeSet<FaultOperationId>,
 }
 
+fn no_control_events() -> Vec<crate::evidence::FaultControlEvent> {
+    Vec::new()
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FaultOutcomeLedger {
     pub attempts: BTreeMap<FaultAttemptId, FaultAttemptState>,
     pub events: Vec<FaultStageEvent>,
     pub counters: FaultStageCounters,
-    #[serde(default)]
+    #[serde(default = "no_control_events")]
     pub control_events: Vec<crate::evidence::FaultControlEvent>,
 }
 

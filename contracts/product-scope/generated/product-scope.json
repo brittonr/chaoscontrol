@@ -784,16 +784,6 @@
       "target_state": "experimental"
     },
     {
-      "change": "expand-deterministic-fault-mechanisms",
-      "evidence_prerequisite": "Directional network faults, virtual-budget CPU throttling, typed custom effects, pause control, deterministic overlap, stage evidence, and positive and negative fixtures must pass.",
-      "non_claims": [
-        "No host-level fault injection, unbounded scripts, or ambient command execution.",
-        "No universal fault coverage, Antithesis parity, or release claim."
-      ],
-      "owner": "chaoscontrol-fault",
-      "target_state": "experimental"
-    },
-    {
       "change": "add-local-debug-query-workspace",
       "evidence_prerequisite": "Canonical event envelopes, a typed bounded query core, moment admission, static timelines, declared guest observations, receipts, and positive and negative fixtures must pass.",
       "non_claims": [

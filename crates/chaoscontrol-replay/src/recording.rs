@@ -29,11 +29,15 @@ mod recorded_fault_ledger {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::collections::BTreeMap;
 
+    fn no_control_events() -> Vec<chaoscontrol_fault::evidence::FaultControlEvent> {
+        Vec::new()
+    }
+
     #[derive(Serialize, Deserialize)]
     struct WireFaultLedger {
         attempts: Vec<FaultAttemptState>,
         events: Vec<FaultStageEvent>,
-        #[serde(default)]
+        #[serde(default = "no_control_events")]
         control_events: Vec<chaoscontrol_fault::evidence::FaultControlEvent>,
         counters: FaultStageCounters,
     }

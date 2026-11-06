@@ -196,6 +196,84 @@ interaction test. SDK setup-positive and inactive-run-negative engine tests and
 the final campaign's denied-warning Clippy check also pass. Octet/Nix blockers
 above remain unchanged; no archive or release promotion is authorized by this run.
 
+## Final verification recovery
+
+The Octet/Nix blockers above were resolved on source base `e008ff3b` plus two
+explicit serde default functions in `outcomes.rs` and `recording.rs`. The source
+compiled by the final Nix cohort is retained at
+`/nix/store/x7nj9ak9kzrmmqv81lp055gm6ipz0h4f-source` (filtered build source).
+The existing `mkOctetConsumerCheck` selects repaired Cargo while preserving the
+`nightly-2026-03-21` compiler and pinned Dylint library. It exposed two denied
+implicit external defaults in generated serde code. Named functions now return
+`Vec::new()`; wire shape and missing-field behavior are unchanged. No policy,
+lint level, compiler version, or Dylint pin changed.
+
+Pueue task 47 failed before check execution because the configured remote
+builder's lock filename exceeded the host filesystem limit. Local execution with
+`--builders ''` preserves the exact check derivation. Tasks 48 and 51 exposed
+the two real lint failures; neither failed result is relabeled.
+
+Pueue task 53 passed this final source command:
+
+```sh
+nix build .#checks.x86_64-linux.tigerstyle-chaoscontrol-focused \
+  .#checks.x86_64-linux.fmt .#checks.x86_64-linux.clippy \
+  .#checks.x86_64-linux.tests --no-link -L --builders ''
+```
+
+- Octet: `warning-only`, 3759 warnings, zero errors; accepted by unchanged policy,
+  not a claim of zero style debt. Config hash:
+  `05f5d04c89ed9584a8bacd2c954034f9acb186079ee83a695c64c46fbfc765c1`.
+- Formatting and denied-warning Clippy: passed.
+- Sandbox tests: 21 suites, 2389 passed, zero failed, 15 ignored. Ignored tests
+  are not passes; prior real KVM snapshot fixtures retain their scoped evidence.
+- Local post-edit fault tests: 155 passed; replay tests: 168 passed; focused
+  denied-warning Clippy and formatting also passed.
+
+Uncached evaluation regenerated the previously missing Mantle derivation:
+`nix eval .#checks.x86_64-linux.spacewasm-mvp-differential.drvPath --raw --option eval-cache false`.
+Pueue task 49 then passed
+`nix flake check --no-build --option eval-cache false --builders ''`.
+This proves all exported derivations evaluated, not that every exported check
+was built. Radicle HEAD requests returned HTTP 504 and used cached refs during
+evaluation; immutable selected revisions were not changed. No global Nix
+settings or repository dependency pins were modified.
+
+
+
+Pueue task 55 attempted the final-source KVM smoke but timed out with exit 124.
+Its full log shows 2m19s spent waiting for Cargo locks and compiling before VM
+execution began. The 180-second outer deadline therefore left about 41 seconds
+for guest execution; this is not evidence of a serde or setup regression.
+Task 56 builds the same integration target first, then applies the unchanged
+180-second deadline directly to its reported executable. This separates build
+time from the declared bounded campaign instead of increasing its runtime bound.
+
+Task 56 passed: one interaction test, zero failures, 59.55 seconds of VM/test
+execution. Its emitted receipt has BLAKE3
+`e92d62cf698cc9860de2054e3e4190b8703cfd3883fb5a85e7889139964e3d5d`, identical
+to the already-retained `2026-11-06-interaction-campaign.json`; no duplicate
+receipt is needed. Thus the explicit-default source preserves the observed
+mechanism counts, pause/release assertions, and existing bounded non-claims.
+
+After `cairn sync expand-deterministic-fault-mechanisms --root . --execute`,
+accepted traceability exposed two missing links: CPU throttle and non-claims.
+Comment-only verification markers now name their existing clamp/release and
+receipt-overclaim rejection tests. Coverage passes 563/563 accepted requirements
+with zero missing and zero dangling references. These markers do not change the
+code behavior exercised by the passing Nix and final KVM cohorts above.
+
+Proposal, design and tasks gates passed, as did repository validation. Native
+archive execution was unblocked and moved the completed change. The CLI supplied
+its epoch fallback date; the directory was then dated to the observed completion
+date, `.cairn/archive/2026-11-06-expand-deterministic-fault-mechanisms`.
+The obsolete active-change row was removed from the Nickel product-scope registry;
+its JSON projection and repository-owned product-scope documents were regenerated
+through their existing tools. Product-scope verification passes. No runtime,
+release, public-installation or universal replay claim is added by this closure.
+
+
+
 
 
 

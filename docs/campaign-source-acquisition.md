@@ -75,3 +75,17 @@ Octet policy. That policy accepts `clean` and `warning-only`, not
 `-D warnings`. These observations verify client integration, not zero style debt,
 full release readiness or a passing clean-source KVM matrix.
 
+Run the repaired first-party path rather than an unqualified `cargo octet check`:
+
+```sh
+nix build .#checks.x86_64-linux.tigerstyle-chaoscontrol-focused --no-link -L
+```
+
+If the configured remote builder fails before executing the check, `--builders ''`
+runs the same derivation locally; it does not change policy or the compiler cohort.
+On 2026-11-06, the focused check reported `warning-only` with 3759 warnings and
+zero errors after making the ledger and recording serde compatibility defaults
+explicit. The default functions still produce empty control-event vectors.
+No lint suppression, policy relaxation, or compiler/Dylint migration was used.
+
+

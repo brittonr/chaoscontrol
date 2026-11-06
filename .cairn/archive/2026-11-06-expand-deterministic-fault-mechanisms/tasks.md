@@ -41,17 +41,19 @@
 
 ## Phase 5: Verification and evidence
 
-- [ ] [serial] Run focused fault, network, VMM, SDK, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.fault_mechanisms.fixtures]
+- [x] [serial] Run focused fault, network, VMM, SDK, sim-core, replay, and evidence tests; Clippy with warnings denied; octet; Cairn validation and gates; and relevant Nix checks. r[chaoscontrol.fault_mechanisms.fixtures]
+  - Evidence: final verification recovery in the fixture audit. Pueue task 53 passed the repaired-Cargo Octet focused check (`warning-only`, 3759 warnings, zero errors), Nix fmt/Clippy, and 2389 sandbox tests (15 ignored). Uncached full flake evaluation passed; task 56 passed the final-source KVM smoke under a 180-second execution-only deadline with the retained receipt digest unchanged. Accepted traceability is 563/563, with no missing or dangling links.
 - [x] [serial] Record the bounded KVM receipt, profile and artifact identities, positive and negative results, and remaining non-claims. r[chaoscontrol.fault_mechanisms.evidence] r[chaoscontrol.fault_mechanisms.nonclaims]
 
-## Remaining verification blockers
+## Closure boundary
 
-The combined KVM campaign now passes. Complete retained traces show successful
-catalog and setup admission; the earlier setup-failure diagnosis was incorrect.
-The finite SDK demo completes and idles during this interaction schedule; the
-sustained Raft guest completes the unchanged bounded campaign instead.
-Octet remains blocked by a nightly Cargo panic, and full Nix evaluation by the
-missing Mantle store derivation recorded in the fixture audit. These failures,
-and acceptance traceability before spec synchronization, prevent closing the
-verification task or archiving this change.
+All implementation and verification tasks are complete. The accepted spec is
+synchronized; the two previously unlinked CPU-throttle and non-claim requirements
+now link to their existing behavioral tests. Local-builder execution and uncached
+evaluation resolved the host Nix prerequisites without dependency/policy changes.
+The original failed commands remain recorded in the fixture audit. Closure does
+not promote warning-only policy results to zero style debt, ignored tests to
+passes, directional application to packet impact, or bounded execution to replay
+or release eligibility.
+
 

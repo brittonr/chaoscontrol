@@ -989,6 +989,46 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+
+    /// Compare two fresh-process runs of one explorer configuration.
+    RepeatabilityGate {
+        /// Kernel path.
+        #[arg(long)]
+        kernel: String,
+        /// Initrd path.
+        #[arg(long)]
+        initrd: String,
+        /// Workload name recorded in the receipt.
+        #[arg(long)]
+        workload: String,
+        /// Extra guest cmdline, including any `raft_bug=` selector.
+        #[arg(long, default_value = "")]
+        extra_cmdline: String,
+        /// Gate seed.
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+        /// Rounds per run.
+        #[arg(long, default_value_t = 3)]
+        rounds: u64,
+        /// Branches per round.
+        #[arg(long, default_value_t = 4)]
+        branches: usize,
+        /// Ticks per branch.
+        #[arg(long, default_value_t = 1000)]
+        ticks: u64,
+        /// Bootstrap budget.
+        #[arg(long, default_value_t = 5000)]
+        bootstrap_budget: u64,
+        /// VM count.
+        #[arg(long, default_value_t = 1)]
+        vms: usize,
+        /// Root directory for both run outputs.
+        #[arg(long)]
+        output_root: String,
+        /// Receipt path (must not exist).
+        #[arg(long)]
+        receipt: String,
+    },
 }
 
 fn main() {
@@ -1383,6 +1423,35 @@ fn main() {
             structure_only,
             output,
         } => cmd_verify_checkpoint(checkpoint, expected_digest, structure_only, output),
+        Commands::RepeatabilityGate {
+            kernel,
+            initrd,
+            workload,
+            extra_cmdline,
+            seed,
+            rounds,
+            branches,
+            ticks,
+            bootstrap_budget,
+            vms,
+            output_root,
+            receipt,
+        } => cmd_repeatability_gate(
+            chaoscontrol_explore::repeatability_gate::GateConfig {
+                kernel,
+                initrd,
+                workload,
+                extra_cmdline,
+                seed,
+                rounds,
+                branches,
+                ticks,
+                bootstrap_budget,
+                vms,
+            },
+            output_root,
+            receipt,
+        ),
         Commands::Resume {
             corpus,
             kernel,
@@ -4751,6 +4820,49 @@ fn admit_committed_campaign_cutover() {
         eprintln!("Error: Campaign cutover blocked: {error}");
         std::process::exit(1);
     });
+}
+
+fn cmd_repeatability_gate(
+    config: chaoscontrol_explore::repeatability_gate::GateConfig,
+    output_root: String,
+    receipt_path: String,
+) {
+    use chaoscontrol_explore::repeatability_gate::{
+        default_outputs, exit_status, run_gate, write_receipt,
+    };
+    let explorer = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Error: current executable unavailable: {error}");
+            std::process::exit(2);
+        }
+    };
+    let (first, second) = default_outputs(std::path::Path::new(&output_root), &config.workload);
+    for output in [&first, &second] {
+        if output.exists() {
+            if let Err(error) = std::fs::remove_dir_all(output) {
+                eprintln!("Error: clear {}: {error}", output.display());
+                std::process::exit(2);
+            }
+        }
+    }
+    let receipt = match run_gate(&explorer, &config, &first, &second) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(2);
+        }
+    };
+    if let Err(error) = write_receipt(std::path::Path::new(&receipt_path), &receipt) {
+        eprintln!("Error: {error}");
+        std::process::exit(2);
+    }
+    println!(
+        "Repeatability gate ({}/seed {}): {:?}",
+        config.workload, config.seed, receipt.verdict
+    );
+    println!("Receipt: {receipt_path}");
+    std::process::exit(exit_status(receipt.verdict));
 }
 
 #[cfg(test)]

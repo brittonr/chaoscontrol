@@ -5,7 +5,6 @@
 //! [`crate::repeatability`] core. Operational rounds are excluded, never treated
 //! as matches. A passing receipt covers only the recorded inputs.
 
-
 use crate::bounded_json::read_checkpoint;
 use crate::checkpoint::load_checkpoint;
 use crate::explorer::RoundHistory;

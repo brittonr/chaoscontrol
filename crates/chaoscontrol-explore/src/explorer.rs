@@ -1847,6 +1847,11 @@ impl Explorer {
     fn simulation_config(&self) -> SimulationConfig {
         let mut vm_config = self.config.vm_config.clone();
         vm_config.scheduling_strategy = self.config.scheduling_strategy;
+        // r[impl chaoscontrol.explorer_repeatability.cause]
+        // Explorer runs use the admitted guest determinism boundary: direct
+        // TSC-based guest timekeeping makes boot progress host-dependent, so
+        // identical runs can reach setup_complete a tick apart.
+        vm_config.cpu.hide_tsc = true;
 
         SimulationConfig {
             num_vms: self.config.num_vms,
@@ -3419,6 +3424,7 @@ impl Clone for BranchResult {
 }
 
 impl BranchResult {
+    // r[impl chaoscontrol.explorer_repeatability.branch_digest]
     /// Domain-separated digest over the branch's deterministic result facts.
     ///
     /// Coverage bytes, canonical oracle report, per-VM exit counts, total ticks,
@@ -4173,6 +4179,14 @@ mod tests {
         assert_eq!(explorer.distinct_failing_assertions(), 1);
     }
 
+    // r[verify chaoscontrol.explorer_repeatability.cause]
+    #[test]
+    fn explorer_controllers_hide_tsc_for_deterministic_boot() {
+        let explorer = Explorer::new(ExplorerConfig::default());
+        assert!(explorer.simulation_config().vm_config.cpu.hide_tsc);
+    }
+
+    // r[verify chaoscontrol.explorer_repeatability.branch_digest]
     #[test]
     fn branch_digest_binds_result_facts_and_ignores_timings() {
         let mut first = branch_result(OracleReport::empty());

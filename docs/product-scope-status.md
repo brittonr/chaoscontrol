@@ -62,7 +62,6 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | `prepare-public-production-release` | `blocked` | `chaoscontrol-evidence` | Native validation and traceability pass with no missing or dangling links, and every required portable, clean-candidate KVM, completion and public-source acquisition obligation is recorded against one immutable revision before any promotion. |
 | `refresh-vendored-cairn-policy` | `experimental` | `chaoscontrol-evidence` | The repository-owned import process must bind one pinned upstream policy closure, regenerate the projection, and validate all active changes with the matching Cairn cohort. |
 | `repair-incremental-snapshot-lineage` | `experimental` | `chaoscontrol-vmm` | Bounded pure page planning, inherited-page capture, sibling-write reversion, fresh-controller equivalence, and deep persisted Raft continuation must pass with exact source and artifact bindings. |
-| `restore-explorer-seed-repeatability` | `experimental` | `chaoscontrol-explore` | After lineage repair, paired runs must match per-branch and per-round digests, frontier selections, and bug identities for one exact workload cohort without operational exclusions. |
 
 ## Roadmap by scope state
 

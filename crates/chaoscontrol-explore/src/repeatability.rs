@@ -83,6 +83,8 @@ fn operational_reason(history: &RoundHistory) -> Option<OperationalReason> {
     None
 }
 
+// r[impl chaoscontrol.explorer_repeatability.gate]
+// r[impl chaoscontrol.explorer_repeatability.operational_exclusion]
 /// Compare two runs round by round.
 ///
 /// Operational rounds are excluded before digest comparison. A round whose
@@ -163,6 +165,7 @@ mod tests {
         }
     }
 
+    // r[verify chaoscontrol.explorer_repeatability.gate]
     #[test]
     fn identical_rounds_match() {
         let first = vec![history(1, &[1, 2], 0, 0, 0), history(2, &[3], 0, 0, 0)];
@@ -205,6 +208,7 @@ mod tests {
         );
     }
 
+    // r[verify chaoscontrol.explorer_repeatability.operational_exclusion]
     #[test]
     fn operational_rounds_are_excluded_before_comparison() {
         let first = vec![history(1, &[1], 1, 0, 0)];

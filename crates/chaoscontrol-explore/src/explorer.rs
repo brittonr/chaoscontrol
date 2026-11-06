@@ -2289,6 +2289,7 @@ impl Explorer {
 
     /// Extract bug reports from a branch result, deduplicating by
     /// (assertion fingerprint, sorted fault type set).
+    // r[impl chaoscontrol.exploration_findings.compatibility]
     fn extract_bugs(
         &mut self,
         result: &BranchResult,
@@ -2429,6 +2430,7 @@ impl Explorer {
         Ok(bugs)
     }
 
+    // r[impl chaoscontrol.exploration_findings.campaign_liveness]
     /// Campaign `sometimes`/`reachable` records no branch satisfied.
     pub fn campaign_liveness_gaps(&self) -> Vec<&crate::findings::CampaignLivenessGap> {
         self.campaign_liveness
@@ -2438,6 +2440,7 @@ impl Explorer {
             .collect()
     }
 
+    // r[impl chaoscontrol.exploration_findings.distinct_counts]
     /// Distinct assertion fingerprints that produced safety bug records.
     pub fn distinct_failing_assertions(&self) -> usize {
         self.distinct_safety_failures.len()
@@ -4129,6 +4132,9 @@ mod tests {
         oracle.report()
     }
 
+    // r[verify chaoscontrol.exploration_findings.campaign_liveness]
+    // r[verify chaoscontrol.exploration_findings.distinct_counts]
+    // r[verify chaoscontrol.exploration_findings.compatibility]
     #[test]
     fn campaign_liveness_and_distinct_safety_counts() {
         use chaoscontrol_protocol::identity::AssertionKind;

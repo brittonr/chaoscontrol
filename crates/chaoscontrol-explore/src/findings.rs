@@ -6,6 +6,7 @@
 //!
 //! This module does not change assertion identity, replay candidates, or
 //! coverage enrichment.
+// r[impl chaoscontrol.exploration_findings.safety_bugs]
 
 use chaoscontrol_fault::oracle::AssertionRecord;
 use chaoscontrol_protocol::identity::{AssertionFingerprint, AssertionKind};
@@ -106,6 +107,7 @@ mod tests {
         }
     }
 
+    // r[verify chaoscontrol.exploration_findings.safety_bugs]
     #[test]
     fn always_is_a_bug_only_when_observed_false() {
         assert_eq!(
@@ -134,6 +136,7 @@ mod tests {
         );
     }
 
+    // r[verify chaoscontrol.exploration_findings.campaign_liveness]
     #[test]
     fn sometimes_and_reachable_are_liveness_candidates_not_bugs() {
         assert_eq!(

@@ -222,7 +222,7 @@ pub fn run_session(
     let request_digest = format!("blake3:{}", hex(blake3::hash(&encoded).as_bytes()));
 
     let mut vm_config = VmConfig::default();
-    vm_config.cpu.hide_tsc = true;
+    crate::explorer::admit_guest_determinism_policy(&mut vm_config);
     let simulation = SimulationConfig {
         num_vms: config.vms,
         vm_config,

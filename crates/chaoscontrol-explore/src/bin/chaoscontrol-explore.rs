@@ -4663,6 +4663,7 @@ fn cmd_reproduce(
         ..Default::default()
     };
     apply_declared_smp_profile(&mut vm_config);
+    chaoscontrol_explore::explorer::admit_guest_determinism_policy(&mut vm_config);
 
     // Validate inputs
     if !Path::new(&kernel).exists() {

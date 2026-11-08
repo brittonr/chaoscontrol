@@ -33,6 +33,18 @@ use chaoscontrol_vmm::controller::{
 };
 use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulingStrategy};
 use chaoscontrol_vmm::vm::VmConfig;
+
+/// Apply the admitted guest determinism boundary to a machine configuration.
+///
+/// Direct TSC-based guest timekeeping makes boot progress host-dependent, so
+/// identical runs can reach `setup_complete` a tick apart. Every first-party
+/// execution path that records, reproduces or diagnoses a run must use this
+/// same policy or the retained execution descriptor cannot match.
+// r[impl chaoscontrol.explorer_repeatability.cause]
+pub fn admit_guest_determinism_policy(vm_config: &mut VmConfig) {
+    vm_config.cpu.hide_tsc = true;
+}
+
 use log::{debug, info, warn};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;

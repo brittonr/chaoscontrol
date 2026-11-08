@@ -1201,8 +1201,17 @@ impl DeterministicVm {
             vm.create_pit2(pit_config).context(CreatePitSnafu)?;
             let mut pit_state = vm.get_pit2().context(CreatePitSnafu)?;
             pit_state.flags |= KVM_PIT_FLAGS_HPET_LEGACY;
-            // Preserve KVM's unprogrammed mode (0xff). Installing mode 0
-            // would unnecessarily request a maximum-count host one-shot.
+            // PC firmware programs channel 0 as an 18.2 Hz rate generator
+            // before the kernel runs. KVM's reset sentinel mode (0xff) instead
+            // reports NULL COUNT (bit 6) on every readback status read, so a
+            // guest that polls the counter before reprogramming it (Linux's
+            // i8254 KASLR entropy path when the TSC is hidden) spins in-kernel
+            // with no VM exits and starves the runnable watchdog. Present the
+            // firmware-programmed channel; HPET_LEGACY (set above) keeps the
+            // host hrtimer out of the model, so the counter stays constant.
+            pit_state.channels[0].mode = 2; // rate generator
+            pit_state.channels[0].rw_mode = 3; // LSB/MSB access
+            pit_state.channels[0].bcd = 0;
             vm.set_pit2(&pit_state).context(CreatePitSnafu)?;
         }
 
@@ -5945,6 +5954,69 @@ mod tests {
         assert_eq!(vm.virtual_tsc.read(), tsc_before_timeout);
         assert_eq!(vm.exit_count, 2);
         assert_eq!(vm.pit.irqs_delivered(), irqs_before_timeout);
+    }
+
+    #[test]
+    fn firmware_programmed_i8254_readback_does_not_report_null_count() {
+        use vm_memory::{Bytes, GuestAddress};
+
+        // Linux's i8254 KASLR path spins while readback status reports NULL
+        // COUNT (bit 6). KVM's reset sentinel mode (0xff) sets that bit
+        // forever, so the guest would loop in-kernel without producing VM
+        // exits. The constructor must present the firmware-programmed
+        // channel: latch readback status/count once, stage a settled marker,
+        // and report through a PIO boundary.
+        const TEST_MEMORY_BYTES: usize = 2 * 1024 * 1024;
+        const STATUS_ADDRESS: u64 = 0x1000;
+        const MARKER_ADDRESS: u64 = 0x1001;
+        const READBACK: &[u8] = &[
+            0xb0, 0xc2, // mov al, 0xC2: readback channel 0 status + count
+            0xe6, 0x43, // out 0x43, al
+            0xe4, 0x40, // in al, 0x40 (status)
+            0x88, 0x06, 0x00, 0x10, // mov [0x1000], al
+            0xe4, 0x40, // in al, 0x40 (count low)
+            0xe4, 0x40, // in al, 0x40 (count high)
+            0xc6, 0x06, 0x01, 0x10, 0x5a, // mov byte [0x1001], 0x5a
+            0xb0, 0xaa, // mov al, 0xAA
+            0xe6, 0x10, // out 0x10, al (single settled observation)
+        ];
+
+        let mut vm = DeterministicVm::new(VmConfig {
+            memory_size: TEST_MEMORY_BYTES,
+            ..VmConfig::default()
+        })
+        .expect("create single-vCPU VM");
+        vm.memory
+            .inner()
+            .write_slice(READBACK, GuestAddress(0))
+            .expect("install i8254 readback guest");
+        let mut sregs = vm.vcpus[0].get_sregs().expect("read segment state");
+        sregs.cs.base = 0;
+        sregs.cs.selector = 0;
+        sregs.ds.base = 0;
+        sregs.ds.selector = 0;
+        vm.vcpus[0].set_sregs(&sregs).expect("enter real mode");
+        let mut regs = vm.vcpus[0].get_regs().expect("read guest registers");
+        regs.rip = 0;
+        regs.rflags = 2;
+        vm.vcpus[0].set_regs(&regs).expect("enter guest program");
+
+        let (exits, _halted) = vm.run_bounded(1).expect("readback completes");
+        assert!(exits > 0, "guest reached its PIO boundary");
+        assert_eq!(
+            vm.read_guest_memory(MARKER_ADDRESS, 1)
+                .expect("read settled marker"),
+            [0x5a],
+            "guest did not complete the readback sequence",
+        );
+        let status = vm
+            .read_guest_memory(STATUS_ADDRESS, 1)
+            .expect("read latched status")[0];
+        assert_eq!(
+            status & 0x40,
+            0,
+            "i8254 readback must not report NULL COUNT (status {status:#04x})",
+        );
     }
 
     #[test]

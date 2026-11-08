@@ -40,9 +40,9 @@ pub(crate) const ENTRY: RecordKind = RecordKind::new(4);
 pub(crate) const SELECTION: RecordKind = RecordKind::new(5);
 /// Round settlement facts.
 pub(crate) const ROUND: RecordKind = RecordKind::new(6);
-/// Schema of the genesis record. Version 2 marks an epoch whose Campaign control records carry
-/// Campaign's chained state identities (Campaign `4a669ead` and later).
-pub(crate) const GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v3";
+/// Schema of the genesis record. Version 4 binds the typed instruction/boundary
+/// execution contract and its configuration/variant identity domains.
+pub(crate) const GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v4";
 /// Genesis schema of an epoch recorded under Campaign's earlier whole-state identity framing.
 /// Its control records name state identities the chained framing never derives, so the epoch
 /// cannot replay.
@@ -50,6 +50,8 @@ pub(crate) const EARLIER_FRAMING_GENESIS_SCHEMA: &str = "chaoscontrol.campaign-g
 /// Previous chained-identity schema; its admitted bounds predate assertion checkpoint
 /// retention, so its journals cannot replay under the current profile.
 pub(crate) const PREVIOUS_GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v2";
+/// Previous execution contract, before typed progress units and boundary profiles.
+pub(crate) const PRE_TYPED_PROGRESS_GENESIS_SCHEMA: &str = "chaoscontrol.campaign-genesis.v3";
 const SLOT_PROBE: u8 = 1;
 const SLOT_VARIANT: u8 = 2;
 const SLOT_ALTERNATIVE: u8 = 3;
@@ -315,6 +317,7 @@ fn step(
             // r[impl chaoscontrol.campaign_policy.journal_framing]
             if genesis.schema == EARLIER_FRAMING_GENESIS_SCHEMA
                 || genesis.schema == PREVIOUS_GENESIS_SCHEMA
+                || genesis.schema == PRE_TYPED_PROGRESS_GENESIS_SCHEMA
             {
                 return Err(ReplayFailure::EarlierStateFraming);
             }

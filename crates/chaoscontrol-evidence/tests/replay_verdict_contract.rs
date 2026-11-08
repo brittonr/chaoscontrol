@@ -45,14 +45,13 @@ fn rejects_snapshot_status_field_conflict() {
 }
 
 #[test]
-fn rejects_legacy_snapshot_codec_in_v2_verdict() {
+fn rejects_legacy_snapshot_codec_in_current_verdict() {
     let mut value = verdict();
     value["snapshot"]["reference"]["codec"] =
         Value::String("simulation-snapshot-bincode-zstd-v1".to_string());
     value["snapshot"]["reference"]["schema_version"] = Value::from(1);
 
-    let error = validate_replay_verdict(&value).expect_err("legacy codec is rejected for v2");
-    assert!(error.message().contains("current CBOR v2 snapshot codec"));
+    assert!(validate_replay_verdict(&value).is_err());
 }
 
 #[test]

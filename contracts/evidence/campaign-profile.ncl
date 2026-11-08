@@ -34,7 +34,7 @@ let ResourceBounds = {
   maximum_total_memory_mib | P.positive_u64,
 } in
 let Shape = {
-  schema | P.exact_string "chaoscontrol.campaign-profile.v1",
+  schema | P.exact_string "chaoscontrol.campaign-profile.v2",
   campaign_id | P.identifier,
   seeds | Array P.u64,
   run | RunProfile,

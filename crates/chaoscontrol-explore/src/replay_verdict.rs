@@ -12,6 +12,8 @@
 
 use crate::checkpoint::SerializableBug;
 use chaoscontrol_replay::snapshot_store::{ReplayParentSnapshotRef, SnapshotStoreError};
+#[cfg(test)]
+use chaoscontrol_vmm::scheduler::core::ProgressBudget;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
@@ -47,13 +49,12 @@ fn replay_schedule_variant(
 ) -> Result<ReplayScheduleVariant, crate::bug::identity::BugIdentityError> {
     let bytes = serde_json::to_vec(variant)
         .map_err(|_error| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
-    let strategy = serde_json::to_string(&variant.strategy_override)
-        .map_err(|_error| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
+    let policy_hash = blake3::derive_key("chaoscontrol.replay.schedule-variant-policy.v2", &bytes);
     Ok(ReplayScheduleVariant {
         scheduler_seed: variant.scheduler_seed,
-        strategy,
-        quantum_override: variant.quantum_override,
-        policy_blake3: blake3::hash(&bytes).to_hex().to_string(),
+        strategy: variant.strategy_override,
+        progress_budget_override: variant.progress_budget_override,
+        policy_blake3: blake3::Hash::from_bytes(policy_hash).to_hex().to_string(),
     })
 }
 
@@ -280,8 +281,8 @@ mod tests {
             store: "file-content-addressed".to_string(),
             digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                 .to_string(),
-            codec: "simulation-snapshot-cbor-zstd-v2".to_string(),
-            schema_version: 2,
+            codec: chaoscontrol_replay_evidence_core::CURRENT_SNAPSHOT_CODEC.to_string(),
+            schema_version: chaoscontrol_replay_evidence_core::CURRENT_SNAPSHOT_SCHEMA_VERSION,
             path: "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.bin"
                 .to_string(),
         }
@@ -560,11 +561,11 @@ mod tests {
             scheduler_seed: TEST_VARIANT_SEED,
             strategy_override: Some(
                 chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
-                    min_quantum: TEST_MINIMUM_QUANTUM,
-                    max_quantum: TEST_MAXIMUM_QUANTUM,
+                    min_budget: ProgressBudget::Instructions(TEST_MINIMUM_QUANTUM),
+                    max_budget: ProgressBudget::Instructions(TEST_MAXIMUM_QUANTUM),
                 },
             ),
-            quantum_override: Some(TEST_QUANTUM_OVERRIDE),
+            progress_budget_override: Some(ProgressBudget::Instructions(TEST_QUANTUM_OVERRIDE)),
         });
         let report = report_for_bug(&bug, false);
         let verdict = verdict_from_reproduce(ReproduceVerdictInput {
@@ -736,7 +737,7 @@ mod tests {
         let variant = ScheduleVariant {
             scheduler_seed: TEST_VARIANT_SEED,
             strategy_override: None,
-            quantum_override: Some(TEST_QUANTUM_OVERRIDE),
+            progress_budget_override: Some(ProgressBudget::Instructions(TEST_QUANTUM_OVERRIDE)),
         };
         let config = SchedulerConfig {
             num_vcpus: 2,

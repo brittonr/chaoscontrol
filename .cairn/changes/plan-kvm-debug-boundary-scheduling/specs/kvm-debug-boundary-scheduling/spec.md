@@ -110,6 +110,31 @@ r[chaoscontrol.kvm_debug_boundary.persistence] Canonical traces, snapshots, reco
 - WHEN replay or inspect admits it
 - THEN both MUST reject and MUST NOT supply defaults, convert strict artifacts, boot instead of restore or expose an unverified position.
 
+#### Scenario: Guarded coarse host-clock samples differ
+
+- GIVEN equal eligible measured execution descriptors bind the exact `KvmCoarseClockDenyV1` MSR deny table, required KVM capability, hidden interfaces, supported clock/device profile and `ExcludeGuardedCoarseClockSamplesV2` member-table identity
+- WHEN the actual healthy coarse runner installs that filter before vCPU creation, overwrites `IA32_TSC` from virtual time before every guest entry and compares canonical continuation
+- THEN only raw `KVM_GET_CLOCK` samples and per-vCPU captured MSR data at exactly `0x10`, `0x40000010` and `0x40000020` MAY differ; original raw values MUST remain retained in snapshots and diagnostics, MSR indices/order/count and every other captured field and complete schedule/injection/fault/output continuation MUST match, and static or portable-fixture identities MUST NOT supply execution authority. Strict comparisons MUST remain unchanged.
+
+#### Scenario: Guest attempts to activate a host clock
+
+- GIVEN the coarse profile requires enforced denial of guest clock-MSR access
+- WHEN a real guest attempts a denied access or the host cannot install the declared filter
+- THEN actual controls MUST establish denial, missing installation capability MUST reject before guest execution, and boundary-time MSR inspection alone MUST NOT qualify the profile.
+
+#### Scenario: Hidden CPUID features do not trap direct TSC reads
+
+- GIVEN the coarse profile hides TSC/hypervisor interfaces, denies the declared clock MSRs and overwrites TSC before each guest entry
+- WHEN the trusted guest executes arbitrary `RDTSC` inside a hidden interval
+- THEN evidence MUST NOT claim CPUID hiding or the MSR deny filter trapped that instruction or prevented host-clock observation; any supported replay claim MUST remain bounded to the reviewed trusted guest cohort and actual repeated controls, not arbitrary-guest clock isolation.
+
+#### Scenario: Guest programs or reads the PIT inside a hidden handler interval
+
+- GIVEN the coarse profile owns PIT behavior on the virtual-time timeline
+- WHEN a guest accesses PIT channels, the command port, or the speaker/system-control port, including while single-step delivery is suppressed
+- THEN the in-kernel PIT MUST be absent so every access reaches the software PIT; merely inhibiting kernel IRQ generation MUST NOT qualify host-clock counter or speaker reads.
+- AND capture/restore MUST retain explicit kernel-PIT absence and the complete software PIT state and deadline without creating a kernel timer or normalizing mismatched device state.
+
 ### Requirement: Actual repeated KVM controls precede bounded claims
 
 r[chaoscontrol.kvm_debug_boundary.evidence] Qualification MUST include an actual bounded first-party Rust/Linux SMP campaign and repeated replay controls with complete canonical schedule/delivery/fault and declared guest-observation equality; interrupt/POPF/IRET/NMI/exception and pending-I/O probes; a nonreturning no-exit handler; host-signal/delay/contention/watchdog perturbation; permanent-poison and partial-round failures; full producer-exit/fresh-process persisted replay-and-inspect reload; and paired corruption/mode/unit/profile/opt-in controls. Every outcome, including operational failures and unsupported delivery classes, MUST be retained under named finite bounds and exact source/config/host/artifact identities. Only matched real repeated controls MAY support a bounded same-cohort boundary-replay claim. Planning/gate passes, pure fixtures, one successful boot, requested injection, or raw logs MUST NOT establish determinism, instruction equivalence, universal IRQ/NMI/exception behavior, strict replay readiness or cross-host correctness.
@@ -125,3 +150,9 @@ r[chaoscontrol.kvm_debug_boundary.evidence] Qualification MUST include an actual
 - GIVEN an interrupt/signal/reload/corruption/recovery control fails, diverges or lacks its required artifact/capability
 - WHEN evidence is reviewed
 - THEN qualification MUST remain failed or blocked with the exact gap, and the implementation/evidence/archive tasks MUST stay open rather than use document gates or narrower passing cases as substitutes.
+
+#### Scenario: Initial Linux bootstrap exhausts its original bound
+
+- GIVEN the first actual Linux probe exhausted 10,000 bootstrap ticks / 1,000,000 exits without setup completion or serial output, with RIP `ffffffff8415784b` resolved to Linux 6.19 `clear_bss`
+- WHEN the fresh `ryzen9950x3d-linux61850-rust-observer-paired-v2` input cohort selects `BootstrapTicks = 100000` and `OuterDeadlineMilliseconds = 3600000`
+- THEN original configurations and outcomes MUST remain retained, all other seeds/repetitions/horizons/topology/budgets/clock policy and `random_faults = false` MUST remain unchanged, and fresh actual controls MUST run before any qualification claim. The initial incomplete bootstrap and revised inputs MUST NOT constitute positive qualification, task closure, weakened strict admission or automatic fallback.

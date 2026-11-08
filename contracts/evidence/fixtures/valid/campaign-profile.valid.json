@@ -57,7 +57,10 @@
       "max_frontier": 10000,
       "max_rounds": 3,
       "mode": "hybrid",
-      "quantum": 100,
+      "outer_exit_budget": 100,
+      "progress_budget": {
+        "Instructions": 100
+      },
       "stale_round_limit": 10,
       "ticks_per_branch": 500
     },
@@ -71,7 +74,8 @@
     },
     "mode": "vm-exploration",
     "profile_id": "raft-vm-exploration",
-    "schema": "chaoscontrol.run-profile.v2",
+    "progress_mode": "ExactSingleStep",
+    "schema": "chaoscontrol.run-profile.v3",
     "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
     "seed": 42,
     "topology": {
@@ -80,14 +84,20 @@
       "num_vms": 3,
       "scheduling": {
         "diversity": false,
-        "maximum_quantum": 100,
-        "minimum_quantum": 100,
+        "entry_watchdog_microseconds": 100000,
+        "journal_limit": 4096,
+        "maximum_budget": {
+          "Instructions": 100
+        },
+        "minimum_budget": {
+          "Instructions": 100
+        },
         "strategy": "round-robin"
       }
     }
   },
   "scenario": null,
-  "schema": "chaoscontrol.campaign-profile.v1",
+  "schema": "chaoscontrol.campaign-profile.v2",
   "scope": "pre-run campaign intent; not thread start, VM start, completed seed, fault effect, replay, report, receipt, or accepted evidence",
   "seeds": [
     42,

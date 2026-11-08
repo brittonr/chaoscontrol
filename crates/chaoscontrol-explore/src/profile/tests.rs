@@ -1,5 +1,42 @@
 use super::{CampaignProfile, FaultScheduleProfile, RunProfile};
 use crate::explorer::{FrontierPolicy, LEGACY_DIAGNOSTIC_POLICY_NAME};
+use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
+use chaoscontrol_vmm::scheduler::SchedulingStrategy;
+
+#[test]
+fn coarse_campaign_preserves_vm_and_mutation_progress() {
+    let mut value: serde_json::Value = serde_json::from_str(CAMPAIGN).expect("campaign JSON");
+    value["run"] = coarse_run_value();
+    let profile: CampaignProfile = serde_json::from_value(value.clone()).expect("coarse campaign");
+    let config = profile
+        .try_into_campaign_config(None)
+        .expect("coarse campaign conversion");
+    assert_eq!(
+        config.base_explorer_config.vm_config.smp_progress_mode,
+        ProgressMode::KvmDebugBoundary
+    );
+    assert_eq!(
+        config.base_explorer_config.mutation.base_progress_budget,
+        config.base_explorer_config.vm_config.smp_progress_budget
+    );
+    value["schema"] = serde_json::json!("chaoscontrol.campaign-profile.v1");
+    let retired: CampaignProfile = serde_json::from_value(value).expect("retired campaign shape");
+    assert!(retired.validate().is_err());
+}
+
+#[test]
+fn coarse_profile_rejects_single_vcpu_and_conflicting_explicit_clock() {
+    let mut value = coarse_run_value();
+    value["topology"]["num_vcpus"] = serde_json::json!(1);
+    let profile: RunProfile = serde_json::from_value(value).expect("single-vCPU coarse shape");
+    assert!(profile.validate().is_err());
+    let mut value = coarse_run_value();
+    value["guest_cmdline"] =
+        serde_json::json!("noapictimer clocksource=jiffies notsc clocksource=tsc");
+    let profile: RunProfile =
+        serde_json::from_value(value).expect("conflicting coarse clock shape");
+    assert!(profile.try_into_explorer_config(42, None).is_err());
+}
 
 const FRONTIER_POLICY_KEY: &str = "frontier_policy";
 const UNKNOWN_FRONTIER_POLICIES: [&str; 6] = [
@@ -41,6 +78,106 @@ fn run_profile_maps_every_runtime_boundary_field() {
     assert_eq!(config.branch_factor, 2);
     assert_eq!(config.output_dir.as_deref(), Some("out"));
     assert_eq!(config.coverage_gpa, 0);
+}
+
+fn coarse_run_value() -> serde_json::Value {
+    let mut value: serde_json::Value = serde_json::from_str(RUN).expect("run JSON");
+    let budget = serde_json::json!({"KvmBoundaries": {
+        "profile_id": "KvmDebugExitBoundaryV1", "count": 64,
+    }});
+    value["progress_mode"] = serde_json::json!("KvmDebugBoundary");
+    value["guest_cmdline"] = serde_json::json!("noapictimer clocksource=jiffies notsc");
+    value["topology"]["num_vcpus"] = serde_json::json!(2);
+    value["topology"]["scheduling"]["minimum_budget"] = budget.clone();
+    value["topology"]["scheduling"]["maximum_budget"] = budget.clone();
+    value["exploration"]["progress_budget"] = budget;
+    value
+}
+
+#[test]
+fn coarse_profile_wires_real_vm_and_mutation_budgets() {
+    let profile: RunProfile = serde_json::from_value(coarse_run_value()).expect("coarse profile");
+    let config = profile
+        .try_into_explorer_config(47, None)
+        .expect("coarse conversion");
+    let budget = ProgressBudget::KvmBoundaries {
+        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+        count: 64,
+    };
+    assert_eq!(
+        config.vm_config.smp_progress_mode,
+        ProgressMode::KvmDebugBoundary
+    );
+    assert_eq!(config.vm_config.smp_progress_budget, budget);
+    assert_eq!(config.mutation.base_progress_budget, budget);
+    assert_eq!(config.vm_config.smp_entry_watchdog_microseconds, 100000);
+    assert_eq!(config.vm_config.smp_schedule_journal_limit, 4096);
+    assert_eq!(config.vm_config.cpu.seed, 47);
+    assert!(config.vm_config.cpu.hide_tsc);
+    assert_eq!(config.quantum, 100, "outer exits remain a separate unit");
+}
+
+#[test]
+fn coarse_random_strategy_preserves_boundary_profile_and_exclusive_maximum() {
+    let mut value = coarse_run_value();
+    value["topology"]["scheduling"]["strategy"] = serde_json::json!("randomized");
+    value["topology"]["scheduling"]["minimum_budget"]["KvmBoundaries"]["count"] =
+        serde_json::json!(32);
+    value["topology"]["scheduling"]["maximum_budget"]["KvmBoundaries"]["count"] =
+        serde_json::json!(128);
+    let profile: RunProfile = serde_json::from_value(value).expect("random coarse profile");
+    let config = profile
+        .try_into_explorer_config(42, None)
+        .expect("random coarse conversion");
+    let budget = config.vm_config.smp_progress_budget;
+    let strategy = SchedulingStrategy::Randomized {
+        min_budget: budget.with_count(32),
+        max_budget: budget.with_count(128),
+    };
+    assert_eq!(config.vm_config.scheduling_strategy, strategy);
+    assert_eq!(config.scheduling_strategy, strategy);
+}
+
+#[test]
+fn typed_profile_rejects_missing_mode_mixed_units_and_retired_schema() {
+    let mut missing = coarse_run_value();
+    missing
+        .as_object_mut()
+        .expect("object")
+        .remove("progress_mode");
+    assert!(serde_json::from_value::<RunProfile>(missing).is_err());
+    for path in ["minimum_budget", "maximum_budget"] {
+        let mut value = coarse_run_value();
+        value["topology"]["scheduling"][path] = serde_json::json!({"Instructions": 64});
+        let profile: RunProfile = serde_json::from_value(value).expect("typed mixed unit");
+        assert!(profile.validate().is_err());
+    }
+    let mut value = coarse_run_value();
+    value["schema"] = serde_json::json!("chaoscontrol.run-profile.v2");
+    let profile: RunProfile = serde_json::from_value(value).expect("retired schema shape");
+    assert!(profile.validate().is_err());
+}
+
+#[test]
+fn coarse_profile_rejects_unknown_profile_zero_budget_watchdog_and_host_clock() {
+    for (field, replacement) in [
+        ("profile_id", serde_json::json!("UnknownBoundaryV1")),
+        ("count", serde_json::json!(0)),
+    ] {
+        let mut value = coarse_run_value();
+        value["exploration"]["progress_budget"]["KvmBoundaries"][field] = replacement;
+        if let Ok(profile) = serde_json::from_value::<RunProfile>(value) {
+            assert!(profile.validate().is_err());
+        }
+    }
+    let mut value = coarse_run_value();
+    value["topology"]["scheduling"]["entry_watchdog_microseconds"] = serde_json::json!(0);
+    let profile: RunProfile = serde_json::from_value(value).expect("zero watchdog shape");
+    assert!(profile.validate().is_err());
+    let mut value = coarse_run_value();
+    value["guest_cmdline"] = serde_json::json!("clocksource=tsc");
+    let profile: RunProfile = serde_json::from_value(value).expect("host clock shape");
+    assert!(profile.validate().is_err());
 }
 
 #[test]

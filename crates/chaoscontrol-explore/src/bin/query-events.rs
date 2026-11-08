@@ -842,6 +842,16 @@ mod tests {
     // Reproduce the retained bootstrap shape: empty rounds before and after
     // four CPU-throttle stages at tick 1171, with the horizon at tick 1210.
     fn bootstrap_recording() -> chaoscontrol_replay::recording::Recording {
+        bootstrap_recording_with_progress(
+            chaoscontrol_vmm::scheduler::core::ProgressMode::ExactSingleStep,
+            chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
+        )
+    }
+
+    fn bootstrap_recording_with_progress(
+        mode: chaoscontrol_vmm::scheduler::core::ProgressMode,
+        budget: chaoscontrol_vmm::scheduler::core::ProgressBudget,
+    ) -> chaoscontrol_replay::recording::Recording {
         use chaoscontrol_fault::faults::Fault;
         use chaoscontrol_fault::outcomes::{
             fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptSource,
@@ -850,7 +860,13 @@ mod tests {
         };
         use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
         use chaoscontrol_replay::recording::{RecordedEvent, Recorder, RecordingConfig};
-        use chaoscontrol_vmm::controller::RoundResult;
+        use chaoscontrol_vmm::controller::{RoundResult, VmInjectionTrace, VmScheduleTrace};
+        use chaoscontrol_vmm::scheduler::core::{
+            plan_execution_observation, BoundaryProfileId, ExecutionProgressObservation,
+            KvmBoundaryKind, ProgressMode, ScheduleState, ScheduleTrace,
+            SCHEDULE_TRACE_SCHEMA_VERSION,
+        };
+        use chaoscontrol_vmm::scheduler::{SchedulerConfig, SchedulingStrategy};
 
         const SEED: u64 = 42;
         const RUN_SEQUENCE: u64 = 1;
@@ -890,6 +906,8 @@ mod tests {
                 kernel_path: "/test/vmlinux".into(),
                 initrd_path: None,
                 quantum: 100,
+                smp_progress_mode: mode,
+                smp_progress_budget: budget,
                 checkpoint_interval: 20,
                 disk_image_path: None,
                 random_faults: false,
@@ -898,6 +916,19 @@ mod tests {
             SEED,
             RUN_SEQUENCE,
         );
+        recorder.start_at_tick(0).unwrap();
+        let mut scheduler = (mode == ProgressMode::KvmDebugBoundary).then(|| {
+            ScheduleState::new(
+                &SchedulerConfig {
+                    num_vcpus: 2,
+                    progress_budget: budget,
+                    strategy: SchedulingStrategy::RoundRobin,
+                    seed: SEED,
+                },
+                mode,
+            )
+            .unwrap()
+        });
         let mut ledger = FaultOutcomeLedger::default();
         for tick in 1..=HORIZON {
             let mut faults_fired = Vec::new();
@@ -931,6 +962,34 @@ mod tests {
                 faults_fired.push(fault.clone());
                 fault_outcomes = ledger.events.clone();
             }
+            let mut schedule_traces = Vec::new();
+            let mut injection_traces = Vec::new();
+            if let Some(state) = scheduler.as_mut() {
+                let planned = plan_execution_observation(
+                    state,
+                    ExecutionProgressObservation::KvmBoundary {
+                        vcpu: state.active_vcpu,
+                        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                        boundary: KvmBoundaryKind::DebugSingleStep,
+                    },
+                )
+                .unwrap()
+                .unwrap();
+                schedule_traces.push(VmScheduleTrace {
+                    vm_index: 0,
+                    trace: ScheduleTrace {
+                        schema_version: SCHEDULE_TRACE_SCHEMA_VERSION,
+                        initial_state_id: state.identity(),
+                        initial_state: state.clone(),
+                        records: vec![planned.record],
+                    },
+                });
+                *state = planned.next_state;
+                injection_traces.push(VmInjectionTrace {
+                    vm_id: 0,
+                    records: Vec::new(),
+                });
+            }
             recorder
                 .record_round(
                     &RoundResult {
@@ -940,7 +999,8 @@ mod tests {
                         faults_fired,
                         fault_outcomes,
                         messages_delivered: 0,
-                        schedule_traces: Vec::new(),
+                        schedule_traces,
+                        injection_traces,
                     },
                     &ledger,
                 )
@@ -1015,6 +1075,109 @@ mod tests {
             },
         })
         .unwrap();
+    }
+
+    #[test]
+    fn static_coarse_recording_query_and_validation_need_no_execution_optin() {
+        use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
+        let temp = tempfile::tempdir().unwrap();
+        let recording_path = temp.path().join("recording.json");
+        let query = temp.path().join("query.json");
+        let result = temp.path().join("result.json");
+        let receipt = temp.path().join("receipt.json");
+        let recording = bootstrap_recording_with_progress(
+            ProgressMode::KvmDebugBoundary,
+            ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: 17,
+            },
+        );
+        chaoscontrol_replay::recording::validate_recording(&recording).unwrap();
+        assert_eq!(recording.trace_start_tick, 0);
+        std::fs::write(&recording_path, serde_json::to_vec(&recording).unwrap()).unwrap();
+        std::fs::write(&query, r#""All""#).unwrap();
+        let sources = SourceArgs {
+            recording: Some(recording_path),
+            ..SourceArgs::default()
+        };
+        execute(Cli {
+            command: Command::Query {
+                sources: sources.clone(),
+                query: query.clone(),
+                output: result.clone(),
+                receipt: Some(receipt.clone()),
+                limits: None,
+            },
+        })
+        .unwrap();
+        execute(Cli {
+            command: Command::Validate {
+                sources,
+                query,
+                result,
+                receipt,
+                limits: None,
+            },
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn metadata_recording_requires_explicit_schema_and_execution_fields() {
+        let recording = bootstrap_recording();
+        for field in ["smp_progress_mode", "smp_progress_budget"] {
+            let mut value = serde_json::to_value(&recording).unwrap();
+            value["config"].as_object_mut().unwrap().remove(field);
+            assert!(
+                serde_json::from_value::<chaoscontrol_replay::recording::Recording>(value).is_err()
+            );
+        }
+        let mut value = serde_json::to_value(&recording).unwrap();
+        value.as_object_mut().unwrap().remove("schema_version");
+        assert!(
+            serde_json::from_value::<chaoscontrol_replay::recording::Recording>(value).is_err()
+        );
+    }
+
+    #[test]
+    fn static_session_commands_parse_without_execution_optin() {
+        for command in ["query", "prepare-timeline"] {
+            assert!(Cli::try_parse_from([
+                "query-events",
+                command,
+                "--session",
+                "retained",
+                "query.json",
+                "output.json",
+            ])
+            .is_ok());
+        }
+        assert!(Cli::try_parse_from([
+            "query-events",
+            "validate",
+            "--session",
+            "retained",
+            "query.json",
+            "result.json",
+            "receipt.json",
+        ])
+        .is_ok());
+        assert!(Cli::try_parse_from([
+            "query-events",
+            "validate-observation",
+            "--session",
+            "retained",
+            "--checkpoint",
+            "1",
+            "--vm-index",
+            "0",
+            "--profile",
+            "profile.json",
+            "--admitted-profiles",
+            "profiles.json",
+            "receipt.json",
+        ])
+        .is_ok());
     }
 
     #[test]

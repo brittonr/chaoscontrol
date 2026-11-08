@@ -38,12 +38,23 @@ pub fn descriptor_from_metadata(
     metadata: &chaoscontrol_vmm::snapshot::SnapshotMetadata,
     mut input: DescriptorBuildInput,
 ) -> EvidenceResult<snapshot_core::SnapshotDescriptor> {
-    chaoscontrol_vmm::snapshot::validate_snapshot_metadata(Some(metadata), &metadata.topology)
-        .map_err(|error| {
-            EvidenceError::new(format!(
-                "snapshot metadata is not exact and complete: {error:?}"
-            ))
-        })?;
+    if metadata.execution_descriptor.progress_mode
+        == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+    {
+        return Err(EvidenceError::new(
+            "external snapshot descriptors do not admit coarse execution compatibility",
+        ));
+    }
+    chaoscontrol_vmm::snapshot::validate_snapshot_metadata(
+        Some(metadata),
+        &metadata.topology,
+        &metadata.execution_descriptor,
+    )
+    .map_err(|error| {
+        EvidenceError::new(format!(
+            "snapshot metadata is not exact and complete: {error:?}"
+        ))
+    })?;
     let mut devices = metadata
         .topology
         .virtio_devices

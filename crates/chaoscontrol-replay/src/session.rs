@@ -6,6 +6,8 @@
 //! Retained budgets charge the raw manifest file length, not reserialized JSON.
 //! Artifact metadata must match its declared length before body IO or allocation;
 //! reads and copies stop at that length and reject observed concurrent length drift.
+//! Exactness names retained inputs and arrival in the declared tick/boundary
+//! coordinate. A coarse session never claims retired-instruction accuracy.
 
 use crate::checkpoint::{Checkpoint, CheckpointStore};
 use crate::event_query::TimelineFact;
@@ -26,7 +28,7 @@ use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
-pub const SESSION_SCHEMA_VERSION: u32 = 2;
+pub const SESSION_SCHEMA_VERSION: u32 = 3;
 pub const MAX_SESSION_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 pub const MAX_SESSION_RECORDING_BYTES: u64 = 16 * 1024 * 1024;
 pub const MAX_SESSION_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
@@ -134,6 +136,11 @@ pub fn validate_session_recording(
     limits: SessionLimits,
 ) -> Result<(), SessionError> {
     limits.validate()?;
+    if recording.trace_start_tick != start_tick {
+        return Err(SessionError::Corrupt(
+            "recording/session trace start mismatch".into(),
+        ));
+    }
     let ticks = recording
         .total_ticks
         .checked_sub(start_tick)
@@ -265,6 +272,8 @@ pub struct GuestArtifact {
 pub struct SessionConfiguration {
     pub num_vms: usize,
     pub vm_config: VmConfig,
+    /// Actual captured host, CPU, clock/device and typed boundary contracts.
+    pub execution_descriptors: Vec<chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor>,
     pub kernel_path: String,
     pub initrd_path: Option<String>,
     pub disk_image_path: Option<String>,
@@ -277,7 +286,10 @@ pub struct SessionConfiguration {
     pub schedule_identity: String,
 }
 impl SessionConfiguration {
-    pub fn capture(config: &SimulationConfig) -> Result<Self, SessionError> {
+    pub fn capture(
+        config: &SimulationConfig,
+        execution_descriptors: Vec<chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor>,
+    ) -> Result<Self, SessionError> {
         if config.schedule.snapshot().cursor() != 0 {
             return Err(SessionError::Incompatible(
                 "configuration schedule cursor is not initial".into(),
@@ -285,9 +297,11 @@ impl SessionConfiguration {
         }
         let mut vm_config = config.vm_config.clone();
         vm_config.cpu = config.vm_config.effective_cpu_config();
+        validate_execution_descriptors(&execution_descriptors, config.num_vms, &vm_config)?;
         Ok(Self {
             num_vms: config.num_vms,
             vm_config,
+            execution_descriptors,
             kernel_path: config.kernel_path.clone(),
             initrd_path: config.initrd_path.clone(),
             disk_image_path: config.disk_image_path.clone(),
@@ -326,6 +340,52 @@ impl SessionConfiguration {
             schedule,
         })
     }
+}
+
+fn validate_execution_descriptors(
+    descriptors: &[chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor],
+    num_vms: usize,
+    config: &VmConfig,
+) -> Result<(), SessionError> {
+    if descriptors.len() != num_vms || num_vms == 0 {
+        return Err(SessionError::Incompatible(
+            "execution descriptor topology".into(),
+        ));
+    }
+    for descriptor in descriptors {
+        descriptor
+            .validate()
+            .map_err(|error| SessionError::Incompatible(format!("{error:?}")))?;
+        descriptor
+            .validate_config(config)
+            .map_err(|error| SessionError::Incompatible(format!("{error:?}")))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn snapshot_execution_descriptors(
+    snapshot: &chaoscontrol_vmm::controller::SimulationSnapshot,
+) -> Result<Vec<chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor>, SessionError> {
+    snapshot
+        .vm_snapshots
+        .iter()
+        .map(|(vm, _)| {
+            vm.execution_descriptor()
+                .cloned()
+                .map_err(|error| SessionError::Incompatible(format!("{error:?}")))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_execution_descriptors(
+    config: &SimulationConfig,
+) -> Vec<chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor> {
+    let descriptor = chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor::portable_fixture(
+        &config.vm_config,
+    )
+    .unwrap();
+    vec![descriptor; config.num_vms]
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -412,7 +472,7 @@ fn manifest_identity(manifest: &SessionManifest) -> Result<String, SessionError>
     // A versioned ordered projection omits only its own identity. Borrow all
     // payloads rather than cloning checkpoint metadata just to clear one field.
     digest_json(&(
-        "chaoscontrol.exact-session.v1",
+        "chaoscontrol.exact-session.v2",
         manifest.schema_version,
         &manifest.limits_profile,
         &manifest.config_identity,
@@ -491,6 +551,11 @@ fn validate_manifest_with_bytes(
     if manifest.limits_profile != SESSION_LIMITS_PROFILE {
         return Err(SessionError::Incompatible("session limits profile".into()));
     }
+    validate_execution_descriptors(
+        &manifest.configuration.execution_descriptors,
+        manifest.configuration.num_vms,
+        &manifest.configuration.vm_config,
+    )?;
     if !valid_identity(&manifest.session_id)
         || manifest_identity(manifest)? != manifest.session_id
         || configuration_identity(&manifest.configuration)? != manifest.config_identity
@@ -762,7 +827,7 @@ fn validate_finding_carrier(finding: &SessionFinding, bytes: &[u8]) -> Result<()
 pub(crate) fn configuration_identity(
     config: &SessionConfiguration,
 ) -> Result<String, SessionError> {
-    digest_json(&("chaoscontrol.exact-session.configuration.v1", config))
+    digest_json(&("chaoscontrol.exact-session.configuration.v2", config))
 }
 
 fn schedule_identity(
@@ -784,6 +849,13 @@ fn validate_configuration(
         ));
     }
     let recorded = &recording.config;
+    if recorded.smp_progress_mode != config.vm_config.smp_progress_mode
+        || recorded.smp_progress_budget != config.vm_config.smp_progress_budget
+    {
+        return Err(SessionError::Incompatible(
+            "recording progress contract mismatch".into(),
+        ));
+    }
     if recorded.num_vms != config.num_vms
         || recorded.vm_memory_size != config.vm_config.memory_size
         || recorded.tsc_khz != config.vm_config.cpu.tsc_khz
@@ -828,7 +900,16 @@ fn validate_checkpoint(
     SimulationController::validate_pending_snapshot(snapshot)
         .map_err(|error| SessionError::Incompatible(error.to_string()))?;
     for (vm_index, (vm, _)) in snapshot.vm_snapshots.iter().enumerate() {
-        vm.validate_kernel_restore(config.vm_config.num_vcpus)
+        if Some(
+            vm.execution_descriptor()
+                .map_err(|error| SessionError::Incompatible(format!("{error:?}")))?,
+        ) != config.execution_descriptors.get(vm_index)
+        {
+            return Err(SessionError::Incompatible(
+                "checkpoint execution descriptor mismatch".into(),
+            ));
+        }
+        vm.validate_retained_boundary()
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
         vm.memory
             .validate_for_guest_size(config.vm_config.memory_size)
@@ -838,6 +919,31 @@ fn validate_checkpoint(
             checkpoint.tick,
             vm_index,
             &vm.scheduler_snapshot,
+            config.vm_config.num_vcpus,
+        )?;
+        let scheduler = &vm.scheduler_snapshot.state;
+        let expected_mode = if config.vm_config.num_vcpus > 1 {
+            config.vm_config.smp_progress_mode
+        } else {
+            chaoscontrol_vmm::scheduler::core::ProgressMode::ExactSingleStep
+        };
+        if scheduler.progress_mode != expected_mode
+            || scheduler.progress_budget() != config.vm_config.smp_progress_budget
+            || scheduler.strategy != config.vm_config.scheduling_strategy
+            || scheduler.rng_seed
+                != chaoscontrol_vmm::scheduler::core::policy_rng_seed(
+                    config.seed.wrapping_add(vm_index as u64),
+                )
+        {
+            return Err(SessionError::Incompatible(
+                "checkpoint scheduler/configuration policy binding mismatch".into(),
+            ));
+        }
+        validate_checkpoint_injection_prefix(
+            recording,
+            checkpoint.tick,
+            vm_index,
+            vm,
             config.vm_config.num_vcpus,
         )?;
     }
@@ -901,6 +1007,72 @@ fn validate_checkpoint_scheduler(
     Ok(())
 }
 
+fn validate_checkpoint_injection_prefix(
+    recording: &Recording,
+    tick: u64,
+    vm_index: usize,
+    vm: &chaoscontrol_vmm::snapshot::VmSnapshot,
+    num_vcpus: usize,
+) -> Result<(), SessionError> {
+    let initial = recording
+        .checkpoints
+        .all()
+        .first()
+        .ok_or(SessionError::MissingCheckpoint(0))?;
+    let initial_vm = initial
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.vm_snapshots.get(vm_index))
+        .ok_or(SessionError::MissingCheckpoint(initial.id))?;
+    let mut ledger = initial_vm.0.boundary_state.injection_ledger.clone();
+    for round in recording
+        .schedule_rounds
+        .iter()
+        .filter(|round| round.tick > initial.tick && round.tick <= tick)
+    {
+        let Some(trace) = round
+            .injection_traces
+            .iter()
+            .find(|trace| trace.vm_id == vm_index)
+        else {
+            if recording.config.smp_progress_mode
+                == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+            {
+                return Err(SessionError::Corrupt(
+                    "missing injection ledger round".into(),
+                ));
+            }
+            continue;
+        };
+        let mut next = ledger.clone();
+        for fact in &trace.records {
+            next.record(fact)
+                .map_err(|error| SessionError::Corrupt(format!("injection prefix: {error:?}")))?;
+        }
+        chaoscontrol_vmm::snapshot::validate_injection_records(
+            &ledger,
+            &trace.records,
+            &next,
+            num_vcpus,
+        )
+        .map_err(|error| SessionError::Corrupt(format!("injection prefix: {error:?}")))?;
+        ledger = next;
+    }
+    if ledger != vm.boundary_state.injection_ledger {
+        return Err(SessionError::Corrupt(
+            "checkpoint injection ledger differs from canonical prefix".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Operator-supplied execution authorization. Retained metadata alone is not consent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExecutionSelection {
+    pub progress_mode: chaoscontrol_vmm::scheduler::core::ProgressMode,
+    pub progress_budget: chaoscontrol_vmm::scheduler::core::ProgressBudget,
+}
+
 /// An admitted exact session owns a pinned directory and loaded exact snapshots.
 /// Fields are private: metadata deserialization cannot construct this capability.
 pub struct ExactSession {
@@ -908,8 +1080,40 @@ pub struct ExactSession {
     manifest: SessionManifest,
     recording: Recording,
     limits: SessionLimits,
+    execution_selection: Option<ExecutionSelection>,
 }
 impl ExactSession {
+    /// Grant only an exact match; this cannot override retained execution inputs.
+    pub fn authorize_execution(
+        &mut self,
+        selection: ExecutionSelection,
+    ) -> Result<(), SessionError> {
+        self.execution_selection = None;
+        let vm = &self.manifest.configuration.vm_config;
+        if selection.progress_mode != vm.smp_progress_mode
+            || selection.progress_budget != vm.smp_progress_budget
+        {
+            return Err(SessionError::Incompatible(
+                "explicit execution selection differs from retained mode/units/profile/budget"
+                    .into(),
+            ));
+        }
+        self.execution_selection = Some(selection);
+        Ok(())
+    }
+
+    pub(crate) fn require_execution_authorization(&self) -> Result<(), SessionError> {
+        if self.manifest.configuration.vm_config.smp_progress_mode
+            == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+            && self.execution_selection.is_none()
+        {
+            return Err(SessionError::Incompatible(
+                "coarse execution requires explicit matching operator selection".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn limits(&self) -> SessionLimits {
         self.limits
     }
@@ -960,7 +1164,13 @@ impl ExactSession {
         &self,
         checkpoint_id: u64,
     ) -> Result<RestoredController, SessionError> {
+        self.require_execution_authorization()?;
         self.revalidate_retained()?;
+        for descriptor in &self.manifest.configuration.execution_descriptors {
+            descriptor
+                .validate_current_host()
+                .map_err(|error| SessionError::Incompatible(format!("{error:?}")))?;
+        }
         let checkpoint = self
             .recording
             .checkpoints
@@ -1113,6 +1323,9 @@ impl ExactSession {
         let mut runner = crate::replay::RealSimulationRunner::from_controller(controller);
         runner
             .set_execution_deadline(self.host_deadline_ms())
+            .map_err(|error| SessionError::Incompatible(error.to_string()))?;
+        runner
+            .set_output_limit(self.limits.max_output_bytes)
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
         crate::replay::advance_exact_runner(&self.recording, &mut runner, moment.tick)
             .map_err(|error| SessionError::Incompatible(error.to_string()))?;
@@ -1286,7 +1499,15 @@ fn save_recorder_complete(
     finding: Option<(&SessionFinding, &[u8])>,
 ) -> Result<SessionManifest, SessionError> {
     let config = controller.config();
-    let configuration = SessionConfiguration::capture(config)?;
+    let recording = recorder.recording();
+    let initial_snapshot = recording
+        .checkpoints
+        .all()
+        .first()
+        .and_then(|checkpoint| checkpoint.snapshot.as_ref())
+        .ok_or(SessionError::MissingCheckpoint(0))?;
+    let configuration =
+        SessionConfiguration::capture(config, snapshot_execution_descriptors(initial_snapshot)?)?;
     if !recorder.matches_checkpoint_provenance(
         controller.loaded_guest_artifact_identities(),
         &configuration_identity(&configuration)?,
@@ -1295,7 +1516,6 @@ fn save_recorder_complete(
             "recorded checkpoint/controller input or configuration provenance mismatch".into(),
         ));
     }
-    let recording = recorder.recording();
     if recording.total_ticks != controller.tick() {
         return Err(SessionError::Incompatible(
             "recording/controller horizon mismatch".into(),
@@ -1661,6 +1881,7 @@ fn load_from_directory(root: File, limits: SessionLimits) -> Result<ExactSession
     }
     validate_session_recording(&recording, manifest.retained_start_tick, limits)?;
     Ok(ExactSession {
+        execution_selection: None,
         root,
         manifest,
         recording,
@@ -2030,4 +2251,4 @@ fn publish_staged_artifact(
 
 #[cfg(test)]
 #[path = "session_tests.rs"]
-mod tests;
+pub(crate) mod tests;

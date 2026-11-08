@@ -983,6 +983,7 @@ fn a_genesis_without_room_for_its_stop_is_refused_before_the_journal() {
 
 // r[verify chaoscontrol.campaign_policy.history.valid]
 // r[verify chaoscontrol.campaign_policy.journal_framing.valid]
+// r[verify chaoscontrol.campaign_policy.journal_framing]
 #[test]
 fn recovery_closes_the_outstanding_selection_and_starts_a_new_epoch() {
     let dir = tempfile::tempdir().unwrap();
@@ -1087,12 +1088,12 @@ fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
         .exists());
 }
 
-/// An epoch whose genesis names Campaign's earlier whole-state framing, or any other unknown
-/// schema, fails recovery at its genesis record, before any moment or control record replays,
+/// An epoch naming an earlier material-state schema, or any unknown schema,
+/// fails recovery at genesis before any moment or control record replays,
 /// and recovery writes nothing.
 // r[verify chaoscontrol.campaign_policy.journal_framing.invalid]
 #[test]
-fn an_epoch_recorded_before_the_chained_state_identity_fails_recovery_at_its_genesis() {
+fn an_epoch_with_an_unsupported_material_schema_fails_recovery_at_its_genesis() {
     // Recovery refuses the schema before it reads the epoch's history bound.
     const UNREAD_HISTORY_BOUND: u64 = 64;
     let cases = [
@@ -1102,6 +1103,10 @@ fn an_epoch_recorded_before_the_chained_state_identity_fails_recovery_at_its_gen
         ),
         (
             super::records::PREVIOUS_GENESIS_SCHEMA,
+            ReplayFailure::EarlierStateFraming,
+        ),
+        (
+            super::records::PRE_TYPED_PROGRESS_GENESIS_SCHEMA,
             ReplayFailure::EarlierStateFraming,
         ),
         (
@@ -1141,32 +1146,6 @@ fn an_epoch_recorded_before_the_chained_state_identity_fails_recovery_at_its_gen
             .join(crate::explorer::journal::epoch_directory_name(1))
             .exists());
     }
-}
-
-/// Campaign state identities of one fixed journal: after the genesis segment and after the
-/// first published selection. Every recorded control event names such identities, so a
-/// Campaign or adapter change that moves either one leaves earlier journals unable to replay:
-/// bump `GENESIS_SCHEMA`, refuse the previous schema, and re-pin both values.
-// r[verify chaoscontrol.campaign_policy.journal_framing]
-#[test]
-fn the_genesis_schema_names_the_pinned_state_identities() {
-    const GENESIS_STATE: &str =
-        "State:d49f58775c78b0fce2205afbecbf9a6f54f24dd40844a6439707654d16abb1ae";
-    const SELECTED_STATE: &str =
-        "State:e53a093ed5029fca8535361a19a996a95f8c03b183f6d29a6c9419a0fa35436d";
-    let dir = tempfile::tempdir().unwrap();
-    let mut frontier = open_campaign(dir.path(), ScriptedIo::default());
-    let genesis = frontier.state().unwrap().state_id().to_string();
-    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
-    let plan = planned(&mut frontier, &mut rng, 0);
-    let _round = executable(frontier.authorize(plan).unwrap());
-    let selected = frontier.state().unwrap().state_id().to_string();
-    assert_ne!(genesis, selected);
-    assert_eq!(
-        (genesis.as_str(), selected.as_str()),
-        (GENESIS_STATE, SELECTED_STATE),
-        "journal state identities moved: bump GENESIS_SCHEMA before re-pinning"
-    );
 }
 
 // ---------------------------------------------------------------------------

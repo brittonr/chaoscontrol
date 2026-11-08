@@ -44,6 +44,7 @@ let Registry = {
       source_paths = [
         "contracts/evidence/profile-primitives.ncl",
         "contracts/evidence/run-config.ncl",
+        "contracts/evidence/scheduler-progress.ncl",
         "contracts/evidence/examples/raft-run-config.ncl",
       ],
       artifact_paths = [
@@ -58,6 +59,14 @@ let Registry = {
       ],
       fixture_coverage = [
         "contracts/evidence/fixtures/valid/run-profile.valid.json",
+        "contracts/evidence/fixtures/valid/run-profile.coarse-round-robin.valid.ncl",
+        "contracts/evidence/fixtures/valid/run-profile.coarse-randomized.valid.ncl",
+        "contracts/evidence/fixtures/invalid/run-profile.missing-progress-mode.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/run-profile.mixed-progress-units.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/run-profile.unknown-boundary-profile.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/run-profile.zero-boundary-budget.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/run-profile.coarse-missing-watchdog.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/run-profile.coarse-host-clock.invalid.ncl",
         "contracts/evidence/fixtures/invalid/run-profile.unknown-mode.invalid.ncl",
         "contracts/evidence/fixtures/invalid/run-profile.unknown-field.invalid.ncl",
         "contracts/evidence/fixtures/invalid/run-profile.zero-budget.invalid.ncl",
@@ -75,6 +84,30 @@ let Registry = {
       ],
       freshness = "The checked projection binds the Nickel source, shared contract, evaluator identity, profile identity, and JSON with BLAKE3 before runtime admission.",
       rationale = "Humans author bounded VM exploration intent; Rust revalidates the projection and owns construction and execution.",
+    },
+    {
+      id = "kvm-debug-boundary-qualification",
+      ownership = "nickel-authored",
+      owner = "contracts/evidence/kvm-debug-boundary-qualification.ncl",
+      source_paths = [
+        "contracts/evidence/kvm-debug-boundary-qualification.ncl",
+        "contracts/evidence/examples/kvm-debug-boundary-qualification.ncl",
+        "contracts/evidence/run-config.ncl",
+        "contracts/evidence/scheduler-progress.ncl",
+        "contracts/evidence/profile-primitives.ncl",
+      ],
+      validation_commands = [
+        "nickel export contracts/evidence/fixtures/valid/kvm-debug-boundary-qualification.valid.ncl",
+        "check-evidence-contracts --root .",
+      ],
+      fixture_coverage = [
+        "contracts/evidence/fixtures/valid/kvm-debug-boundary-qualification.valid.ncl",
+        "contracts/evidence/fixtures/invalid/kvm-debug-boundary-qualification.single-repetition.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/kvm-debug-boundary-qualification.unbounded-teardown.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/kvm-debug-boundary-qualification.wrong-artifact.invalid.ncl",
+      ],
+      freshness = "Measured cohort digests bind runtime-supplied artifact locations; actual execution must independently retain and verify inputs and every outcome.",
+      rationale = "Named finite same-host coarse qualification intent cannot assert execution success, delivery-class support, replay equivalence, or strict instruction semantics.",
     },
     {
       id = "typed-operator-command",
@@ -136,6 +169,7 @@ let Registry = {
       source_paths = [
         "contracts/evidence/profile-primitives.ncl",
         "contracts/evidence/run-config.ncl",
+        "contracts/evidence/scheduler-progress.ncl",
         "contracts/evidence/campaign-profile.ncl",
         "contracts/evidence/examples/raft-campaign-profile.ncl",
       ],
@@ -150,6 +184,8 @@ let Registry = {
       ],
       fixture_coverage = [
         "contracts/evidence/fixtures/valid/campaign-profile.valid.json",
+        "contracts/evidence/fixtures/valid/campaign-profile.coarse-randomized.valid.ncl",
+        "contracts/evidence/fixtures/invalid/campaign-profile.retired-schema.invalid.ncl",
         "contracts/evidence/fixtures/invalid/campaign-profile.duplicate-seeds.invalid.ncl",
         "contracts/evidence/fixtures/invalid/campaign-profile.incompatible-topology.invalid.ncl",
         "contracts/evidence/fixtures/invalid/campaign-profile.inverted-havoc.invalid.ncl",
@@ -373,6 +409,7 @@ let Registry = {
         "crates/chaoscontrol-replay-evidence-core/src/dto.rs",
         "crates/chaoscontrol-replay-evidence-core/src/validate.rs",
         "contracts/evidence/replay-verdict.ncl",
+        "contracts/evidence/scheduler-progress.ncl",
         "contracts/evidence/process-instances.ncl",
         "contracts/evidence/marker-evidence-context.ncl",
         "contracts/evidence/profile-primitives.ncl",
@@ -387,6 +424,8 @@ let Registry = {
       ],
       fixture_coverage = [
         "contracts/evidence/fixtures/valid/replay-verdict.snapshot-backed.valid.json",
+        "contracts/evidence/fixtures/valid/replay-verdict.boundary-variant.valid.json",
+        "contracts/evidence/fixtures/invalid/replay-verdict.crossed-budget-unit.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.schedule-only-not-proof.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.missing-snapshot-ref.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.snapshot-not-reproduced.invalid.json",

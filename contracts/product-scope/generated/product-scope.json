@@ -330,6 +330,24 @@
   ],
   "change_intents": [
     {
+      "change": "require-event-entry-exact-smp-capability",
+      "evidence_prerequisite": "Production SMP must stay rejected for ExactSingleStep and for PMU with an exact remainder unless the backend establishes exact event entry, and the rejection must happen before KVM creation, guest loading, memory allocation or disk/log mutation while single-vCPU operation and pure scheduler transitions stay unchanged. Verify capability-negative IRQ evidence, early rejection ordering, positive single-vCPU construction and diagnostics that do not establish production admission.",
+      "non_claims": [
+        "Absence of a portable exact event-entry capability does not prove that no backend can provide one, and partial KVM control diagnostics are not SMP execution, determinism, replay or release evidence."
+      ],
+      "owner": "chaoscontrol-vmm",
+      "target_state": "blocked"
+    },
+    {
+      "change": "plan-kvm-debug-boundary-scheduling",
+      "evidence_prerequisite": "The separate KvmDebugBoundary profile must remain opt-in behind --smp-progress-mode kvm-debug-boundary, --smp-boundary-profile kvm-debug-exit-boundary-v1 and a positive --smp-boundary-quantum while strict ExactSingleStep and PMU admission stay unchanged and fail closed. Verify typed budget and scheduler state, the closed normalized Debug/PIO/MMIO/HLT exit table, pending-I/O settlement, per-entry TSC overwrite, the installed KvmCoarseClockDenyV1 filter identity, permanent poison and fresh-runner recovery, snapshot/session/recording identities, the guarded ExcludeGuardedCoarseClockSamplesV2 projection and actual KVM controls for hidden IRQ handlers, POPF/IRET rearm, IF/STI shadow, typed NMI rejection, host-delay continuation and real vCPU CPUID retention.",
+      "non_claims": [
+        "Coarse boundaries are TF single-step boundaries, so they prove one validated settled boundary and not instruction-exact event entry. The measured Linux boot cost (one boundary per REP iteration) leaves first-party campaign, persisted-reload, negative CLI and receipt qualification blocked; no coarse execution, determinism, replay, release or strict SMP claim follows."
+      ],
+      "owner": "chaoscontrol-vmm",
+      "target_state": "experimental"
+    },
+    {
       "change": "annotate-next-witness-values",
       "evidence_prerequisite": "WithNextValue/WithNextValueBy must retain candidate evidence while copying the closest strictly later scalar within the tick window, with exact same-key matching when requested. Verify pairwise oracle, permutations/canonical ties, zero/max ticks and inclusive windows, missing/empty/Unicode/canonical keys and values, no farther-value fallback, aliases, first duplicate projection priority, JSON/downstream composition, all names/both hidden children, intermediate/generated capacity, shared limits/prefixes/moments including outer versus child UpTo, actual CLI direction/window/key/expression/source/result receipt drift without partial evaluation artifacts and unchanged earlier-witness regressions.",
       "non_claims": [

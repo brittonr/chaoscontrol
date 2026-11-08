@@ -87,8 +87,8 @@ let PayloadClosure = {
 {
   schema | P.exact_string "chaoscontrol-snapshot-descriptor-v1",
   descriptor_version | P.exact_value 1,
-  completeness_profile | P.exact_string "exact-x86-kvm-v1",
-  state_schema_version | P.exact_value 3,
+  completeness_profile | P.exact_string "exact-x86-kvm-v2",
+  state_schema_version | P.exact_value 4,
   architecture | P.exact_string "x86_64",
   runtime | RuntimeCohort,
   topology | Topology,

@@ -365,9 +365,13 @@ mod tests {
 
     fn test_recording() -> Recording {
         let mut recording = Recording {
+            trace_start_tick: 0,
+            schema_version: crate::recording::RECORDING_SCHEMA_VERSION,
             session_id: "test".to_string(),
             timestamp: 0,
             config: RecordingConfig {
+                smp_progress_mode: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_mode,
+                smp_progress_budget: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
                 num_vms: 2,
                 vm_memory_size: 256 * 1024 * 1024,
                 tsc_khz: 3_000_000,

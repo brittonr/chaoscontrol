@@ -4,9 +4,12 @@
 //! classifies supplied facts. It does not read files, inspect the host, run a
 //! guest, access a clock, or publish artifacts.
 
-pub const CURRENT_VERDICT_SCHEMA_VERSION: u32 = 2;
-pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: u32 = 2;
-pub const CURRENT_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
+pub const CURRENT_VERDICT_SCHEMA_VERSION: u32 =
+    chaoscontrol_replay_evidence_core::dto::REPLAY_VERDICT_SCHEMA_VERSION;
+pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: u32 =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION;
+pub const CURRENT_SNAPSHOT_CODEC: &str =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC;
 pub const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
 
 const FORBIDDEN_CLAIM_FRAGMENTS: [&str; 4] = [

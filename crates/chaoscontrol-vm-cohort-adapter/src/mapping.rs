@@ -129,7 +129,16 @@ fn validate_mapping_facts(
 
 fn validate_exact_snapshot(snapshot: &VmSnapshot) -> Result<(), AdapterError> {
     let topology = observed_topology(snapshot)?;
-    validate_snapshot_metadata(snapshot.metadata.as_ref(), &topology)
+    let descriptor = snapshot
+        .execution_descriptor()
+        .map_err(|_| AdapterError::Admission("snapshot execution descriptor is invalid"))?;
+    if descriptor.progress_mode == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+    {
+        return Err(AdapterError::Admission(
+            "VM cohort compatibility does not admit coarse execution",
+        ));
+    }
+    validate_snapshot_metadata(snapshot.metadata.as_ref(), &topology, descriptor)
         .map_err(|_| AdapterError::Admission("snapshot metadata is incomplete or inconsistent"))?;
     for vcpu in &snapshot.vcpu_snapshots {
         vcpu.validate_msr_inventory(&topology.msr_indices)

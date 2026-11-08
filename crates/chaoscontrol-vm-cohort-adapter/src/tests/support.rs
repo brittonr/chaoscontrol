@@ -5,8 +5,10 @@ use chaoscontrol_vmm::devices::block::DeterministicBlock;
 use chaoscontrol_vmm::devices::entropy::DeterministicEntropy;
 use chaoscontrol_vmm::devices::pit::DeterministicPit;
 use chaoscontrol_vmm::snapshot::{
-    build_snapshot_inventory, MsrSnapshot, SnapshotMemory, SnapshotMetadata, SnapshotTopology,
-    VcpuSnapshot, VmSnapshot, SNAPSHOT_PROFILE_EXACT_X86_KVM_V1, SNAPSHOT_STATE_SCHEMA_VERSION,
+    build_snapshot_inventory, InjectionLedger, MsrSnapshot, SnapshotBoundaryState,
+    SnapshotDeliveryState, SnapshotExecutionDescriptor, SnapshotMemory, SnapshotMetadata,
+    SnapshotPendingIoState, SnapshotTopology, VcpuSnapshot, VmSnapshot,
+    SNAPSHOT_PROFILE_EXACT_X86_KVM_V2, SNAPSHOT_STATE_SCHEMA_VERSION,
 };
 use kvm_bindings::{
     kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_mp_state,
@@ -44,15 +46,22 @@ pub fn synthetic_snapshot() -> VmSnapshot {
     VmSnapshot {
         metadata: Some(SnapshotMetadata {
             state_schema_version: SNAPSHOT_STATE_SCHEMA_VERSION,
-            completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.to_string(),
+            completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V2.to_string(),
             inventory: build_snapshot_inventory(&topology),
             topology,
+            execution_descriptor: SnapshotExecutionDescriptor::portable_fixture(
+                &chaoscontrol_vmm::vm::VmConfig::default(),
+            )
+            .expect("portable snapshot fixture descriptor"),
         }),
         vcpu_snapshots: vec![synthetic_vcpu_snapshot()],
         pic_master: kvm_irqchip::default(),
         pic_slave: kvm_irqchip::default(),
         ioapic: kvm_irqchip::default(),
-        pit: kvm_pit_state2::default(),
+        pit: chaoscontrol_vmm::snapshot::SnapshotKernelPitState::Present(kvm_pit_state2 {
+            flags: kvm_bindings::KVM_PIT_FLAGS_HPET_LEGACY,
+            ..Default::default()
+        }),
         clock: kvm_clock_data::default(),
         memory: SnapshotMemory::Full(vec![
             MEMORY_FILL;
@@ -74,6 +83,11 @@ pub fn synthetic_snapshot() -> VmSnapshot {
         coverage_active: false,
         scheduler_snapshot: scheduler.snapshot(),
         hlt_latched_vcpus: vec![false],
+        boundary_state: SnapshotBoundaryState {
+            pending_io: SnapshotPendingIoState::Settled,
+            delivery_state: SnapshotDeliveryState::CapturedKernelAndUserspace,
+            injection_ledger: InjectionLedger::new(),
+        },
     }
 }
 
@@ -134,20 +148,6 @@ pub fn resource_ref(label: &str) -> ResourceRef {
     .expect("resource reference")
 }
 
-pub fn replace_snapshot_topology(snapshot: &mut VmSnapshot, msr_indices: Vec<u32>) {
-    let topology = SnapshotTopology {
-        vcpu_count: 1,
-        msr_indices,
-        virtio_devices: Vec::new(),
-    };
-    snapshot.metadata = Some(SnapshotMetadata {
-        state_schema_version: SNAPSHOT_STATE_SCHEMA_VERSION,
-        completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.to_string(),
-        inventory: build_snapshot_inventory(&topology),
-        topology,
-    });
-}
-
 fn synthetic_vcpu_snapshot() -> VcpuSnapshot {
     VcpuSnapshot {
         regs: kvm_regs {
@@ -164,6 +164,15 @@ fn synthetic_vcpu_snapshot() -> VcpuSnapshot {
         msrs: vec![MsrSnapshot {
             index: TEST_MSR_INDEX,
             data: 0,
+        }],
+        cpuid: vec![chaoscontrol_vmm::snapshot::SnapshotCpuidEntry {
+            function: 0,
+            index: 0,
+            flags: 0,
+            eax: 0,
+            ebx: 0,
+            ecx: 0,
+            edx: 0,
         }],
         mp_state: kvm_mp_state::default(),
     }

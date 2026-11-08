@@ -407,6 +407,9 @@ mod tests {
         ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 1,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 kernel_path: "/nonexistent-kernel".to_string(),
                 initrd_path: None,

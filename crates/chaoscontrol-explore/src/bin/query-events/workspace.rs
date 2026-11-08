@@ -8,15 +8,169 @@ use chaoscontrol_replay::observation::{
     ObservationProfile, ObservationReceipt,
 };
 use chaoscontrol_replay::recording::{RecordedEvent, Recorder, RecordingConfig};
-use chaoscontrol_replay::session::{load_session, save_recorder, SessionLimits};
+use chaoscontrol_replay::session::{
+    load_session, save_recorder, ExactSession, ExecutionSelection, SessionLimits,
+};
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+use chaoscontrol_vmm::scheduler::core::{
+    BoundaryProfileId, ProgressBudget, ProgressMode, MAX_SCHEDULE_VCPUS,
+};
+use chaoscontrol_vmm::scheduler::{DEFAULT_PMU_EXACT_STEP_MARGIN, DEFAULT_SMP_INSTRUCTION_QUANTUM};
 use chaoscontrol_vmm::vm::VmConfig;
-use clap::Subcommand;
+use clap::{Args, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 const MEBIBYTE: usize = 1024 * 1024;
 const MAX_CAPTURE_SERIAL_BYTES: usize =
     chaoscontrol_replay::serialize::MAX_RECORDING_JSON_BYTES / 2;
+const COARSE_ENTRY_WATCHDOG_MICROSECONDS: u64 = 250_000;
+const COARSE_SCHEDULE_JOURNAL_LIMIT: usize = 65_536;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum SmpProgressMode {
+    ExactSingleStep,
+    PmuAccelerated,
+    KvmDebugBoundary,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum BoundaryProfile {
+    KvmDebugExitBoundaryV1,
+}
+
+#[derive(Clone, Debug, Default, Args)]
+pub struct ProgressArgs {
+    /// Explicit SMP mode; capture defaults to strict exact-single-step.
+    #[arg(long, value_enum)]
+    smp_progress_mode: Option<SmpProgressMode>,
+    /// Strict guest-instruction quantum; never accepted for coarse execution.
+    #[arg(long, conflicts_with = "smp_boundary_quantum")]
+    smp_instruction_quantum: Option<u64>,
+    /// Coarse normalized KVM boundary quantum, not a guest-instruction count.
+    #[arg(long, requires = "smp_progress_mode")]
+    smp_boundary_quantum: Option<u64>,
+    /// Immutable normalized boundary table; required for a fresh coarse capture.
+    #[arg(long, value_enum, requires = "smp_progress_mode")]
+    smp_boundary_profile: Option<BoundaryProfile>,
+}
+
+impl ProgressArgs {
+    fn selection(&self, retained: Option<&VmConfig>) -> Result<ExecutionSelection, String> {
+        let selected = match self.smp_progress_mode {
+            Some(mode) => mode,
+            None if retained
+                .is_some_and(|vm| vm.smp_progress_mode == ProgressMode::KvmDebugBoundary) =>
+            {
+                return Err(
+                    "coarse execution requires explicit --smp-progress-mode kvm-debug-boundary"
+                        .into(),
+                );
+            }
+            None => match retained.map(|vm| vm.smp_progress_mode) {
+                Some(ProgressMode::PmuAccelerated { .. }) => SmpProgressMode::PmuAccelerated,
+                _ => SmpProgressMode::ExactSingleStep,
+            },
+        };
+        let (progress_mode, progress_budget) = match selected {
+            SmpProgressMode::KvmDebugBoundary => {
+                if self.smp_instruction_quantum.is_some() {
+                    return Err("--smp-instruction-quantum is strict-only".into());
+                }
+                let profile_id = match self.smp_boundary_profile {
+                    Some(BoundaryProfile::KvmDebugExitBoundaryV1) => BoundaryProfileId::KvmDebugExitBoundaryV1,
+                    None => match retained.map(|vm| vm.smp_progress_budget) {
+                        Some(ProgressBudget::KvmBoundaries { profile_id, .. }) => profile_id,
+                        _ => return Err("coarse capture requires --smp-boundary-profile kvm-debug-exit-boundary-v1".into()),
+                    },
+                };
+                let progress_budget = match self.smp_boundary_quantum {
+                    Some(count) => ProgressBudget::KvmBoundaries { profile_id, count },
+                    None => retained
+                        .map(|vm| ProgressBudget::KvmBoundaries {
+                            profile_id,
+                            count: vm.smp_progress_budget.count(),
+                        })
+                        .ok_or("coarse capture requires --smp-boundary-quantum")?,
+                };
+                (ProgressMode::KvmDebugBoundary, progress_budget)
+            }
+            SmpProgressMode::ExactSingleStep | SmpProgressMode::PmuAccelerated => {
+                if self.smp_boundary_quantum.is_some() || self.smp_boundary_profile.is_some() {
+                    return Err("boundary profile/quantum require kvm-debug-boundary mode".into());
+                }
+                let progress_mode = match selected {
+                    SmpProgressMode::PmuAccelerated => {
+                        match retained.map(|vm| vm.smp_progress_mode) {
+                            Some(mode @ ProgressMode::PmuAccelerated { .. }) => mode,
+                            _ => ProgressMode::PmuAccelerated {
+                                exact_step_margin: DEFAULT_PMU_EXACT_STEP_MARGIN,
+                            },
+                        }
+                    }
+                    _ => ProgressMode::ExactSingleStep,
+                };
+                let progress_budget = self
+                    .smp_instruction_quantum
+                    .map(ProgressBudget::Instructions)
+                    .or_else(|| retained.map(|vm| vm.smp_progress_budget))
+                    .unwrap_or(ProgressBudget::Instructions(
+                        DEFAULT_SMP_INSTRUCTION_QUANTUM,
+                    ));
+                (progress_mode, progress_budget)
+            }
+        };
+        if progress_budget.count() == 0 {
+            return Err("SMP progress quantum must be positive".into());
+        }
+        if let Some(vm) = retained {
+            if progress_mode != vm.smp_progress_mode || progress_budget != vm.smp_progress_budget {
+                return Err("execution selection must match retained mode, units, profile and quantum; overrides are forbidden".into());
+            }
+        }
+        Ok(ExecutionSelection {
+            progress_mode,
+            progress_budget,
+        })
+    }
+
+    fn capture_vm_config(
+        &self,
+        seed: u64,
+        memory_size: usize,
+        vcpus: usize,
+    ) -> Result<VmConfig, String> {
+        if vcpus == 0 || vcpus > MAX_SCHEDULE_VCPUS {
+            return Err("capture vCPU count is outside the supported topology".into());
+        }
+        let selection = self.selection(None)?;
+        if selection.progress_mode == ProgressMode::KvmDebugBoundary && vcpus < 2 {
+            return Err("coarse SMP capture requires at least two vCPUs".into());
+        }
+        let mut vm = VmConfig {
+            memory_size,
+            num_vcpus: vcpus,
+            smp_progress_mode: selection.progress_mode,
+            smp_progress_budget: selection.progress_budget,
+            ..VmConfig::default()
+        };
+        vm.cpu.seed = seed;
+        vm.cpu.hide_tsc = true;
+        if let ProgressBudget::KvmBoundaries { profile_id, .. } = selection.progress_budget {
+            vm.smp_entry_watchdog_microseconds = COARSE_ENTRY_WATCHDOG_MICROSECONDS;
+            vm.smp_schedule_journal_limit = COARSE_SCHEDULE_JOURNAL_LIMIT;
+            vm.apply_kvm_debug_boundary_profile(profile_id)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(vm)
+    }
+
+    fn authorize(&self, session: &mut ExactSession) -> Result<(), String> {
+        let selection = self.selection(Some(&session.manifest().configuration.vm_config))?;
+        session
+            .authorize_execution(selection)
+            .map_err(|error| error.to_string())
+    }
+}
 
 #[derive(Debug, Subcommand)]
 pub enum WorkspaceCommand {
@@ -32,6 +186,11 @@ pub enum WorkspaceCommand {
         vms: usize,
         #[arg(long)]
         memory_mib: usize,
+        /// vCPUs per guest. Coarse SMP must be explicitly selected.
+        #[arg(long, default_value_t = 1)]
+        vcpus: usize,
+        #[command(flatten)]
+        progress: ProgressArgs,
         #[arg(long)]
         quantum: u64,
         #[arg(long)]
@@ -50,6 +209,8 @@ pub enum WorkspaceCommand {
     Observe {
         #[arg(long)]
         session: PathBuf,
+        #[command(flatten)]
+        progress: ProgressArgs,
         #[arg(long)]
         checkpoint: u64,
         #[arg(long)]
@@ -85,6 +246,8 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
             seed,
             vms,
             memory_mib,
+            vcpus,
+            progress,
             quantum,
             bootstrap_ticks,
             history_ticks,
@@ -151,8 +314,7 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
                     faults.add(fault);
                 }
             }
-            let mut vm_config = VmConfig::single_vcpu(seed, true);
-            vm_config.memory_size = memory_size;
+            let vm_config = progress.capture_vm_config(seed, memory_size, vcpus)?;
             let config = SimulationConfig {
                 num_vms: vms,
                 vm_config,
@@ -174,6 +336,8 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
                 kernel_path: kernel,
                 initrd_path: initrd,
                 quantum,
+                smp_progress_mode: config.vm_config.smp_progress_mode,
+                smp_progress_budget: config.vm_config.smp_progress_budget,
                 checkpoint_interval,
                 disk_image_path: None,
                 random_faults: false,
@@ -262,6 +426,7 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
         }
         WorkspaceCommand::Observe {
             session,
+            progress,
             checkpoint,
             vm_index,
             profile,
@@ -282,8 +447,9 @@ pub fn execute(command: WorkspaceCommand) -> Result<(), String> {
             let identities = admitted_identities(&admitted_profiles)?;
             // Pure admission precedes even the restored VM's creation.
             admit_observation(&profile, &identities).map_err(|error| error.to_string())?;
-            let session = load_session(&session, SessionLimits::default())
+            let mut session = load_session(&session, SessionLimits::default())
                 .map_err(|error| error.to_string())?;
+            progress.authorize(&mut session)?;
             let mut restored = session
                 .restore_controller(checkpoint)
                 .map_err(|error| error.to_string())?;
@@ -395,4 +561,380 @@ fn capture_round(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Cli, Command};
+    use clap::Parser;
+
+    const TEST_SEED: u64 = 42;
+    const TEST_MEMORY: usize = 128 * MEBIBYTE;
+    const TEST_VCPUS: usize = 4;
+    const TEST_BOUNDARIES: u64 = 17;
+
+    fn coarse_args(quantum: Option<u64>) -> ProgressArgs {
+        ProgressArgs {
+            smp_progress_mode: Some(SmpProgressMode::KvmDebugBoundary),
+            smp_boundary_quantum: quantum,
+            smp_boundary_profile: Some(BoundaryProfile::KvmDebugExitBoundaryV1),
+            ..ProgressArgs::default()
+        }
+    }
+
+    fn retained_coarse_vm() -> VmConfig {
+        coarse_args(Some(TEST_BOUNDARIES))
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .unwrap()
+    }
+
+    #[test]
+    fn capture_preserves_explicit_smp_topology_mode_and_typed_budget() {
+        let vm = retained_coarse_vm();
+        assert_eq!(vm.num_vcpus, TEST_VCPUS);
+        assert_eq!(vm.memory_size, TEST_MEMORY);
+        assert_eq!(vm.cpu.seed, TEST_SEED);
+        assert!(vm.cpu.hide_tsc);
+        assert!(vm.cpu.hide_hypervisor);
+        assert!(matches!(
+            vm.cpu.tsc_mode,
+            chaoscontrol_vmm::cpu::TscAdvanceMode::PerExit
+        ));
+        assert_eq!(
+            vm.smp_entry_watchdog_microseconds,
+            COARSE_ENTRY_WATCHDOG_MICROSECONDS
+        );
+        assert_eq!(vm.smp_schedule_journal_limit, COARSE_SCHEDULE_JOURNAL_LIMIT);
+        let extra = vm.extra_cmdline.as_deref().unwrap();
+        let command = std::str::from_utf8(vm.cmdline.strip_suffix(&[0]).unwrap()).unwrap();
+        for token in ["noapictimer", "clocksource=jiffies", "notsc"] {
+            assert!(extra.split_ascii_whitespace().any(|item| item == token));
+            assert!(command.split_ascii_whitespace().any(|item| item == token));
+        }
+        assert!(!command
+            .split_ascii_whitespace()
+            .any(|item| matches!(item, "clocksource=tsc" | "tsc=reliable")));
+        assert_eq!(vm.smp_progress_mode, ProgressMode::KvmDebugBoundary);
+        assert_eq!(
+            vm.smp_progress_budget,
+            ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: TEST_BOUNDARIES,
+            }
+        );
+    }
+
+    #[test]
+    fn capture_defaults_remain_strict_and_instruction_quantum_is_strict_only() {
+        let vm = ProgressArgs::default()
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, 1)
+            .unwrap();
+        assert_eq!(vm.num_vcpus, 1);
+        assert_eq!(vm.smp_progress_mode, ProgressMode::ExactSingleStep);
+        assert_eq!(
+            vm.smp_progress_budget,
+            ProgressBudget::Instructions(DEFAULT_SMP_INSTRUCTION_QUANTUM)
+        );
+        let args = ProgressArgs {
+            smp_instruction_quantum: Some(123),
+            ..ProgressArgs::default()
+        };
+        let vm = args
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .unwrap();
+        assert_eq!(vm.smp_progress_budget, ProgressBudget::Instructions(123));
+        assert_eq!(vm.smp_progress_mode, ProgressMode::ExactSingleStep);
+        let mut coarse = coarse_args(Some(TEST_BOUNDARIES));
+        coarse.smp_instruction_quantum = Some(123);
+        assert!(coarse
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .unwrap_err()
+            .contains("strict-only"));
+    }
+
+    #[test]
+    fn coarse_capture_rejects_missing_zero_or_wrong_unit_budgets_and_topology() {
+        assert!(coarse_args(None)
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .is_err());
+        assert!(coarse_args(Some(0))
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .is_err());
+        let mut missing_profile = coarse_args(Some(TEST_BOUNDARIES));
+        missing_profile.smp_boundary_profile = None;
+        assert!(missing_profile
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .unwrap_err()
+            .contains("--smp-boundary-profile"));
+        for vcpus in [0, 1, MAX_SCHEDULE_VCPUS + 1] {
+            assert!(coarse_args(Some(TEST_BOUNDARIES))
+                .capture_vm_config(TEST_SEED, TEST_MEMORY, vcpus)
+                .is_err());
+        }
+        let strict_boundary = ProgressArgs {
+            smp_boundary_quantum: Some(TEST_BOUNDARIES),
+            ..ProgressArgs::default()
+        };
+        assert!(strict_boundary
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .is_err());
+        let strict_profile = ProgressArgs {
+            smp_boundary_profile: Some(BoundaryProfile::KvmDebugExitBoundaryV1),
+            ..ProgressArgs::default()
+        };
+        assert!(strict_profile
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .is_err());
+        let strict_zero = ProgressArgs {
+            smp_instruction_quantum: Some(0),
+            ..ProgressArgs::default()
+        };
+        assert!(strict_zero
+            .capture_vm_config(TEST_SEED, TEST_MEMORY, TEST_VCPUS)
+            .is_err());
+    }
+
+    #[test]
+    fn persisted_coarse_selection_requires_explicit_mode_and_cannot_override_budget() {
+        let vm = retained_coarse_vm();
+        assert!(ProgressArgs::default()
+            .selection(Some(&vm))
+            .unwrap_err()
+            .contains("explicit"));
+        let mode_only = ProgressArgs {
+            smp_progress_mode: Some(SmpProgressMode::KvmDebugBoundary),
+            ..ProgressArgs::default()
+        };
+        for args in [
+            mode_only,
+            coarse_args(None),
+            coarse_args(Some(TEST_BOUNDARIES)),
+        ] {
+            assert_eq!(
+                args.selection(Some(&vm)).unwrap(),
+                ExecutionSelection {
+                    progress_mode: vm.smp_progress_mode,
+                    progress_budget: vm.smp_progress_budget,
+                }
+            );
+        }
+        for args in [
+            coarse_args(Some(TEST_BOUNDARIES + 1)),
+            coarse_args(Some(0)),
+            ProgressArgs {
+                smp_progress_mode: Some(SmpProgressMode::ExactSingleStep),
+                ..ProgressArgs::default()
+            },
+            ProgressArgs {
+                smp_progress_mode: Some(SmpProgressMode::PmuAccelerated),
+                ..ProgressArgs::default()
+            },
+            ProgressArgs {
+                smp_progress_mode: Some(SmpProgressMode::KvmDebugBoundary),
+                smp_instruction_quantum: Some(TEST_BOUNDARIES),
+                ..ProgressArgs::default()
+            },
+            ProgressArgs {
+                smp_boundary_quantum: Some(TEST_BOUNDARIES),
+                ..ProgressArgs::default()
+            },
+        ] {
+            assert!(args.selection(Some(&vm)).is_err(), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn persisted_strict_selection_preserves_mode_and_units_without_downgrade() {
+        let mut vm = VmConfig::default();
+        let selection = ProgressArgs::default().selection(Some(&vm)).unwrap();
+        assert_eq!(selection.progress_mode, ProgressMode::ExactSingleStep);
+        assert_eq!(selection.progress_budget, vm.smp_progress_budget);
+        assert!(coarse_args(None).selection(Some(&vm)).is_err());
+        let instruction_override = ProgressArgs {
+            smp_instruction_quantum: Some(vm.smp_progress_budget.count() + 1),
+            ..ProgressArgs::default()
+        };
+        assert!(instruction_override.selection(Some(&vm)).is_err());
+        vm.smp_progress_mode = ProgressMode::PmuAccelerated {
+            exact_step_margin: 31,
+        };
+        assert_eq!(
+            ProgressArgs::default()
+                .selection(Some(&vm))
+                .unwrap()
+                .progress_mode,
+            vm.smp_progress_mode
+        );
+        assert!(ProgressArgs {
+            smp_progress_mode: Some(SmpProgressMode::ExactSingleStep),
+            ..ProgressArgs::default()
+        }
+        .selection(Some(&vm))
+        .is_err());
+    }
+
+    #[test]
+    fn capture_cli_selects_nondefault_coarse_smp() {
+        let cli = Cli::try_parse_from([
+            "query-events",
+            "capture-session",
+            "--kernel",
+            "kernel",
+            "--seed",
+            "42",
+            "--vms",
+            "1",
+            "--memory-mib",
+            "128",
+            "--vcpus",
+            "4",
+            "--smp-progress-mode",
+            "kvm-debug-boundary",
+            "--smp-boundary-profile",
+            "kvm-debug-exit-boundary-v1",
+            "--smp-boundary-quantum",
+            "17",
+            "--quantum",
+            "100",
+            "--bootstrap-ticks",
+            "10",
+            "--history-ticks",
+            "20",
+            "--checkpoint-interval",
+            "5",
+            "session-output",
+        ])
+        .unwrap();
+        let Command::Workspace(WorkspaceCommand::CaptureSession {
+            vcpus, progress, ..
+        }) = cli.command
+        else {
+            panic!("capture command expected");
+        };
+        assert_eq!(vcpus, TEST_VCPUS);
+        assert_eq!(
+            progress.selection(None).unwrap().progress_budget.count(),
+            TEST_BOUNDARIES
+        );
+    }
+
+    #[test]
+    fn observe_cli_exposes_explicit_mode_and_optional_matching_quantum() {
+        let cli = Cli::try_parse_from([
+            "query-events",
+            "observe",
+            "--session",
+            "retained",
+            "--checkpoint",
+            "1",
+            "--vm-index",
+            "0",
+            "--profile",
+            "profile.json",
+            "--admitted-profiles",
+            "profiles.json",
+            "--smp-progress-mode",
+            "kvm-debug-boundary",
+            "--smp-boundary-quantum",
+            "17",
+            "observation.json",
+        ])
+        .unwrap();
+        let Command::Workspace(WorkspaceCommand::Observe { progress, .. }) = cli.command else {
+            panic!("observe command expected");
+        };
+        assert_eq!(
+            progress
+                .selection(Some(&retained_coarse_vm()))
+                .unwrap()
+                .progress_budget
+                .count(),
+            TEST_BOUNDARIES
+        );
+    }
+
+    #[test]
+    fn progress_cli_rejects_ambiguous_or_unknown_options() {
+        #[derive(Parser)]
+        struct ProgressCli {
+            #[command(flatten)]
+            progress: ProgressArgs,
+        }
+        for args in [
+            vec!["progress", "--smp-boundary-quantum", "17"],
+            vec!["progress", "--smp-progress-mode", "legacy-wall-clock"],
+            vec![
+                "progress",
+                "--smp-boundary-profile",
+                "kvm-debug-exit-boundary-v1",
+            ],
+            vec![
+                "progress",
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-profile",
+                "unknown",
+            ],
+            vec![
+                "progress",
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-profile",
+                "kvm-debug-exit-boundary-v2",
+            ],
+            vec![
+                "progress",
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-quantum",
+                "17",
+                "--smp-instruction-quantum",
+                "17",
+            ],
+            vec![
+                "progress",
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-quantum",
+                "-1",
+            ],
+        ] {
+            assert!(ProgressCli::try_parse_from(args).is_err());
+        }
+    }
+
+    #[test]
+    fn missing_coarse_profile_rejects_before_guest_or_output_creation() {
+        const SEED: u64 = 42;
+        const BOOTSTRAP_TICKS: u64 = 10;
+        const HISTORY_TICKS: u64 = 20;
+        const CHECKPOINT_INTERVAL: u64 = 5;
+        const EXIT_QUANTUM: u64 = 100;
+        const BOUNDARY_QUANTUM: u64 = 17;
+        let temp = tempfile::tempdir().unwrap();
+        let output = temp.path().join("session");
+        let error = execute(WorkspaceCommand::CaptureSession {
+            kernel: temp.path().join("absent-kernel"),
+            initrd: None,
+            seed: SEED,
+            vms: 1,
+            memory_mib: 128,
+            vcpus: 4,
+            progress: ProgressArgs {
+                smp_progress_mode: Some(SmpProgressMode::KvmDebugBoundary),
+                smp_boundary_quantum: Some(BOUNDARY_QUANTUM),
+                ..ProgressArgs::default()
+            },
+            quantum: EXIT_QUANTUM,
+            bootstrap_ticks: BOOTSTRAP_TICKS,
+            history_ticks: HISTORY_TICKS,
+            checkpoint_interval: CHECKPOINT_INTERVAL,
+            schedule: None,
+            output: output.clone(),
+        })
+        .unwrap_err();
+        assert!(error.contains("--smp-boundary-profile"), "{error}");
+        assert!(!output.exists());
+    }
 }

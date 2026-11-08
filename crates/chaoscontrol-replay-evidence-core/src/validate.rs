@@ -9,8 +9,7 @@ use std::path::{Component, Path};
 
 use crate::dto::{
     ArtifactHash, ReplayClass, ReplayParentSnapshotRef, ReplayScheduleVariant, ReplayVerdict,
-    SnapshotValidationStatus, LEGACY_REPLAY_VERDICT_SCHEMA_VERSION, REPLAY_VERDICT_SCHEMA_VERSION,
-    REPRODUCED_EXIT_STATUS,
+    SnapshotValidationStatus, REPLAY_VERDICT_SCHEMA_VERSION, REPRODUCED_EXIT_STATUS,
 };
 
 /// Replay class accepted as replay proof by evidence gates.
@@ -37,22 +36,18 @@ pub const SNAPSHOT_STATUSES: [&str; 6] = [
 ];
 /// Only snapshot store kind admitted on the public evidence boundary.
 pub const FILE_STORE_KIND: &str = "file-content-addressed";
-/// Snapshot codecs admitted for reading historical evidence.
-pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 2] = [
-    "simulation-snapshot-cbor-zstd-v2",
-    "simulation-snapshot-bincode-zstd-v1",
-];
-/// Snapshot schema versions admitted for reading historical evidence.
-pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u32; 2] = [1, 2];
+/// Snapshot codec admitted by the typed retained execution contract.
+pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 1] = ["simulation-snapshot-cbor-zstd-v4"];
+/// Snapshot schema admitted by the typed retained execution contract.
+pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u32; 1] = [4];
 /// Codec required for newly accepted replay proof.
-pub const CURRENT_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
+pub const CURRENT_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v4";
 /// Schema version required for newly accepted replay proof.
-pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: u32 = 4;
 
 const SHA256_PREFIX: &str = "sha256:";
 const SHA256_HEX_LENGTH: usize = 64;
 const BLAKE3_HEX_LENGTH: usize = 64;
-const MAXIMUM_STRATEGY_BYTES: usize = 128;
 
 /// Deterministic validation failure naming the invalid field or claim.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,7 +204,7 @@ pub fn validate_snapshot_ref_current(
         || reference.schema_version != CURRENT_SNAPSHOT_SCHEMA_VERSION
     {
         return Err(ValidationError::new(
-            "snapshot-ref: accepted snapshot evidence requires the current CBOR v2 codec",
+            "snapshot-ref: accepted snapshot evidence requires the current CBOR v4 codec",
         ));
     }
     Ok(())
@@ -282,10 +277,7 @@ pub fn parse_snapshot_status(value: &str) -> Result<SnapshotValidationStatus, Va
 }
 
 fn validate_verdict_schema(version: u32) -> Result<(), ValidationError> {
-    if !matches!(
-        version,
-        LEGACY_REPLAY_VERDICT_SCHEMA_VERSION | REPLAY_VERDICT_SCHEMA_VERSION
-    ) {
+    if version != REPLAY_VERDICT_SCHEMA_VERSION {
         return Err(ValidationError::new(format!(
             "replay-verdict.schema_version: unsupported version {version}"
         )));
@@ -294,15 +286,30 @@ fn validate_verdict_schema(version: u32) -> Result<(), ValidationError> {
 }
 
 fn validate_schedule_variant(variant: &ReplayScheduleVariant) -> Result<(), ValidationError> {
-    if variant.strategy.is_empty() || variant.strategy.len() > MAXIMUM_STRATEGY_BYTES {
+    if variant
+        .progress_budget_override
+        .is_some_and(|budget| budget.count() == 0)
+    {
         return Err(ValidationError::new(
-            "replay-verdict.schedule_variant.strategy: invalid length",
+            "replay-verdict.schedule_variant.progress_budget_override: must be positive",
         ));
     }
-    if variant.quantum_override == Some(0) {
-        return Err(ValidationError::new(
-            "replay-verdict.schedule_variant.quantum_override: must be positive",
-        ));
+    if let Some(chaoscontrol_sim_core::scheduler::SchedulingStrategy::Randomized {
+        min_budget,
+        max_budget,
+    }) = variant.strategy
+    {
+        if !min_budget.same_unit(max_budget)
+            || min_budget.count() == 0
+            || min_budget.count() >= max_budget.count()
+            || variant
+                .progress_budget_override
+                .is_some_and(|budget| !budget.same_unit(min_budget))
+        {
+            return Err(ValidationError::new(
+                "replay-verdict.schedule_variant.strategy: invalid typed budget range",
+            ));
+        }
     }
     if variant.policy_blake3.len() != BLAKE3_HEX_LENGTH
         || !variant

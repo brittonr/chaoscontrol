@@ -16,13 +16,18 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 
 /// Canonical schedule-state schema version.
-pub const SCHEDULE_STATE_SCHEMA_VERSION: u16 = 1;
+pub const SCHEDULE_STATE_SCHEMA_VERSION: u16 = 2;
+/// Canonical schedule trace schema version.
+pub const SCHEDULE_TRACE_SCHEMA_VERSION: u16 = 2;
 /// Maximum vCPUs admitted by deterministic schedule state and evidence.
 pub const MAX_SCHEDULE_VCPUS: usize = 256;
 /// Default maximum records in one in-memory schedule journal or trace.
 pub const DEFAULT_SCHEDULE_JOURNAL_LIMIT: usize = 65_536;
 
-const SCHEDULE_STATE_DOMAIN: &[u8] = b"chaoscontrol.schedule-state.v1";
+const SCHEDULE_STATE_DOMAIN: &[u8] = b"chaoscontrol.schedule-state.v2";
+const SCHEDULE_EVENT_DOMAIN: &[u8] = b"chaoscontrol.schedule-event-prefix.v2";
+/// ChaCha exposes a 68-bit word position; wrapping it would repeat policy input.
+const MAX_RNG_WORD_POS: u128 = (1u128 << 68) - 1;
 const SCHEDULER_SEED_DOMAIN: u64 = 0x5343_4845_4430;
 
 /// BLAKE3 identity of one canonical [`ScheduleState`].
@@ -39,8 +44,9 @@ impl fmt::Debug for ScheduleStateId {
     }
 }
 
-/// Declared source of deterministic guest-instruction progress.
+/// Declared deterministic progress mode; boundary units are not instructions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum ProgressMode {
     /// Exact guest-instruction boundaries, requiring backend admission for SMP.
     ExactSingleStep,
@@ -49,6 +55,8 @@ pub enum ProgressMode {
         /// Maximum exact single-step remainder after PMU progress.
         exact_step_margin: u64,
     },
+    /// Settled guest-origin boundaries, never retired-instruction counts.
+    KvmDebugBoundary,
     /// Legacy wall-clock mode. It exists only so old artifacts fail closed.
     LegacyWallClock,
 }
@@ -64,6 +72,145 @@ pub struct ProgressCapabilities {
     pub guest_instruction_pmu: bool,
     /// PMU overflow can interrupt `KVM_RUN`.
     pub pmu_overflow: bool,
+    /// Backend verified the declared closed normalized boundary/settlement table.
+    pub kvm_debug_boundary: bool,
+    /// Finite per-entry recovery capability admitted by the backend.
+    pub bounded_kvm_entry: bool,
+}
+
+/// Closed immutable normalization profile; changing its table needs a new variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BoundaryProfileId {
+    /// Expected single-step debug, settled PIO/MMIO, and architectural HLT.
+    KvmDebugExitBoundaryV1,
+}
+
+impl BoundaryProfileId {
+    pub const fn schema_version(self) -> u16 {
+        1
+    }
+    pub const fn name(self) -> &'static str {
+        "kvm-debug-exit-boundary-v1"
+    }
+    pub fn table_identity(self) -> [u8; 32] {
+        *blake3::hash(b"chaoscontrol.kvm-debug-exit-boundary.v1:debug=expected-single-step;pio=settled-once,size1|2|4;mmio=settled-once,len1..8;hlt=architectural;completion-debug=not-extra;host,pmu,breakpoint,unknown=reject").as_bytes()
+    }
+}
+
+/// A count whose unit and boundary profile cannot be silently converted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum ProgressBudget {
+    Instructions(u64),
+    KvmBoundaries {
+        profile_id: BoundaryProfileId,
+        count: u64,
+    },
+}
+
+impl ProgressBudget {
+    pub const fn count(self) -> u64 {
+        match self {
+            Self::Instructions(count) | Self::KvmBoundaries { count, .. } => count,
+        }
+    }
+    pub const fn with_count(self, count: u64) -> Self {
+        match self {
+            Self::Instructions(_) => Self::Instructions(count),
+            Self::KvmBoundaries { profile_id, .. } => Self::KvmBoundaries { profile_id, count },
+        }
+    }
+    pub fn same_unit(self, other: Self) -> bool {
+        match (self, other) {
+            (Self::Instructions(_), Self::Instructions(_)) => true,
+            (
+                Self::KvmBoundaries { profile_id: a, .. },
+                Self::KvmBoundaries { profile_id: b, .. },
+            ) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// Discriminated progress: coarse state has no exact-step or PMU remainder.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum ScheduleProgressState {
+    Instructions {
+        #[serde(deserialize_with = "deserialize_bounded_u64s")]
+        retired: Vec<u64>,
+        turn_boundary: u64,
+        quantum: u64,
+        exact_step: ExactStepState,
+    },
+    KvmBoundaries {
+        #[serde(deserialize_with = "deserialize_bounded_u64s")]
+        observed: Vec<u64>,
+        turn_boundary: u64,
+        quantum: u64,
+        profile_id: BoundaryProfileId,
+    },
+}
+
+/// Normalized direction of a settled guest I/O operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BoundaryIoDirection {
+    Read,
+    Write,
+}
+
+/// Closed settled guest boundary facts. Raw debug causes and pending I/O are not facts.
+/// The backend must verify original exit cause and settlement before constructing these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum KvmBoundaryKind {
+    DebugSingleStep,
+    Pio {
+        port: u16,
+        size: u8,
+        direction: BoundaryIoDirection,
+    },
+    Mmio {
+        address: u64,
+        len: u8,
+        direction: BoundaryIoDirection,
+    },
+    Halt,
+}
+
+impl ScheduleProgressState {
+    fn counts(&self) -> &[u64] {
+        match self {
+            Self::Instructions { retired, .. } => retired,
+            Self::KvmBoundaries { observed, .. } => observed,
+        }
+    }
+    fn counts_mut(&mut self) -> &mut Vec<u64> {
+        match self {
+            Self::Instructions { retired, .. } => retired,
+            Self::KvmBoundaries { observed, .. } => observed,
+        }
+    }
+    pub(super) fn set_turn_boundary(&mut self, value: u64) {
+        match self {
+            Self::Instructions { turn_boundary, .. }
+            | Self::KvmBoundaries { turn_boundary, .. } => *turn_boundary = value,
+        }
+    }
+    fn clear_exact_step(&mut self) {
+        if let Self::Instructions { exact_step, .. } = self {
+            *exact_step = ExactStepState::Inactive;
+        }
+    }
+    fn set_exact_step(&mut self, value: ExactStepState) -> Result<(), ScheduleError> {
+        match self {
+            Self::Instructions { exact_step, .. } => {
+                *exact_step = value;
+                Ok(())
+            }
+            Self::KvmBoundaries { .. } => Err(ScheduleError::ExactStepUnavailable),
+        }
+    }
 }
 
 /// Exact-step state at the current quantum boundary.
@@ -80,6 +227,7 @@ pub enum ExactStepState {
 
 /// Complete deterministic scheduling state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScheduleState {
     /// State schema version.
     pub schema_version: u16,
@@ -90,13 +238,8 @@ pub struct ScheduleState {
     /// Replay-stable KVM runnable observation for each vCPU.
     #[serde(deserialize_with = "deserialize_bounded_bools")]
     pub runnable_vcpus: Vec<bool>,
-    /// Cumulative retired guest instructions for each vCPU.
-    #[serde(deserialize_with = "deserialize_bounded_u64s")]
-    pub instruction_progress: Vec<u64>,
-    /// Cumulative instruction boundary for the active vCPU's turn.
-    pub quantum_boundary: u64,
-    /// Fixed initial quantum and round-robin quantum.
-    pub quantum: u64,
+    /// Mode-discriminated cumulative progress and turn state.
+    pub progress: ScheduleProgressState,
     /// Deterministic scheduling policy.
     pub strategy: SchedulingStrategy,
     /// Seeded policy RNG key.
@@ -105,9 +248,9 @@ pub struct ScheduleState {
     pub rng_word_pos: u128,
     /// Declared deterministic progress mode.
     pub progress_mode: ProgressMode,
-    /// Pending exact-step remainder.
-    pub exact_step: ExactStepState,
-    /// Number of accepted deterministic progress transitions.
+    /// Canonical accepted event-prefix identity, excluding all host diagnostics.
+    pub event_prefix_id: [u8; 32],
+    /// Number of accepted deterministic transitions, including zero-unit events.
     pub sequence: u64,
     /// True after all vCPUs become non-runnable.
     pub halted: bool,
@@ -145,9 +288,10 @@ pub enum HostEventKind {
 
 /// Typed input to the pure schedule transition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum ScheduleEvent {
     /// Replay-stable cumulative guest-instruction progress.
-    GuestProgress {
+    InstructionProgress {
         /// Identity the producer observed before it created this event.
         expected_state_id: ScheduleStateId,
         /// vCPU that retired the instructions.
@@ -159,6 +303,16 @@ pub enum ScheduleEvent {
         runnable_changes: Vec<RunnableChange>,
         /// Exact deterministic source for `observed_progress`.
         source: ProgressSource,
+    },
+    /// Exactly one validated, settled guest boundary from the declared profile.
+    KvmBoundaryObserved {
+        expected_state_id: ScheduleStateId,
+        vcpu: usize,
+        observed_boundaries: u64,
+        profile_id: BoundaryProfileId,
+        boundary: KvmBoundaryKind,
+        #[serde(deserialize_with = "deserialize_bounded_runnable_changes")]
+        runnable_changes: Vec<RunnableChange>,
     },
     /// Replay-stable runnable-set observation made before guest execution.
     RunnableObservation {
@@ -180,7 +334,10 @@ pub enum ScheduleEvent {
 impl ScheduleEvent {
     fn expected_state_id(&self) -> ScheduleStateId {
         match self {
-            Self::GuestProgress {
+            Self::InstructionProgress {
+                expected_state_id, ..
+            }
+            | Self::KvmBoundaryObserved {
                 expected_state_id, ..
             }
             | Self::RunnableObservation {
@@ -196,7 +353,7 @@ impl ScheduleEvent {
 /// Reason for a deterministic vCPU selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SwitchReason {
-    /// The selected vCPU reached its exact instruction boundary.
+    /// The selected vCPU reached its declared typed turn boundary.
     QuantumBoundary,
     /// A replay-stable guest/KVM state reported the selected vCPU blocked.
     ActiveVcpuBlocked,
@@ -204,6 +361,7 @@ pub enum SwitchReason {
 
 /// Auditable action selected by the pure transition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum ScheduleAction {
     /// Continue the selected vCPU with the declared progress source.
     Continue,
@@ -219,13 +377,13 @@ pub enum ScheduleAction {
         /// Newly selected vCPU.
         to_vcpu: usize,
         /// Cumulative progress observed for `from_vcpu`.
-        from_progress: u64,
-        /// Exact boundary assigned to the prior turn.
-        declared_boundary: u64,
+        from_progress: ProgressBudget,
+        /// Declared typed boundary assigned to the prior turn.
+        declared_boundary: ProgressBudget,
         /// Why the turn ended.
         reason: SwitchReason,
         /// Cumulative boundary assigned to `to_vcpu`.
-        next_boundary: u64,
+        next_boundary: ProgressBudget,
     },
     /// Stop because no vCPU is runnable.
     Halt,
@@ -236,6 +394,7 @@ pub enum ScheduleAction {
 /// The containing [`ScheduleTrace`] owns the initial state. Each record owns the
 /// event, action, and pre/post identities needed to recompute the next state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScheduleTransitionRecord {
     /// BLAKE3 identity before the event.
     pub pre_state_id: ScheduleStateId,
@@ -249,7 +408,10 @@ pub struct ScheduleTransitionRecord {
 
 /// Bounded, independently verifiable transition chain.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScheduleTrace {
+    /// Required trace schema; historical bytes are not reinterpreted.
+    pub schema_version: u16,
     /// Full state before the first record.
     pub initial_state: ScheduleState,
     /// BLAKE3 identity of `initial_state`.
@@ -271,6 +433,12 @@ pub struct PlannedScheduleTransition {
 /// Replay-stable or host-owned result observed after one `KVM_RUN`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionProgressObservation {
+    /// One settled normalized guest-origin boundary, not an instruction.
+    KvmBoundary {
+        vcpu: usize,
+        profile_id: BoundaryProfileId,
+        boundary: KvmBoundaryKind,
+    },
     /// One instruction completed at an exact KVM single-step boundary.
     ExactInstruction { vcpu: usize },
     /// One HLT instruction retired and made the active vCPU non-runnable.
@@ -350,6 +518,14 @@ pub enum ScheduleError {
     PrematurePmuOverflow { guard: u64, observed: u64 },
     /// The event source does not match the declared mode and exact-step state.
     ProgressSourceMismatch,
+    /// Boundary units/profile differ from the admitted mode or policy.
+    ProgressUnitMismatch,
+    /// Instruction-only exact-step access attempted in coarse mode.
+    ExactStepUnavailable,
+    /// A normalized settled boundary violates the closed table.
+    InvalidBoundary { reason: &'static str },
+    /// Coarse post-entry interruption provides no verified settled boundary.
+    UnverifiedBoundary,
     /// A host-owned input attempted to enter the deterministic core.
     HostOwnedInput { kind: HostEventKind },
     /// A checked deterministic counter overflowed.
@@ -384,7 +560,8 @@ impl fmt::Display for ScheduleError {
 
 impl std::error::Error for ScheduleError {}
 
-pub(super) fn policy_rng_seed(seed: u64) -> [u8; 32] {
+/// Derive the canonical policy RNG key without allocating scheduler state.
+pub fn policy_rng_seed(seed: u64) -> [u8; 32] {
     let mut rng_seed = [0u8; 32];
     let derived_seed = seed.wrapping_add(SCHEDULER_SEED_DOMAIN);
     let seed_bytes = derived_seed.to_le_bytes();
@@ -425,14 +602,27 @@ impl ScheduleState {
             num_vcpus,
             active_vcpu,
             runnable_vcpus,
-            instruction_progress: vec![0; num_vcpus],
-            quantum_boundary: config.quantum,
-            quantum: config.quantum,
+            progress: match config.progress_budget {
+                ProgressBudget::Instructions(quantum) => ScheduleProgressState::Instructions {
+                    retired: vec![0; num_vcpus],
+                    turn_boundary: quantum,
+                    quantum,
+                    exact_step: ExactStepState::Inactive,
+                },
+                ProgressBudget::KvmBoundaries { profile_id, count } => {
+                    ScheduleProgressState::KvmBoundaries {
+                        observed: vec![0; num_vcpus],
+                        turn_boundary: count,
+                        quantum: count,
+                        profile_id,
+                    }
+                }
+            },
             strategy: config.strategy,
             rng_seed,
             rng_word_pos: 0,
             progress_mode,
-            exact_step: ExactStepState::Inactive,
+            event_prefix_id: [0; 32],
             sequence: 0,
             halted: false,
         };
@@ -443,6 +633,39 @@ impl ScheduleState {
     /// Return the canonical BLAKE3 identity of this state.
     pub fn identity(&self) -> ScheduleStateId {
         schedule_state_identity(self)
+    }
+
+    /// Typed configured initial/round-robin budget, distinct from current turn size.
+    pub fn progress_budget(&self) -> ProgressBudget {
+        match self.progress {
+            ScheduleProgressState::Instructions { quantum, .. } => {
+                ProgressBudget::Instructions(quantum)
+            }
+            ScheduleProgressState::KvmBoundaries {
+                quantum,
+                profile_id,
+                ..
+            } => ProgressBudget::KvmBoundaries {
+                profile_id,
+                count: quantum,
+            },
+        }
+    }
+    pub fn progress_counts(&self) -> &[u64] {
+        self.progress.counts()
+    }
+    pub fn turn_boundary(&self) -> ProgressBudget {
+        let count = match self.progress {
+            ScheduleProgressState::Instructions { turn_boundary, .. }
+            | ScheduleProgressState::KvmBoundaries { turn_boundary, .. } => turn_boundary,
+        };
+        self.progress_budget().with_count(count)
+    }
+    pub fn exact_step(&self) -> Result<ExactStepState, ScheduleError> {
+        match self.progress {
+            ScheduleProgressState::Instructions { exact_step, .. } => Ok(exact_step),
+            ScheduleProgressState::KvmBoundaries { .. } => Err(ScheduleError::ExactStepUnavailable),
+        }
     }
 }
 
@@ -486,19 +709,26 @@ pub fn reconfigure_policy(
         });
     }
 
-    let mut configured = ScheduleState::new_with_runnable(
-        config,
-        state.progress_mode,
-        state.runnable_vcpus.clone(),
-    )?;
-    configured.active_vcpu = state.active_vcpu;
-    configured.instruction_progress = state.instruction_progress.clone();
-    configured.quantum_boundary = configured.instruction_progress[configured.active_vcpu]
-        .checked_add(config.quantum)
+    if !config.progress_budget.same_unit(state.progress_budget()) {
+        return Err(ScheduleError::ProgressUnitMismatch);
+    }
+    let mut configured = state.clone();
+    configured.strategy = config.strategy;
+    configured.rng_seed = policy_rng_seed(config.seed);
+    configured.rng_word_pos = 0;
+    match &mut configured.progress {
+        ScheduleProgressState::Instructions { quantum, .. }
+        | ScheduleProgressState::KvmBoundaries { quantum, .. } => {
+            *quantum = config.progress_budget.count()
+        }
+    }
+    configured.progress.clear_exact_step();
+    let boundary = configured.progress_counts()[configured.active_vcpu]
+        .checked_add(config.progress_budget.count())
         .ok_or(ScheduleError::CounterOverflow {
-            counter: "variant quantum boundary",
+            counter: "variant turn boundary",
         })?;
-    configured.sequence = state.sequence;
+    configured.progress.set_turn_boundary(boundary);
     validate_state(&configured)?;
     Ok(configured)
 }
@@ -533,6 +763,18 @@ pub fn validate_progress_capabilities(
                 });
             }
         }
+        ProgressMode::KvmDebugBoundary => {
+            if !capabilities.kvm_debug_boundary {
+                return Err(ScheduleError::MissingCapability {
+                    capability: "validated settled KVM debug-boundary profile",
+                });
+            }
+            if !capabilities.bounded_kvm_entry {
+                return Err(ScheduleError::MissingCapability {
+                    capability: "bounded KVM entry recovery",
+                });
+            }
+        }
         ProgressMode::LegacyWallClock => {
             return Err(ScheduleError::UnsupportedProgressMode);
         }
@@ -547,24 +789,17 @@ pub fn validate_state(state: &ScheduleState) -> Result<(), ScheduleError> {
             found: state.schema_version,
         });
     }
-    if state.num_vcpus == 0 {
-        return Err(ScheduleError::InvalidConfiguration {
-            reason: "num_vcpus must be positive",
-        });
-    }
-    if state.num_vcpus > MAX_SCHEDULE_VCPUS {
-        return Err(ScheduleError::TooManyVcpus {
-            found: state.num_vcpus,
-            limit: MAX_SCHEDULE_VCPUS,
-        });
-    }
-    if state.quantum == 0 {
-        return Err(ScheduleError::InvalidConfiguration {
-            reason: "quantum must be positive",
-        });
-    }
+    validate_configuration(
+        &SchedulerConfig {
+            num_vcpus: state.num_vcpus,
+            progress_budget: state.progress_budget(),
+            strategy: state.strategy,
+            seed: 0,
+        },
+        state.progress_mode,
+    )?;
     if state.runnable_vcpus.len() != state.num_vcpus
-        || state.instruction_progress.len() != state.num_vcpus
+        || state.progress_counts().len() != state.num_vcpus
     {
         return Err(ScheduleError::StateLengthMismatch);
     }
@@ -574,59 +809,58 @@ pub fn validate_state(state: &ScheduleState) -> Result<(), ScheduleError> {
             num_vcpus: state.num_vcpus,
         });
     }
-    validate_strategy(state.strategy)?;
-    validate_mode_quantum(state.progress_mode, state.quantum, state.strategy)?;
-
+    if state.rng_word_pos > MAX_RNG_WORD_POS || !state.rng_word_pos.is_multiple_of(2) {
+        return Err(ScheduleError::InvalidConfiguration {
+            reason: "policy RNG position is outside its nonwrapping u64-draw domain",
+        });
+    }
+    let exact_step = match state.progress {
+        ScheduleProgressState::Instructions { exact_step, .. } => exact_step,
+        ScheduleProgressState::KvmBoundaries { .. } => ExactStepState::Inactive,
+    };
     if state.halted {
-        if state.runnable_vcpus.iter().any(|runnable| *runnable) {
+        if state.runnable_vcpus.iter().any(|runnable| *runnable)
+            || exact_step != ExactStepState::Inactive
+        {
             return Err(ScheduleError::InvalidConfiguration {
-                reason: "halted state contains a runnable vCPU",
-            });
-        }
-        if state.exact_step != ExactStepState::Inactive {
-            return Err(ScheduleError::InvalidConfiguration {
-                reason: "halted state has pending exact-step work",
+                reason: "halted state has runnable or exact-step work",
             });
         }
         return Ok(());
     }
-
     if !state.runnable_vcpus[state.active_vcpu] {
         return Err(ScheduleError::ActiveVcpuNotRunnable {
             vcpu: state.active_vcpu,
         });
     }
-    let progress = state.instruction_progress[state.active_vcpu];
-    if progress > state.quantum_boundary {
+    let progress = state.progress_counts()[state.active_vcpu];
+    let boundary = state.turn_boundary().count();
+    if progress > boundary {
         return Err(ScheduleError::ProgressOvershoot {
-            boundary: state.quantum_boundary,
+            boundary,
             observed: progress,
         });
     }
-    match state.exact_step {
-        ExactStepState::Inactive => {}
-        ExactStepState::Active { remaining } => {
-            if remaining == 0 {
-                return Err(ScheduleError::InvalidConfiguration {
-                    reason: "exact-step remainder must be positive",
-                });
-            }
-            let expected_boundary =
-                progress
-                    .checked_add(remaining)
-                    .ok_or(ScheduleError::CounterOverflow {
-                        counter: "exact-step boundary",
-                    })?;
-            if expected_boundary != state.quantum_boundary {
-                return Err(ScheduleError::InvalidConfiguration {
-                    reason: "exact-step remainder does not reach the quantum boundary",
-                });
-            }
-            if !matches!(state.progress_mode, ProgressMode::PmuAccelerated { .. }) {
-                return Err(ScheduleError::InvalidConfiguration {
-                    reason: "exact-step state requires PMU-accelerated mode",
-                });
-            }
+    if progress == boundary {
+        return Err(ScheduleError::InvalidConfiguration {
+            reason: "live turn has no remaining budget",
+        });
+    }
+    if let ExactStepState::Active { remaining } = exact_step {
+        if remaining == 0 || !matches!(state.progress_mode, ProgressMode::PmuAccelerated { .. }) {
+            return Err(ScheduleError::InvalidConfiguration {
+                reason: "invalid instruction exact-step remainder",
+            });
+        }
+        let expected = progress
+            .checked_add(remaining)
+            .ok_or(ScheduleError::CounterOverflow {
+                counter: "exact-step boundary",
+            })?;
+        if expected != boundary {
+            return Err(ScheduleError::InvalidConfiguration {
+                reason: "exact-step remainder does not reach turn boundary",
+            });
         }
     }
     Ok(())
@@ -639,138 +873,174 @@ pub fn transition(
 ) -> Result<PlannedScheduleTransition, ScheduleError> {
     validate_state(state)?;
     let pre_state_id = state.identity();
-    let supplied_state_id = event.expected_state_id();
-    if supplied_state_id != pre_state_id {
+    if event.expected_state_id() != pre_state_id {
         return Err(ScheduleError::StaleState {
-            expected: supplied_state_id,
+            expected: event.expected_state_id(),
             actual: pre_state_id,
         });
     }
-
     if let ScheduleEvent::HostEvent { kind, .. } = event {
         return Err(ScheduleError::HostOwnedInput { kind: *kind });
     }
-
     let mut next_state = state.clone();
-    if let ScheduleEvent::RunnableObservation {
-        runnable_changes, ..
-    } = event
-    {
-        if runnable_changes.is_empty() {
-            return Err(ScheduleError::TransitionMismatch {
-                field: "runnable observation has no changes",
-            });
+    let action = match event {
+        ScheduleEvent::RunnableObservation {
+            runnable_changes, ..
+        } => {
+            if runnable_changes.is_empty() {
+                return Err(ScheduleError::TransitionMismatch {
+                    field: "runnable observation has no changes",
+                });
+            }
+            apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
+            // Waking the previously selected vCPU also starts a fresh turn.
+            if state.halted || !next_state.runnable_vcpus[state.active_vcpu] {
+                finish_turn(
+                    &mut next_state,
+                    state.active_vcpu,
+                    state.progress_counts()[state.active_vcpu],
+                    SwitchReason::ActiveVcpuBlocked,
+                )?
+            } else {
+                ScheduleAction::Continue
+            }
         }
-        apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
-        if next_state.halted && next_state.runnable_vcpus.iter().any(|runnable| *runnable) {
-            next_state.halted = false;
-        }
-        next_state.sequence =
-            state
-                .sequence
-                .checked_add(1)
-                .ok_or(ScheduleError::CounterOverflow {
-                    counter: "schedule transition sequence",
-                })?;
-        let action = if next_state.runnable_vcpus[state.active_vcpu] {
-            ScheduleAction::Continue
-        } else {
-            let active_progress = state.instruction_progress[state.active_vcpu];
-            finish_turn(
-                &mut next_state,
-                state.active_vcpu,
-                active_progress,
-                SwitchReason::ActiveVcpuBlocked,
-            )?
-        };
-        validate_state(&next_state)?;
-        let post_state_id = next_state.identity();
-        let record = ScheduleTransitionRecord {
-            pre_state_id,
-            event: event.clone(),
-            action,
-            post_state_id,
-        };
-        return Ok(PlannedScheduleTransition { next_state, record });
-    }
-
-    let (vcpu, observed_progress, runnable_changes, source) = match event {
-        ScheduleEvent::GuestProgress {
+        ScheduleEvent::InstructionProgress {
             vcpu,
             observed_progress,
             runnable_changes,
             source,
             ..
-        } => (*vcpu, *observed_progress, runnable_changes, *source),
-        ScheduleEvent::RunnableObservation { .. } => {
-            unreachable!("runnable observations return above")
+        } => {
+            if matches!(state.progress, ScheduleProgressState::KvmBoundaries { .. }) {
+                return Err(ScheduleError::ProgressUnitMismatch);
+            }
+            validate_observed_progress(state, *vcpu, *observed_progress)?;
+            validate_progress_increment(
+                state,
+                *source,
+                state.progress_counts()[*vcpu],
+                *observed_progress,
+            )?;
+            apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
+            next_state.progress.counts_mut()[*vcpu] = *observed_progress;
+            progress_action(&mut next_state, *vcpu, *observed_progress)?
         }
-        ScheduleEvent::HostEvent { .. } => unreachable!("host events return above"),
-    };
-
-    if vcpu >= state.num_vcpus {
-        return Err(ScheduleError::InvalidVcpu {
+        ScheduleEvent::KvmBoundaryObserved {
             vcpu,
-            num_vcpus: state.num_vcpus,
-        });
-    }
-    if vcpu != state.active_vcpu {
-        return Err(ScheduleError::TransitionMismatch {
-            field: "event vCPU is not active",
-        });
-    }
-    apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
-
-    let previous_progress = state.instruction_progress[vcpu];
-    if observed_progress <= previous_progress {
-        return Err(ScheduleError::StaleProgress {
-            previous: previous_progress,
-            observed: observed_progress,
-        });
-    }
-    if observed_progress > state.quantum_boundary {
-        return Err(ScheduleError::ProgressOvershoot {
-            boundary: state.quantum_boundary,
-            observed: observed_progress,
-        });
-    }
-    validate_progress_increment(state, source, previous_progress, observed_progress)?;
-
-    next_state.instruction_progress[vcpu] = observed_progress;
+            observed_boundaries,
+            profile_id,
+            boundary,
+            runnable_changes,
+            ..
+        } => {
+            let ScheduleProgressState::KvmBoundaries {
+                profile_id: admitted,
+                ..
+            } = state.progress
+            else {
+                return Err(ScheduleError::ProgressUnitMismatch);
+            };
+            if *profile_id != admitted {
+                return Err(ScheduleError::ProgressUnitMismatch);
+            }
+            validate_boundary(*boundary)?;
+            validate_observed_progress(state, *vcpu, *observed_boundaries)?;
+            let expected = state.progress_counts()[*vcpu].checked_add(1).ok_or(
+                ScheduleError::CounterOverflow {
+                    counter: "KVM boundary count",
+                },
+            )?;
+            if *observed_boundaries != expected {
+                return Err(ScheduleError::InvalidBoundary {
+                    reason: "one settled boundary must advance exactly one unit",
+                });
+            }
+            apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
+            if *boundary == KvmBoundaryKind::Halt && next_state.runnable_vcpus[*vcpu] {
+                return Err(ScheduleError::InvalidBoundary {
+                    reason: "HLT boundary must block its vCPU",
+                });
+            }
+            next_state.progress.counts_mut()[*vcpu] = *observed_boundaries;
+            progress_action(&mut next_state, *vcpu, *observed_boundaries)?
+        }
+        ScheduleEvent::HostEvent { .. } => unreachable!("host events rejected above"),
+    };
     next_state.sequence = state
         .sequence
         .checked_add(1)
         .ok_or(ScheduleError::CounterOverflow {
             counter: "schedule transition sequence",
         })?;
-
-    let action = if !next_state.runnable_vcpus[vcpu] {
-        finish_turn(
-            &mut next_state,
-            vcpu,
-            observed_progress,
-            SwitchReason::ActiveVcpuBlocked,
-        )?
-    } else if observed_progress == state.quantum_boundary {
-        finish_turn(
-            &mut next_state,
-            vcpu,
-            observed_progress,
-            SwitchReason::QuantumBoundary,
-        )?
-    } else {
-        continue_turn(&mut next_state, observed_progress)?
-    };
-
+    next_state.event_prefix_id = event_prefix_identity(state.event_prefix_id, event);
     validate_state(&next_state)?;
-    let post_state_id = next_state.identity();
     let record = ScheduleTransitionRecord {
         pre_state_id,
         event: event.clone(),
         action,
-        post_state_id,
+        post_state_id: next_state.identity(),
     };
     Ok(PlannedScheduleTransition { next_state, record })
+}
+
+fn validate_boundary(boundary: KvmBoundaryKind) -> Result<(), ScheduleError> {
+    match boundary {
+        KvmBoundaryKind::Pio { size, .. } if !matches!(size, 1 | 2 | 4) => {
+            Err(ScheduleError::InvalidBoundary {
+                reason: "PIO width is outside profile",
+            })
+        }
+        KvmBoundaryKind::Mmio { address, len, .. }
+            if !(1..=8).contains(&len) || address.checked_add(u64::from(len) - 1).is_none() =>
+        {
+            Err(ScheduleError::InvalidBoundary {
+                reason: "MMIO range is outside profile",
+            })
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_observed_progress(
+    state: &ScheduleState,
+    vcpu: usize,
+    observed: u64,
+) -> Result<(), ScheduleError> {
+    if vcpu >= state.num_vcpus {
+        return Err(ScheduleError::InvalidVcpu {
+            vcpu,
+            num_vcpus: state.num_vcpus,
+        });
+    }
+    if state.halted || vcpu != state.active_vcpu {
+        return Err(ScheduleError::TransitionMismatch {
+            field: "event vCPU is not active and runnable",
+        });
+    }
+    let previous = state.progress_counts()[vcpu];
+    if observed <= previous {
+        return Err(ScheduleError::StaleProgress { previous, observed });
+    }
+    let boundary = state.turn_boundary().count();
+    if observed > boundary {
+        return Err(ScheduleError::ProgressOvershoot { boundary, observed });
+    }
+    Ok(())
+}
+
+fn progress_action(
+    state: &mut ScheduleState,
+    vcpu: usize,
+    observed: u64,
+) -> Result<ScheduleAction, ScheduleError> {
+    if !state.runnable_vcpus[vcpu] {
+        finish_turn(state, vcpu, observed, SwitchReason::ActiveVcpuBlocked)
+    } else if observed == state.turn_boundary().count() {
+        finish_turn(state, vcpu, observed, SwitchReason::QuantumBoundary)
+    } else {
+        continue_turn(state, observed)
+    }
 }
 
 /// Plan deterministic progress from one bounded execution observation.
@@ -781,7 +1051,53 @@ pub fn plan_execution_observation(
     validate_state(state)?;
     match observation {
         ExecutionProgressObservation::HostInterrupt
-        | ExecutionProgressObservation::NoGuestProgress => Ok(None),
+        | ExecutionProgressObservation::NoGuestProgress => {
+            if state.progress_mode == ProgressMode::KvmDebugBoundary {
+                Err(ScheduleError::UnverifiedBoundary)
+            } else {
+                Ok(None)
+            }
+        }
+        ExecutionProgressObservation::KvmBoundary {
+            vcpu,
+            profile_id,
+            boundary,
+        } => {
+            let current =
+                state
+                    .progress_counts()
+                    .get(vcpu)
+                    .copied()
+                    .ok_or(ScheduleError::InvalidVcpu {
+                        vcpu,
+                        num_vcpus: state.num_vcpus,
+                    })?;
+            let observed_boundaries =
+                current
+                    .checked_add(1)
+                    .ok_or(ScheduleError::CounterOverflow {
+                        counter: "KVM boundary count",
+                    })?;
+            transition(
+                state,
+                &ScheduleEvent::KvmBoundaryObserved {
+                    expected_state_id: state.identity(),
+                    vcpu,
+                    observed_boundaries,
+                    profile_id,
+                    boundary,
+                    runnable_changes: if boundary == KvmBoundaryKind::Halt {
+                        vec![RunnableChange {
+                            vcpu,
+                            runnable: false,
+                        }]
+                    } else {
+                        Vec::new()
+                    },
+                },
+            )
+            .map(Some)
+        }
         ExecutionProgressObservation::ExactInstruction { vcpu } => {
             plan_exact_observation(state, vcpu, false).map(Some)
         }
@@ -833,7 +1149,7 @@ fn plan_exact_observation(
     halted: bool,
 ) -> Result<PlannedScheduleTransition, ScheduleError> {
     if !matches!(
-        (state.progress_mode, state.exact_step),
+        (state.progress_mode, state.exact_step()?),
         (ProgressMode::ExactSingleStep, ExactStepState::Inactive)
             | (
                 ProgressMode::PmuAccelerated { .. },
@@ -842,15 +1158,14 @@ fn plan_exact_observation(
     ) {
         return Err(ScheduleError::ProgressSourceMismatch);
     }
-    let current =
-        state
-            .instruction_progress
-            .get(vcpu)
-            .copied()
-            .ok_or(ScheduleError::InvalidVcpu {
-                vcpu,
-                num_vcpus: state.num_vcpus,
-            })?;
+    let current = state
+        .progress_counts()
+        .get(vcpu)
+        .copied()
+        .ok_or(ScheduleError::InvalidVcpu {
+            vcpu,
+            num_vcpus: state.num_vcpus,
+        })?;
     let observed_progress = current
         .checked_add(1)
         .ok_or(ScheduleError::CounterOverflow {
@@ -863,7 +1178,7 @@ fn plan_exact_observation(
         })
         .into_iter()
         .collect();
-    let event = ScheduleEvent::GuestProgress {
+    let event = ScheduleEvent::InstructionProgress {
         expected_state_id: state.identity(),
         vcpu,
         observed_progress,
@@ -884,7 +1199,7 @@ fn plan_pmu_observation(
     let ProgressMode::PmuAccelerated { exact_step_margin } = state.progress_mode else {
         return Err(ScheduleError::ProgressSourceMismatch);
     };
-    if state.exact_step != ExactStepState::Inactive {
+    if state.exact_step()? != ExactStepState::Inactive {
         return Err(ScheduleError::ProgressSourceMismatch);
     }
     let observed_progress =
@@ -894,7 +1209,8 @@ fn plan_pmu_observation(
                 counter: "PMU guest instruction progress",
             })?;
     let guarded_boundary = state
-        .quantum_boundary
+        .turn_boundary()
+        .count()
         .checked_sub(exact_step_margin)
         .ok_or(ScheduleError::CounterOverflow {
             counter: "PMU guarded boundary",
@@ -912,7 +1228,7 @@ fn plan_pmu_observation(
         })
         .into_iter()
         .collect();
-    let event = ScheduleEvent::GuestProgress {
+    let event = ScheduleEvent::InstructionProgress {
         expected_state_id: state.identity(),
         vcpu,
         observed_progress,
@@ -956,6 +1272,17 @@ pub fn validate_transition_trace(
     trace: &ScheduleTrace,
     limit: usize,
 ) -> Result<ScheduleState, ScheduleError> {
+    if trace.schema_version != SCHEDULE_TRACE_SCHEMA_VERSION {
+        return Err(ScheduleError::UnsupportedSchema {
+            found: trace.schema_version,
+        });
+    }
+    if limit > DEFAULT_SCHEDULE_JOURNAL_LIMIT {
+        return Err(ScheduleError::JournalLimitExceeded {
+            requested: limit,
+            maximum: DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+        });
+    }
     if trace.records.len() > limit {
         return Err(ScheduleError::JournalCapacityExceeded { limit });
     }
@@ -1089,6 +1416,7 @@ impl ScheduleJournal {
             return Err(ScheduleError::ReservationOutstanding);
         }
         let trace = ScheduleTrace {
+            schema_version: SCHEDULE_TRACE_SCHEMA_VERSION,
             initial_state: self.initial_state.clone(),
             initial_state_id: self.initial_state.identity(),
             records: self.records.clone(),
@@ -1123,61 +1451,55 @@ fn validate_configuration(
             limit: MAX_SCHEDULE_VCPUS,
         });
     }
-    if config.quantum == 0 {
+    if config.progress_budget.count() == 0 {
         return Err(ScheduleError::InvalidConfiguration {
-            reason: "quantum must be positive",
+            reason: "progress budget must be positive",
         });
     }
-    validate_strategy(config.strategy)?;
-    validate_mode_quantum(progress_mode, config.quantum, config.strategy)
+    validate_strategy(config.strategy, config.progress_budget)?;
+    match (progress_mode, config.progress_budget) {
+        (ProgressMode::LegacyWallClock, _) => Err(ScheduleError::UnsupportedProgressMode),
+        (ProgressMode::KvmDebugBoundary, ProgressBudget::KvmBoundaries { .. })
+        | (ProgressMode::ExactSingleStep, ProgressBudget::Instructions(_)) => Ok(()),
+        (
+            ProgressMode::PmuAccelerated { exact_step_margin },
+            ProgressBudget::Instructions(quantum),
+        ) => {
+            let minimum = match config.strategy {
+                SchedulingStrategy::RoundRobin => quantum,
+                SchedulingStrategy::Randomized { min_budget, .. } => min_budget.count(),
+            };
+            if exact_step_margin == 0 || exact_step_margin >= minimum {
+                Err(ScheduleError::InvalidConfiguration {
+                    reason: "PMU exact-step margin must be positive and smaller than every turn",
+                })
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err(ScheduleError::ProgressUnitMismatch),
+    }
 }
 
-fn validate_strategy(strategy: SchedulingStrategy) -> Result<(), ScheduleError> {
+fn validate_strategy(
+    strategy: SchedulingStrategy,
+    budget: ProgressBudget,
+) -> Result<(), ScheduleError> {
     if let SchedulingStrategy::Randomized {
-        min_quantum,
-        max_quantum,
+        min_budget,
+        max_budget,
     } = strategy
     {
-        if min_quantum == 0 {
-            return Err(ScheduleError::InvalidConfiguration {
-                reason: "randomized minimum quantum must be positive",
-            });
+        if !budget.same_unit(min_budget) || !budget.same_unit(max_budget) {
+            return Err(ScheduleError::ProgressUnitMismatch);
         }
-        if max_quantum <= min_quantum {
+        if min_budget.count() == 0 || max_budget.count() <= min_budget.count() {
             return Err(ScheduleError::InvalidConfiguration {
-                reason: "randomized maximum quantum must exceed minimum",
+                reason: "randomized budget needs positive min and exclusive max greater than min",
             });
         }
     }
     Ok(())
-}
-
-fn validate_mode_quantum(
-    mode: ProgressMode,
-    quantum: u64,
-    strategy: SchedulingStrategy,
-) -> Result<(), ScheduleError> {
-    match mode {
-        ProgressMode::ExactSingleStep => Ok(()),
-        ProgressMode::PmuAccelerated { exact_step_margin } => {
-            if exact_step_margin == 0 {
-                return Err(ScheduleError::InvalidConfiguration {
-                    reason: "PMU exact-step margin must be positive",
-                });
-            }
-            let minimum_quantum = match strategy {
-                SchedulingStrategy::RoundRobin => quantum,
-                SchedulingStrategy::Randomized { min_quantum, .. } => min_quantum,
-            };
-            if exact_step_margin >= minimum_quantum {
-                return Err(ScheduleError::InvalidConfiguration {
-                    reason: "PMU exact-step margin must be smaller than every quantum",
-                });
-            }
-            Ok(())
-        }
-        ProgressMode::LegacyWallClock => Err(ScheduleError::UnsupportedProgressMode),
-    }
 }
 
 fn apply_runnable_changes(
@@ -1218,7 +1540,7 @@ fn validate_progress_increment(
         .ok_or(ScheduleError::CounterOverflow {
             counter: "exact guest instruction progress",
         })?;
-    match (state.progress_mode, state.exact_step, source) {
+    match (state.progress_mode, state.exact_step()?, source) {
         (
             ProgressMode::ExactSingleStep,
             ExactStepState::Inactive,
@@ -1250,31 +1572,41 @@ fn continue_turn(
     next_state: &mut ScheduleState,
     observed_progress: u64,
 ) -> Result<ScheduleAction, ScheduleError> {
-    match (next_state.progress_mode, next_state.exact_step) {
+    if next_state.progress_mode == ProgressMode::KvmDebugBoundary {
+        return Ok(ScheduleAction::Continue);
+    }
+    match (next_state.progress_mode, next_state.exact_step()?) {
         (ProgressMode::PmuAccelerated { exact_step_margin }, ExactStepState::Inactive) => {
-            let remaining = next_state.quantum_boundary - observed_progress;
+            let remaining = next_state
+                .turn_boundary()
+                .count()
+                .checked_sub(observed_progress)
+                .ok_or(ScheduleError::CounterOverflow {
+                    counter: "PMU exact remainder",
+                })?;
             if remaining <= exact_step_margin {
-                next_state.exact_step = ExactStepState::Active { remaining };
+                next_state
+                    .progress
+                    .set_exact_step(ExactStepState::Active { remaining })?;
                 Ok(ScheduleAction::EnterExactStep { remaining })
             } else {
                 Ok(ScheduleAction::Continue)
             }
         }
         (ProgressMode::PmuAccelerated { .. }, ExactStepState::Active { remaining }) => {
-            let next_remaining =
-                remaining
-                    .checked_sub(1)
-                    .ok_or(ScheduleError::CounterOverflow {
-                        counter: "exact-step remainder",
-                    })?;
-            if next_remaining == 0 {
+            let remaining = remaining
+                .checked_sub(1)
+                .ok_or(ScheduleError::CounterOverflow {
+                    counter: "exact-step remainder",
+                })?;
+            if remaining == 0 {
                 return Err(ScheduleError::InvalidConfiguration {
-                    reason: "exact-step reached boundary without turn completion",
+                    reason: "exact-step boundary must finish its turn",
                 });
             }
-            next_state.exact_step = ExactStepState::Active {
-                remaining: next_remaining,
-            };
+            next_state
+                .progress
+                .set_exact_step(ExactStepState::Active { remaining })?;
             Ok(ScheduleAction::Continue)
         }
         (ProgressMode::ExactSingleStep, ExactStepState::Inactive) => Ok(ScheduleAction::Continue),
@@ -1288,29 +1620,29 @@ fn finish_turn(
     from_progress: u64,
     reason: SwitchReason,
 ) -> Result<ScheduleAction, ScheduleError> {
-    let declared_boundary = next_state.quantum_boundary;
-    next_state.exact_step = ExactStepState::Inactive;
+    let declared_boundary = next_state.turn_boundary();
+    next_state.progress.clear_exact_step();
     let Some(to_vcpu) = next_runnable(&next_state.runnable_vcpus, from_vcpu) else {
         next_state.halted = true;
         return Ok(ScheduleAction::Halt);
     };
 
-    let next_quantum = select_next_quantum(next_state);
-    let next_boundary = next_state.instruction_progress[to_vcpu]
+    let next_quantum = select_next_quantum(next_state)?;
+    let next_boundary = next_state.progress_counts()[to_vcpu]
         .checked_add(next_quantum)
         .ok_or(ScheduleError::CounterOverflow {
-            counter: "next quantum boundary",
+            counter: "next turn boundary",
         })?;
     next_state.active_vcpu = to_vcpu;
-    next_state.quantum_boundary = next_boundary;
+    next_state.progress.set_turn_boundary(next_boundary);
     next_state.halted = false;
     Ok(ScheduleAction::Switch {
         from_vcpu,
         to_vcpu,
-        from_progress,
+        from_progress: declared_boundary.with_count(from_progress),
         declared_boundary,
         reason,
-        next_boundary,
+        next_boundary: declared_boundary.with_count(next_boundary),
     })
 }
 
@@ -1324,19 +1656,26 @@ fn next_runnable(runnable: &[bool], active: usize) -> Option<usize> {
     None
 }
 
-fn select_next_quantum(state: &mut ScheduleState) -> u64 {
+fn select_next_quantum(state: &mut ScheduleState) -> Result<u64, ScheduleError> {
     match state.strategy {
-        SchedulingStrategy::RoundRobin => state.quantum,
+        SchedulingStrategy::RoundRobin => Ok(state.progress_budget().count()),
         SchedulingStrategy::Randomized {
-            min_quantum,
-            max_quantum,
+            min_budget,
+            max_budget,
         } => {
-            let range = max_quantum - min_quantum;
+            let next_pos = state
+                .rng_word_pos
+                .checked_add(2)
+                .filter(|position| *position <= MAX_RNG_WORD_POS)
+                .ok_or(ScheduleError::CounterOverflow {
+                    counter: "policy RNG word position",
+                })?;
+            let range = max_budget.count() - min_budget.count();
             let mut rng = ChaCha20Rng::from_seed(state.rng_seed);
             rng.set_word_pos(state.rng_word_pos);
             let random = rng.next_u64();
-            state.rng_word_pos = rng.get_word_pos();
-            min_quantum + random % range
+            state.rng_word_pos = next_pos;
+            Ok(min_budget.count() + random % range)
         }
     }
 }
@@ -1351,17 +1690,20 @@ fn schedule_state_identity(state: &ScheduleState) -> ScheduleStateId {
     for runnable in &state.runnable_vcpus {
         hasher.update(&[u8::from(*runnable)]);
     }
-    hash_usize(&mut hasher, state.instruction_progress.len());
-    for progress in &state.instruction_progress {
+    hash_budget(&mut hasher, state.progress_budget());
+    hash_usize(&mut hasher, state.progress_counts().len());
+    for progress in state.progress_counts() {
         hash_u64(&mut hasher, *progress);
     }
-    hash_u64(&mut hasher, state.quantum_boundary);
-    hash_u64(&mut hasher, state.quantum);
+    hash_budget(&mut hasher, state.turn_boundary());
     hash_strategy(&mut hasher, state.strategy);
     hasher.update(&state.rng_seed);
     hasher.update(&state.rng_word_pos.to_le_bytes());
     hash_progress_mode(&mut hasher, state.progress_mode);
-    hash_exact_step(&mut hasher, state.exact_step);
+    if let Ok(exact_step) = state.exact_step() {
+        hash_exact_step(&mut hasher, exact_step);
+    }
+    hasher.update(&state.event_prefix_id);
     hash_u64(&mut hasher, state.sequence);
     hasher.update(&[u8::from(state.halted)]);
     ScheduleStateId(*hasher.finalize().as_bytes())
@@ -1373,12 +1715,12 @@ fn hash_strategy(hasher: &mut blake3::Hasher, strategy: SchedulingStrategy) {
             hasher.update(&[0]);
         }
         SchedulingStrategy::Randomized {
-            min_quantum,
-            max_quantum,
+            min_budget,
+            max_budget,
         } => {
             hasher.update(&[1]);
-            hash_u64(hasher, min_quantum);
-            hash_u64(hasher, max_quantum);
+            hash_budget(hasher, min_budget);
+            hash_budget(hasher, max_budget);
         }
     }
 }
@@ -1395,6 +1737,9 @@ fn hash_progress_mode(hasher: &mut blake3::Hasher, mode: ProgressMode) {
         ProgressMode::LegacyWallClock => {
             hasher.update(&[2]);
         }
+        ProgressMode::KvmDebugBoundary => {
+            hasher.update(&[3]);
+        }
     }
 }
 
@@ -1408,6 +1753,123 @@ fn hash_exact_step(hasher: &mut blake3::Hasher, exact_step: ExactStepState) {
             hash_u64(hasher, remaining);
         }
     }
+}
+
+fn hash_profile(hasher: &mut blake3::Hasher, profile: BoundaryProfileId) {
+    hash_u16(hasher, profile.schema_version());
+    hash_usize(hasher, profile.name().len());
+    hasher.update(profile.name().as_bytes());
+    hasher.update(&profile.table_identity());
+}
+
+fn hash_budget(hasher: &mut blake3::Hasher, budget: ProgressBudget) {
+    match budget {
+        ProgressBudget::Instructions(count) => {
+            hasher.update(&[0]);
+            hash_u64(hasher, count);
+        }
+        ProgressBudget::KvmBoundaries { profile_id, count } => {
+            hasher.update(&[1]);
+            hash_profile(hasher, profile_id);
+            hash_u64(hasher, count);
+        }
+    }
+}
+
+fn hash_boundary(hasher: &mut blake3::Hasher, boundary: KvmBoundaryKind) {
+    match boundary {
+        KvmBoundaryKind::DebugSingleStep => {
+            hasher.update(&[0]);
+        }
+        KvmBoundaryKind::Pio {
+            port,
+            size,
+            direction,
+        } => {
+            hasher.update(&[1]);
+            hash_u16(hasher, port);
+            hasher.update(&[
+                size,
+                match direction {
+                    BoundaryIoDirection::Read => 0,
+                    BoundaryIoDirection::Write => 1,
+                },
+            ]);
+        }
+        KvmBoundaryKind::Mmio {
+            address,
+            len,
+            direction,
+        } => {
+            hasher.update(&[2]);
+            hash_u64(hasher, address);
+            hasher.update(&[
+                len,
+                match direction {
+                    BoundaryIoDirection::Read => 0,
+                    BoundaryIoDirection::Write => 1,
+                },
+            ]);
+        }
+        KvmBoundaryKind::Halt => {
+            hasher.update(&[3]);
+        }
+    }
+}
+
+fn event_prefix_identity(previous: [u8; 32], event: &ScheduleEvent) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(SCHEDULE_EVENT_DOMAIN);
+    hasher.update(&previous);
+    hasher.update(&event.expected_state_id().0);
+    let changes = match event {
+        ScheduleEvent::InstructionProgress {
+            vcpu,
+            observed_progress,
+            runnable_changes,
+            source,
+            ..
+        } => {
+            hasher.update(&[0]);
+            hash_usize(&mut hasher, *vcpu);
+            hash_u64(&mut hasher, *observed_progress);
+            hasher.update(&[match source {
+                ProgressSource::ExactSingleStep => 0,
+                ProgressSource::GuestInstructionPmu => 1,
+            }]);
+            runnable_changes
+        }
+        ScheduleEvent::KvmBoundaryObserved {
+            vcpu,
+            observed_boundaries,
+            profile_id,
+            boundary,
+            runnable_changes,
+            ..
+        } => {
+            hasher.update(&[1]);
+            hash_usize(&mut hasher, *vcpu);
+            hash_u64(&mut hasher, *observed_boundaries);
+            hash_profile(&mut hasher, *profile_id);
+            hash_boundary(&mut hasher, *boundary);
+            runnable_changes
+        }
+        ScheduleEvent::RunnableObservation {
+            runnable_changes, ..
+        } => {
+            hasher.update(&[2]);
+            runnable_changes
+        }
+        ScheduleEvent::HostEvent { .. } => {
+            unreachable!("host diagnostics never enter the canonical prefix")
+        }
+    };
+    hash_usize(&mut hasher, changes.len());
+    for change in changes {
+        hash_usize(&mut hasher, change.vcpu);
+        hasher.update(&[u8::from(change.runnable)]);
+    }
+    *hasher.finalize().as_bytes()
 }
 
 fn hash_u16(hasher: &mut blake3::Hasher, value: u16) {
@@ -1530,7 +1992,7 @@ mod tests {
     fn config() -> SchedulerConfig {
         SchedulerConfig {
             num_vcpus: VCPU_COUNT,
-            quantum: QUANTUM,
+            progress_budget: ProgressBudget::Instructions(QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: TEST_SEED,
         }
@@ -1541,7 +2003,7 @@ mod tests {
     }
 
     fn progress_event(state: &ScheduleState, progress: u64) -> ScheduleEvent {
-        ScheduleEvent::GuestProgress {
+        ScheduleEvent::InstructionProgress {
             expected_state_id: state.identity(),
             vcpu: state.active_vcpu,
             observed_progress: progress,
@@ -1566,10 +2028,10 @@ mod tests {
             ScheduleAction::Switch {
                 from_vcpu: 0,
                 to_vcpu: 1,
-                from_progress: QUANTUM,
-                declared_boundary: QUANTUM,
+                from_progress: ProgressBudget::Instructions(QUANTUM),
+                declared_boundary: ProgressBudget::Instructions(QUANTUM),
                 reason: SwitchReason::QuantumBoundary,
-                next_boundary: QUANTUM,
+                next_boundary: ProgressBudget::Instructions(QUANTUM),
             }
         );
         assert_eq!(planned.next_state.active_vcpu, 1);
@@ -1583,9 +2045,9 @@ mod tests {
     fn runnable_order_is_part_of_the_pure_selection() {
         let mut test_config = config();
         test_config.num_vcpus = THREE_VCPUS;
-        test_config.quantum = 1;
+        test_config.progress_budget = ProgressBudget::Instructions(1);
         let state = ScheduleState::new(&test_config, ProgressMode::ExactSingleStep).unwrap();
-        let event = ScheduleEvent::GuestProgress {
+        let event = ScheduleEvent::InstructionProgress {
             expected_state_id: state.identity(),
             vcpu: 0,
             observed_progress: 1,
@@ -1603,7 +2065,7 @@ mod tests {
     fn stale_identity_and_forged_post_identity_are_rejected() {
         let state = exact_state();
         let mut stale_event = progress_event(&state, 1);
-        if let ScheduleEvent::GuestProgress {
+        if let ScheduleEvent::InstructionProgress {
             expected_state_id, ..
         } = &mut stale_event
         {
@@ -1627,7 +2089,7 @@ mod tests {
     #[test]
     fn invalid_vcpu_stale_progress_and_overshoot_fail_closed() {
         let state = exact_state();
-        let invalid_vcpu = ScheduleEvent::GuestProgress {
+        let invalid_vcpu = ScheduleEvent::InstructionProgress {
             expected_state_id: state.identity(),
             vcpu: VCPU_COUNT,
             observed_progress: 1,
@@ -1688,7 +2150,7 @@ mod tests {
             },
         )
         .unwrap();
-        let pmu_progress = ScheduleEvent::GuestProgress {
+        let pmu_progress = ScheduleEvent::InstructionProgress {
             expected_state_id: state.identity(),
             vcpu: 0,
             observed_progress: PMU_MARGIN,
@@ -1703,7 +2165,7 @@ mod tests {
             }
         );
 
-        let overshoot = ScheduleEvent::GuestProgress {
+        let overshoot = ScheduleEvent::InstructionProgress {
             expected_state_id: state.identity(),
             vcpu: 0,
             observed_progress: QUANTUM + 1,
@@ -1723,6 +2185,8 @@ mod tests {
             event_entry_exact_single_step: false,
             guest_instruction_pmu: true,
             pmu_overflow: true,
+            kvm_debug_boundary: true,
+            bounded_kvm_entry: true,
         };
         for mode in [
             ProgressMode::ExactSingleStep,
@@ -1757,6 +2221,8 @@ mod tests {
             event_entry_exact_single_step: true,
             guest_instruction_pmu: false,
             pmu_overflow: false,
+            kvm_debug_boundary: false,
+            bounded_kvm_entry: false,
         };
         assert!(matches!(
             validate_progress_capabilities(
@@ -1848,7 +2314,7 @@ mod tests {
         .unwrap();
         journal.commit(reservation, planned.record).unwrap();
         assert!(!journal.reservation_outstanding());
-        assert_eq!(journal.state().instruction_progress[0], 1);
+        assert_eq!(journal.state().progress_counts()[0], 1);
     }
 
     #[test]
@@ -1873,10 +2339,13 @@ mod tests {
         )
         .unwrap();
         let baseline = state.identity();
-        state.exact_step = ExactStepState::Active {
-            remaining: PMU_MARGIN,
-        };
-        state.instruction_progress[0] = PMU_MARGIN;
+        state
+            .progress
+            .set_exact_step(ExactStepState::Active {
+                remaining: PMU_MARGIN,
+            })
+            .unwrap();
+        state.progress.counts_mut()[0] = PMU_MARGIN;
         let exact_step_id = state.identity();
         assert_ne!(baseline, exact_step_id);
 
@@ -1894,6 +2363,7 @@ mod tests {
         )
         .unwrap();
         let trace = ScheduleTrace {
+            schema_version: SCHEDULE_TRACE_SCHEMA_VERSION,
             initial_state: state.clone(),
             initial_state_id: state.identity(),
             records: vec![first.record, second.record],
@@ -1925,7 +2395,7 @@ mod tests {
             );
         }
         assert_eq!(exact.active_vcpu, 0);
-        assert_eq!(exact.instruction_progress, vec![0; VCPU_COUNT]);
+        assert_eq!(exact.progress_counts(), &[0; VCPU_COUNT]);
 
         let pmu = ScheduleState::new(
             &config(),
@@ -1963,7 +2433,7 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(first_halt.next_state.instruction_progress[0], 1);
+        assert_eq!(first_halt.next_state.progress_counts()[0], 1);
         assert!(!first_halt.next_state.runnable_vcpus[0]);
         assert_eq!(first_halt.next_state.active_vcpu, 1);
         assert!(matches!(
@@ -2035,9 +2505,600 @@ mod tests {
         let mut state = exact_state();
         state.num_vcpus = MAX_SCHEDULE_VCPUS + 1;
         state.runnable_vcpus = vec![true; MAX_SCHEDULE_VCPUS + 1];
-        state.instruction_progress = vec![0; MAX_SCHEDULE_VCPUS + 1];
+        *state.progress.counts_mut() = vec![0; MAX_SCHEDULE_VCPUS + 1];
         let json = serde_json::to_vec(&state).unwrap();
         let decoded = serde_json::from_slice::<ScheduleState>(&json);
         assert!(decoded.is_err());
+    }
+
+    const BOUNDARY_PROFILE: BoundaryProfileId = BoundaryProfileId::KvmDebugExitBoundaryV1;
+
+    fn boundary_budget(count: u64) -> ProgressBudget {
+        ProgressBudget::KvmBoundaries {
+            profile_id: BOUNDARY_PROFILE,
+            count,
+        }
+    }
+
+    fn boundary_state() -> ScheduleState {
+        ScheduleState::new(
+            &SchedulerConfig {
+                progress_budget: boundary_budget(QUANTUM),
+                ..config()
+            },
+            ProgressMode::KvmDebugBoundary,
+        )
+        .unwrap()
+    }
+
+    fn boundary_event(
+        state: &ScheduleState,
+        count: u64,
+        boundary: KvmBoundaryKind,
+    ) -> ScheduleEvent {
+        ScheduleEvent::KvmBoundaryObserved {
+            expected_state_id: state.identity(),
+            vcpu: state.active_vcpu,
+            observed_boundaries: count,
+            profile_id: BOUNDARY_PROFILE,
+            boundary,
+            runnable_changes: if boundary == KvmBoundaryKind::Halt {
+                vec![RunnableChange {
+                    vcpu: state.active_vcpu,
+                    runnable: false,
+                }]
+            } else {
+                Vec::new()
+            },
+        }
+    }
+
+    #[test]
+    // r[verify chaoscontrol.kvm_debug_boundary.units]
+    // r[verify chaoscontrol.kvm_debug_boundary.scheduler]
+    fn boundaries_switch_only_at_the_declared_typed_count() {
+        let mut state = boundary_state();
+        assert_eq!(state.exact_step(), Err(ScheduleError::ExactStepUnavailable));
+        for count in 1..=QUANTUM {
+            let planned = transition(
+                &state,
+                &boundary_event(&state, count, KvmBoundaryKind::DebugSingleStep),
+            )
+            .unwrap();
+            if count < QUANTUM {
+                assert_eq!(planned.record.action, ScheduleAction::Continue);
+            } else {
+                assert_eq!(
+                    planned.record.action,
+                    ScheduleAction::Switch {
+                        from_vcpu: 0,
+                        to_vcpu: 1,
+                        from_progress: boundary_budget(QUANTUM),
+                        declared_boundary: boundary_budget(QUANTUM),
+                        next_boundary: boundary_budget(QUANTUM),
+                        reason: SwitchReason::QuantumBoundary,
+                    }
+                );
+            }
+            assert_eq!(
+                validate_transition_record(&state, &planned.record).unwrap(),
+                planned.next_state
+            );
+            state = planned.next_state;
+        }
+        assert_eq!(state.progress_counts(), &[QUANTUM, 0]);
+    }
+
+    #[test]
+    // r[verify chaoscontrol.kvm_debug_boundary.admission]
+    fn coarse_capability_never_supplies_strict_event_entry_admission() {
+        let capabilities = ProgressCapabilities {
+            event_entry_exact_single_step: false,
+            guest_instruction_pmu: false,
+            pmu_overflow: false,
+            kvm_debug_boundary: true,
+            bounded_kvm_entry: true,
+        };
+        assert_eq!(
+            validate_progress_capabilities(ProgressMode::KvmDebugBoundary, capabilities),
+            Ok(())
+        );
+        assert!(matches!(
+            validate_progress_capabilities(ProgressMode::ExactSingleStep, capabilities),
+            Err(ScheduleError::MissingCapability { .. })
+        ));
+        for unavailable in [
+            ProgressCapabilities {
+                kvm_debug_boundary: false,
+                ..capabilities
+            },
+            ProgressCapabilities {
+                bounded_kvm_entry: false,
+                ..capabilities
+            },
+        ] {
+            assert!(matches!(
+                validate_progress_capabilities(ProgressMode::KvmDebugBoundary, unavailable),
+                Err(ScheduleError::MissingCapability { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn modes_strategy_and_observations_cannot_mix_units() {
+        assert_eq!(
+            ScheduleState::new(&config(), ProgressMode::KvmDebugBoundary),
+            Err(ScheduleError::ProgressUnitMismatch)
+        );
+        let config = SchedulerConfig {
+            progress_budget: boundary_budget(QUANTUM),
+            ..config()
+        };
+        assert_eq!(
+            ScheduleState::new(&config, ProgressMode::ExactSingleStep),
+            Err(ScheduleError::ProgressUnitMismatch)
+        );
+        let mixed = SchedulerConfig {
+            strategy: SchedulingStrategy::Randomized {
+                min_budget: boundary_budget(1),
+                max_budget: ProgressBudget::Instructions(QUANTUM),
+            },
+            ..config.clone()
+        };
+        assert_eq!(
+            ScheduleState::new(&mixed, ProgressMode::KvmDebugBoundary),
+            Err(ScheduleError::ProgressUnitMismatch)
+        );
+        let coarse = boundary_state();
+        assert_eq!(
+            transition(&coarse, &progress_event(&coarse, 1)),
+            Err(ScheduleError::ProgressUnitMismatch)
+        );
+        let strict = exact_state();
+        assert_eq!(
+            transition(
+                &strict,
+                &boundary_event(&strict, 1, KvmBoundaryKind::DebugSingleStep)
+            ),
+            Err(ScheduleError::ProgressUnitMismatch)
+        );
+        for (min, max) in [(0, 1), (2, 2), (3, 2)] {
+            let invalid = SchedulerConfig {
+                strategy: SchedulingStrategy::Randomized {
+                    min_budget: boundary_budget(min),
+                    max_budget: boundary_budget(max),
+                },
+                ..config.clone()
+            };
+            assert!(matches!(
+                ScheduleState::new(&invalid, ProgressMode::KvmDebugBoundary),
+                Err(ScheduleError::InvalidConfiguration { .. })
+            ));
+        }
+    }
+
+    #[test]
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    fn normalized_kind_and_scalar_facts_bind_the_canonical_prefix() {
+        let state = boundary_state();
+        let facts = [
+            KvmBoundaryKind::DebugSingleStep,
+            KvmBoundaryKind::Pio {
+                port: 0x80,
+                size: 1,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Pio {
+                port: 0x81,
+                size: 1,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Pio {
+                port: 0x80,
+                size: 2,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Pio {
+                port: 0x80,
+                size: 1,
+                direction: BoundaryIoDirection::Write,
+            },
+            KvmBoundaryKind::Mmio {
+                address: 0x1000,
+                len: 1,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Mmio {
+                address: 0x1001,
+                len: 1,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Mmio {
+                address: 0x1000,
+                len: 2,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Mmio {
+                address: 0x1000,
+                len: 1,
+                direction: BoundaryIoDirection::Write,
+            },
+        ];
+        let identities: Vec<_> = facts
+            .into_iter()
+            .map(|fact| {
+                transition(&state, &boundary_event(&state, 1, fact))
+                    .unwrap()
+                    .next_state
+                    .identity()
+            })
+            .collect();
+        for (index, id) in identities.iter().enumerate() {
+            assert!(!identities[..index].contains(id));
+        }
+        let mut forged = transition(&state, &boundary_event(&state, 1, facts[0]))
+            .unwrap()
+            .record;
+        if let ScheduleEvent::KvmBoundaryObserved { boundary, .. } = &mut forged.event {
+            *boundary = facts[1];
+        }
+        assert!(matches!(
+            validate_transition_record(&state, &forged),
+            Err(ScheduleError::IdentityMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn boundary_table_rejects_invalid_width_ranges_and_unknown_variants() {
+        let state = boundary_state();
+        for boundary in [
+            KvmBoundaryKind::Pio {
+                port: 0x80,
+                size: 0,
+                direction: BoundaryIoDirection::Write,
+            },
+            KvmBoundaryKind::Pio {
+                port: 0x80,
+                size: 8,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Mmio {
+                address: 0,
+                len: 0,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Mmio {
+                address: 0,
+                len: 9,
+                direction: BoundaryIoDirection::Read,
+            },
+            KvmBoundaryKind::Mmio {
+                address: u64::MAX,
+                len: 2,
+                direction: BoundaryIoDirection::Write,
+            },
+        ] {
+            assert!(matches!(
+                transition(&state, &boundary_event(&state, 1, boundary)),
+                Err(ScheduleError::InvalidBoundary { .. })
+            ));
+        }
+        for raw in [
+            "HardwareBreakpoint",
+            "PmuOverflow",
+            "HostInterrupt",
+            "PendingPio",
+            "Unknown",
+        ] {
+            assert!(serde_json::from_value::<KvmBoundaryKind>(serde_json::json!(raw)).is_err());
+        }
+        assert!(
+            serde_json::from_value::<BoundaryProfileId>(serde_json::json!("unreviewed-v2"))
+                .is_err()
+        );
+        let mut halt = boundary_event(&state, 1, KvmBoundaryKind::Halt);
+        if let ScheduleEvent::KvmBoundaryObserved {
+            runnable_changes, ..
+        } = &mut halt
+        {
+            runnable_changes.clear();
+        }
+        assert!(matches!(
+            transition(&state, &halt),
+            Err(ScheduleError::InvalidBoundary { .. })
+        ));
+        let settled = plan_execution_observation(
+            &state,
+            ExecutionProgressObservation::KvmBoundary {
+                vcpu: 0,
+                profile_id: BOUNDARY_PROFILE,
+                boundary: KvmBoundaryKind::Halt,
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(settled.next_state.progress_counts()[0], 1);
+        assert_eq!(settled.next_state.active_vcpu, 1);
+    }
+
+    #[test]
+    // r[verify chaoscontrol.kvm_debug_boundary.recovery]
+    fn host_diagnostics_cannot_authorize_boundaries_or_change_seeded_policy() {
+        let mut control = boundary_state();
+        control.strategy = SchedulingStrategy::Randomized {
+            min_budget: boundary_budget(1),
+            max_budget: boundary_budget(QUANTUM + 1),
+        };
+        let mut perturbed = control.clone();
+        const OBSERVATIONS: usize = 24;
+        for _ in 0..OBSERVATIONS {
+            for kind in [
+                HostEventKind::SignalInterrupt,
+                HostEventKind::WatchdogExpired,
+                HostEventKind::ThreadWake,
+            ] {
+                assert_eq!(
+                    transition(
+                        &perturbed,
+                        &ScheduleEvent::HostEvent {
+                            expected_state_id: perturbed.identity(),
+                            kind
+                        }
+                    ),
+                    Err(ScheduleError::HostOwnedInput { kind })
+                );
+            }
+            for observation in [
+                ExecutionProgressObservation::HostInterrupt,
+                ExecutionProgressObservation::NoGuestProgress,
+            ] {
+                assert_eq!(
+                    plan_execution_observation(&perturbed, observation),
+                    Err(ScheduleError::UnverifiedBoundary)
+                );
+            }
+            let observation = ExecutionProgressObservation::KvmBoundary {
+                vcpu: control.active_vcpu,
+                profile_id: BOUNDARY_PROFILE,
+                boundary: KvmBoundaryKind::DebugSingleStep,
+            };
+            let expected = plan_execution_observation(&control, observation)
+                .unwrap()
+                .unwrap();
+            let actual = plan_execution_observation(&perturbed, observation)
+                .unwrap()
+                .unwrap();
+            assert_eq!(expected, actual);
+            control = expected.next_state;
+            perturbed = actual.next_state;
+        }
+    }
+
+    #[test]
+    fn coarse_journal_rejects_stale_regression_overshoot_capacity_and_wrap() {
+        let state = boundary_state();
+        assert!(matches!(
+            transition(
+                &state,
+                &boundary_event(&state, 0, KvmBoundaryKind::DebugSingleStep)
+            ),
+            Err(ScheduleError::StaleProgress { .. })
+        ));
+        assert!(matches!(
+            transition(
+                &state,
+                &boundary_event(&state, 2, KvmBoundaryKind::DebugSingleStep)
+            ),
+            Err(ScheduleError::InvalidBoundary { .. })
+        ));
+        assert!(matches!(
+            transition(
+                &state,
+                &boundary_event(&state, QUANTUM + 1, KvmBoundaryKind::DebugSingleStep)
+            ),
+            Err(ScheduleError::ProgressOvershoot { .. })
+        ));
+        let mut stale = boundary_event(&state, 1, KvmBoundaryKind::DebugSingleStep);
+        if let ScheduleEvent::KvmBoundaryObserved {
+            expected_state_id, ..
+        } = &mut stale
+        {
+            expected_state_id.0[0] ^= 1;
+        }
+        assert!(matches!(
+            transition(&state, &stale),
+            Err(ScheduleError::StaleState { .. })
+        ));
+        let mut journal = ScheduleJournal::new(state.clone(), JOURNAL_LIMIT).unwrap();
+        let reservation = journal.reserve().unwrap();
+        assert_eq!(
+            journal.reserve(),
+            Err(ScheduleError::ReservationOutstanding)
+        );
+        assert_eq!(journal.drain(), Err(ScheduleError::ReservationOutstanding));
+        journal
+            .commit(
+                reservation,
+                transition(
+                    &state,
+                    &boundary_event(&state, 1, KvmBoundaryKind::DebugSingleStep),
+                )
+                .unwrap()
+                .record,
+            )
+            .unwrap();
+        assert_eq!(
+            journal.reserve(),
+            Err(ScheduleError::JournalCapacityExceeded {
+                limit: JOURNAL_LIMIT
+            })
+        );
+        let trace = journal.drain().unwrap();
+        assert_eq!(
+            validate_transition_trace(&trace, JOURNAL_LIMIT).unwrap(),
+            *journal.state()
+        );
+        let mut sequence = state.clone();
+        sequence.sequence = u64::MAX;
+        assert!(matches!(
+            transition(
+                &sequence,
+                &boundary_event(&sequence, 1, KvmBoundaryKind::DebugSingleStep)
+            ),
+            Err(ScheduleError::CounterOverflow { .. })
+        ));
+        let mut exhausted = state.clone();
+        exhausted.progress.counts_mut()[1] = u64::MAX;
+        assert!(matches!(
+            transition(
+                &exhausted,
+                &boundary_event(&exhausted, 1, KvmBoundaryKind::Halt)
+            ),
+            Err(ScheduleError::CounterOverflow { .. })
+        ));
+        let mut count = state.clone();
+        count.progress.counts_mut()[0] = u64::MAX - 1;
+        count.progress.set_turn_boundary(u64::MAX);
+        count.progress.counts_mut()[1] = u64::MAX;
+        assert!(matches!(
+            transition(
+                &count,
+                &boundary_event(&count, u64::MAX, KvmBoundaryKind::DebugSingleStep)
+            ),
+            Err(ScheduleError::CounterOverflow { .. })
+        ));
+        let mut reservation_wrap = ScheduleJournal::new(state, JOURNAL_LIMIT).unwrap();
+        reservation_wrap.next_reservation_id = u64::MAX;
+        assert!(matches!(
+            reservation_wrap.reserve(),
+            Err(ScheduleError::CounterOverflow { .. })
+        ));
+        assert!(!reservation_wrap.reservation_outstanding());
+    }
+
+    #[test]
+    fn rng_position_and_trace_schema_are_checked_before_mutation() {
+        let mut state = boundary_state();
+        state.strategy = SchedulingStrategy::Randomized {
+            min_budget: boundary_budget(1),
+            max_budget: boundary_budget(QUANTUM + 1),
+        };
+        state.rng_word_pos = MAX_RNG_WORD_POS - 1;
+        assert!(matches!(
+            transition(&state, &boundary_event(&state, 1, KvmBoundaryKind::Halt)),
+            Err(ScheduleError::CounterOverflow { .. })
+        ));
+        state.rng_word_pos = MAX_RNG_WORD_POS;
+        assert!(matches!(
+            validate_state(&state),
+            Err(ScheduleError::InvalidConfiguration { .. })
+        ));
+        let state = boundary_state();
+        let mut trace = ScheduleTrace {
+            schema_version: SCHEDULE_TRACE_SCHEMA_VERSION,
+            initial_state: state.clone(),
+            initial_state_id: state.identity(),
+            records: Vec::new(),
+        };
+        assert_eq!(
+            validate_transition_trace(&trace, JOURNAL_LIMIT).unwrap(),
+            state
+        );
+        trace.schema_version = 1;
+        assert_eq!(
+            validate_transition_trace(&trace, JOURNAL_LIMIT),
+            Err(ScheduleError::UnsupportedSchema { found: 1 })
+        );
+    }
+
+    #[test]
+    fn coarse_evidence_rejects_malformed_runnable_state_and_forged_records() {
+        let state = boundary_state();
+        let mut event = boundary_event(&state, 1, KvmBoundaryKind::DebugSingleStep);
+        if let ScheduleEvent::KvmBoundaryObserved {
+            runnable_changes, ..
+        } = &mut event
+        {
+            *runnable_changes = vec![
+                RunnableChange {
+                    vcpu: 1,
+                    runnable: false,
+                },
+                RunnableChange {
+                    vcpu: 1,
+                    runnable: true,
+                },
+            ];
+        }
+        assert_eq!(
+            transition(&state, &event),
+            Err(ScheduleError::NonCanonicalRunnableChanges)
+        );
+        if let ScheduleEvent::KvmBoundaryObserved {
+            runnable_changes, ..
+        } = &mut event
+        {
+            *runnable_changes = vec![RunnableChange {
+                vcpu: VCPU_COUNT,
+                runnable: false,
+            }];
+        }
+        assert!(matches!(
+            transition(&state, &event),
+            Err(ScheduleError::InvalidVcpu { .. })
+        ));
+        let mut wrong_vcpu = boundary_event(&state, 1, KvmBoundaryKind::DebugSingleStep);
+        if let ScheduleEvent::KvmBoundaryObserved { vcpu, .. } = &mut wrong_vcpu {
+            *vcpu = 1;
+        }
+        assert!(matches!(
+            transition(&state, &wrong_vcpu),
+            Err(ScheduleError::TransitionMismatch { .. })
+        ));
+        let mut record = transition(
+            &state,
+            &boundary_event(&state, 1, KvmBoundaryKind::DebugSingleStep),
+        )
+        .unwrap()
+        .record;
+        record.action = ScheduleAction::EnterExactStep { remaining: 1 };
+        assert_eq!(
+            validate_transition_record(&state, &record),
+            Err(ScheduleError::TransitionMismatch { field: "action" })
+        );
+        let mut journal = ScheduleJournal::new(state.clone(), JOURNAL_LIMIT).unwrap();
+        let reservation = journal.reserve().unwrap();
+        let before = journal.clone();
+        assert!(journal.commit(reservation, record).is_err());
+        assert_eq!(journal, before);
+        assert_eq!(journal.drain(), Err(ScheduleError::ReservationOutstanding));
+        let mut malformed = state;
+        malformed.runnable_vcpus.pop();
+        assert_eq!(
+            validate_state(&malformed),
+            Err(ScheduleError::StateLengthMismatch)
+        );
+    }
+
+    #[test]
+    fn serialized_unit_profiles_are_closed_and_never_supply_missing_defaults() {
+        for malformed in [
+            serde_json::json!({"KvmBoundaries":{"count":1}}),
+            serde_json::json!({"KvmBoundaries":{"profile_id":"KvmDebugExitBoundaryV1","count":1,"instructions":1}}),
+            serde_json::json!({"BoundaryCount":1}),
+        ] {
+            assert!(serde_json::from_value::<ProgressBudget>(malformed).is_err());
+        }
+        assert!(serde_json::from_value::<ProgressMode>(
+            serde_json::json!({"PmuAccelerated":{"exact_step_margin":1,"boundary_count":1}})
+        )
+        .is_err());
+        let state = boundary_state();
+        let mut json = serde_json::to_value(&state).unwrap();
+        json.as_object_mut().unwrap().remove("event_prefix_id");
+        assert!(serde_json::from_value::<ScheduleState>(json).is_err());
+        let mut json = serde_json::to_value(&state).unwrap();
+        json["progress"]["KvmBoundaries"]["exact_step"] = serde_json::json!("Inactive");
+        assert!(serde_json::from_value::<ScheduleState>(json).is_err());
     }
 }

@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use chaoscontrol_vmm::scheduler::core::{
-    HostEventKind, ProgressMode, ProgressSource, RunnableChange, ScheduleEvent,
+    BoundaryProfileId, HostEventKind, KvmBoundaryKind, ProgressBudget, ProgressMode,
+    ProgressSource, RunnableChange, ScheduleEvent, ScheduleState, ScheduleStateId,
 };
 use chaoscontrol_vmm::scheduler::{
     SchedulerConfig, SchedulerSnapshot, SchedulingStrategy, VcpuScheduler,
@@ -154,23 +155,53 @@ fn generate(rng: &mut DeterministicRng) -> Command {
     }
 }
 
-fn scheduler() -> VcpuScheduler {
+fn scheduler(progress_mode: ProgressMode) -> VcpuScheduler {
     let config = SchedulerConfig {
         num_vcpus: VCPU_COUNT,
-        quantum: QUANTUM,
+        progress_budget: match progress_mode {
+            ProgressMode::KvmDebugBoundary => ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: QUANTUM,
+            },
+            _ => ProgressBudget::Instructions(QUANTUM),
+        },
         strategy: SchedulingStrategy::RoundRobin,
         seed: SCHEDULER_SEED,
     };
-    VcpuScheduler::try_new(
-        &config,
-        ProgressMode::ExactSingleStep,
-        vec![true; VCPU_COUNT],
-    )
-    .expect("the bounded scheduler profile must be admitted")
+    VcpuScheduler::try_new(&config, progress_mode, vec![true; VCPU_COUNT])
+        .expect("the bounded scheduler profile must be admitted")
 }
 
 fn check(commands: &[Command]) -> Result<usize, Failure> {
-    let mut actual = scheduler();
+    let strict_rejected = check_mode(commands, ProgressMode::ExactSingleStep)?;
+    let boundary_rejected = check_mode(commands, ProgressMode::KvmDebugBoundary)?;
+    Ok(strict_rejected + boundary_rejected)
+}
+
+fn progress_event(state: &ScheduleState, expected_state_id: ScheduleStateId) -> ScheduleEvent {
+    let vcpu = state.active_vcpu;
+    let count = state.progress_counts()[vcpu] + 1;
+    match state.progress_budget() {
+        ProgressBudget::Instructions(_) => ScheduleEvent::InstructionProgress {
+            expected_state_id,
+            vcpu,
+            observed_progress: count,
+            runnable_changes: Vec::new(),
+            source: ProgressSource::ExactSingleStep,
+        },
+        ProgressBudget::KvmBoundaries { profile_id, .. } => ScheduleEvent::KvmBoundaryObserved {
+            expected_state_id,
+            vcpu,
+            observed_boundaries: count,
+            profile_id,
+            boundary: KvmBoundaryKind::DebugSingleStep,
+            runnable_changes: Vec::new(),
+        },
+    }
+}
+
+fn check_mode(commands: &[Command], progress_mode: ProgressMode) -> Result<usize, Failure> {
+    let mut actual = scheduler(progress_mode);
     let mut model = Model::new();
     let mut saved_actual: Option<SchedulerSnapshot> = None;
     let overlay_base = Arc::new(vec![0_u8; PAGE_SIZE * OVERLAY_PAGES]);
@@ -192,13 +223,7 @@ fn check(commands: &[Command]) -> Result<usize, Failure> {
         match command {
             Command::ValidProgress => {
                 let state = actual.state();
-                let event = ScheduleEvent::GuestProgress {
-                    expected_state_id: state.identity(),
-                    vcpu: state.active_vcpu,
-                    observed_progress: state.instruction_progress[state.active_vcpu] + 1,
-                    runnable_changes: Vec::new(),
-                    source: ProgressSource::ExactSingleStep,
-                };
+                let event = progress_event(state, state.identity());
                 let before = actual.state_id();
                 let planned = actual.plan(&event).map_err(|error| {
                     Failure::new("valid-progress-admission", step, format!("{error:?}"))
@@ -222,13 +247,7 @@ fn check(commands: &[Command]) -> Result<usize, Failure> {
                 let before = actual.state().clone();
                 let mut stale = actual.state_id();
                 stale.0[0] ^= 1;
-                let event = ScheduleEvent::GuestProgress {
-                    expected_state_id: stale,
-                    vcpu: actual.active(),
-                    observed_progress: actual.state().instruction_progress[actual.active()] + 1,
-                    runnable_changes: Vec::new(),
-                    source: ProgressSource::ExactSingleStep,
-                };
+                let event = progress_event(actual.state(), stale);
                 if actual.plan(&event).is_ok() || actual.state() != &before {
                     return Err(Failure::new(
                         "stale-command-no-mutation",
@@ -364,8 +383,8 @@ fn commit_event(
 fn compare(step: usize, actual: &VcpuScheduler, model: &Model) -> Result<(), Failure> {
     let state = actual.state();
     if state.active_vcpu != model.active
-        || state.instruction_progress != model.progress
-        || state.quantum_boundary != model.boundary
+        || state.progress_counts() != model.progress
+        || state.turn_boundary().count() != model.boundary
         || state.sequence != model.sequence
         || state.runnable_vcpus != model.runnable
         || state.halted != model.halted
@@ -401,5 +420,46 @@ mod tests {
         ))
         .expect("the scheduler regression fixture must be valid JSON");
         assert!(check(&commands).is_ok());
+    }
+
+    #[test]
+    fn generated_commands_preserve_both_declared_unit_models() {
+        let commands = [
+            Command::ValidProgress,
+            Command::Save,
+            Command::HostEvent,
+            Command::ValidProgress,
+            Command::ValidProgress,
+            Command::ValidProgress,
+            Command::TamperedRestore,
+            Command::Restore,
+            Command::StaleProgress,
+            Command::BlockActive,
+            Command::BlockActive,
+            Command::Wake,
+            Command::ValidProgress,
+            Command::Save,
+            Command::Restore,
+        ];
+        for mode in [
+            ProgressMode::ExactSingleStep,
+            ProgressMode::KvmDebugBoundary,
+        ] {
+            assert!(check_mode(&commands, mode).is_ok());
+            let actual = scheduler(mode);
+            let wrong_units = match mode {
+                ProgressMode::KvmDebugBoundary => progress_event(
+                    scheduler(ProgressMode::ExactSingleStep).state(),
+                    actual.state_id(),
+                ),
+                _ => progress_event(
+                    scheduler(ProgressMode::KvmDebugBoundary).state(),
+                    actual.state_id(),
+                ),
+            };
+            let before = actual.clone();
+            assert!(actual.plan(&wrong_units).is_err());
+            assert_eq!(actual, before);
+        }
     }
 }

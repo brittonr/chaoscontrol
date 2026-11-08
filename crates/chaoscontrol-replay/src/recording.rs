@@ -24,6 +24,8 @@ const INITIAL_SIMULATION_RUN_SEQUENCE: u64 = 1;
 const MAX_RECORDED_SCHEDULE_ROUNDS: usize = DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 const MAX_RECORDED_SCHEDULE_RECORDS: usize = DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 
+pub const RECORDING_SCHEMA_VERSION: u32 = 2;
+
 mod recorded_fault_ledger {
     use super::{
         FaultAttemptState, FaultOutcomeLedger, FaultStageCounters, FaultStageEvent,
@@ -32,15 +34,11 @@ mod recorded_fault_ledger {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::collections::BTreeMap;
 
-    fn no_control_events() -> Vec<chaoscontrol_fault::evidence::FaultControlEvent> {
-        Vec::new()
-    }
-
     #[derive(Serialize, Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct WireFaultLedger {
         attempts: Vec<FaultAttemptState>,
         events: Vec<FaultStageEvent>,
-        #[serde(default = "no_control_events")]
         control_events: Vec<chaoscontrol_fault::evidence::FaultControlEvent>,
         counters: FaultStageCounters,
     }
@@ -174,6 +172,39 @@ mod recorded_schedule_rounds {
         deserializer.deserialize_seq(TraceVisitor)
     }
 
+    pub fn deserialize_injection_traces<'de, D>(
+        deserializer: D,
+    ) -> Result<Vec<chaoscontrol_vmm::controller::VmInjectionTrace>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct InjectionVisitor;
+        impl<'de> Visitor<'de> for InjectionVisitor {
+            type Value = Vec<chaoscontrol_vmm::controller::VmInjectionTrace>;
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "at most {MAX_SCHEDULE_VCPUS} injection traces")
+            }
+            fn visit_seq<A: SeqAccess<'de>>(
+                self,
+                mut sequence: A,
+            ) -> Result<Self::Value, A::Error> {
+                let hint = sequence.size_hint().unwrap_or(0);
+                if hint > MAX_SCHEDULE_VCPUS {
+                    return Err(serde::de::Error::custom("injection trace VM bound"));
+                }
+                let mut traces = Vec::with_capacity(hint);
+                while let Some(trace) = sequence.next_element()? {
+                    if traces.len() >= MAX_SCHEDULE_VCPUS {
+                        return Err(serde::de::Error::custom("injection trace VM bound"));
+                    }
+                    traces.push(trace);
+                }
+                Ok(traces)
+            }
+        }
+        deserializer.deserialize_seq(InjectionVisitor)
+    }
+
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<RecordedScheduleRound>, D::Error>
     where
         D: Deserializer<'de>,
@@ -220,27 +251,13 @@ mod recorded_schedule_rounds {
     }
 }
 
-fn empty_fault_stage_events() -> Vec<FaultStageEvent> {
-    Vec::new()
-}
-
-fn empty_fault_round_deltas() -> Vec<FaultRoundTraceDelta> {
-    Vec::new()
-}
-
-fn empty_fault_outcome_ledger() -> FaultOutcomeLedger {
-    FaultOutcomeLedger::new()
-}
-
-fn empty_recorded_schedule_rounds() -> Vec<RecordedScheduleRound> {
-    Vec::new()
-}
-
 /// A recorded execution session.
 ///
 /// r[impl chaoscontrol.fault_outcomes.compatibility]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Recording {
+    pub schema_version: u32,
     /// Unique session ID.
     pub session_id: String,
     /// When the recording was made (Unix timestamp).
@@ -262,30 +279,31 @@ pub struct Recording {
     /// Events that occurred. `FaultFired` is a projection of `Selected` only.
     pub events: Vec<RecordedEvent>,
     /// Canonical bounded fault-stage trace.
-    #[serde(default = "empty_fault_stage_events")]
     pub fault_stage_events: Vec<FaultStageEvent>,
     /// Every completed round, including explicitly empty canonical slices.
-    #[serde(default = "empty_fault_round_deltas")]
     pub fault_round_deltas: Vec<FaultRoundTraceDelta>,
     /// Authoritative ledger that supplies the canonical trace.
-    #[serde(default = "empty_fault_outcome_ledger", with = "recorded_fault_ledger")]
+    #[serde(with = "recorded_fault_ledger")]
     pub fault_outcome_ledger: FaultOutcomeLedger,
     /// Bounded exact SMP traces grouped by simulation round.
-    #[serde(
-        default = "empty_recorded_schedule_rounds",
-        with = "recorded_schedule_rounds"
-    )]
+    #[serde(with = "recorded_schedule_rounds")]
     pub schedule_rounds: Vec<RecordedScheduleRound>,
     /// Final oracle report.
     #[serde(skip)] // OracleReport doesn't implement Serialize
     pub oracle_report: Option<OracleReport>,
     /// Total ticks executed.
     pub total_ticks: u64,
+    /// Initial canonical round coordinate, retained even when JSON omits snapshots.
+    pub trace_start_tick: u64,
 }
 
 /// Configuration for a recording session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RecordingConfig {
+    /// Declared SMP mode and units, never inferred from trace contents.
+    pub smp_progress_mode: chaoscontrol_vmm::scheduler::core::ProgressMode,
+    pub smp_progress_budget: chaoscontrol_vmm::scheduler::core::ProgressBudget,
     /// Number of VMs in the simulation.
     pub num_vms: usize,
     /// VM memory size in bytes.
@@ -301,17 +319,9 @@ pub struct RecordingConfig {
     /// Take a checkpoint every N ticks.
     pub checkpoint_interval: u64,
     /// Optional disk image path for virtio-blk devices.
-    #[serde(default = "default_disk_image_path")]
     pub disk_image_path: Option<String>,
-    /// Whether the recorded run injected seed-derived random faults. Always
-    /// written; recordings made before the field existed come from runs that
-    /// injected none and load as off. Replay uses the recorded value.
-    #[serde(default)]
+    /// Whether the recorded run injected seed-derived random faults.
     pub random_faults: bool,
-}
-
-fn default_disk_image_path() -> Option<String> {
-    None
 }
 
 /// An exact fault-ledger slice produced by one completed simulation round.
@@ -324,7 +334,11 @@ pub struct FaultRoundTraceDelta {
 
 /// Exact SMP traces emitted during one completed round (possibly empty).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RecordedScheduleRound {
+    /// Requested versus KVM-accepted facts; never inferred delivery locations.
+    #[serde(deserialize_with = "recorded_schedule_rounds::deserialize_injection_traces")]
+    pub injection_traces: Vec<chaoscontrol_vmm::controller::VmInjectionTrace>,
     /// Simulation tick that produced the traces.
     pub tick: u64,
     /// Canonically ordered VM traces for this tick.
@@ -334,6 +348,9 @@ pub struct RecordedScheduleRound {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordingValidationError {
+    UnsupportedSchema,
+    ProgressContractMismatch,
+    InvalidEventVm,
     TraceBoundExceeded,
     InvalidLedger(FaultTransitionError),
     TraceLedgerMismatch,
@@ -434,6 +451,7 @@ impl Recorder {
             next_checkpoint_id: 0,
             checkpoint_provenance: None,
             recording: Recording {
+                schema_version: RECORDING_SCHEMA_VERSION,
                 session_id,
                 timestamp,
                 config: config.clone(),
@@ -449,6 +467,7 @@ impl Recorder {
                 schedule_rounds: Vec::new(),
                 oracle_report: None,
                 total_ticks: 0,
+                trace_start_tick: 0,
             },
             config,
         }
@@ -490,7 +509,10 @@ impl Recorder {
         let tick = controller.tick();
         if tick >= self.next_checkpoint_tick {
             let snapshot = controller.snapshot_all()?;
-            let configuration = crate::session::SessionConfiguration::capture(controller.config())
+            let configuration = crate::session::snapshot_execution_descriptors(&snapshot)
+                .and_then(|descriptors| {
+                    crate::session::SessionConfiguration::capture(controller.config(), descriptors)
+                })
                 .and_then(|configuration| crate::session::configuration_identity(&configuration))
                 .map_err(|error| VmError::Snapshot {
                     message: format!("checkpoint configuration provenance: {error}"),
@@ -623,6 +645,10 @@ impl Recorder {
         self.next_checkpoint_tick = tick
             .checked_add(self.config.checkpoint_interval)
             .ok_or(RecordingValidationError::InvalidCheckpointCadence)?;
+        if self.recording.schedule_rounds.is_empty() && self.recording.fault_round_deltas.is_empty()
+        {
+            self.recording.trace_start_tick = tick;
+        }
         self.recording.total_ticks = tick;
         Ok(())
     }
@@ -719,6 +745,18 @@ fn plan_schedule_round(
     {
         return Err(RecordingValidationError::InvalidScheduleRound);
     }
+    let injection_records = recording
+        .schedule_rounds
+        .iter()
+        .flat_map(|round| &round.injection_traces)
+        .chain(round.injection_traces.iter())
+        .try_fold(0usize, |count, trace| {
+            count.checked_add(trace.records.len())
+        })
+        .ok_or(RecordingValidationError::ScheduleTraceBoundExceeded)?;
+    if injection_records > MAX_RECORDED_SCHEDULE_RECORDS {
+        return Err(RecordingValidationError::ScheduleTraceBoundExceeded);
+    }
     let existing_records = recording
         .schedule_rounds
         .iter()
@@ -772,19 +810,127 @@ fn plan_schedule_round(
         prior_vm = Some(vm_trace.vm_index);
     }
 
+    validate_injection_round(recording, &round.schedule_traces, &round.injection_traces)?;
     Ok(RecordedScheduleRound {
+        injection_traces: round.injection_traces.clone(),
         tick: round.tick,
         traces: round.schedule_traces.clone(),
     })
 }
 
+fn validate_injection_round(
+    recording: &Recording,
+    schedule: &[VmScheduleTrace],
+    traces: &[chaoscontrol_vmm::controller::VmInjectionTrace],
+) -> Result<(), RecordingValidationError> {
+    if recording.config.smp_progress_mode
+        == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+        && traces.len() != recording.config.num_vms
+    {
+        return Err(RecordingValidationError::InvalidScheduleRound);
+    }
+    if traces.len() > recording.config.num_vms || traces.len() > MAX_SCHEDULE_VCPUS {
+        return Err(RecordingValidationError::InvalidScheduleRound);
+    }
+    let mut prior_vm = None;
+    for trace in traces {
+        if trace.vm_id >= recording.config.num_vms
+            || prior_vm.is_some_and(|prior| prior >= trace.vm_id)
+            || trace.records.len() > MAX_RECORDED_SCHEDULE_RECORDS
+        {
+            return Err(RecordingValidationError::InvalidScheduleRound);
+        }
+        let schedule = schedule
+            .iter()
+            .find(|schedule| schedule.vm_index == trace.vm_id);
+        let num_vcpus = schedule.map_or(1, |trace| trace.trace.initial_state.num_vcpus);
+        let prior = chaoscontrol_vmm::snapshot::InjectionLedger::new();
+        let mut next = prior.clone();
+        for fact in &trace.records {
+            next.record(fact)
+                .map_err(|_| RecordingValidationError::InvalidScheduleTrace)?;
+        }
+        chaoscontrol_vmm::snapshot::validate_injection_records(
+            &prior,
+            &trace.records,
+            &next,
+            num_vcpus,
+        )
+        .map_err(|_| RecordingValidationError::InvalidScheduleTrace)?;
+        if recording.config.smp_progress_mode
+            == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+        {
+            let schedule = schedule.ok_or(RecordingValidationError::InvalidScheduleTrace)?;
+            for record in &trace.records {
+                if record.requested_state_id != schedule.trace.initial_state_id.0
+                    && !schedule.trace.records.iter().any(|step| {
+                        record.requested_state_id == step.pre_state_id.0
+                            || record.requested_state_id == step.post_state_id.0
+                    })
+                {
+                    return Err(RecordingValidationError::InvalidScheduleTrace);
+                }
+            }
+        }
+        prior_vm = Some(trace.vm_id);
+    }
+    Ok(())
+}
+
 pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidationError> {
+    if recording.schema_version != RECORDING_SCHEMA_VERSION {
+        return Err(RecordingValidationError::UnsupportedSchema);
+    }
+    use chaoscontrol_vmm::scheduler::core::{ProgressBudget, ProgressMode};
+    match (
+        recording.config.smp_progress_mode,
+        recording.config.smp_progress_budget,
+    ) {
+        (ProgressMode::KvmDebugBoundary, ProgressBudget::KvmBoundaries { count, .. })
+        | (
+            ProgressMode::ExactSingleStep
+            | ProgressMode::PmuAccelerated { .. }
+            | ProgressMode::LegacyWallClock,
+            ProgressBudget::Instructions(count),
+        ) if count > 0 => {}
+        _ => return Err(RecordingValidationError::ProgressContractMismatch),
+    }
+    if recording.config.smp_progress_mode == ProgressMode::KvmDebugBoundary {
+        let start = recording.trace_start_tick;
+        let rounds = recording
+            .total_ticks
+            .checked_sub(start)
+            .ok_or(RecordingValidationError::InvalidScheduleRound)?;
+        if u64::try_from(recording.schedule_rounds.len()).ok() != Some(rounds)
+            || recording
+                .schedule_rounds
+                .iter()
+                .enumerate()
+                .any(|(index, round)| {
+                    start
+                        .checked_add(index as u64)
+                        .and_then(|tick| tick.checked_add(1))
+                        != Some(round.tick)
+                        || round.traces.len() != recording.config.num_vms
+                })
+        {
+            return Err(RecordingValidationError::InvalidScheduleRound);
+        }
+    }
     if recording
         .events
         .iter()
         .any(|event| event_tick(event) > recording.total_ticks)
     {
         return Err(RecordingValidationError::EvidenceBeyondHorizon);
+    }
+    if recording.events.iter().any(|event| match event {
+        RecordedEvent::AssertionHit { vm_index, .. }
+        | RecordedEvent::VmStatusChange { vm_index, .. }
+        | RecordedEvent::SerialOutput { vm_index, .. } => *vm_index >= recording.config.num_vms,
+        _ => false,
+    }) {
+        return Err(RecordingValidationError::InvalidEventVm);
     }
     let mut prior_checkpoint = None;
     for checkpoint in recording.checkpoints.all() {
@@ -943,6 +1089,7 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
         return Err(RecordingValidationError::ScheduleTraceBoundExceeded);
     }
     let mut schedule_record_count = 0usize;
+    let mut injection_record_count = 0usize;
     let mut prior_schedule_tick = None;
     let mut prior_schedule_ids: BTreeMap<usize, ScheduleStateId> = BTreeMap::new();
     for schedule_round in &recording.schedule_rounds {
@@ -953,12 +1100,34 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
         {
             return Err(RecordingValidationError::InvalidScheduleRound);
         }
+        validate_injection_round(
+            recording,
+            &schedule_round.traces,
+            &schedule_round.injection_traces,
+        )?;
+        for trace in &schedule_round.injection_traces {
+            injection_record_count = injection_record_count
+                .checked_add(trace.records.len())
+                .ok_or(RecordingValidationError::ScheduleTraceBoundExceeded)?;
+            if injection_record_count > MAX_RECORDED_SCHEDULE_RECORDS {
+                return Err(RecordingValidationError::ScheduleTraceBoundExceeded);
+            }
+        }
         let mut prior_vm = None;
         for vm_trace in &schedule_round.traces {
             if vm_trace.vm_index >= recording.config.num_vms
                 || prior_vm.is_some_and(|vm| vm >= vm_trace.vm_index)
             {
                 return Err(RecordingValidationError::InvalidScheduleRound);
+            }
+            if vm_trace.trace.initial_state.progress_mode != recording.config.smp_progress_mode
+                || !vm_trace
+                    .trace
+                    .initial_state
+                    .progress_budget()
+                    .same_unit(recording.config.smp_progress_budget)
+            {
+                return Err(RecordingValidationError::ProgressContractMismatch);
             }
             schedule_record_count = schedule_record_count
                 .checked_add(vm_trace.trace.records.len())
@@ -1063,7 +1232,9 @@ mod tests {
     fn one_step_vm_trace(vm_index: usize) -> VmScheduleTrace {
         let config = SchedulerConfig {
             num_vcpus: TEST_VCPU_COUNT,
-            quantum: TEST_INSTRUCTION_QUANTUM,
+            progress_budget: chaoscontrol_vmm::scheduler::core::ProgressBudget::Instructions(
+                TEST_INSTRUCTION_QUANTUM,
+            ),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 42,
         };
@@ -1081,6 +1252,7 @@ mod tests {
         VmScheduleTrace {
             vm_index,
             trace: ScheduleTrace {
+                schema_version: chaoscontrol_vmm::scheduler::core::SCHEDULE_TRACE_SCHEMA_VERSION,
                 initial_state_id: initial_state.identity(),
                 initial_state,
                 records: vec![planned.record],
@@ -1115,6 +1287,7 @@ mod tests {
         )
         .unwrap();
         let round = RoundResult {
+            injection_traces: Vec::new(),
             tick,
             vms_running: 1,
             vms_halted: 0,
@@ -1145,6 +1318,7 @@ mod tests {
             attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK
         });
         let round = RoundResult {
+            injection_traces: Vec::new(),
             tick,
             vms_running: 1,
             vms_halted: 0,
@@ -1168,6 +1342,8 @@ mod tests {
 
     fn test_config() -> RecordingConfig {
         RecordingConfig {
+            smp_progress_mode: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_mode,
+            smp_progress_budget: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
             num_vms: 2,
             vm_memory_size: 256 * 1024 * 1024,
             tsc_khz: 3_000_000,
@@ -1220,7 +1396,11 @@ mod tests {
         identities: &[[u8; 32]],
         config: &chaoscontrol_vmm::controller::SimulationConfig,
     ) -> CheckpointProvenance {
-        let configuration = crate::session::SessionConfiguration::capture(config).unwrap();
+        let configuration = crate::session::SessionConfiguration::capture(
+            config,
+            crate::session::fixture_execution_descriptors(config),
+        )
+        .unwrap();
         CheckpointProvenance {
             guest_artifact_ids: identities.to_vec(),
             configuration_identity: crate::session::configuration_identity(&configuration).unwrap(),
@@ -1496,6 +1676,7 @@ mod tests {
         recorder.start_at_tick(50).unwrap();
         let ledger = FaultOutcomeLedger::default();
         let mut round = RoundResult {
+            injection_traces: Vec::new(),
             tick: 51,
             vms_running: 1,
             vms_halted: 0,
@@ -1581,6 +1762,7 @@ mod tests {
         recorder.record_round(&first_round, &first_ledger).unwrap();
 
         let second_round = RoundResult {
+            injection_traces: Vec::new(),
             tick: 2,
             vms_running: 1,
             vms_halted: 0,

@@ -479,6 +479,9 @@ mod tests {
         let mut checkpoint = ExplorationCheckpoint {
             config: crate::checkpoint::CheckpointConfig {
                 num_vms: 3,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 extra_cmdline: None,
                 kernel_path: "/path/to/kernel".to_string(),

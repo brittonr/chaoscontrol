@@ -13,10 +13,10 @@ use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
 
 const SCHEDULE_CONTEXT: &str = "chaoscontrol.frontier.schedule-digest.v1";
-const VARIANT_CONTEXT: &str = "chaoscontrol.frontier.variant-digest.v1";
+const VARIANT_CONTEXT: &str = "chaoscontrol.frontier.variant-digest.v2";
 const COVERAGE_CONTEXT: &str = "chaoscontrol.frontier.coverage-digest.v1";
 const ORACLE_CONTEXT: &str = "chaoscontrol.frontier.oracle-digest.v1";
-const CONFIG_CONTEXT: &str = "chaoscontrol.frontier.config-digest.v1";
+const CONFIG_CONTEXT: &str = "chaoscontrol.frontier.config-digest.v2";
 const BASE_SET_CONTEXT: &str = "chaoscontrol.frontier.memory-base-set.v1";
 const MANIFEST_CONTEXT: &str = "chaoscontrol.frontier.round-manifest.v1";
 const MODE_FAULT_SCHEDULE: u8 = 1;
@@ -67,6 +67,8 @@ pub(crate) fn config_digest(
     let count = |value: usize| u64::try_from(value).map_err(|_| FrontierError::BoundOverflow);
     let mut hasher = blake3::Hasher::new_derive_key(CONFIG_CONTEXT);
     hasher.update(&generation_profile.digest);
+    hasher.update(&serde_digest(CONFIG_CONTEXT, &config.vm_config)?);
+    hasher.update(&serde_digest(CONFIG_CONTEXT, &config.scheduling_strategy)?);
     hasher.update(config.frontier_policy.as_str().as_bytes());
     hasher.update(&[
         mode_code(config.exploration_mode),
@@ -139,4 +141,40 @@ pub(crate) fn round_manifest_digest(
         }
     }
     Ok(*hasher.finalize().as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget};
+
+    #[test]
+    fn typed_variant_identities_separate_equal_instruction_and_boundary_counts() {
+        const COUNT: u64 = 64;
+        let instruction = ScheduleVariant {
+            scheduler_seed: 73,
+            strategy_override: None,
+            progress_budget_override: Some(ProgressBudget::Instructions(COUNT)),
+        };
+        let boundary = ScheduleVariant {
+            progress_budget_override: Some(ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: COUNT,
+            }),
+            ..instruction.clone()
+        };
+        assert_ne!(
+            variant_digest(Some(&instruction)).unwrap(),
+            variant_digest(Some(&boundary)).unwrap()
+        );
+        assert_eq!(
+            variant_digest(Some(&boundary)).unwrap(),
+            variant_digest(Some(&boundary.clone())).unwrap()
+        );
+        let previous_domain = blake3::derive_key(
+            "chaoscontrol.frontier.variant-digest.v1",
+            &serde_json::to_vec(&Some(&boundary)).unwrap(),
+        );
+        assert_ne!(variant_digest(Some(&boundary)).unwrap(), previous_domain);
+    }
 }

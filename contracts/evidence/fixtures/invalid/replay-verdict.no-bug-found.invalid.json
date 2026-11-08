@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "run_id": "replay-verdict.no-bug-found.invalid",
   "replay_class": "no_bug_found",
   "reproduced": false,

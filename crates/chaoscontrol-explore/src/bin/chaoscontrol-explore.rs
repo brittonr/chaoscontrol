@@ -69,8 +69,148 @@ use chaoscontrol_explore::report::{
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::controller::DEFAULT_RANDOM_FAULTS;
+use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
+
+#[derive(Debug, Clone, Default, clap::Args)]
+struct SmpProgressArgs {
+    /// Strict by default; coarse execution requires this explicit mode.
+    #[arg(long, value_parser = ["exact-single-step", "kvm-debug-boundary"])]
+    smp_progress_mode: Option<String>,
+    /// Boundary units in the reviewed kvm-debug-exit-boundary-v1 profile.
+    #[arg(long, requires = "smp_progress_mode", conflicts_with = "smp_instruction_quantum", value_parser = clap::value_parser!(u64).range(1..))]
+    smp_boundary_quantum: Option<u64>,
+    /// Required fresh coarse profile: hidden TSC, per-exit virtual time, and
+    /// noapictimer/clocksource=jiffies/notsc. Conflicting clock arguments reject.
+    #[arg(long, requires = "smp_progress_mode", conflicts_with = "smp_instruction_quantum", value_parser = ["kvm-debug-exit-boundary-v1"])]
+    smp_boundary_profile: Option<String>,
+    /// Retired instructions; this flag never selects or downgrades to coarse mode.
+    #[arg(long, conflicts_with = "smp_boundary_quantum", value_parser = clap::value_parser!(u64).range(1..))]
+    smp_instruction_quantum: Option<u64>,
+}
+
+// r[impl chaoscontrol.kvm_debug_boundary.admission]
+impl SmpProgressArgs {
+    fn resolve(&self) -> Result<(ProgressMode, ProgressBudget), String> {
+        match self.smp_progress_mode.as_deref() {
+            Some("kvm-debug-boundary") => {
+                if self.smp_instruction_quantum.is_some() {
+                    return Err("instruction quantum is strict-only".into());
+                }
+                if self.smp_boundary_profile.as_deref() != Some("kvm-debug-exit-boundary-v1") {
+                    return Err("coarse execution requires --smp-boundary-profile kvm-debug-exit-boundary-v1".into());
+                }
+                let count = self
+                    .smp_boundary_quantum
+                    .ok_or("coarse execution requires --smp-boundary-quantum")?;
+                if count == 0 {
+                    return Err("boundary quantum must be positive".into());
+                }
+                Ok((
+                    ProgressMode::KvmDebugBoundary,
+                    ProgressBudget::KvmBoundaries {
+                        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                        count,
+                    },
+                ))
+            }
+            Some("exact-single-step") | None => {
+                if self.smp_boundary_quantum.is_some() || self.smp_boundary_profile.is_some() {
+                    return Err("boundary quantum requires explicit kvm-debug-boundary mode".into());
+                }
+                let budget = self
+                    .smp_instruction_quantum
+                    .map(ProgressBudget::Instructions)
+                    .unwrap_or(ProgressBudget::Instructions(
+                        chaoscontrol_vmm::scheduler::DEFAULT_SMP_INSTRUCTION_QUANTUM,
+                    ));
+                if budget.count() == 0 {
+                    return Err("instruction quantum must be positive".into());
+                }
+                Ok((ProgressMode::ExactSingleStep, budget))
+            }
+            Some(_) => Err("unsupported SMP progress mode".into()),
+        }
+    }
+
+    fn authorize_retained(&self, vm: &VmConfig) -> Result<(), String> {
+        let mode = match self.smp_progress_mode.as_deref() {
+            Some("kvm-debug-boundary") => ProgressMode::KvmDebugBoundary,
+            Some("exact-single-step") | None => ProgressMode::ExactSingleStep,
+            Some(_) => return Err("unsupported SMP progress mode".into()),
+        };
+        let matches = match (mode, vm.smp_progress_budget) {
+            (
+                ProgressMode::KvmDebugBoundary,
+                ProgressBudget::KvmBoundaries { count, profile_id },
+            ) => {
+                self.smp_instruction_quantum.is_none()
+                    && self
+                        .smp_boundary_profile
+                        .as_deref()
+                        .is_none_or(|name| name == profile_id.name())
+                    && self
+                        .smp_boundary_quantum
+                        .is_none_or(|requested| requested == count)
+            }
+            (ProgressMode::ExactSingleStep, ProgressBudget::Instructions(count)) => {
+                self.smp_boundary_quantum.is_none()
+                    && self.smp_boundary_profile.is_none()
+                    && self
+                        .smp_instruction_quantum
+                        .is_none_or(|requested| requested == count)
+            }
+            _ => false,
+        };
+        if mode != vm.smp_progress_mode || !matches {
+            return Err("explicit progress mode/units/budget must match retained execution configuration; overrides are forbidden".into());
+        }
+        Ok(())
+    }
+
+    fn resolve_or_exit(&self, vcpus: usize) -> (ProgressMode, ProgressBudget) {
+        self.resolve()
+            .and_then(|selection| {
+                if selection.0 == ProgressMode::KvmDebugBoundary && vcpus < 2 {
+                    return Err("coarse SMP execution requires at least two vCPUs".into());
+                }
+                Ok(selection)
+            })
+            .unwrap_or_else(|error| {
+                eprintln!("Error: {error}");
+                std::process::exit(EXIT_ERROR);
+            })
+    }
+}
+
+fn scheduling_strategy(name: &str, budget: ProgressBudget) -> SchedulingStrategy {
+    match name {
+        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
+        "randomized" | "rand" => SchedulingStrategy::Randomized {
+            min_budget: budget.with_count((budget.count() / 2).max(1)),
+            max_budget: budget.with_count(budget.count().saturating_mul(2).max(2)),
+        },
+        _ => {
+            eprintln!("Error: unknown scheduling strategy '{name}'");
+            std::process::exit(EXIT_ERROR);
+        }
+    }
+}
+
+const KVM_BOUNDARY_ENTRY_WATCHDOG_MICROSECONDS: u64 = 250_000;
+const KVM_BOUNDARY_SCHEDULE_JOURNAL_LIMIT: usize = 65_536;
+
+fn apply_declared_smp_profile(vm: &mut VmConfig) {
+    if let ProgressBudget::KvmBoundaries { profile_id, .. } = vm.smp_progress_budget {
+        vm.smp_entry_watchdog_microseconds = KVM_BOUNDARY_ENTRY_WATCHDOG_MICROSECONDS;
+        vm.smp_schedule_journal_limit = KVM_BOUNDARY_SCHEDULE_JOURNAL_LIMIT;
+        if let Err(error) = vm.apply_kvm_debug_boundary_profile(profile_id) {
+            eprintln!("Error: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    }
+}
 use clap::{ArgAction, Parser, Subcommand};
 use std::fs;
 use std::path::Path;
@@ -81,14 +221,14 @@ const EXIT_BUGS_FOUND: i32 =
     chaoscontrol_explore::outcomes::ExplorerOutcome::BugsFound.exit_status();
 const ENABLED_SCHEDULE_MUTATION_RATIO: f64 = 1.0;
 
-fn mutation_config(schedule_diversity: bool, quantum: u64) -> MutationConfig {
+fn mutation_config(schedule_diversity: bool, progress_budget: ProgressBudget) -> MutationConfig {
     MutationConfig {
         schedule_mutation_ratio: if schedule_diversity {
             ENABLED_SCHEDULE_MUTATION_RATIO
         } else {
             0.0
         },
-        base_quantum: quantum,
+        base_progress_budget: progress_budget,
         ..MutationConfig::default()
     }
 }
@@ -144,6 +284,9 @@ enum Commands {
         /// Number of vCPUs per VM (1 = single-CPU, 2+ = SMP).
         #[arg(long, default_value = "1")]
         vcpus: usize,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
 
         /// Scheduling strategy for SMP: "round-robin" or "randomized".
         #[arg(long, default_value = "round-robin")]
@@ -335,6 +478,9 @@ enum Commands {
         #[arg(long, default_value = "1")]
         vcpus: usize,
 
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
+
         /// Scheduling strategy: "round-robin" or "randomized".
         #[arg(long, default_value = "round-robin")]
         scheduling: String,
@@ -397,6 +543,9 @@ enum Commands {
         /// Number of vCPUs per VM.
         #[arg(long, default_value = "1")]
         vcpus: usize,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
 
         /// Scheduling strategy: "round-robin" or "randomized".
         #[arg(long, default_value = "round-robin")]
@@ -480,6 +629,9 @@ enum Commands {
         /// Number of vCPUs per VM.
         #[arg(long, default_value = "1")]
         vcpus: usize,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
 
         /// Scheduling strategy: "round-robin" or "randomized".
         #[arg(long, default_value = "round-robin")]
@@ -616,6 +768,9 @@ enum Commands {
         /// progress files). Legacy-diagnostic progress requires this flag.
         #[arg(long, value_parser = FrontierPolicy::from_str)]
         frontier_policy: Option<FrontierPolicy>,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
     },
 
     /// Resume from saved checkpoint.
@@ -656,6 +811,9 @@ enum Commands {
         /// checkpoints). Legacy-diagnostic checkpoints require this flag.
         #[arg(long, value_parser = FrontierPolicy::from_str)]
         frontier_policy: Option<FrontierPolicy>,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
     },
 
     /// Export checkpoint-held bugs as standalone bug_N.json artifacts.
@@ -850,6 +1008,9 @@ enum Commands {
         /// Write JSON to this path instead of stdout.
         #[arg(short, long)]
         output: Option<String>,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
     },
 
     /// List unique replay-parent snapshot references without reading artifacts.
@@ -954,6 +1115,9 @@ enum Commands {
         /// Fresh-run vCPUs per VM.
         #[arg(long, default_value_t = 1)]
         vcpus: usize,
+
+        #[command(flatten)]
+        smp_progress: SmpProgressArgs,
 
         /// Fresh-run output directory.
         #[arg(long)]
@@ -1127,6 +1291,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             max_frontier,
             output,
@@ -1167,6 +1332,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             max_frontier,
             output,
@@ -1207,6 +1373,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             disk_image,
             extra_cmdline,
@@ -1226,6 +1393,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             disk_image,
             extra_cmdline,
@@ -1247,6 +1415,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             max_frontier,
             output,
@@ -1284,6 +1453,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             max_frontier,
             output,
@@ -1316,7 +1486,8 @@ fn main() {
             corpus,
             rounds,
             frontier_policy,
-        } => cmd_campaign_resume(corpus, rounds, frontier_policy),
+            smp_progress,
+        } => cmd_campaign_resume(corpus, rounds, frontier_policy, smp_progress),
         Commands::ExportBugs {
             checkpoint,
             output,
@@ -1411,6 +1582,7 @@ fn main() {
             receipt,
             diagnostic_receipt,
             output,
+            smp_progress,
         } => cmd_restore_probe(
             checkpoint,
             output,
@@ -1430,6 +1602,7 @@ fn main() {
                 candidate_revision,
                 receipt,
                 diagnostic_receipt,
+                smp_progress,
             },
         ),
         Commands::ListSnapshots { checkpoint, output } => cmd_list_snapshots(checkpoint, output),
@@ -1478,6 +1651,7 @@ fn main() {
             rounds,
             ticks,
             vcpus,
+            smp_progress,
             run_output,
             receipt,
         } => cmd_validate_candidate(
@@ -1491,6 +1665,7 @@ fn main() {
             rounds,
             ticks,
             vcpus,
+            smp_progress,
             run_output,
             receipt,
         ),
@@ -1589,6 +1764,7 @@ fn main() {
             dashboard_port,
             dashboard_host,
             frontier_policy,
+            smp_progress,
         } => cmd_resume(
             corpus,
             ResumeOverrides {
@@ -1596,6 +1772,7 @@ fn main() {
                 initrd,
                 rounds,
                 frontier_policy,
+                smp_progress,
             },
             dashboard,
             dashboard_port,
@@ -1610,6 +1787,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             disk_image,
             extra_cmdline,
@@ -1625,6 +1803,7 @@ fn main() {
             ticks,
             quantum,
             vcpus,
+            smp_progress,
             scheduling,
             disk_image,
             extra_cmdline,
@@ -1651,6 +1830,7 @@ struct RestoreProbeOptions {
     candidate_revision: Option<String>,
     receipt: Option<String>,
     diagnostic_receipt: Vec<String>,
+    smp_progress: SmpProgressArgs,
 }
 
 fn cmd_restore_probe(
@@ -1674,6 +1854,7 @@ fn cmd_restore_probe(
         candidate_revision,
         receipt,
         diagnostic_receipt,
+        smp_progress,
     } = options;
     let selector = match chaoscontrol_explore::resolve_bug_selector(
         &checkpoint_path,
@@ -1733,6 +1914,7 @@ fn cmd_restore_probe(
             vcpu,
             parsed_register,
             expected_register,
+            smp_progress: &smp_progress,
         }) {
             Ok((record, failed)) => {
                 expectation_failed |= failed;
@@ -1895,6 +2077,7 @@ struct ProbeRunRequest<'a> {
     vcpu: usize,
     parsed_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
     expected_register: Option<(chaoscontrol_explore::ProbeRegister, u64)>,
+    smp_progress: &'a SmpProgressArgs,
 }
 
 fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, bool), String> {
@@ -1910,6 +2093,7 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
         vcpu,
         parsed_register,
         expected_register,
+        smp_progress,
     } = request;
     let path = Path::new(checkpoint_path);
     if !path.exists() {
@@ -1938,18 +2122,15 @@ fn run_probe_record(request: ProbeRunRequest<'_>) -> Result<(serde_json::Value, 
     }
     if let Err((actual, expected)) = chaoscontrol_explore::validate_snapshot_vcpu_count(
         &loaded.snapshot,
-        checkpoint.config.num_vcpus,
+        checkpoint.config.vm_config.num_vcpus,
     ) {
         eprintln!(
             "Error: snapshot vCPU count {actual} does not match the declared topology {expected}"
         );
         std::process::exit(1);
     }
-    let vm_config = chaoscontrol_vmm::vm::VmConfig {
-        num_vcpus: checkpoint.config.num_vcpus,
-        extra_cmdline: checkpoint.config.extra_cmdline.clone(),
-        ..chaoscontrol_vmm::vm::VmConfig::default()
-    };
+    let vm_config = checkpoint.config.vm_config.clone();
+    smp_progress.authorize_retained(&vm_config)?;
     let config = chaoscontrol_vmm::controller::SimulationConfig {
         num_vms: checkpoint.config.num_vms,
         vm_config,
@@ -2438,9 +2619,11 @@ fn cmd_validate_candidate(
     rounds: u64,
     ticks: u64,
     vcpus: usize,
+    smp_progress: SmpProgressArgs,
     run_output: String,
     receipt_path: String,
 ) {
+    smp_progress.resolve_or_exit(vcpus);
     let inspection = match chaoscontrol_explore::inspect_bug(&checkpoint_path, selector) {
         Ok(inspection) => inspection,
         Err(error) => {
@@ -2510,6 +2693,20 @@ fn cmd_validate_candidate(
         .arg(ticks.to_string())
         .arg("--output")
         .arg(&run_output);
+    if let Some(mode) = smp_progress.smp_progress_mode.as_deref() {
+        command.arg("--smp-progress-mode").arg(mode);
+    }
+    if let Some(count) = smp_progress.smp_boundary_quantum {
+        command.arg("--smp-boundary-quantum").arg(count.to_string());
+    }
+    if let Some(count) = smp_progress.smp_instruction_quantum {
+        command
+            .arg("--smp-instruction-quantum")
+            .arg(count.to_string());
+    }
+    if let Some(profile) = smp_progress.smp_boundary_profile.as_deref() {
+        command.arg("--smp-boundary-profile").arg(profile);
+    }
     if let Some(initrd) = initrd.as_deref() {
         command.arg("--initrd").arg(initrd);
     }
@@ -2841,6 +3038,7 @@ fn cmd_run(
     ticks: u64,
     quantum: u64,
     vcpus: usize,
+    smp_progress: SmpProgressArgs,
     scheduling: String,
     max_frontier: usize,
     output: Option<String>,
@@ -2872,6 +3070,21 @@ fn cmd_run(
     frontier_policy: FrontierPolicy,
     random_faults: bool,
 ) {
+    let (smp_progress_mode, smp_progress_budget) = smp_progress.resolve_or_exit(vcpus);
+    eprintln!("SMP progress: {smp_progress_mode:?}, budget {smp_progress_budget:?}");
+    let scheduling_strategy = scheduling_strategy(&scheduling, smp_progress_budget);
+    let mut vm_config = VmConfig {
+        memory_size: memory_mb * 1024 * 1024,
+        num_vcpus: vcpus,
+        smp_progress_mode,
+        smp_progress_budget,
+        scheduling_strategy,
+        extra_cmdline: extra_cmdline.clone(),
+        dlog_register_interval,
+        dlog_memory_hash,
+        ..Default::default()
+    };
+    apply_declared_smp_profile(&mut vm_config);
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
         let family = chaoscontrol_fault::scenario::ScenarioFamily::from_str_loose(&name)
@@ -2928,22 +3141,6 @@ fn cmd_run(
         std::process::exit(EXIT_ERROR);
     }
 
-    // Parse scheduling strategy
-    let scheduling_strategy = match scheduling.as_str() {
-        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
-        "randomized" | "rand" => SchedulingStrategy::Randomized {
-            min_quantum: 50,
-            max_quantum: 200,
-        },
-        other => {
-            eprintln!(
-                "Error: unknown scheduling strategy '{}'. Use 'round-robin' or 'randomized'.",
-                other
-            );
-            std::process::exit(EXIT_ERROR);
-        }
-    };
-
     // Parse exploration mode
     let exploration_mode = match mode.as_str() {
         "fault-schedule" | "faults" | "fs" => ExplorationMode::FaultSchedule,
@@ -2956,17 +3153,6 @@ fn cmd_run(
             );
             std::process::exit(EXIT_ERROR);
         }
-    };
-
-    // Build VM config with SMP settings
-    let vm_config = VmConfig {
-        memory_size: memory_mb * 1024 * 1024,
-        num_vcpus: vcpus,
-        scheduling_strategy,
-        extra_cmdline: extra_cmdline.clone(),
-        dlog_register_interval,
-        dlog_memory_hash,
-        ..Default::default()
     };
 
     // Build configuration
@@ -2983,7 +3169,7 @@ fn cmd_run(
         max_frontier,
         quantum,
         scheduling_strategy,
-        mutation: mutation_config(smp, quantum),
+        mutation: mutation_config(smp, smp_progress_budget),
         exploration_mode,
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: output.clone(),
@@ -3196,6 +3382,7 @@ fn cmd_campaign(
     ticks: u64,
     quantum: u64,
     vcpus: usize,
+    smp_progress: SmpProgressArgs,
     scheduling: String,
     max_frontier: usize,
     output: String,
@@ -3224,6 +3411,18 @@ fn cmd_campaign(
     frontier_policy: FrontierPolicy,
     random_faults: bool,
 ) {
+    let (smp_progress_mode, smp_progress_budget) = smp_progress.resolve_or_exit(vcpus);
+    eprintln!("SMP progress: {smp_progress_mode:?}, budget {smp_progress_budget:?}");
+    let scheduling_strategy = scheduling_strategy(&scheduling, smp_progress_budget);
+    let mut vm_config = VmConfig {
+        num_vcpus: vcpus,
+        smp_progress_mode,
+        smp_progress_budget,
+        scheduling_strategy,
+        extra_cmdline,
+        ..VmConfig::default()
+    };
+    apply_declared_smp_profile(&mut vm_config);
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
         let family = chaoscontrol_fault::scenario::ScenarioFamily::from_str_loose(&name)
@@ -3287,24 +3486,12 @@ fn cmd_campaign(
     };
 
     // Memory check
-    let vm_memory_mb = VmConfig::default().memory_size / (1024 * 1024);
+    let vm_memory_mb = vm_config.memory_size / (1024 * 1024);
     let estimated_mb = seed_list_len * vms * vm_memory_mb;
     if let Err(e) = chaoscontrol_explore::memory::check_memory(estimated_mb, strict_memory) {
         eprintln!("Error: {}", e);
         std::process::exit(EXIT_ERROR);
     }
-
-    let scheduling_strategy = match scheduling.as_str() {
-        "round-robin" => SchedulingStrategy::RoundRobin,
-        "randomized" | "rand" => SchedulingStrategy::Randomized {
-            min_quantum: 50,
-            max_quantum: 200,
-        },
-        other => {
-            eprintln!("Error: unknown scheduling strategy: {}", other);
-            std::process::exit(EXIT_ERROR);
-        }
-    };
 
     let exploration_mode = match mode.as_str() {
         "fault-schedule" => ExplorationMode::FaultSchedule,
@@ -3314,13 +3501,6 @@ fn cmd_campaign(
             eprintln!("Error: unknown exploration mode: {}", other);
             std::process::exit(EXIT_ERROR);
         }
-    };
-
-    let vm_config = VmConfig {
-        num_vcpus: vcpus,
-        scheduling_strategy,
-        extra_cmdline,
-        ..VmConfig::default()
     };
 
     let smp = vm_config.num_vcpus > 1;
@@ -3336,7 +3516,7 @@ fn cmd_campaign(
         max_frontier,
         quantum,
         scheduling_strategy,
-        mutation: mutation_config(smp, quantum),
+        mutation: mutation_config(smp, smp_progress_budget),
         exploration_mode,
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: None, // set per-seed by CampaignRunner
@@ -3649,6 +3829,7 @@ fn cmd_campaign_resume(
     corpus: String,
     rounds_override: Option<u64>,
     frontier_policy_override: Option<FrontierPolicy>,
+    smp_progress: SmpProgressArgs,
 ) {
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: campaign directory not found: {}", corpus);
@@ -3822,10 +4003,12 @@ fn cmd_campaign_resume(
         _ => ExplorationMode::FaultSchedule,
     };
 
-    let vm_config = VmConfig {
-        num_vcpus: cfg.num_vcpus,
-        ..VmConfig::default()
-    };
+    let vm_config = cfg.vm_config.clone();
+    if let Err(error) = smp_progress.authorize_retained(&vm_config) {
+        eprintln!("Error: {error}");
+        std::process::exit(EXIT_ERROR);
+    }
+    let scheduling_strategy = cfg.scheduling_strategy;
 
     let base_config = ExplorerConfig {
         num_vms: cfg.num_vms,
@@ -3837,6 +4020,8 @@ fn cmd_campaign_resume(
         ticks_per_branch: cfg.ticks_per_branch,
         max_rounds: rounds_override.unwrap_or(cfg.max_rounds),
         quantum: cfg.quantum,
+        scheduling_strategy,
+        mutation: cfg.mutation.clone(),
         exploration_mode,
         disk_image_path: cfg.disk_image_path.clone(),
         bootstrap_budget: cfg.bootstrap_budget,
@@ -3886,6 +4071,7 @@ struct ResumeOverrides {
     initrd: Option<String>,
     rounds: Option<u64>,
     frontier_policy: Option<FrontierPolicy>,
+    smp_progress: SmpProgressArgs,
 }
 
 fn cmd_resume(
@@ -3900,6 +4086,7 @@ fn cmd_resume(
         initrd: initrd_override,
         rounds: rounds_override,
         frontier_policy: frontier_policy_override,
+        smp_progress,
     } = overrides;
     // Validate corpus directory exists
     if !Path::new(&corpus).is_dir() {
@@ -3922,6 +4109,10 @@ fn cmd_resume(
             std::process::exit(EXIT_ERROR);
         }
     };
+    if let Err(error) = smp_progress.authorize_retained(&checkpoint.config.vm_config) {
+        eprintln!("Error: {error}");
+        std::process::exit(EXIT_ERROR);
+    }
     checkpoint.config.frontier_policy =
         match resume_frontier_policy(frontier_policy_override, checkpoint.config.frontier_policy) {
             Ok(policy) => policy,
@@ -4160,6 +4351,7 @@ fn cmd_minimize(
     ticks: u64,
     quantum: u64,
     vcpus: usize,
+    smp_progress: SmpProgressArgs,
     scheduling: String,
     disk_image: Option<String>,
     extra_cmdline: Option<String>,
@@ -4167,6 +4359,18 @@ fn cmd_minimize(
     memory_mb: usize,
     output: Option<String>,
 ) {
+    let (smp_progress_mode, smp_progress_budget) = smp_progress.resolve_or_exit(vcpus);
+    let scheduling_strategy = scheduling_strategy(&scheduling, smp_progress_budget);
+    let mut vm_config = VmConfig {
+        memory_size: memory_mb * 1024 * 1024,
+        num_vcpus: vcpus,
+        smp_progress_mode,
+        smp_progress_budget,
+        scheduling_strategy,
+        extra_cmdline: extra_cmdline.clone(),
+        ..Default::default()
+    };
+    apply_declared_smp_profile(&mut vm_config);
     // Validate inputs
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
@@ -4194,27 +4398,6 @@ fn cmd_minimize(
         }
     };
     bug.snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug).map(std::sync::Arc::new);
-
-    // Parse scheduling strategy
-    let scheduling_strategy = match scheduling.as_str() {
-        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
-        "randomized" | "rand" => SchedulingStrategy::Randomized {
-            min_quantum: 50,
-            max_quantum: 200,
-        },
-        other => {
-            eprintln!("Error: unknown scheduling strategy '{}'", other);
-            std::process::exit(EXIT_ERROR);
-        }
-    };
-
-    let vm_config = VmConfig {
-        memory_size: memory_mb * 1024 * 1024,
-        num_vcpus: vcpus,
-        scheduling_strategy,
-        extra_cmdline: extra_cmdline.clone(),
-        ..Default::default()
-    };
 
     let config = MinimizeConfig {
         num_vms: vms,
@@ -4454,6 +4637,7 @@ fn cmd_reproduce(
     ticks: u64,
     quantum: u64,
     vcpus: usize,
+    smp_progress: SmpProgressArgs,
     scheduling: String,
     disk_image: Option<String>,
     extra_cmdline: Option<String>,
@@ -4467,6 +4651,18 @@ fn cmd_reproduce(
 ) {
     use chaoscontrol_fault::oracle::Verdict;
     use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+    let (smp_progress_mode, smp_progress_budget) = smp_progress.resolve_or_exit(vcpus);
+    let scheduling_strategy = scheduling_strategy(&scheduling, smp_progress_budget);
+    let mut vm_config = VmConfig {
+        memory_size: memory_mb * 1024 * 1024,
+        num_vcpus: vcpus,
+        smp_progress_mode,
+        smp_progress_budget,
+        scheduling_strategy,
+        extra_cmdline,
+        ..Default::default()
+    };
+    apply_declared_smp_profile(&mut vm_config);
 
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -4581,26 +4777,7 @@ fn cmd_reproduce(
     let schedule: FaultSchedule = (&serialized_bug.schedule).into();
     let target_assertion = serialized_bug.assertion_id;
 
-    // Parse scheduling strategy
-    let scheduling_strategy = match scheduling.as_str() {
-        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
-        "randomized" | "rand" => SchedulingStrategy::Randomized {
-            min_quantum: 50,
-            max_quantum: 200,
-        },
-        other => {
-            eprintln!("Error: unknown scheduling strategy '{}'", other);
-            std::process::exit(1);
-        }
-    };
-
-    let vm_config = VmConfig {
-        memory_size: memory_mb * 1024 * 1024,
-        num_vcpus: vcpus,
-        scheduling_strategy,
-        extra_cmdline,
-        ..Default::default()
-    };
+    eprintln!("SMP progress: {smp_progress_mode:?}, budget {smp_progress_budget:?}");
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
     eprintln!("  ChaosControl Bug Reproducer");
@@ -4754,6 +4931,8 @@ fn cmd_reproduce(
         let mut recorder = chaoscontrol_replay::recording::Recorder::new_for_run(
             chaoscontrol_replay::recording::RecordingConfig {
                 num_vms: config.num_vms,
+                smp_progress_mode: config.vm_config.smp_progress_mode,
+                smp_progress_budget: config.vm_config.smp_progress_budget,
                 vm_memory_size: config.vm_config.memory_size,
                 tsc_khz: config.vm_config.cpu.tsc_khz,
                 kernel_path: config.kernel_path.clone(),
@@ -5784,5 +5963,138 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn run_progress(extra: &[&str]) -> Result<SmpProgressArgs, clap::Error> {
+        match parse(&[&["run", "--kernel", "kernel"][..], extra].concat())?.command {
+            Commands::Run { smp_progress, .. } => Ok(smp_progress),
+            _ => unreachable!(),
+        }
+    }
+
+    // r[verify chaoscontrol.kvm_debug_boundary.admission]
+    #[test]
+    fn coarse_run_requires_explicit_mode_profile_and_boundary_budget() {
+        let explicit = [
+            "--smp-progress-mode",
+            "kvm-debug-boundary",
+            "--smp-boundary-profile",
+            "kvm-debug-exit-boundary-v1",
+            "--smp-boundary-quantum",
+            "37",
+        ];
+        let (mode, budget) = run_progress(&explicit).unwrap().resolve().unwrap();
+        assert_eq!(mode, ProgressMode::KvmDebugBoundary);
+        assert_eq!(
+            budget,
+            ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: 37,
+            }
+        );
+        for missing in [
+            vec!["--smp-progress-mode", "kvm-debug-boundary"],
+            vec![
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-quantum",
+                "37",
+            ],
+            vec![
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-profile",
+                "kvm-debug-exit-boundary-v1",
+            ],
+            vec![
+                "--smp-progress-mode",
+                "exact-single-step",
+                "--smp-boundary-quantum",
+                "37",
+            ],
+        ] {
+            assert!(run_progress(&missing).unwrap().resolve().is_err());
+        }
+        for malformed in [
+            vec!["--smp-progress-mode", "automatic"],
+            vec!["--smp-boundary-quantum", "37"],
+            vec![
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-profile",
+                "unknown",
+            ],
+            vec![
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-quantum",
+                "0",
+            ],
+            vec![
+                "--smp-progress-mode",
+                "kvm-debug-boundary",
+                "--smp-boundary-quantum",
+                "37",
+                "--smp-instruction-quantum",
+                "37",
+            ],
+        ] {
+            assert!(run_progress(&malformed).is_err());
+        }
+        assert_eq!(
+            run_progress(&[]).unwrap().resolve().unwrap().0,
+            ProgressMode::ExactSingleStep
+        );
+        assert_eq!(
+            run_progress(&["--smp-instruction-quantum", "37"])
+                .unwrap()
+                .resolve()
+                .unwrap(),
+            (
+                ProgressMode::ExactSingleStep,
+                ProgressBudget::Instructions(37)
+            )
+        );
+    }
+
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    #[test]
+    fn retained_coarse_execution_requires_optin_and_never_overrides_budget_or_profile() {
+        let vm = VmConfig {
+            num_vcpus: 2,
+            smp_progress_mode: ProgressMode::KvmDebugBoundary,
+            smp_progress_budget: ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: 37,
+            },
+            ..Default::default()
+        };
+        assert!(SmpProgressArgs::default().authorize_retained(&vm).is_err());
+        let mut explicit = SmpProgressArgs {
+            smp_progress_mode: Some("kvm-debug-boundary".into()),
+            ..Default::default()
+        };
+        assert!(explicit.authorize_retained(&vm).is_ok());
+        explicit.smp_boundary_quantum = Some(38);
+        assert!(explicit.authorize_retained(&vm).is_err());
+        explicit.smp_boundary_quantum = Some(37);
+        explicit.smp_boundary_profile = Some("kvm-debug-exit-boundary-v1".into());
+        assert!(explicit.authorize_retained(&vm).is_ok());
+        explicit.smp_boundary_profile = Some("unknown".into());
+        assert!(explicit.authorize_retained(&vm).is_err());
+        explicit.smp_boundary_profile = None;
+        explicit.smp_instruction_quantum = Some(37);
+        assert!(explicit.authorize_retained(&vm).is_err());
+        let randomized = scheduling_strategy("randomized", vm.smp_progress_budget);
+        let SchedulingStrategy::Randomized {
+            min_budget,
+            max_budget,
+        } = randomized
+        else {
+            panic!("randomized strategy");
+        };
+        assert!(min_budget.same_unit(vm.smp_progress_budget));
+        assert!(max_budget.same_unit(vm.smp_progress_budget));
+        assert!(min_budget.count() < max_budget.count());
     }
 }

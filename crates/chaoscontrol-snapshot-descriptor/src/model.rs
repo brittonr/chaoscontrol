@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 pub const DESCRIPTOR_SCHEMA: &str = "chaoscontrol-snapshot-descriptor-v1";
 pub const DESCRIPTOR_VERSION: u32 = 1;
-pub const EXACT_SNAPSHOT_PROFILE: &str = "exact-x86-kvm-v1";
-pub const EXACT_STATE_SCHEMA_VERSION: u32 = 3;
+pub const EXACT_SNAPSHOT_PROFILE: &str = "exact-x86-kvm-v2";
+pub const EXACT_STATE_SCHEMA_VERSION: u32 = 4;
 pub const EXACT_ARCHITECTURE: &str = "x86_64";
-pub const CURRENT_PAYLOAD_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
+pub const CURRENT_PAYLOAD_CODEC: &str = "simulation-snapshot-cbor-zstd-v4";
 pub const CHUNK_MANIFEST_CODEC: &str = "snapshot-chunk-manifest-v1";
 pub const SNAPSHOT_CHUNK_CODEC: &str = "raw-snapshot-chunk-v1";
 pub const STATE_OWNER_SCHEMA: &str = "chaoscontrol-state-owner-v1";
@@ -49,17 +49,21 @@ pub const REQUIRED_KVM_OPERATIONS: [&str; 13] = [
     "kvm-xsave-v1",
 ];
 
-pub const FIXED_STATE_OWNERS: [&str; 14] = [
+pub const FIXED_STATE_OWNERS: [&str; 18] = [
+    "available-delivery",
     "counters",
     "coverage",
     "deterministic-time",
     "entropy",
+    "execution-descriptor",
     "fault-engine",
     "guest-memory",
     "in-kernel-clock",
     "in-kernel-irqchip",
     "in-kernel-pit",
+    "injection-ledger",
     "panic-detector",
+    "pending-io-settlement",
     "scheduler",
     "serial",
     "timer",

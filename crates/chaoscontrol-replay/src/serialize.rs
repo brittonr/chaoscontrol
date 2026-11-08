@@ -118,7 +118,7 @@ fn write_output(path: &Path, bytes: &[u8]) -> Result<(), SerializeError> {
 /// Save a recording to a JSON file.
 ///
 /// Note: This saves only the metadata (config, schedule, seed, events).
-/// Snapshots are too large for JSON and are recreated during replay.
+/// Snapshots are retained separately in an admitted session, never recreated by boot fallback.
 pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), SerializeError> {
     validate_recording(recording).map_err(|error| SerializeError::InvalidRecording {
         message: format!("{error:?}"),
@@ -134,8 +134,8 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
 
 /// Load a recording from a JSON file.
 ///
-/// Note: Loaded recordings will have empty checkpoints (no snapshots).
-/// Snapshots are recreated by replaying the simulation.
+/// Loaded recordings contain static facts only, with no checkpoint capabilities.
+/// Executing replay requires the separately admitted persisted session artifacts.
 pub fn load_recording(path: &Path) -> Result<Recording, SerializeError> {
     let file = open_bounded_evidence_file(path)?;
     let metadata = file.metadata()?;
@@ -304,9 +304,13 @@ mod tests {
 
     fn test_recording() -> Recording {
         Recording {
+            trace_start_tick: 0,
+            schema_version: crate::recording::RECORDING_SCHEMA_VERSION,
             session_id: "test_session".to_string(),
             timestamp: 1234567890,
             config: RecordingConfig {
+                smp_progress_mode: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_mode,
+                smp_progress_budget: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
                 num_vms: 2,
                 vm_memory_size: 256 * 1024 * 1024,
                 tsc_khz: 3_000_000,

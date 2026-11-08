@@ -3128,6 +3128,13 @@ impl Explorer {
     ) -> Result<ExplorationCheckpoint, CheckpointError> {
         let config = CheckpointConfig {
             num_vms: self.config.num_vms,
+            vm_config: {
+                let mut vm_config = self.config.vm_config.clone();
+                vm_config.scheduling_strategy = self.config.scheduling_strategy;
+                vm_config
+            },
+            scheduling_strategy: self.config.scheduling_strategy,
+            mutation: self.config.mutation.clone(),
             num_vcpus: self.config.vm_config.num_vcpus,
             kernel_path: self.config.kernel_path.clone(),
             initrd_path: self.config.initrd_path.clone(),
@@ -3232,7 +3239,7 @@ impl Explorer {
         )?;
         let config = ExplorerConfig {
             num_vms: checkpoint.config.num_vms,
-            vm_config: VmConfig::default(),
+            vm_config: checkpoint.config.vm_config,
             kernel_path: kernel_path_override.unwrap_or(checkpoint.config.kernel_path),
             initrd_path: initrd_path_override.or(checkpoint.config.initrd_path),
             seed: checkpoint.config.seed,
@@ -3241,8 +3248,8 @@ impl Explorer {
             max_rounds: max_rounds_override.unwrap_or(checkpoint.config.max_rounds),
             max_frontier: checkpoint.config.max_frontier,
             quantum: checkpoint.config.quantum,
-            scheduling_strategy: SchedulingStrategy::RoundRobin,
-            mutation: MutationConfig::default(),
+            scheduling_strategy: checkpoint.config.scheduling_strategy,
+            mutation: checkpoint.config.mutation,
             exploration_mode: ExplorationMode::default(),
             coverage_gpa: checkpoint.config.coverage_gpa,
             output_dir: None, // Will be set by caller if needed
@@ -3978,52 +3985,6 @@ mod tests {
             .exists());
     }
 
-    // r[verify chaoscontrol.campaign_policy.progress.valid]
-    // r[verify chaoscontrol.campaign_policy.rollback.valid]
-    #[test]
-    fn campaign_checkpoint_keeps_its_shape_and_diagnostic_marks_are_additive() {
-        let directory = tempfile::tempdir().expect("test directory");
-        let output = directory.path().display().to_string();
-        let campaign = Explorer::new(ExplorerConfig::default());
-        let checkpoint = campaign
-            .create_checkpoint(&output)
-            .expect("campaign checkpoint");
-        let json = serde_json::to_value(&checkpoint).expect("checkpoint json");
-        assert!(json["config"].get("frontier_policy").is_none());
-        assert!(json.get("release_eligible").is_none());
-        assert!(json.get("campaign_journal").is_none());
-        let report = campaign.generate_report();
-        assert_eq!(report.frontier_policy, FrontierPolicy::Campaign);
-        assert!(report.release_eligible);
-        assert_eq!(report.stop, None);
-
-        // The diagnostic policy adds only the policy and eligibility marks;
-        // product progress, coverage, and bugs keep their shape.
-        let diagnostic = Explorer::new(ExplorerConfig {
-            frontier_policy: FrontierPolicy::LegacyDiagnostic,
-            ..ExplorerConfig::default()
-        });
-        let diagnostic_json =
-            serde_json::to_value(diagnostic.create_checkpoint(&output).expect("checkpoint"))
-                .expect("checkpoint json");
-        assert_eq!(
-            diagnostic_json["config"]["frontier_policy"],
-            LEGACY_DIAGNOSTIC_POLICY_NAME
-        );
-        assert_eq!(diagnostic_json["release_eligible"], false);
-        assert!(!diagnostic.generate_report().release_eligible);
-        let mut unmarked = diagnostic_json.clone();
-        unmarked["config"]
-            .as_object_mut()
-            .expect("config object")
-            .remove("frontier_policy");
-        unmarked
-            .as_object_mut()
-            .expect("checkpoint object")
-            .remove("release_eligible");
-        assert_eq!(unmarked, json);
-    }
-
     // r[verify chaoscontrol.campaign_policy.rollback.valid]
     #[test]
     fn campaign_resume_of_a_diagnostic_checkpoint_stays_release_ineligible() {
@@ -4088,7 +4049,7 @@ mod tests {
         let variant = ScheduleVariant {
             scheduler_seed: TEST_VARIANT_SEED,
             strategy_override: None,
-            quantum_override: None,
+            progress_budget_override: None,
         };
         let variants = vec![
             (FaultSchedule::new(), Some(variant.clone())),
@@ -5370,7 +5331,17 @@ mod tests {
 
     #[test]
     fn test_explorer_checkpoint_roundtrip() {
+        use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
         use std::fs;
+        const BOUNDARY_COUNT: u64 = 64;
+        let budget = ProgressBudget::KvmBoundaries {
+            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+            count: BOUNDARY_COUNT,
+        };
+        let strategy = SchedulingStrategy::Randomized {
+            min_budget: budget.with_count(BOUNDARY_COUNT / 2),
+            max_budget: budget.with_count(BOUNDARY_COUNT * 2),
+        };
 
         let tempdir = std::env::temp_dir();
         let checkpoint_dir = tempdir.join("test_checkpoint_roundtrip");
@@ -5380,6 +5351,20 @@ mod tests {
             kernel_path: "/fake/kernel".to_string(),
             initrd_path: Some("/fake/initrd".to_string()),
             num_vms: 3,
+            vm_config: VmConfig {
+                num_vcpus: 2,
+                smp_progress_mode: ProgressMode::KvmDebugBoundary,
+                smp_progress_budget: budget,
+                scheduling_strategy: strategy,
+                extra_cmdline: Some("noapictimer console=ttyS0".to_string()),
+                ..Default::default()
+            },
+            scheduling_strategy: strategy,
+            mutation: MutationConfig {
+                base_progress_budget: budget,
+                schedule_mutation_ratio: 0.5,
+                ..Default::default()
+            },
             seed: 12345,
             branch_factor: 16,
             ticks_per_branch: 2000,
@@ -5437,6 +5422,12 @@ mod tests {
         assert_eq!(checkpoint.rounds_completed, 42);
         assert_eq!(checkpoint.total_branches_run, 336);
         assert_eq!(checkpoint.total_edges, 100);
+        let mut missing_contract = serde_json::to_value(&checkpoint).unwrap();
+        missing_contract["config"]
+            .as_object_mut()
+            .unwrap()
+            .remove("vm_config");
+        assert!(serde_json::from_value::<ExplorationCheckpoint>(missing_contract).is_err());
 
         // Create new explorer from checkpoint
         let restored = Explorer::from_checkpoint(
@@ -5455,6 +5446,19 @@ mod tests {
         );
         assert_eq!(restored.config.num_vms, 3);
         assert_eq!(restored.config.seed, 12345);
+        assert_eq!(
+            restored.config.vm_config.smp_progress_mode,
+            ProgressMode::KvmDebugBoundary
+        );
+        assert_eq!(restored.config.vm_config.smp_progress_budget, budget);
+        assert_eq!(restored.config.vm_config.num_vcpus, 2);
+        assert_eq!(
+            restored.config.vm_config.extra_cmdline.as_deref(),
+            Some("noapictimer console=ttyS0")
+        );
+        assert_eq!(restored.config.scheduling_strategy, strategy);
+        assert_eq!(restored.config.mutation.base_progress_budget, budget);
+        assert_eq!(restored.config.mutation.schedule_mutation_ratio, 0.5);
         assert_eq!(restored.coverage.stats().total_edges, 100);
 
         // Cleanup

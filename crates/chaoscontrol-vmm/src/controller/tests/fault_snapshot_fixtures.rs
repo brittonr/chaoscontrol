@@ -408,3 +408,25 @@ fn custom_snapshot_continuation_rejects_missing_adapter_without_invocation() {
     assert_eq!(controller.fault_outcomes().counters.observed, 0);
     assert_ne!(controller.fault_outcomes().events, observed.events);
 }
+
+#[test]
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+fn pending_surface_vectors_cannot_omit_vm_slots_at_restore_preflight() {
+    let mut controller = controller_with_nodes(1);
+    let snapshot = serialized_snapshot(&mut controller);
+    SimulationController::validate_pending_snapshot(&snapshot).unwrap();
+    for clear_memory in [false, true] {
+        let mut incomplete = snapshot.clone();
+        if clear_memory {
+            incomplete.memory_pressure.clear();
+        } else {
+            incomplete.cpu_throttle.clear();
+        }
+        assert!(SimulationController::validate_pending_snapshot(&incomplete).is_err());
+        assert!(controller.restore_all(&incomplete).is_err());
+        assert!(
+            controller.round_poison().is_none(),
+            "pure rejection must precede mutation"
+        );
+    }
+}

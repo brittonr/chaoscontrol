@@ -24,8 +24,7 @@ pub mod validate;
 pub use dto::{
     ArtifactHash, ReplayClass, ReplayCommandContext, ReplayParentSnapshotRef,
     ReplayScheduleVariant, ReplaySnapshotValidation, ReplayVerdict, SnapshotValidationStatus,
-    LEGACY_REPLAY_VERDICT_SCHEMA_VERSION, NOT_REPRODUCED_EXIT_STATUS,
-    REPLAY_VERDICT_SCHEMA_VERSION, REPRODUCED_EXIT_STATUS,
+    NOT_REPRODUCED_EXIT_STATUS, REPLAY_VERDICT_SCHEMA_VERSION, REPRODUCED_EXIT_STATUS,
 };
 pub use validate::{
     ValidationError, CURRENT_SNAPSHOT_CODEC, CURRENT_SNAPSHOT_SCHEMA_VERSION, FILE_STORE_KIND,

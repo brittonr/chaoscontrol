@@ -4450,6 +4450,7 @@ mod tests {
         )
         .unwrap();
         let round = RoundResult {
+            injection_traces: Vec::new(),
             tick: TICK,
             vms_running: 1,
             vms_halted: 0,
@@ -4460,6 +4461,8 @@ mod tests {
         };
         let mut recorder = Recorder::new(
             RecordingConfig {
+                smp_progress_mode: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_mode,
+                smp_progress_budget: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
                 num_vms: 2,
                 vm_memory_size: 256 * 1024 * 1024,
                 tsc_khz: 3_000_000,

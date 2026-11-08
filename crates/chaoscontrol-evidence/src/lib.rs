@@ -290,10 +290,8 @@ pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 =
     chaoscontrol_replay_evidence_core::REPLAY_VERDICT_SCHEMA_VERSION as u64;
 pub const SNAPSHOT_COPY_BUFFER_BYTES: usize = 1024 * 1024;
 pub const REQUIRED_WORKLOADS: [&str; 2] = ["raft", "redb"];
-pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [
-    chaoscontrol_replay_evidence_core::SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS[0] as u64,
-    chaoscontrol_replay_evidence_core::SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS[1] as u64,
-];
+pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 1] =
+    [chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION as u64];
 
 pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
 pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
@@ -917,7 +915,7 @@ pub fn render_replay_proof_coverage_doc_from_parts(
     let mut output = String::new();
     output.push_str("# Replay Proof Coverage\n\n");
     output.push_str(&format!(
-        "The manifest retains historical snapshot-backed replay artifacts. Current assertion-identity admission promotes {promoted} workload(s) and blocks {blocked} workload(s).\n\n"
+        "The manifest retains historical snapshot-backed replay artifacts. Current execution-schema and assertion-identity admission promotes {promoted} workload(s) and blocks {blocked} workload(s).\n\n"
     ));
     output.push_str("| Workload | Assertion ID | Evidence | Verdict |\n");
     output.push_str("| --- | ---: | --- | --- |\n");
@@ -938,6 +936,7 @@ pub fn render_replay_proof_coverage_doc_from_parts(
     }
     output.push('\n');
     output.push_str("A promoted proof requires an accepted summary, exported bug artifact, replay verdict, retained snapshot, and accepted v2 assertion summary. The v2 summary must bind the selected alias to one admitted structured descriptor. Historical bare-array assertion files remain diagnostic-only.\n\n");
+    output.push_str("`blocked-execution-schema` retains the historical artifacts on disk, but the current typed contract does not decode their superseded verdict or snapshot codecs, so they are not executable, restorable or promotable.\n\n");
     output.push_str("This is workload coverage evidence, not a mathematical or universal determinism proof. A blocked row does not support a current bounded replay claim. Fresh admitted KVM evidence must pass:\n\n");
     output.push_str("```bash\n");
     output.push_str("cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .\n");
@@ -1037,7 +1036,7 @@ fn render_replay_readiness_proof_row(
     let status = if review.replay_class == REQUIRED_REPLAY_CLASS {
         SUPPORTED_REPLAY_STATUS
     } else {
-        BLOCKED_ASSERTION_IDENTITY_STATUS
+        &review.replay_class
     };
     Ok(format!(
         "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` / `{}` | `{}/` |",
@@ -2137,6 +2136,31 @@ fn review_workload_proof(
     root: &Path,
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<ReplayProofCoverageLine> {
+    let evidence_dir = canonical_proof_evidence_dir(root, proof)?;
+    let verdict: ReplayVerdict = load_json(root, &evidence_dir.join(&proof.verdict))?;
+    // Retained pre-cutover records are inspectable facts, never current replay proof.
+    if matches!(verdict.schema_version, 1 | 2) {
+        ensure(
+            verdict.assertion_id == proof.assertion_id
+                && verdict.snapshot.reference.path == proof.snapshot,
+            format!("{}: historical verdict binding mismatch", proof.workload),
+        )?;
+        let (digest, storage) =
+            snapshot_artifact_sha256(root, &evidence_dir.join(&proof.snapshot))?;
+        let snapshot_digest = format!("sha256:{digest}");
+        ensure(
+            verdict.snapshot.reference.digest == snapshot_digest,
+            format!("{}: snapshot digest mismatch", proof.workload),
+        )?;
+        return Ok(ReplayProofCoverageLine {
+            workload: proof.workload.clone(),
+            replay_class: "blocked-execution-schema".to_string(),
+            assertion_id: proof.assertion_id,
+            replay_parent_depth: verdict.replay_parent_depth,
+            snapshot_digest,
+            snapshot_storage: storage,
+        });
+    }
     let mut review = validate_workload_replay_artifacts(root, proof)?;
     if validate_workload_assertion_identity(root, proof, &review).is_err() {
         review.line.replay_class = BLOCKED_ASSERTION_IDENTITY_STATUS.to_string();

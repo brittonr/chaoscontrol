@@ -73,6 +73,61 @@ fn incomplete_snapshot_and_profile_drift_fail_before_planning() {
     assert!(matches!(profile_drift, Err(AdapterError::Admission(_))));
 }
 
+#[test]
+fn coarse_execution_cannot_acquire_strict_vm_cohort_compatibility() {
+    use chaoscontrol_sim_core::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
+    use chaoscontrol_sim_core::scheduler::{SchedulerConfig, VcpuScheduler};
+    use chaoscontrol_vmm::snapshot::{build_snapshot_inventory, SnapshotExecutionDescriptor};
+
+    const BOUNDARY_COUNT: u64 = 64;
+    const VCPU_COUNT: usize = 2;
+    let budget = ProgressBudget::KvmBoundaries {
+        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+        count: BOUNDARY_COUNT,
+    };
+    let mut config = chaoscontrol_vmm::vm::VmConfig {
+        num_vcpus: VCPU_COUNT,
+        smp_progress_mode: ProgressMode::KvmDebugBoundary,
+        smp_progress_budget: budget,
+        ..chaoscontrol_vmm::vm::VmConfig::default()
+    };
+    config.cpu.hide_tsc = true;
+    config.cpu.tsc_mode = chaoscontrol_vmm::cpu::TscAdvanceMode::PerExit;
+    let mut snapshot = synthetic_snapshot();
+    snapshot
+        .vcpu_snapshots
+        .push(snapshot.vcpu_snapshots[0].clone());
+    snapshot.hlt_latched_vcpus.push(false);
+    snapshot.scheduler_snapshot = VcpuScheduler::try_new(
+        &SchedulerConfig {
+            num_vcpus: VCPU_COUNT,
+            progress_budget: budget,
+            ..SchedulerConfig::default()
+        },
+        ProgressMode::KvmDebugBoundary,
+        vec![true; VCPU_COUNT],
+    )
+    .expect("coarse policy fixture")
+    .snapshot();
+    let metadata = snapshot.metadata.as_mut().expect("snapshot metadata");
+    metadata.topology.vcpu_count = u32::try_from(VCPU_COUNT).unwrap();
+    metadata.inventory = build_snapshot_inventory(&metadata.topology);
+    metadata.execution_descriptor = SnapshotExecutionDescriptor::portable_fixture(&config)
+        .expect("well-formed coarse execution descriptor");
+    let block = synthetic_block();
+    let kvm_profile = profile();
+    let facts = compatibility_facts(&kvm_profile);
+    let outcome = map_snapshot_cohort(SnapshotCohortMappingRequest {
+        snapshot: &snapshot,
+        block: &block,
+        facts: &facts,
+        kvm_profile,
+        workers: WORKER_COUNT,
+        context_ref: resource_ref("coarse-profile-rejection"),
+    });
+    assert!(matches!(outcome, Err(AdapterError::Admission(_))));
+}
+
 // r[verify chaoscontrol.vm_cohort.verification]
 #[test]
 fn execution_rejects_snapshot_and_immutable_base_drift_before_activation() {

@@ -16,9 +16,10 @@ use super::identity::AdapterIdentity;
 use super::AdapterError;
 use crate::explorer::{ExplorationMode, ExplorerConfig};
 use crate::marker_branching::MarkerFrontierMetadata;
+use chaoscontrol_vmm::scheduler::core::ProgressBudget;
 
 const OPERATION_PROFILE_LABEL: &[u8] = b"chaoscontrol.expansion-operation-profile.v1";
-const GENERATION_PROFILE_LABEL: &[u8] = b"chaoscontrol.operation-generation-profile.v1";
+const GENERATION_PROFILE_LABEL: &[u8] = b"chaoscontrol.operation-generation-profile.v2";
 const MARKER_DIGEST_LABEL: &[u8] = b"chaoscontrol.marker-frontier-metadata.v1";
 /// Input-tree alternative generation version bound into the generation profile.
 pub const INPUT_TREE_GENERATION_VERSION: u32 = 1;
@@ -90,6 +91,17 @@ fn count(value: usize) -> Result<u64, AdapterError> {
     u64::try_from(value).map_err(|_| AdapterError::BoundOverflow)
 }
 
+fn progress_budget_frame(writer: FrameWriter, budget: ProgressBudget) -> FrameWriter {
+    match budget {
+        ProgressBudget::Instructions(count) => writer.u32(1).u64(count),
+        ProgressBudget::KvmBoundaries { profile_id, count } => writer
+            .u32(2)
+            .u32(u32::from(profile_id.schema_version()))
+            .bytes(&profile_id.table_identity())
+            .u64(count),
+    }
+}
+
 /// Operation-generation profile: mutation, havoc, diversity, branch factor, ticks,
 /// and the input-tree generation version.
 ///
@@ -98,15 +110,15 @@ fn count(value: usize) -> Result<u64, AdapterError> {
 pub fn generation_profile_id(config: &ExplorerConfig) -> Result<Id, AdapterError> {
     let mutation = &config.mutation;
     let [havoc_min, havoc_max] = config.havoc_mutations;
-    Ok(FrameWriter::new(IdKind::Policy, GENERATION_PROFILE_LABEL)
+    let writer = FrameWriter::new(IdKind::Policy, GENERATION_PROFILE_LABEL)
         .u64(count(mutation.num_vms)?)
         .u64(mutation.max_tick)
         .u64(mutation.add_prob.to_bits())
         .u64(mutation.remove_prob.to_bits())
         .u64(mutation.shift_prob.to_bits())
         .u64(mutation.replace_prob.to_bits())
-        .u64(mutation.schedule_mutation_ratio.to_bits())
-        .u64(mutation.base_quantum)
+        .u64(mutation.schedule_mutation_ratio.to_bits());
+    Ok(progress_budget_frame(writer, mutation.base_progress_budget)
         .u64(config.havoc_after_stale)
         .u32(havoc_min)
         .u32(havoc_max)

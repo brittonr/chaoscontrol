@@ -4,9 +4,11 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 const FIXTURE_BUG: &str = "../../contracts/evidence/fixtures/valid/bug-report.identity.valid.json";
-const SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
-const SNAPSHOT_SCHEMA_VERSION: u64 = 2;
-const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 2;
+const SNAPSHOT_CODEC: &str = chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC;
+const SNAPSHOT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION as u64;
+const REPLAY_VERDICT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::dto::REPLAY_VERDICT_SCHEMA_VERSION as u64;
 const REPLAY_PARENT_DEPTH: u64 = 1;
 
 fn sha256(bytes: &[u8]) -> String {
@@ -156,6 +158,7 @@ fn marker_join_rejects_scope_drift_missing_parent_and_corrupt_parent_bytes() {
 #[test]
 fn artifact_join_binds_schedule_seed_strategy_quantum_and_policy_digest() {
     use chaoscontrol_replay_evidence_core::dto::{ReplayScheduleVariant, ReplayVerdict};
+    use chaoscontrol_sim_core::scheduler::core::ProgressBudget;
     use chaoscontrol_sim_core::scheduler::{ScheduleVariant, SchedulingStrategy};
     let (_temp, verdict_path, bug_path) = fixture();
     let mut bug: Value = serde_json::from_slice(&std::fs::read(&bug_path).unwrap()).unwrap();
@@ -164,27 +167,30 @@ fn artifact_join_binds_schedule_seed_strategy_quantum_and_policy_digest() {
     let variant = ScheduleVariant {
         scheduler_seed: 73,
         strategy_override: Some(SchedulingStrategy::Randomized {
-            min_quantum: 2,
-            max_quantum: 9,
+            min_budget: ProgressBudget::Instructions(2),
+            max_budget: ProgressBudget::Instructions(9),
         }),
-        quantum_override: Some(5),
+        progress_budget_override: Some(ProgressBudget::Instructions(5)),
     };
     bug["schedule_variant"] = serde_json::to_value(&variant).unwrap();
     typed_verdict.schedule_variant = Some(ReplayScheduleVariant {
         scheduler_seed: variant.scheduler_seed,
-        strategy: serde_json::to_string(&variant.strategy_override).unwrap(),
-        quantum_override: variant.quantum_override,
-        policy_blake3: blake3::hash(&serde_json::to_vec(&variant).unwrap())
-            .to_hex()
-            .to_string(),
+        strategy: variant.strategy_override,
+        progress_budget_override: variant.progress_budget_override,
+        policy_blake3: blake3::Hash::from_bytes(blake3::derive_key(
+            "chaoscontrol.replay.schedule-variant-policy.v2",
+            &serde_json::to_vec(&variant).unwrap(),
+        ))
+        .to_hex()
+        .to_string(),
     });
     let mut verdict = serde_json::to_value(&typed_verdict).unwrap();
     bind_changed_bug(&bug_path, &bug, &verdict_path, &mut verdict);
     validate_snapshot_backed_replay_artifact(&verdict_path, &bug_path).unwrap();
     for (field, value) in [
         ("scheduler_seed", json!(74)),
-        ("strategy", json!("null")),
-        ("quantum_override", json!(6)),
+        ("strategy", json!("RoundRobin")),
+        ("progress_budget_override", json!({"Instructions":6})),
         ("policy_blake3", json!("a".repeat(64))),
     ] {
         let mut drifted = verdict.clone();

@@ -3,6 +3,8 @@
 //! Positive fixtures mirror current explorer verdict output and evidence
 //! readiness accepted-proof records. Negative fixtures prove validation fails
 //! closed with a diagnostic naming the invalid field or unsupported claim.
+use chaoscontrol_sim_core::scheduler::core::{BoundaryProfileId, ProgressBudget};
+use chaoscontrol_sim_core::scheduler::SchedulingStrategy;
 
 use chaoscontrol_protocol::admission::{
     token_for_descriptors, AssertionEvidenceIdentity, CatalogBuilder,
@@ -272,12 +274,59 @@ fn accepts_variant_bound_replay_verdict() {
     let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
     verdict.schedule_variant = Some(ReplayScheduleVariant {
         scheduler_seed: TEST_VARIANT_SEED,
-        strategy: "{\"Randomized\":{\"min_quantum\":2,\"max_quantum\":9}}".to_string(),
-        quantum_override: Some(TEST_QUANTUM_OVERRIDE),
+        strategy: Some(SchedulingStrategy::Randomized {
+            min_budget: ProgressBudget::Instructions(2),
+            max_budget: ProgressBudget::Instructions(9),
+        }),
+        progress_budget_override: Some(ProgressBudget::Instructions(TEST_QUANTUM_OVERRIDE)),
         policy_blake3: "ab".repeat(BLAKE3_DIGEST_BYTES),
     });
     validate_verdict_consistency(&verdict).expect("variant-bound verdict is consistent");
     validate_accepted_proof(&verdict).expect("variant-bound accepted proof");
+}
+
+#[test]
+fn boundary_variant_roundtrips_and_rejects_cross_unit_ranges_and_legacy_payloads() {
+    const BOUNDARY_COUNT: u64 = 64;
+    let budget = ProgressBudget::KvmBoundaries {
+        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+        count: BOUNDARY_COUNT,
+    };
+    let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
+    verdict.schedule_variant = Some(ReplayScheduleVariant {
+        scheduler_seed: TEST_VARIANT_SEED,
+        strategy: Some(SchedulingStrategy::Randomized {
+            min_budget: budget.with_count(BOUNDARY_COUNT / 2),
+            max_budget: budget.with_count(BOUNDARY_COUNT * 2),
+        }),
+        progress_budget_override: Some(budget),
+        policy_blake3: "ab".repeat(BLAKE3_DIGEST_BYTES),
+    });
+    let json = serde_json::to_value(&verdict).unwrap();
+    let decoded: ReplayVerdict = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(decoded, verdict);
+    validate_accepted_proof(&decoded).unwrap();
+    let mut crossed = verdict.clone();
+    crossed
+        .schedule_variant
+        .as_mut()
+        .unwrap()
+        .progress_budget_override = Some(ProgressBudget::Instructions(BOUNDARY_COUNT));
+    assert!(validate_verdict_consistency(&crossed).is_err());
+    let mut mixed_range = verdict.clone();
+    mixed_range.schedule_variant.as_mut().unwrap().strategy =
+        Some(SchedulingStrategy::Randomized {
+            min_budget: budget,
+            max_budget: ProgressBudget::Instructions(BOUNDARY_COUNT * 2),
+        });
+    assert!(validate_verdict_consistency(&mixed_range).is_err());
+    let mut old_payload = json.clone();
+    old_payload["schedule_variant"]["quantum_override"] = serde_json::json!(BOUNDARY_COUNT);
+    assert!(serde_json::from_value::<ReplayVerdict>(old_payload).is_err());
+    let mut wrong_profile = json;
+    wrong_profile["schedule_variant"]["progress_budget_override"]["KvmBoundaries"]["profile_id"] =
+        serde_json::json!("FutureBoundaryProfile");
+    assert!(serde_json::from_value::<ReplayVerdict>(wrong_profile).is_err());
 }
 
 #[test]
@@ -331,8 +380,8 @@ fn rejects_malformed_schedule_variant_evidence() {
     let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
     verdict.schedule_variant = Some(ReplayScheduleVariant {
         scheduler_seed: TEST_VARIANT_SEED,
-        strategy: String::new(),
-        quantum_override: Some(0),
+        strategy: None,
+        progress_budget_override: Some(ProgressBudget::Instructions(0)),
         policy_blake3: "not-a-blake3-digest".to_string(),
     });
     let error = validate_verdict_consistency(&verdict).expect_err("invalid variant rejected");
@@ -409,8 +458,7 @@ fn rejects_non_reproducing_snapshot_backed_verdict_as_accepted_proof() {
 fn rejects_legacy_schema_verdict_as_accepted_proof() {
     let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
     verdict.schema_version = 1;
-    validate_verdict_consistency(&verdict).expect("legacy verdict stays readable");
-    let error = validate_accepted_proof(&verdict).expect_err("legacy verdict cannot promote");
+    let error = validate_verdict_consistency(&verdict).expect_err("legacy schema rejected");
     assert!(error.message().contains("schema_version"));
 }
 
@@ -448,9 +496,8 @@ fn rejects_stale_snapshot_codec_for_accepted_proof() {
         .as_mut()
         .expect("reference")
         .codec = "simulation-snapshot-bincode-zstd-v1".to_string();
-    validate_verdict_consistency(&verdict).expect("legacy codec stays readable");
-    let error = validate_accepted_proof(&verdict).expect_err("stale codec cannot promote");
-    assert!(error.message().contains("CBOR v2"));
+    let error = validate_verdict_consistency(&verdict).expect_err("legacy codec rejected");
+    assert!(error.message().contains("codec"));
 }
 
 #[test]

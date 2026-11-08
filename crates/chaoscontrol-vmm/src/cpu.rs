@@ -524,10 +524,14 @@ pub fn pit_tsc_khz(mode: TscAdvanceMode, tsc_khz: u32) -> Result<u32, TscModeErr
 /// The returned [`CpuId`] should be applied to a vCPU with
 /// [`VcpuFd::set_cpuid2`] before the first `vcpu.run()`.
 pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
-    let mut cpuid = kvm
+    let cpuid = kvm
         .get_supported_cpuid(KVM_MAX_CPUID_ENTRIES)
         .context(GetCpuidSnafu)?;
+    filter_cpuid_table(cpuid, config)
+}
 
+/// Filter a retained host table without querying the destination CPU again.
+pub(crate) fn filter_cpuid_table(mut cpuid: CpuId, config: &CpuConfig) -> Result<CpuId, CpuError> {
     let mut modified = 0u32;
 
     // Check if leaf 0x15 (TSC/Crystal Clock) exists in the host CPUID.
@@ -595,8 +599,15 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
 /// | 0xB (all sub-leaves) | EDX | x2APIC ID |
 /// | 0x1F (all sub-leaves) | EDX | x2APIC ID |
 pub fn patch_cpuid_apic_id(cpuid: &CpuId, apic_id: u32, num_vcpus: u32) -> Result<CpuId, CpuError> {
-    let mut entries: Vec<kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
-    for entry in entries.iter_mut() {
+    let mut patched = CpuId::from_entries(cpuid.as_slice()).map_err(|_| CpuError::GetCpuid {
+        source: kvm_ioctls::Error::new(libc::ENOMEM),
+    })?;
+    patch_cpuid_apic_id_in_place(&mut patched, apic_id, num_vcpus);
+    Ok(patched)
+}
+
+pub(crate) fn patch_cpuid_apic_id_in_place(cpuid: &mut CpuId, apic_id: u32, num_vcpus: u32) {
+    for entry in cpuid.as_mut_slice() {
         match entry.function {
             CPUID_LEAF_FEATURES => {
                 // EBX[31:24] = Initial APIC ID for this vCPU.
@@ -614,9 +625,60 @@ pub fn patch_cpuid_apic_id(cpuid: &CpuId, apic_id: u32, num_vcpus: u32) -> Resul
             _ => {}
         }
     }
-    CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
-        source: kvm_ioctls::Error::new(libc::ENOMEM),
-    })
+}
+
+/// Apply only KVM's documented architectural runtime CPUID updates. The full
+/// resulting table remains snapshot state, not a normalized comparison view.
+pub(crate) fn apply_cpuid_runtime_state(
+    cpuid: &mut CpuId,
+    cr4: u64,
+    apic_base: u64,
+    xcr0: u64,
+    xss: u64,
+) -> Result<(), &'static str> {
+    let xstate_size = |mask: u64, compacted: bool| -> Result<u32, &'static str> {
+        let mut size = 576u32;
+        for index in 2..64 {
+            if mask & (1u64 << index) == 0 {
+                continue;
+            }
+            let entry = cpuid
+                .as_slice()
+                .iter()
+                .find(|entry| entry.function == 0xD && entry.index == index)
+                .ok_or("enabled XSTATE component lacks CPUID layout")?;
+            let offset = if compacted {
+                if entry.ecx & 2 != 0 {
+                    size.checked_add(63).ok_or("XSTATE size overflow")? & !63
+                } else {
+                    size
+                }
+            } else {
+                entry.ebx
+            };
+            size = size.max(
+                offset
+                    .checked_add(entry.eax)
+                    .ok_or("XSTATE size overflow")?,
+            );
+        }
+        Ok(size)
+    };
+    let standard_size = xstate_size(xcr0, false)?;
+    let compacted_size = xstate_size(xcr0 | xss, true)?;
+    for entry in cpuid.as_mut_slice() {
+        match (entry.function, entry.index) {
+            (1, _) => {
+                entry.ecx = (entry.ecx & !(1 << 27)) | (u32::from(cr4 & (1 << 18) != 0) << 27);
+                entry.edx = (entry.edx & !(1 << 9)) | (u32::from(apic_base & (1 << 11) != 0) << 9);
+            }
+            (7, 0) => entry.ecx = (entry.ecx & !(1 << 4)) | (u32::from(cr4 & (1 << 22) != 0) << 4),
+            (0xD, 0) => entry.ebx = standard_size,
+            (0xD, 1) if entry.eax & ((1 << 1) | (1 << 3)) != 0 => entry.ebx = compacted_size,
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Pin the vCPU's TSC to a fixed frequency.
@@ -1111,6 +1173,31 @@ mod tests {
             edx,
             padding: [0; 3],
         }
+    }
+
+    #[test]
+    fn runtime_cpuid_is_derived_from_architecture_not_arbitrary_feature_masks() {
+        let entries = [
+            make_entry(1, 0, 0, 0, 1 << 26, 0),
+            make_entry(7, 0, 0, 0, 1 << 3, 0),
+            make_entry(0xD, 0, 7, 832, 832, 0),
+            make_entry(0xD, 1, 2, 832, 0, 0),
+            make_entry(0xD, 2, 256, 576, 2, 0),
+        ];
+        let mut cpuid = CpuId::from_entries(&entries).unwrap();
+        apply_cpuid_runtime_state(&mut cpuid, (1 << 18) | (1 << 22), 1 << 11, 7, 0).unwrap();
+        assert_eq!(cpuid.as_slice()[0].ecx, (1 << 26) | (1 << 27));
+        assert_eq!(cpuid.as_slice()[0].edx, 1 << 9);
+        assert_eq!(cpuid.as_slice()[1].ecx, (1 << 3) | (1 << 4));
+        assert_eq!(cpuid.as_slice()[2].ebx, 832);
+        assert_eq!(cpuid.as_slice()[3].ebx, 832);
+        apply_cpuid_runtime_state(&mut cpuid, 0, 0, 3, 0).unwrap();
+        assert_eq!(cpuid.as_slice()[0].ecx, 1 << 26);
+        assert_eq!(cpuid.as_slice()[0].edx, 0);
+        assert_eq!(cpuid.as_slice()[1].ecx, 1 << 3);
+        assert_eq!(cpuid.as_slice()[2].ebx, 576);
+        assert_eq!(cpuid.as_slice()[3].ebx, 576);
+        assert!(apply_cpuid_runtime_state(&mut cpuid, 0, 0, 1 << 9, 0).is_err());
     }
 
     // -- CpuConfig defaults --

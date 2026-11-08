@@ -3,16 +3,20 @@
   "profile_id": "vm-run",
   "source": {
     "path": "contracts/evidence/examples/raft-run-config.ncl",
-    "identity": "blake3:fc01a81570654cff3ac66450a649aa804d1fac5866c69f6b0eac5c01663a8d5f"
+    "identity": "blake3:68c9c7ce183a47585ebd4637150802c68c5d97d946e89c5a72029c639783511f"
   },
   "contract": {
     "path": "contracts/evidence/run-config.ncl",
-    "identity": "blake3:df97c62b5874a3a5f059d7a3d38834a6602cf933baf2b6039244ee63e7513e8f"
+    "identity": "blake3:5fc8271940ddacf8b01845470159ca8a01035a39f940fc587acb11431e5e2e75"
   },
   "imports": [
     {
       "path": "contracts/evidence/profile-primitives.ncl",
       "identity": "blake3:829939b6d573df8a78b59016c6b5eb0ed745333ace8522da076a223eca3eea08"
+    },
+    {
+      "path": "contracts/evidence/scheduler-progress.ncl",
+      "identity": "blake3:cb1256af0e1752112ceb3b276d839f433acc4dd25db9156a60f901be1be4001a"
     }
   ],
   "evaluator": {
@@ -21,7 +25,7 @@
   },
   "projection": {
     "path": "contracts/evidence/fixtures/valid/run-profile.valid.json",
-    "identity": "blake3:060e21247896866c54852f77beab9bff62a340634c39b98e604831120612cd23"
+    "identity": "blake3:48b80699b5823d6e8e5dbd98b9a68ded8ea6fd3f88c05736d2d8a0c131030da3"
   },
   "non_claims": [
     "profile conformance is pre-run intent only",

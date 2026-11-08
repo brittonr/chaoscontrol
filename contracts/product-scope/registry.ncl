@@ -266,6 +266,20 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "require-event-entry-exact-smp-capability",
+      owner = "chaoscontrol-vmm",
+      target_state = "blocked",
+      evidence_prerequisite = "Production SMP must stay rejected for ExactSingleStep and for PMU with an exact remainder unless the backend establishes exact event entry, and the rejection must happen before KVM creation, guest loading, memory allocation or disk/log mutation while single-vCPU operation and pure scheduler transitions stay unchanged. Verify capability-negative IRQ evidence, early rejection ordering, positive single-vCPU construction and diagnostics that do not establish production admission.",
+      non_claims = ["Absence of a portable exact event-entry capability does not prove that no backend can provide one, and partial KVM control diagnostics are not SMP execution, determinism, replay or release evidence."],
+    },
+    {
+      change = "plan-kvm-debug-boundary-scheduling",
+      owner = "chaoscontrol-vmm",
+      target_state = "experimental",
+      evidence_prerequisite = "The separate KvmDebugBoundary profile must remain opt-in behind --smp-progress-mode kvm-debug-boundary, --smp-boundary-profile kvm-debug-exit-boundary-v1 and a positive --smp-boundary-quantum while strict ExactSingleStep and PMU admission stay unchanged and fail closed. Verify typed budget and scheduler state, the closed normalized Debug/PIO/MMIO/HLT exit table, pending-I/O settlement, per-entry TSC overwrite, the installed KvmCoarseClockDenyV1 filter identity, permanent poison and fresh-runner recovery, snapshot/session/recording identities, the guarded ExcludeGuardedCoarseClockSamplesV2 projection and actual KVM controls for hidden IRQ handlers, POPF/IRET rearm, IF/STI shadow, typed NMI rejection, host-delay continuation and real vCPU CPUID retention.",
+      non_claims = ["Coarse boundaries are TF single-step boundaries, so they prove one validated settled boundary and not instruction-exact event entry. The measured Linux boot cost (one boundary per REP iteration) leaves first-party campaign, persisted-reload, negative CLI and receipt qualification blocked; no coarse execution, determinism, replay, release or strict SMP claim follows."],
+    },
+    {
       change = "annotate-next-witness-values",
       owner = "chaoscontrol-replay",
       target_state = "experimental",

@@ -10,11 +10,12 @@
 //! `--single-clock-profile tsc` for legacy baseline A/B diagnosis.
 //!
 //! Selected SMP cases fail strict production admission before any run or receipt
-//! creation. Narrow single-vCPU selections retain their existing execution path.
+//! creation unless the operator explicitly selects the coarse diagnostic profile,
+//! boundary unit and quantum. Coarse diagnostics never emit release matrix receipts.
 
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
-use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, VmScheduleTrace};
 use chaoscontrol_vmm::determinism_gate::{
     compare_case, refresh_divergence_classes, validate_determinism_matrix_receipt,
     ControllerFingerprint, DeterminismCaseReport, DeterminismGateReceipt, DeterminismMatrixProfile,
@@ -29,6 +30,10 @@ use std::env;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+#[path = "common/smp_progress.rs"]
+mod smp_progress;
+use smp_progress::{parse_progress_args, SmpProgressSelection};
 
 const DEFAULT_RUNS: usize = 10;
 const SINGLE_VM_MAX_EXITS: u64 = DEFAULT_SCHEDULE_JOURNAL_LIMIT as u64;
@@ -49,6 +54,40 @@ struct ControllerRunConfig {
     seed: u64,
     ticks: u64,
     clock: VmClockProfile,
+    progress: SmpProgressSelection,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VmRunConfig {
+    num_vcpus: usize,
+    max_exits: u64,
+    clock: VmClockProfile,
+    progress: SmpProgressSelection,
+}
+
+struct RunSample {
+    fingerprint: RunFingerprint,
+    schedule_traces: Vec<VmScheduleTrace>,
+}
+
+#[derive(serde::Serialize)]
+struct CoarseCaseEvidence {
+    case_name: String,
+    schedule_traces_match: bool,
+    runs: Vec<Vec<VmScheduleTrace>>,
+}
+
+#[derive(serde::Serialize)]
+struct CoarseDiagnosticReceipt<'a> {
+    schema_version: u16,
+    gate: &'static str,
+    smp_progress_mode: chaoscontrol_vmm::scheduler::core::ProgressMode,
+    smp_progress_budget: chaoscontrol_vmm::scheduler::core::ProgressBudget,
+    boundary_profile_table_identity: [u8; 32],
+    strict_instruction_determinism: bool,
+    release_eligible: bool,
+    diagnostic: &'a DeterminismGateReceipt,
+    schedule_evidence: &'a [CoarseCaseEvidence],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +146,7 @@ struct Args {
     dlog_dir: Option<PathBuf>,
     cases: Vec<String>,
     single_clock_profile: SingleClockProfile,
+    smp_progress: SmpProgressSelection,
 }
 
 fn parse_args() -> Args {
@@ -115,6 +155,7 @@ fn parse_args() -> Args {
 }
 
 fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
+    let (args, smp_progress) = parse_progress_args(args, true)?;
     let mut positional = Vec::new();
     let mut receipt = None;
     let mut matrix_receipt = None;
@@ -172,6 +213,12 @@ fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_RUNS);
 
+    if smp_progress.is_coarse() && matrix_receipt.is_some() {
+        return Err("--matrix-receipt is strict-only; coarse diagnostics cannot supply release matrix evidence".to_string());
+    }
+    if smp_progress.is_coarse() && single_clock_profile != SingleClockProfile::HideTsc {
+        return Err("coarse SMP requires --single-clock-profile hide-tsc; conflicting clock profiles are not overridden".to_string());
+    }
     Ok(Args {
         kernel: positional[0].clone(),
         initrd: positional[1].clone(),
@@ -181,6 +228,7 @@ fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
         dlog_dir,
         cases,
         single_clock_profile,
+        smp_progress,
     })
 }
 
@@ -193,7 +241,7 @@ fn usage_and_exit_code(message: &str, code: i32) -> ! {
         eprintln!("error: {message}\n");
     }
     eprintln!(
-        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--matrix-receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]\n\nDefault profile: hide-tsc (bounded operator drift gate); use --single-clock-profile tsc for legacy baseline A/B."
+        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--matrix-receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies|hide-tsc] [--smp-progress-mode exact-single-step|kvm-debug-boundary] [--smp-boundary-profile kvm-debug-exit-boundary-v1 --smp-boundary-quantum count]\n\nDefault profile: hide-tsc (bounded operator drift gate); SMP is strict by default. Coarse SMP requires explicit mode, profile and positive boundary quantum, and is diagnostic only."
     );
     std::process::exit(code);
 }
@@ -202,14 +250,27 @@ fn case_enabled(args: &Args, name: &str) -> bool {
     args.cases.is_empty() || args.cases.iter().any(|case| case == name)
 }
 
+fn diagnostic_case_name(args: &Args, name: &str) -> String {
+    if args.smp_progress.is_coarse() && name.ends_with("2vcpu") {
+        format!(
+            "{name}-kvm-debug-exit-boundary-v1-q{}",
+            args.smp_progress.budget.count()
+        )
+    } else {
+        name.to_string()
+    }
+}
+
 fn admit_selected_smp_cases(args: &Args) -> Result<(), VmError> {
     if case_enabled(args, "single-vm-2vcpu") || case_enabled(args, "controller-3vm-2vcpu") {
         // Ask the production constructor, not a guessed host feature or a
         // fabricated scheduler capability. No guest artifacts are opened.
-        DeterministicVm::new(VmConfig {
+        let mut config = VmConfig {
             num_vcpus: 2,
             ..Default::default()
-        })?;
+        };
+        args.smp_progress.apply(&mut config)?;
+        DeterministicVm::new(config)?;
     }
     Ok(())
 }
@@ -240,30 +301,37 @@ fn strip_nondeterministic(s: &str) -> String {
 fn run_single_vm(
     kernel: &str,
     initrd: &str,
-    num_vcpus: usize,
-    max_exits: u64,
+    config: VmRunConfig,
     dlog_path: Option<PathBuf>,
-    extra_cmdline: Option<&str>,
-    hide_tsc: bool,
-) -> VmFingerprint {
+) -> RunSample {
+    let VmRunConfig {
+        num_vcpus,
+        max_exits,
+        clock,
+        progress,
+    } = config;
     let schedule_journal_limit =
         usize::try_from(max_exits).expect("the bounded exit count must fit the host address width");
     assert!(
         schedule_journal_limit > 0,
         "the exit bound must be positive"
     );
-    let config = VmConfig {
+    let mut config = VmConfig {
         num_vcpus,
         dlog_path,
         dlog_register_interval: DLOG_REGISTER_INTERVAL,
         smp_schedule_journal_limit: schedule_journal_limit,
-        extra_cmdline: extra_cmdline.map(str::to_string),
+        extra_cmdline: clock.extra_cmdline.map(str::to_string),
         cpu: chaoscontrol_vmm::cpu::CpuConfig {
-            hide_tsc,
+            hide_tsc: clock.hide_tsc,
             ..VmConfig::default().cpu
         },
         ..Default::default()
     };
+    progress.apply(&mut config).unwrap_or_else(|error| {
+        eprintln!("error: determinism_stress: execution profile rejected: {error}");
+        std::process::exit(2);
+    });
     let mut vm = DeterministicVm::new(config).unwrap_or_else(|error| {
         eprintln!("error: determinism_stress: cannot create {num_vcpus}-vCPU VM: {error}");
         std::process::exit(1);
@@ -271,21 +339,33 @@ fn run_single_vm(
     vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
 
     let mut output = String::new();
+    let mut schedule_traces = Vec::new();
     let mut remaining = max_exits;
     while remaining > 0 {
         let chunk = remaining.min(10_000);
         let (ran, halted) = vm.run_bounded(chunk).expect("run");
         output.push_str(&vm.take_serial_output());
+        if progress.is_coarse() && num_vcpus > 1 {
+            schedule_traces.push(VmScheduleTrace {
+                vm_index: 0,
+                trace: vm
+                    .take_schedule_trace()
+                    .expect("drain coarse schedule evidence"),
+            });
+        }
         remaining -= ran;
         if halted {
             break;
         }
     }
 
-    VmFingerprint {
-        exit_count: vm.exit_count(),
-        virtual_tsc: vm.virtual_tsc(),
-        serial_stripped: strip_nondeterministic(&output),
+    RunSample {
+        fingerprint: RunFingerprint::SingleVm(VmFingerprint {
+            exit_count: vm.exit_count(),
+            virtual_tsc: vm.virtual_tsc(),
+            serial_stripped: strip_nondeterministic(&output),
+        }),
+        schedule_traces,
     }
 }
 
@@ -294,13 +374,14 @@ fn run_controller(
     initrd: &str,
     config: ControllerRunConfig,
     dlog_dir: Option<PathBuf>,
-) -> ControllerFingerprint {
+) -> RunSample {
     let ControllerRunConfig {
         num_vms,
         num_vcpus,
         seed,
         ticks,
         clock,
+        progress,
     } = config;
     let schedule = FaultScheduleBuilder::new()
         .at_ns(
@@ -319,18 +400,23 @@ fn run_controller(
         )
         .build();
 
+    let mut vm_config = VmConfig {
+        num_vcpus,
+        dlog_register_interval: DLOG_REGISTER_INTERVAL,
+        extra_cmdline: clock.extra_cmdline.map(str::to_string),
+        cpu: chaoscontrol_vmm::cpu::CpuConfig {
+            hide_tsc: clock.hide_tsc,
+            ..VmConfig::default().cpu
+        },
+        ..Default::default()
+    };
+    progress.apply(&mut vm_config).unwrap_or_else(|error| {
+        eprintln!("error: determinism_stress: controller execution profile rejected: {error}");
+        std::process::exit(2);
+    });
     let config = SimulationConfig {
         num_vms,
-        vm_config: VmConfig {
-            num_vcpus,
-            dlog_register_interval: DLOG_REGISTER_INTERVAL,
-            extra_cmdline: clock.extra_cmdline.map(str::to_string),
-            cpu: chaoscontrol_vmm::cpu::CpuConfig {
-                hide_tsc: clock.hide_tsc,
-                ..VmConfig::default().cpu
-            },
-            ..Default::default()
-        },
+        vm_config,
         kernel_path: kernel.to_string(),
         initrd_path: Some(initrd.to_string()),
         seed,
@@ -351,8 +437,12 @@ fn run_controller(
     });
     ctrl.force_setup_complete();
 
+    let mut schedule_traces = Vec::new();
     for _ in 0..ticks {
-        ctrl.step_round().expect("step");
+        let round = ctrl.step_round().expect("step");
+        if progress.is_coarse() && num_vcpus > 1 {
+            schedule_traces.extend(round.schedule_traces);
+        }
     }
 
     let mut vm_exits = Vec::new();
@@ -366,26 +456,47 @@ fn run_controller(
         serials_stripped.push(String::new());
     }
 
-    ControllerFingerprint {
-        tick: ctrl.tick(),
-        vm_exits,
-        vm_vtscs,
-        serials_stripped,
+    RunSample {
+        fingerprint: RunFingerprint::Controller(ControllerFingerprint {
+            tick: ctrl.tick(),
+            vm_exits,
+            vm_vtscs,
+            serials_stripped,
+        }),
+        schedule_traces,
     }
+}
+
+fn coarse_schedule_runs_match(runs: &[Vec<VmScheduleTrace>], expected_runs: usize) -> bool {
+    let Some(reference) = runs.first() else {
+        return false;
+    };
+    runs.len() == expected_runs
+        && runs.iter().all(|traces| traces == reference)
+        && reference.iter().any(|entry| {
+            entry.trace.records.iter().any(|record| {
+                matches!(
+                    &record.event,
+                    chaoscontrol_vmm::scheduler::core::ScheduleEvent::KvmBoundaryObserved { .. }
+                )
+            })
+        })
 }
 
 fn run_case<F>(
     name: &str,
     runs: usize,
     dlog_root: Option<&Path>,
+    coarse_evidence: &mut Vec<CoarseCaseEvidence>,
     mut run_once: F,
 ) -> DeterminismCaseReport
 where
-    F: FnMut(usize, Option<PathBuf>) -> RunFingerprint,
+    F: FnMut(usize, Option<PathBuf>) -> RunSample,
 {
     println!("━━━ {name}: {runs} runs ━━━");
     let start = Instant::now();
     let mut observations = Vec::new();
+    let mut schedule_runs = Vec::new();
 
     for run_index in 1..=runs {
         let dlog_path = dlog_root.map(|root| dlog_path_for(root, name, run_index));
@@ -399,7 +510,13 @@ where
             }
         }
 
-        let fingerprint = run_once(run_index, dlog_path.clone());
+        let RunSample {
+            fingerprint,
+            schedule_traces,
+        } = run_once(run_index, dlog_path.clone());
+        if !schedule_traces.is_empty() {
+            schedule_runs.push(schedule_traces);
+        }
         print_observation(run_index, &fingerprint, run_index == 1);
         observations.push(RunObservation {
             run_index,
@@ -409,6 +526,18 @@ where
     }
 
     let mut report = compare_case(name, observations);
+    if !schedule_runs.is_empty() {
+        let schedule_traces_match = coarse_schedule_runs_match(&schedule_runs, runs);
+        if !schedule_traces_match {
+            report.passed = false;
+            eprintln!("  Coarse normalized schedule traces differ or contain no progress");
+        }
+        coarse_evidence.push(CoarseCaseEvidence {
+            case_name: name.to_string(),
+            schedule_traces_match,
+            runs: schedule_runs,
+        });
+    }
     let dlog_divergences = compare_case_dlogs(&report);
     report.dlog_structural_match = dlog_divergences.as_ref().map(Vec::is_empty);
     report.dlog_divergences = dlog_divergences.unwrap_or_default();
@@ -759,44 +888,52 @@ fn main() {
     );
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
+    println!("SMP selection: {}", args.smp_progress.describe());
 
     let dlog_root = args.dlog_dir.as_deref();
     let vm_clock_profile = args.single_clock_profile.vm_profile();
     let mut cases = Vec::new();
+    let mut coarse_evidence = Vec::new();
 
     if case_enabled(&args, "single-vm-1vcpu") {
         cases.push(run_case(
             "single-vm-1vcpu",
             args.runs,
             dlog_root,
+            &mut coarse_evidence,
             |_, dlog_path| {
-                RunFingerprint::SingleVm(run_single_vm(
+                run_single_vm(
                     &args.kernel,
                     &args.initrd,
-                    1,
-                    SINGLE_VM_MAX_EXITS,
+                    VmRunConfig {
+                        num_vcpus: 1,
+                        max_exits: SINGLE_VM_MAX_EXITS,
+                        clock: vm_clock_profile,
+                        progress: args.smp_progress,
+                    },
                     dlog_path,
-                    vm_clock_profile.extra_cmdline,
-                    vm_clock_profile.hide_tsc,
-                ))
+                )
             },
         ));
     }
     if case_enabled(&args, "single-vm-2vcpu") {
         cases.push(run_case(
-            "single-vm-2vcpu",
+            &diagnostic_case_name(&args, "single-vm-2vcpu"),
             args.runs,
             dlog_root,
+            &mut coarse_evidence,
             |_, dlog_path| {
-                RunFingerprint::SingleVm(run_single_vm(
+                run_single_vm(
                     &args.kernel,
                     &args.initrd,
-                    2,
-                    SINGLE_VM_MAX_EXITS,
+                    VmRunConfig {
+                        num_vcpus: 2,
+                        max_exits: SINGLE_VM_MAX_EXITS,
+                        clock: vm_clock_profile,
+                        progress: args.smp_progress,
+                    },
                     dlog_path,
-                    vm_clock_profile.extra_cmdline,
-                    vm_clock_profile.hide_tsc,
-                ))
+                )
             },
         ));
     }
@@ -805,8 +942,9 @@ fn main() {
             "controller-3vm-1vcpu",
             args.runs,
             dlog_root,
+            &mut coarse_evidence,
             |_, dlog_dir| {
-                RunFingerprint::Controller(run_controller(
+                run_controller(
                     &args.kernel,
                     &args.initrd,
                     ControllerRunConfig {
@@ -815,19 +953,21 @@ fn main() {
                         seed: CONTROLLER_SEED,
                         ticks: CONTROLLER_TICKS,
                         clock: vm_clock_profile,
+                        progress: args.smp_progress,
                     },
                     dlog_dir,
-                ))
+                )
             },
         ));
     }
     if case_enabled(&args, "controller-3vm-2vcpu") {
         cases.push(run_case(
-            "controller-3vm-2vcpu",
+            &diagnostic_case_name(&args, "controller-3vm-2vcpu"),
             args.runs,
             dlog_root,
+            &mut coarse_evidence,
             |_, dlog_dir| {
-                RunFingerprint::Controller(run_controller(
+                run_controller(
                     &args.kernel,
                     &args.initrd,
                     ControllerRunConfig {
@@ -836,9 +976,10 @@ fn main() {
                         seed: CONTROLLER_SEED,
                         ticks: CONTROLLER_TICKS,
                         clock: vm_clock_profile,
+                        progress: args.smp_progress,
                     },
                     dlog_dir,
-                ))
+                )
             },
         ));
     }
@@ -861,7 +1002,24 @@ fn main() {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("create receipt parent");
         }
-        let json = serde_json::to_string_pretty(&receipt).expect("serialize receipt");
+        let json = if args.smp_progress.is_coarse() {
+            serde_json::to_string_pretty(&CoarseDiagnosticReceipt {
+                schema_version: 1,
+                gate: "kvm-debug-boundary-diagnostic-drift",
+                smp_progress_mode: args.smp_progress.mode,
+                smp_progress_budget: args.smp_progress.budget,
+                boundary_profile_table_identity:
+                    chaoscontrol_vmm::scheduler::core::BoundaryProfileId::KvmDebugExitBoundaryV1
+                        .table_identity(),
+                strict_instruction_determinism: false,
+                release_eligible: false,
+                diagnostic: &receipt,
+                schedule_evidence: &coarse_evidence,
+            })
+        } else {
+            serde_json::to_string_pretty(&receipt)
+        }
+        .expect("serialize receipt");
         write_receipt(path, format!("{json}\n").as_bytes()).expect("write receipt");
         println!("receipt: {}", path.display());
     }
@@ -883,7 +1041,9 @@ fn main() {
     }
 
     println!("╔══════════════════════════════════════════════════════════════╗");
-    if receipt.passed {
+    if args.smp_progress.is_coarse() && receipt.passed {
+        println!("Matching bounded coarse observations and normalized schedule traces; NOT strict instruction determinism or release eligibility");
+    } else if receipt.passed {
         println!(
             "║  ✅ ALL CONFIGURATIONS DETERMINISTIC ({} runs each)         ║",
             args.runs
@@ -900,6 +1060,154 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    fn coarse_argv() -> Vec<String> {
+        [
+            "missing-kernel",
+            "missing-initrd",
+            "2",
+            "--case",
+            "single-vm-2vcpu",
+            "--smp-progress-mode",
+            "kvm-debug-boundary",
+            "--smp-boundary-profile",
+            "kvm-debug-exit-boundary-v1",
+            "--smp-boundary-quantum",
+            "37",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+    }
+
+    #[test]
+    fn coarse_stress_selection_is_explicit_and_not_a_release_row() {
+        let args = parse_args_from(coarse_argv()).unwrap();
+        assert!(args.smp_progress.is_coarse());
+        assert_eq!(args.smp_progress.budget.count(), 37);
+        assert_eq!(
+            diagnostic_case_name(&args, "single-vm-2vcpu"),
+            "single-vm-2vcpu-kvm-debug-exit-boundary-v1-q37"
+        );
+        let mut config = VmConfig {
+            num_vcpus: 2,
+            ..VmConfig::default()
+        };
+        args.smp_progress.apply(&mut config).unwrap();
+        assert_eq!(
+            config.smp_progress_mode,
+            chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+        );
+        assert_eq!(config.smp_progress_budget, args.smp_progress.budget);
+    }
+
+    fn coarse_trace(
+        boundary: chaoscontrol_vmm::scheduler::core::KvmBoundaryKind,
+    ) -> VmScheduleTrace {
+        use chaoscontrol_vmm::scheduler::{
+            core::{
+                plan_execution_observation, BoundaryProfileId, ExecutionProgressObservation,
+                ProgressBudget, ProgressMode, ScheduleState, ScheduleTrace,
+                SCHEDULE_TRACE_SCHEMA_VERSION,
+            },
+            SchedulerConfig,
+        };
+        let profile_id = BoundaryProfileId::KvmDebugExitBoundaryV1;
+        let initial_state = ScheduleState::new(
+            &SchedulerConfig {
+                num_vcpus: 2,
+                progress_budget: ProgressBudget::KvmBoundaries {
+                    profile_id,
+                    count: 37,
+                },
+                ..SchedulerConfig::default()
+            },
+            ProgressMode::KvmDebugBoundary,
+        )
+        .unwrap();
+        let initial_state_id = initial_state.identity();
+        let transition = plan_execution_observation(
+            &initial_state,
+            ExecutionProgressObservation::KvmBoundary {
+                vcpu: 0,
+                profile_id,
+                boundary,
+            },
+        )
+        .unwrap()
+        .unwrap();
+        VmScheduleTrace {
+            vm_index: 0,
+            trace: ScheduleTrace {
+                schema_version: SCHEDULE_TRACE_SCHEMA_VERSION,
+                initial_state,
+                initial_state_id,
+                records: vec![transition.record],
+            },
+        }
+    }
+
+    #[test]
+    fn coarse_drift_compares_normalized_facts_not_just_progress_counts() {
+        use chaoscontrol_vmm::scheduler::core::{BoundaryIoDirection, KvmBoundaryKind};
+        let debug = coarse_trace(KvmBoundaryKind::DebugSingleStep);
+        let pio = coarse_trace(KvmBoundaryKind::Pio {
+            port: 0x3f8,
+            size: 1,
+            direction: BoundaryIoDirection::Write,
+        });
+        assert!(coarse_schedule_runs_match(
+            &[vec![debug.clone()], vec![debug.clone()]],
+            2
+        ));
+        assert!(!coarse_schedule_runs_match(
+            &[vec![debug.clone()], vec![pio]],
+            2
+        ));
+        assert!(!coarse_schedule_runs_match(&[vec![debug]], 2));
+        assert!(!coarse_schedule_runs_match(&[vec![], vec![]], 2));
+        assert!(!coarse_schedule_runs_match(&[], 2));
+    }
+
+    #[test]
+    fn coarse_stress_cannot_emit_strict_matrix_receipt() {
+        let mut argv = coarse_argv();
+        argv.extend([
+            "--matrix-receipt".to_string(),
+            "must-not-exist.json".to_string(),
+        ]);
+        assert!(parse_args_from(argv).unwrap_err().contains("strict-only"));
+    }
+
+    #[test]
+    fn partial_coarse_stress_flags_reject_before_any_effect() {
+        for flags in [
+            vec!["--smp-progress-mode", "kvm-debug-boundary"],
+            vec!["--smp-boundary-quantum", "37"],
+            vec!["--smp-boundary-profile", "kvm-debug-exit-boundary-v1"],
+            vec![
+                "--smp-progress-mode",
+                "exact-single-step",
+                "--smp-boundary-quantum",
+                "37",
+            ],
+        ] {
+            let mut argv = vec!["missing-kernel".to_string(), "missing-initrd".to_string()];
+            argv.extend(flags.into_iter().map(str::to_string));
+            assert!(parse_args_from(argv).is_err());
+        }
+    }
+
+    #[test]
+    fn coarse_stress_rejects_conflicting_clock_profiles() {
+        for profile in ["tsc", "jiffies"] {
+            let mut argv = coarse_argv();
+            argv.extend(["--single-clock-profile".to_string(), profile.to_string()]);
+            assert!(parse_args_from(argv)
+                .unwrap_err()
+                .contains("conflicting clock"));
+        }
+    }
+
     #[test]
     fn selected_smp_cases_reject_before_guest_inputs_or_receipts_are_opened() {
         use chaoscontrol_vmm::scheduler::core::ScheduleError;

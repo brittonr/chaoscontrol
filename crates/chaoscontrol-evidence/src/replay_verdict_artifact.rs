@@ -121,14 +121,14 @@ fn validate_carrier_bindings(bug: &BugRecord, verdict: &ReplayVerdict) -> Eviden
         .map(|variant| -> EvidenceResult<_> {
             let bytes = serde_json::to_vec(variant)
                 .map_err(|error| EvidenceError::new(error.to_string()))?;
-            let strategy = serde_json::to_string(&variant.strategy_override)
-                .map_err(|error| EvidenceError::new(error.to_string()))?;
+            let policy_hash =
+                blake3::derive_key("chaoscontrol.replay.schedule-variant-policy.v2", &bytes);
             Ok(
                 chaoscontrol_replay_evidence_core::dto::ReplayScheduleVariant {
                     scheduler_seed: variant.scheduler_seed,
-                    strategy,
-                    quantum_override: variant.quantum_override,
-                    policy_blake3: blake3::hash(&bytes).to_hex().to_string(),
+                    strategy: variant.strategy_override,
+                    progress_budget_override: variant.progress_budget_override,
+                    policy_blake3: blake3::Hash::from_bytes(policy_hash).to_hex().to_string(),
                 },
             )
         })

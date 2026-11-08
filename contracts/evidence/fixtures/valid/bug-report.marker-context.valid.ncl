@@ -5,8 +5,8 @@ let Parent = std.record.update "replay_parent_depth" 1 Base in
   replay_parent_snapshot_ref = {
     store = "file-content-addressed",
     digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    codec = "simulation-snapshot-cbor-zstd-v2",
-    schema_version = 2,
+    codec = "simulation-snapshot-cbor-zstd-v4",
+    schema_version = 4,
     path = "snapshots/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.snapshot.bin",
   },
   marker_context = {

@@ -29,8 +29,6 @@ const STATUSES: [&str; 5] = [
 // Replay classes and snapshot statuses are owned by the shared core.
 use chaoscontrol_replay_evidence_core::validate::{REPLAY_CLASSES, SNAPSHOT_STATUSES};
 const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
-const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u64 =
-    chaoscontrol_replay_evidence_core::LEGACY_REPLAY_VERDICT_SCHEMA_VERSION as u64;
 const SUBSTITUTED_ASSERTION_ALIAS: u64 = 8;
 const ACCEPTED_REPLAY_ARTIFACT_COUNT: usize = 2;
 const REPLAY_BUG_CORE_FIELD_COUNT: usize = 4;
@@ -154,6 +152,12 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
             error.message()
         ))
     })?;
+    validate_replay_verdict_with_options(
+        &load_json(&valid.join("replay-verdict.boundary-variant.valid.json"))?,
+        true,
+        false,
+        root,
+    )?;
     let mut extended_verdict = replay_verdict;
     extended_verdict["unreviewed_authority"] = Value::from(true);
     ensure(
@@ -166,6 +170,10 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     validate_assertion_summary_for_promotion(&identity_summary)?;
 
     let invalid = contracts.join("fixtures/invalid");
+    expect_invalid(
+        &invalid.join("replay-verdict.crossed-budget-unit.invalid.json"),
+        validate_replay_verdict,
+    )?;
     expect_invalid(
         &invalid.join("run-config.zero-vms.invalid.json"),
         validate_run_config,
@@ -269,6 +277,10 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         &invalid.join("replay-verdict.frontier-trace-promotion.invalid.json"),
         |value| validate_replay_verdict_with_options(value, true, false, root),
     )?;
+    expect_invalid(
+        &invalid.join("replay-verdict.schema-v1-accepted.invalid.json"),
+        validate_replay_verdict,
+    )?;
 
     expect_invalid(
         &invalid.join("replay-verdict.schedule-only-not-proof.invalid.json"),
@@ -281,7 +293,6 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         "replay-verdict.snapshot-not-reproduced.invalid.json",
         "replay-verdict.no-bug-found.invalid.json",
         "replay-verdict.replay-error.invalid.json",
-        "replay-verdict.schema-v1-accepted.invalid.json",
     ] {
         let path = invalid.join(fixture);
         validate_replay_verdict(&load_json(&path)?)
@@ -305,6 +316,10 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/register-simulator-profile.ncl",
         "examples/raft-campaign-profile.ncl",
         "examples/raft-fault-schedule-profile.ncl",
+        "fixtures/valid/kvm-debug-boundary-qualification.valid.ncl",
+        "fixtures/valid/run-profile.coarse-round-robin.valid.ncl",
+        "fixtures/valid/run-profile.coarse-randomized.valid.ncl",
+        "fixtures/valid/campaign-profile.coarse-randomized.valid.ncl",
         "examples/raft-dogfood-receipt.ncl",
         "examples/raft-bug-report.ncl",
         "examples/bug-report-identity.ncl",
@@ -413,6 +428,16 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/run-profile.unknown-frontier-policy.invalid.ncl",
         "fixtures/invalid/run-profile.retired-legacy-policy.invalid.ncl",
         "fixtures/invalid/run-profile.non-boolean-random-faults.invalid.ncl",
+        "fixtures/invalid/run-profile.missing-progress-mode.invalid.ncl",
+        "fixtures/invalid/run-profile.mixed-progress-units.invalid.ncl",
+        "fixtures/invalid/run-profile.unknown-boundary-profile.invalid.ncl",
+        "fixtures/invalid/run-profile.zero-boundary-budget.invalid.ncl",
+        "fixtures/invalid/run-profile.coarse-missing-watchdog.invalid.ncl",
+        "fixtures/invalid/run-profile.coarse-host-clock.invalid.ncl",
+        "fixtures/invalid/kvm-debug-boundary-qualification.single-repetition.invalid.ncl",
+        "fixtures/invalid/kvm-debug-boundary-qualification.unbounded-teardown.invalid.ncl",
+        "fixtures/invalid/kvm-debug-boundary-qualification.wrong-artifact.invalid.ncl",
+        "fixtures/invalid/campaign-profile.retired-schema.invalid.ncl",
         "fixtures/invalid/simulator-profile.unsupported-rng.invalid.ncl",
         "fixtures/invalid/simulator-profile.empty-artifacts.invalid.ncl",
         "fixtures/invalid/simulator-profile.malformed-digest.invalid.ncl",
@@ -901,10 +926,7 @@ pub fn validate_replay_verdict_with_options(
         .and_then(Value::as_u64)
         .ok_or_else(|| EvidenceError::new("replay-verdict.schema_version: expected integer"))?;
     ensure(
-        matches!(
-            schema_version,
-            LEGACY_REPLAY_VERDICT_SCHEMA_VERSION | crate::REPLAY_VERDICT_SCHEMA_VERSION
-        ),
+        schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION,
         format!("replay-verdict.schema_version: unsupported version {schema_version}"),
     )?;
     ensure(
@@ -1048,8 +1070,7 @@ pub fn validate_replay_verdict_with_options(
         .filter(|field| !value.get(**field).is_none_or(Value::is_null))
         .count();
     let has_identity = !value.get("assertion_identity").is_none_or(Value::is_null);
-    let has_bug_binding = bug_core_field_count == REPLAY_BUG_CORE_FIELD_COUNT
-        && (schema_version == LEGACY_REPLAY_VERDICT_SCHEMA_VERSION || has_identity);
+    let has_bug_binding = bug_core_field_count == REPLAY_BUG_CORE_FIELD_COUNT && has_identity;
     let binding_shape_valid = has_bug_binding || (bug_core_field_count == 0 && !has_identity);
     ensure(
         binding_shape_valid,

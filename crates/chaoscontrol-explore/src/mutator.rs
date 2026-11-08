@@ -2,12 +2,13 @@
 
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+use chaoscontrol_vmm::scheduler::core::ProgressBudget;
 use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulingStrategy};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 /// Configuration for fault schedule mutation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MutationConfig {
     /// Number of VMs (for generating valid fault targets).
     pub num_vms: usize,
@@ -22,8 +23,8 @@ pub struct MutationConfig {
     /// When > 0, each `mutate_with_schedule` call has this probability
     /// of generating a schedule variant instead of mutating faults.
     pub schedule_mutation_ratio: f64,
-    /// Base quantum for QuantumShift mutations.
-    pub base_quantum: u64,
+    /// Base progress budget for budget-shift mutations, including its unit/profile.
+    pub base_progress_budget: ProgressBudget,
 }
 
 impl Default for MutationConfig {
@@ -36,7 +37,7 @@ impl Default for MutationConfig {
             shift_prob: 0.2,
             replace_prob: 0.2,
             schedule_mutation_ratio: 0.0,
-            base_quantum: 100,
+            base_progress_budget: ProgressBudget::Instructions(100),
         }
     }
 }
@@ -329,8 +330,8 @@ impl ScheduleMutator {
 
     /// Generate a random `ScheduleVariant`.
     ///
-    /// Picks one of three operators: ReSeed (50%), QuantumShift (30%),
-    /// StrategyFlip (20%).
+    /// Picks one of three operators: ReSeed (50%), BudgetShift (30%),
+    /// StrategyFlip (20%). Every budget retains the configured unit/profile.
     fn random_schedule_variant(
         &self,
         config: &MutationConfig,
@@ -340,22 +341,22 @@ impl ScheduleMutator {
         let roll = rng.gen::<f64>();
 
         if roll < 0.5 {
-            // ReSeed only — different interleaving, same strategy/quantum
+            // ReSeed only — different interleaving, same strategy/budget
             ScheduleVariant {
                 scheduler_seed,
                 ..Default::default()
             }
         } else if roll < 0.8 {
-            // QuantumShift — multiply or divide by 2-8×
+            // BudgetShift — multiply or divide by 2-8× without changing units
             let factor = rng.gen_range(2u64..=8);
-            let quantum = if rng.gen_bool(0.5) {
-                config.base_quantum.saturating_mul(factor)
+            let count = if rng.gen_bool(0.5) {
+                config.base_progress_budget.count().saturating_mul(factor)
             } else {
-                (config.base_quantum / factor).max(1)
+                (config.base_progress_budget.count() / factor).max(1)
             };
             ScheduleVariant {
                 scheduler_seed,
-                quantum_override: Some(quantum),
+                progress_budget_override: Some(config.base_progress_budget.with_count(count)),
                 ..Default::default()
             }
         } else {
@@ -363,11 +364,11 @@ impl ScheduleMutator {
             let strategy = if rng.gen_bool(0.5) {
                 SchedulingStrategy::RoundRobin
             } else {
-                let min_q = (config.base_quantum / 4).max(1);
-                let max_q = config.base_quantum.saturating_mul(4);
+                let min_count = (config.base_progress_budget.count() / 4).max(1);
+                let max_count = config.base_progress_budget.count().saturating_mul(4);
                 SchedulingStrategy::Randomized {
-                    min_quantum: min_q,
-                    max_quantum: max_q,
+                    min_budget: config.base_progress_budget.with_count(min_count),
+                    max_budget: config.base_progress_budget.with_count(max_count),
                 }
             };
             ScheduleVariant {
@@ -502,7 +503,7 @@ mod tests {
     fn first_switch_steps(variant: Option<&ScheduleVariant>) -> Option<usize> {
         let config = SchedulerConfig {
             num_vcpus: RACE_VCPU_COUNT,
-            quantum: RACE_QUANTUM,
+            progress_budget: ProgressBudget::Instructions(RACE_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: RACE_SEED,
         };
@@ -517,10 +518,10 @@ mod tests {
         }
         for step in 1..=RACE_MAXIMUM_STEPS {
             let state = scheduler.state();
-            let event = ScheduleEvent::GuestProgress {
+            let event = ScheduleEvent::InstructionProgress {
                 expected_state_id: state.identity(),
                 vcpu: state.active_vcpu,
-                observed_progress: state.instruction_progress[state.active_vcpu].saturating_add(1),
+                observed_progress: state.progress_counts()[state.active_vcpu].saturating_add(1),
                 runnable_changes: Vec::new(),
                 source: ProgressSource::ExactSingleStep,
             };
@@ -742,7 +743,7 @@ mod tests {
         let base = FaultSchedule::new();
         let config = MutationConfig {
             schedule_mutation_ratio: 1.0,
-            base_quantum: RACE_QUANTUM,
+            base_progress_budget: ProgressBudget::Instructions(RACE_QUANTUM),
             ..Default::default()
         };
         let mut mutator = ScheduleMutator::new(RACE_SEED);
@@ -770,7 +771,7 @@ mod tests {
 
         let config = SchedulerConfig {
             num_vcpus: RACE_VCPU_COUNT,
-            quantum: RACE_QUANTUM,
+            progress_budget: ProgressBudget::Instructions(RACE_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: RACE_SEED,
         };
@@ -783,18 +784,77 @@ mod tests {
         let unsupported = ScheduleVariant {
             scheduler_seed: RACE_SEED,
             strategy_override: Some(SchedulingStrategy::Randomized {
-                min_quantum: INVALID_MINIMUM_QUANTUM,
-                max_quantum: INVALID_MAXIMUM_QUANTUM,
+                min_budget: ProgressBudget::Instructions(INVALID_MINIMUM_QUANTUM),
+                max_budget: ProgressBudget::Instructions(INVALID_MAXIMUM_QUANTUM),
             }),
-            quantum_override: None,
+            progress_budget_override: None,
         };
         assert!(scheduler.apply_variant(&unsupported).is_err());
         let zero_quantum = ScheduleVariant {
             scheduler_seed: RACE_SEED,
             strategy_override: None,
-            quantum_override: Some(0),
+            progress_budget_override: Some(ProgressBudget::Instructions(0)),
         };
         assert!(scheduler.apply_variant(&zero_quantum).is_err());
+    }
+
+    #[test]
+    fn boundary_mutations_preserve_units_and_reject_instruction_overrides() {
+        use chaoscontrol_vmm::scheduler::core::BoundaryProfileId;
+        let budget = ProgressBudget::KvmBoundaries {
+            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+            count: RACE_QUANTUM,
+        };
+        let config = MutationConfig {
+            schedule_mutation_ratio: 1.0,
+            base_progress_budget: budget,
+            ..Default::default()
+        };
+        let scheduler_config = SchedulerConfig {
+            num_vcpus: RACE_VCPU_COUNT,
+            progress_budget: budget,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: RACE_SEED,
+        };
+        let mut scheduler = VcpuScheduler::try_new(
+            &scheduler_config,
+            ProgressMode::KvmDebugBoundary,
+            vec![true; RACE_VCPU_COUNT],
+        )
+        .unwrap();
+        let variants = ScheduleMutator::new(RACE_SEED).mutate_with_schedule(
+            &FaultSchedule::new(),
+            RACE_VARIANT_COUNT,
+            &config,
+        );
+        assert!(variants.iter().any(|(_, variant)| variant
+            .as_ref()
+            .unwrap()
+            .progress_budget_override
+            .is_some()));
+        for (_, variant) in variants {
+            let variant = variant.unwrap();
+            if let Some(override_budget) = variant.progress_budget_override {
+                assert!(budget.same_unit(override_budget));
+            }
+            if let Some(SchedulingStrategy::Randomized {
+                min_budget,
+                max_budget,
+            }) = variant.strategy_override
+            {
+                assert!(budget.same_unit(min_budget));
+                assert!(budget.same_unit(max_budget));
+            }
+            scheduler.apply_variant(&variant).unwrap();
+        }
+        let before = scheduler.clone();
+        let crossed = ScheduleVariant {
+            scheduler_seed: RACE_SEED,
+            strategy_override: None,
+            progress_budget_override: Some(ProgressBudget::Instructions(RACE_QUANTUM)),
+        };
+        assert!(scheduler.apply_variant(&crossed).is_err());
+        assert_eq!(scheduler, before);
     }
 
     #[test]

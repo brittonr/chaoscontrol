@@ -1,8 +1,8 @@
 {
   "schema": "chaoscontrol-snapshot-descriptor-v1",
   "descriptor_version": 1,
-  "completeness_profile": "exact-x86-kvm-v1",
-  "state_schema_version": 3,
+  "completeness_profile": "exact-x86-kvm-v2",
+  "state_schema_version": 4,
   "architecture": "x86_64",
   "runtime": {
     "runtime_build": {
@@ -67,6 +67,10 @@
   },
   "state_owners": [
     {
+      "owner_id": "available-delivery",
+      "schema_id": "chaoscontrol-state-owner-v1"
+    },
+    {
       "owner_id": "counters",
       "schema_id": "chaoscontrol-state-owner-v1"
     },
@@ -80,6 +84,10 @@
     },
     {
       "owner_id": "entropy",
+      "schema_id": "chaoscontrol-state-owner-v1"
+    },
+    {
+      "owner_id": "execution-descriptor",
       "schema_id": "chaoscontrol-state-owner-v1"
     },
     {
@@ -103,7 +111,15 @@
       "schema_id": "chaoscontrol-state-owner-v1"
     },
     {
+      "owner_id": "injection-ledger",
+      "schema_id": "chaoscontrol-state-owner-v1"
+    },
+    {
       "owner_id": "panic-detector",
+      "schema_id": "chaoscontrol-state-owner-v1"
+    },
+    {
+      "owner_id": "pending-io-settlement",
       "schema_id": "chaoscontrol-state-owner-v1"
     },
     {
@@ -223,7 +239,7 @@
         "hex": "686c354c499261c330176d9df93d721e24c9f55eb67eac921e74cd9e42807939"
       },
       "length_bytes": 38,
-      "codec": "simulation-snapshot-cbor-zstd-v2"
+      "codec": "simulation-snapshot-cbor-zstd-v4"
     },
     "manifest": null,
     "members": [
@@ -236,7 +252,7 @@
             "hex": "686c354c499261c330176d9df93d721e24c9f55eb67eac921e74cd9e42807939"
           },
           "length_bytes": 38,
-          "codec": "simulation-snapshot-cbor-zstd-v2"
+          "codec": "simulation-snapshot-cbor-zstd-v4"
         }
       }
     ]

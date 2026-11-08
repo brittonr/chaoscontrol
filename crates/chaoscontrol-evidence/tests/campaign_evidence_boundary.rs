@@ -148,7 +148,13 @@ fn accepted_proof_manifest_refuses_structural_references() {
         .expect("committed manifest parses")
         .validate_shape()
         .expect("committed product manifest is admitted");
-    validate_readiness_promotion(&manifest, &report).expect("committed readiness gate passes");
+    let blocked = validate_readiness_promotion(&manifest, &report)
+        .expect_err("superseded snapshot codec cannot promote");
+    assert!(
+        blocked.message().contains("blocked-execution-schema"),
+        "unexpected error: {}",
+        blocked.message()
+    );
 
     for field in PROOF_REFERENCE_FIELDS {
         for artifact in STRUCTURAL_ARTIFACTS {

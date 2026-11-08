@@ -6,9 +6,14 @@ const MAX_EVIDENCE_JSON_BYTES: usize = 16 * 1024 * 1024;
 const OVERSIZED_EVIDENCE_JSON_BYTES: usize = MAX_EVIDENCE_JSON_BYTES + 1;
 
 #[test]
-fn regular_promotion_inputs_validate() {
-    validate_readiness_promotion_files(MANIFEST_PATH, REPORT_PATH)
-        .expect("regular historical inputs remain quarantined");
+fn regular_promotion_inputs_fail_closed_on_superseded_execution_schema() {
+    let err = validate_readiness_promotion_files(MANIFEST_PATH, REPORT_PATH)
+        .expect_err("superseded snapshot codec cannot promote");
+    assert!(
+        err.message().contains("blocked-execution-schema"),
+        "unexpected error: {}",
+        err.message()
+    );
 }
 
 #[cfg(unix)]

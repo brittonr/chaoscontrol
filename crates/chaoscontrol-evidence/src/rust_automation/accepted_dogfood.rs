@@ -7,9 +7,12 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
-pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 2;
-pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
-pub const SNAPSHOT_SCHEMA_VERSION: u64 = 2;
+pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::dto::REPLAY_VERDICT_SCHEMA_VERSION as u64;
+pub const SNAPSHOT_CODEC: &str =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC;
+pub const SNAPSHOT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION as u64;
 
 pub fn assertion_matches_profile(identity: &Value, profile: &Value) -> bool {
     let descriptor = identity.get("descriptor").unwrap_or(&Value::Null);

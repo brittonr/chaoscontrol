@@ -20,12 +20,14 @@ The VMM remains the owner of snapshot capture and restore effects.
 ## Versions
 
 The public descriptor version is `1`.
-The supported completeness profile is `exact-x86-kvm-v1`.
-The supported VMM state schema is `3`; it is distinct from the public descriptor version and payload codec.
-The current payload codec is `simulation-snapshot-cbor-zstd-v2`.
+The supported completeness profile is `exact-x86-kvm-v2`.
+The supported VMM state schema is `4`; it is distinct from the public descriptor version and payload codec.
+The current payload codec is `simulation-snapshot-cbor-zstd-v4`.
 
 A reader must reject unknown descriptor versions, profiles, state schemas, architectures, algorithms, and codecs.
 It must not fill missing state with defaults.
+
+External snapshot descriptor and VM-cohort export currently reject coarse KVM debug-boundary execution. Their destination compatibility vocabulary does not admit the complete coarse clock/filter/progress contract; they must not label those snapshots as strict instruction execution. First-party persisted coarse replay uses the execution descriptor in the VMM/session contract instead.
 
 ## Exact cohort inventory
 

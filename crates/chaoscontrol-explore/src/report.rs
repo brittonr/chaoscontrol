@@ -661,8 +661,8 @@ pub fn format_bug(bug: &BugReport) -> String {
         if let Some(ref strategy) = variant.strategy_override {
             output.push_str(&format!("     Strategy: {:?}\n", strategy));
         }
-        if let Some(quantum) = variant.quantum_override {
-            output.push_str(&format!("     Quantum:  {}\n", quantum));
+        if let Some(budget) = variant.progress_budget_override {
+            output.push_str(&format!("     Progress budget: {:?}\n", budget));
         }
     }
 

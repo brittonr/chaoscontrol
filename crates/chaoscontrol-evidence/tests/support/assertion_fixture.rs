@@ -149,7 +149,7 @@ fn write_verdict(
     write_json(
         path,
         &json!({
-            "schema_version": 2,
+            "schema_version": chaoscontrol_replay_evidence_core::dto::REPLAY_VERDICT_SCHEMA_VERSION,
             "run_id": "fixture",
             "replay_class": "snapshot_backed_reproduced",
             "reproduced": true,
@@ -173,8 +173,8 @@ fn snapshot_ref(digest: &str) -> Value {
     json!({
         "store": "file-content-addressed",
         "digest": digest,
-        "codec": "simulation-snapshot-cbor-zstd-v2",
-        "schema_version": 2,
+        "codec": chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC,
+        "schema_version": chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION,
         "path": SNAPSHOT_PATH,
     })
 }

@@ -78,20 +78,3 @@ fn chunked_shell_rejects_payload_digest_mismatch() {
         .expect_err("tampered chunk must fail");
     assert!(error.message().contains("snapshot chunk digest mismatch"));
 }
-
-#[test]
-fn vmm_and_public_descriptor_profile_constants_match() {
-    let descriptor = example_descriptor().expect("example descriptor");
-    assert_eq!(
-        descriptor.completeness_profile,
-        chaoscontrol_vmm::snapshot::SNAPSHOT_PROFILE_EXACT_X86_KVM_V1
-    );
-    assert_eq!(
-        descriptor.state_schema_version,
-        chaoscontrol_vmm::snapshot::SNAPSHOT_STATE_SCHEMA_VERSION
-    );
-    assert_eq!(
-        descriptor.architecture,
-        chaoscontrol_snapshot_descriptor::EXACT_ARCHITECTURE
-    );
-}

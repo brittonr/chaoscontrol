@@ -4,7 +4,7 @@ Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit
 
 ## Summary
 
-ChaosControl currently supports bounded snapshot-backed replay proof claims for: `raft`, `redb`, `net`, `rust-workload`.
+ChaosControl currently has no workload with fresh admitted v2 KVM evidence. Historical replay artifacts remain diagnostic and blocked from current promotion.
 
 Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported baseline covers the admitted Rust cohort and durable one-machine multi-hypervisor orchestration. Remaining gaps include broader workload admission, bounded determinism and fault coverage, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope.
 
@@ -14,10 +14,10 @@ This status is evidence-backed but narrow: it is not a mathematical determinism 
 
 | Workload | Status | Assertion ID | Historical verdict | Replay parent depth | export/reproduce exit | Evidence |
 | --- | --- | ---: | --- | ---: | --- | --- |
-| `raft` | `supported-bounded` | `3463273124` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/raft-fresh-v2-proof-20260809/` |
-| `redb` | `supported-bounded` | `4149728441` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/redb-fresh-v2-proof-20260809/` |
-| `net` | `supported-bounded` | `2074476939` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/net-fresh-v2-proof-20260809/` |
-| `rust-workload` | `supported-bounded` | `3143219316` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/rust-workload-fresh-v2-proof-20260809/` |
+| `raft` | `blocked-execution-schema` | `3463273124` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/raft-fresh-v2-proof-20260809/` |
+| `redb` | `blocked-execution-schema` | `4149728441` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/redb-fresh-v2-proof-20260809/` |
+| `net` | `blocked-execution-schema` | `2074476939` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/net-fresh-v2-proof-20260809/` |
+| `rust-workload` | `blocked-execution-schema` | `3143219316` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/rust-workload-fresh-v2-proof-20260809/` |
 
 `blocked-assertion-identity` means that the retained replay files predate admitted v2 structured assertion identity. Numeric alias agreement cannot promote them. Fresh KVM evidence must bind the selected alias and complete catalog through an accepted v2 summary.
 

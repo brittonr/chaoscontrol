@@ -321,11 +321,21 @@ impl SimulationController {
         if let Some(error) = self.controller_round_poison_error() {
             return Err(error);
         }
+        if let Some((vm_index, poison)) = self.vms.iter().enumerate().find_map(|(index, slot)| {
+            slot.vm
+                .schedule_execution_poison()
+                .map(|poison| (index, poison))
+        }) {
+            return Err(VmError::ScheduleExecutionPoisoned {
+                stage: poison.stage,
+                detail: format!("VM {vm_index}: {}", poison.detail),
+            });
+        }
         Ok(())
     }
 
     fn assert_controller_healthy(&self) {
-        if let Some(error) = self.controller_round_poison_error() {
+        if let Err(error) = self.ensure_controller_healthy() {
             panic!("{error}");
         }
     }
@@ -364,7 +374,9 @@ impl SimulationController {
     }
 
     fn ensure_round_can_start(&mut self) -> Result<(), VmError> {
-        self.ensure_controller_healthy()?;
+        if let Some(error) = self.controller_round_poison_error() {
+            return Err(error);
+        }
         let poisoned_vm = self.vms.iter().enumerate().find_map(|(vm_index, slot)| {
             slot.vm
                 .schedule_execution_poison()
@@ -387,7 +399,10 @@ impl SimulationController {
         self.round_poison.as_ref()
     }
 
-    pub(crate) fn poison_execution_exchange(&mut self, detail: String) -> VmError {
+    /// Permanently reject continuation and evidence after a failed execution
+    /// exchange or post-round evidence capture. Diagnostic state is retained;
+    /// recovery requires a fresh controller and independently admitted parent.
+    pub fn poison_execution_exchange(&mut self, detail: String) -> VmError {
         let error = VmError::Snapshot {
             message: format!("execution exchange: {detail}"),
         };
@@ -1143,8 +1158,18 @@ impl SimulationController {
             })?;
 
             let mut schedule_traces = Vec::new();
+            let mut injection_traces = Vec::new();
             for (vm_index, slot) in self.vms.iter_mut().enumerate() {
                 let trace = slot.vm.take_schedule_trace()?;
+                let records = slot.vm.take_injection_trace()?;
+                if self.config.vm_config.smp_progress_mode
+                    == crate::scheduler::core::ProgressMode::KvmDebugBoundary
+                {
+                    injection_traces.push(VmInjectionTrace {
+                        vm_id: vm_index,
+                        records,
+                    });
+                }
                 if self.config.vm_config.num_vcpus > 1 {
                     schedule_traces.push(VmScheduleTrace { vm_index, trace });
                 }
@@ -1158,6 +1183,7 @@ impl SimulationController {
                 fault_outcomes,
                 messages_delivered,
                 schedule_traces,
+                injection_traces,
             })
         })();
         self.finish_round_mutation(
@@ -1291,7 +1317,7 @@ impl SimulationController {
                 block_device_size_bytes: slot.vm.block_device_size_bytes(),
                 has_initial_snapshot: slot.initial_snapshot.is_some(),
                 supports_irq: true,
-                supports_nmi: true,
+                supports_nmi: slot.vm.supports_nmi_injection(),
                 supports_clock_freeze: true,
                 supports_clock_jitter: true,
                 supports_cpu_stall: true,
@@ -2574,7 +2600,7 @@ impl SimulationController {
     /// This is the snapshot immediate-exit boundary, not a scheduling round:
     /// no tick, fault, device dispatch, or SMP trace advancement is performed.
     pub fn settle_exact_observation(&mut self) -> Result<(), VmError> {
-        self.ensure_controller_healthy()?;
+        self.ensure_round_can_start()?;
         for slot in &mut self.vms {
             if let Err(error) = slot.vm.settle_exact_observation() {
                 // Earlier VMs may already have completed pending exit bookkeeping.
@@ -2589,7 +2615,7 @@ impl SimulationController {
     /// Snapshot all VMs and simulation state.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all(&mut self) -> Result<SimulationSnapshot, VmError> {
-        self.ensure_controller_healthy()?;
+        self.ensure_round_can_start()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
 
         for slot in &mut self.vms {
@@ -2654,7 +2680,7 @@ impl SimulationController {
     /// Returns the snapshot and total dirty pages across all VMs.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all_incremental(&mut self) -> Result<(SimulationSnapshot, usize), VmError> {
-        self.ensure_controller_healthy()?;
+        self.ensure_round_can_start()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
         let mut total_dirty = 0usize;
 
@@ -2758,7 +2784,7 @@ impl SimulationController {
     /// Restore all VMs from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
-        self.ensure_controller_healthy()?;
+        self.ensure_round_can_start()?;
         snapshot
             .validate_assertion_identity(self.vms.len())
             .map_err(|message| SnapshotSnafu { message }.build())?;
@@ -2813,7 +2839,7 @@ impl SimulationController {
         } else {
             self.vms[index].vcpu_stall_until.clear();
         }
-        self.vms[index].cpu_throttle = snapshot.cpu_throttle.get(index).copied().flatten();
+        self.vms[index].cpu_throttle = snapshot.cpu_throttle[index];
         self.vms[index].clock_freeze = snapshot.clock_freeze.get(index).copied().flatten();
         self.vms[index].clock_jitter_bound =
             snapshot.clock_jitter_bound.get(index).copied().unwrap_or(0);
@@ -2832,7 +2858,7 @@ impl SimulationController {
         for vcpu in stalled_vcpus {
             self.vms[index].vm.set_vcpu_stalled(vcpu, true)?;
         }
-        let memory_pressure = snapshot.memory_pressure.get(index).copied().flatten();
+        let memory_pressure = snapshot.memory_pressure[index];
         self.vms[index].memory_limit_bytes = memory_pressure.map(|state| state.limit_bytes);
         self.vms[index].memory_limit_release_at_tick =
             memory_pressure.map(|state| state.release_at_tick);
@@ -2865,15 +2891,10 @@ impl SimulationController {
             snapshot.clock_freeze.len(),
             snapshot.clock_jitter_bound.len(),
             snapshot.process_fault_attempt.len(),
+            snapshot.cpu_throttle.len(),
+            snapshot.memory_pressure.len(),
         ];
-        let memory_state_length_valid =
-            snapshot.memory_pressure.is_empty() || snapshot.memory_pressure.len() == vm_count;
-        let throttle_state_length_valid =
-            snapshot.cpu_throttle.is_empty() || snapshot.cpu_throttle.len() == vm_count;
-        if vector_lengths.into_iter().any(|length| length != vm_count)
-            || !memory_state_length_valid
-            || !throttle_state_length_valid
-        {
+        if vector_lengths.into_iter().any(|length| length != vm_count) {
             return Err(fault_transition_vm_error(
                 FaultTransitionError::SnapshotPendingStateMismatch,
             ));
@@ -3054,7 +3075,7 @@ impl SimulationController {
                     ));
                 }
             }
-            if let Some(throttle) = snapshot.cpu_throttle.get(index).copied().flatten() {
+            if let Some(throttle) = snapshot.cpu_throttle[index] {
                 let expected = FaultPlanEffect::CpuThrottle {
                     target,
                     budget_units: throttle.budget_units,
@@ -3069,7 +3090,7 @@ impl SimulationController {
                     ));
                 }
             }
-            if let Some(memory_state) = snapshot.memory_pressure.get(index).copied().flatten() {
+            if let Some(memory_state) = snapshot.memory_pressure[index] {
                 let expected = FaultPlanEffect::MemoryPressure {
                     target,
                     limit_bytes: memory_state.limit_bytes,
@@ -3133,7 +3154,7 @@ impl SimulationController {
         &mut self,
         snapshot: &SimulationSnapshot,
     ) -> Result<(), VmError> {
-        self.ensure_controller_healthy()?;
+        self.ensure_round_can_start()?;
         snapshot
             .validate_assertion_identity(self.vms.len())
             .map_err(|message| SnapshotSnafu { message }.build())?;
@@ -3190,6 +3211,7 @@ impl SimulationController {
 
     /// Configure assertion-hit checkpoint stopping for the next branch.
     pub fn configure_assertion_checkpoint_stop(&mut self, enabled: bool, max_stops: u32) {
+        self.assert_controller_healthy();
         for slot in &mut self.vms {
             slot.vm
                 .configure_assertion_checkpoint_stop(enabled, max_stops);
@@ -3198,11 +3220,13 @@ impl SimulationController {
 
     /// Drain captured assertion-hit checkpoints in capture order.
     pub fn take_assertion_checkpoints(&mut self) -> Vec<ControllerAssertionCheckpoint> {
+        self.assert_controller_healthy();
         std::mem::take(&mut self.assertion_checkpoints)
     }
 
     /// Drain accepted assertion hits from every VM, tagged with its VM slot.
     pub fn take_assertion_hits(&mut self) -> Vec<ControllerAssertionHit> {
+        self.assert_controller_healthy();
         let mut hits = Vec::new();
         for (vm_index, slot) in self.vms.iter_mut().enumerate() {
             for record in slot.vm.take_assertion_hits() {
@@ -3214,6 +3238,7 @@ impl SimulationController {
 
     /// Number of accepted hits dropped because a VM-local queue was full.
     pub fn assertion_hit_overflow(&self) -> u64 {
+        self.assert_controller_healthy();
         self.vms.iter().fold(0_u64, |total, slot| {
             total.saturating_add(slot.vm.assertion_hit_overflow())
         })
@@ -3445,7 +3470,7 @@ impl SimulationController {
             let per_vm = ScheduleVariant {
                 scheduler_seed: variant.scheduler_seed.wrapping_add(i as u64),
                 strategy_override: variant.strategy_override,
-                quantum_override: variant.quantum_override,
+                progress_budget_override: variant.progress_budget_override,
             };
             slot.vm.scheduler_mut().apply_variant(&per_vm)?;
         }
@@ -3459,7 +3484,7 @@ impl SimulationController {
             slot.vm.scheduler().matches_variant(&ScheduleVariant {
                 scheduler_seed: variant.scheduler_seed.wrapping_add(index as u64),
                 strategy_override: variant.strategy_override,
-                quantum_override: variant.quantum_override,
+                progress_budget_override: variant.progress_budget_override,
             })
         }))
     }
@@ -3550,6 +3575,61 @@ pub struct VmScheduleTrace {
     pub trace: ScheduleTrace,
 }
 
+/// Canonical request and accepted-pending injection facts from one VM.
+/// Absence of an observable delivery coordinate is retained as uncertainty,
+/// never promoted to an instruction-accurate delivery observation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VmInjectionTrace {
+    pub vm_id: usize,
+    #[serde(deserialize_with = "deserialize_bounded_injection_records")]
+    pub records: Vec<crate::snapshot::InjectionRecord>,
+}
+
+fn deserialize_bounded_injection_records<'de, D>(
+    deserializer: D,
+) -> Result<Vec<crate::snapshot::InjectionRecord>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct InjectionRecordsVisitor;
+    impl<'de> serde::de::Visitor<'de> for InjectionRecordsVisitor {
+        type Value = Vec<crate::snapshot::InjectionRecord>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                formatter,
+                "at most {} canonical injection records",
+                crate::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT
+            )
+        }
+
+        fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            const LIMIT: usize = crate::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
+            let hinted = sequence.size_hint().unwrap_or(0);
+            if hinted > LIMIT {
+                return Err(serde::de::Error::custom(
+                    "injection trace record bound exceeded",
+                ));
+            }
+            let mut records = Vec::with_capacity(hinted);
+            while let Some(record) = sequence.next_element()? {
+                if records.len() >= LIMIT {
+                    return Err(serde::de::Error::custom(
+                        "injection trace record bound exceeded",
+                    ));
+                }
+                records.push(record);
+            }
+            Ok(records)
+        }
+    }
+    deserializer.deserialize_seq(InjectionRecordsVisitor)
+}
+
 /// One accepted assertion hit and the VM slot that observed it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControllerAssertionHit {
@@ -3587,6 +3667,8 @@ pub struct RoundResult {
     pub messages_delivered: usize,
     /// Canonical deterministic SMP traces emitted during this round.
     pub schedule_traces: Vec<VmScheduleTrace>,
+    /// Canonical injection ledger records emitted during this round.
+    pub injection_traces: Vec<VmInjectionTrace>,
 }
 
 /// Final result of a simulation run.
@@ -3684,14 +3766,12 @@ pub struct SimulationSnapshot {
     /// Per-VM vCPU stall deadlines.
     pub vcpu_stall_until: Vec<std::collections::BTreeMap<usize, u64>>,
     /// Per-VM active CPU-exit throttles.
-    #[serde(default)]
     pub cpu_throttle: Vec<Option<CpuThrottleState>>,
     /// Per-VM clock freeze state.
     pub clock_freeze: Vec<Option<(u64, u64)>>,
     /// Per-VM clock jitter bound.
     pub clock_jitter_bound: Vec<u64>,
     /// Per-VM active memory-pressure state.
-    #[serde(default)]
     pub memory_pressure: Vec<Option<MemoryPressureSnapshotState>>,
     /// Per-VM pending process-effect attempt identity.
     pub process_fault_attempt: Vec<Option<FaultAttemptId>>,
@@ -7346,4 +7426,7 @@ mod tests {
 
     #[path = "fault_snapshot_fixtures.rs"]
     mod fault_snapshot_fixtures;
+
+    #[path = "coarse_boundary_fixtures.rs"]
+    mod coarse_boundary_fixtures;
 }

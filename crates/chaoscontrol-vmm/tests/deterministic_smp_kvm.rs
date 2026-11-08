@@ -5,7 +5,8 @@
 
 use chaoscontrol_vmm::scheduler::core::{
     plan_execution_observation, validate_transition_trace, ExecutionProgressObservation,
-    ProgressMode, RunnableChange, ScheduleAction, ScheduleError, ScheduleEvent, ScheduleTrace,
+    ProgressBudget, ProgressMode, RunnableChange, ScheduleAction, ScheduleError, ScheduleEvent,
+    ScheduleTrace,
 };
 use chaoscontrol_vmm::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
 use kvm_bindings::{
@@ -163,7 +164,7 @@ impl ExactSpinHarness {
 
         let scheduler_config = SchedulerConfig {
             num_vcpus: TEST_VCPU_COUNT,
-            quantum: TEST_QUANTUM,
+            progress_budget: ProgressBudget::Instructions(TEST_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 42,
         };
@@ -307,7 +308,7 @@ fn bsp_and_ap_hlt_retire_once_then_block_until_an_explicit_wake() {
     let mut harness = ExactSpinHarness::new_with_code(&HLT_CODE);
 
     harness.retire_hlt();
-    assert_eq!(harness.scheduler.state().instruction_progress[0], 1);
+    assert_eq!(harness.scheduler.state().progress_counts()[0], 1);
     assert!(!harness.scheduler.state().runnable_vcpus[0]);
     assert_eq!(harness.scheduler.active(), 1);
     assert_eq!(
@@ -317,7 +318,7 @@ fn bsp_and_ap_hlt_retire_once_then_block_until_an_explicit_wake() {
     );
 
     harness.retire_hlt();
-    assert_eq!(harness.scheduler.state().instruction_progress, vec![1, 1]);
+    assert_eq!(harness.scheduler.state().progress_counts(), &[1, 1]);
     assert!(harness.scheduler.state().halted);
     assert_eq!(
         harness.vcpus[1].get_mp_state().unwrap().mp_state,
@@ -329,14 +330,14 @@ fn bsp_and_ap_hlt_retire_once_then_block_until_an_explicit_wake() {
     assert!(!harness.scheduler.state().halted);
     assert!(harness.scheduler.state().runnable_vcpus[0]);
     assert_eq!(harness.scheduler.active(), 0);
-    assert_eq!(harness.scheduler.state().instruction_progress, vec![1, 1]);
+    assert_eq!(harness.scheduler.state().progress_counts(), &[1, 1]);
 }
 
 #[test]
 fn exact_kvm_harness_rejects_an_insufficient_journal_before_guest_progress() {
     let config = SchedulerConfig {
         num_vcpus: TEST_VCPU_COUNT,
-        quantum: TEST_QUANTUM,
+        progress_budget: ProgressBudget::Instructions(TEST_QUANTUM),
         strategy: SchedulingStrategy::RoundRobin,
         seed: 42,
     };

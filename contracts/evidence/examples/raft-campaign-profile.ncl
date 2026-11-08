@@ -1,7 +1,7 @@
 let CampaignProfile = import "../campaign-profile.ncl" in
 let run_profile = import "raft-run-config.ncl" in
 {
-  schema = "chaoscontrol.campaign-profile.v1",
+  schema = "chaoscontrol.campaign-profile.v2",
   campaign_id = "raft-multi-seed-v1",
   seeds = [42, 43, 44],
   run = run_profile,

@@ -49,6 +49,11 @@ pub trait SimulationRunner {
     where
         Self: Sized,
     {
+        session
+            .require_execution_authorization()
+            .map_err(|error| ReplayError::InvalidState {
+                message: error.to_string(),
+            })?;
         let recording = session.recording();
         let checkpoint = recording
             .checkpoints
@@ -101,7 +106,7 @@ pub trait SimulationRunner {
     fn report(&self) -> OracleReport;
 
     /// Get serial output for a specific VM.
-    fn serial_output(&self, vm_index: usize) -> String;
+    fn serial_output(&self, vm_index: usize) -> &str;
 
     /// Read bytes from guest physical memory.
     fn read_memory(&self, vm_index: usize, addr: u64, size: usize) -> Result<Vec<u8>, ReplayError>;
@@ -119,6 +124,12 @@ pub trait SimulationRunner {
         vcpu: usize,
         state: &RegisterState,
     ) -> Result<(), ReplayError>;
+
+    /// Only an actual admitted runner can authorize the inaccessible-clock view.
+    /// Retained descriptors and abstract mechanism fixtures cannot grant it.
+    fn coarse_clock_projection_admitted(&self) -> bool {
+        false
+    }
 }
 
 /// Real implementation using SimulationController.
@@ -127,6 +138,9 @@ pub struct RealSimulationRunner {
     /// Keep sealed guest-input capabilities alive for the complete attempt.
     _artifacts: Vec<std::fs::File>,
     deadline: Option<std::time::Instant>,
+    serial_output: Vec<String>,
+    serial_bytes: u64,
+    serial_limit: u64,
 }
 
 #[allow(
@@ -139,10 +153,14 @@ fn host_watchdog_now() -> std::time::Instant {
 
 impl RealSimulationRunner {
     pub(crate) fn from_controller(controller: SimulationController) -> Self {
+        let serial_output = vec![String::new(); controller.num_vms()];
         Self {
             controller,
             _artifacts: Vec::new(),
             deadline: None,
+            serial_output,
+            serial_bytes: 0,
+            serial_limit: crate::session::SessionLimits::default().max_output_bytes,
         }
     }
     pub(crate) fn into_controller(self) -> SimulationController {
@@ -152,13 +170,62 @@ impl RealSimulationRunner {
         controller: SimulationController,
         artifacts: Vec<std::fs::File>,
     ) -> Self {
+        let serial_output = vec![String::new(); controller.num_vms()];
         Self {
             controller,
             _artifacts: artifacts,
             deadline: None,
+            serial_output,
+            serial_bytes: 0,
+            serial_limit: crate::session::SessionLimits::default().max_output_bytes,
         }
     }
+    pub(crate) fn set_output_limit(&mut self, bytes: u64) -> Result<(), ReplayError> {
+        self.ensure_healthy()?;
+        if bytes == 0
+            || bytes > crate::session::SessionLimits::default().max_output_bytes
+            || bytes < self.serial_bytes
+        {
+            return Err(ReplayError::InvalidState {
+                message: "invalid actual output byte bound".into(),
+            });
+        }
+        self.serial_limit = bytes;
+        Ok(())
+    }
+
+    fn collect_serial_output(&mut self) -> Result<(), ReplayError> {
+        for vm_index in 0..self.controller.num_vms() {
+            let vm = self.controller.vm_mut(vm_index);
+            if vm.serial_dropped_byte_count() != 0 {
+                return Err(ReplayError::Runner {
+                    message: "guest serial capture dropped bytes; continuation cannot be verified"
+                        .into(),
+                });
+            }
+            let text = vm.take_serial_output();
+            self.serial_bytes = self
+                .serial_bytes
+                .checked_add(text.len() as u64)
+                .ok_or_else(|| ReplayError::Runner {
+                    message: "actual guest output byte accounting overflow".into(),
+                })?;
+            if self.serial_bytes > self.serial_limit {
+                return Err(ReplayError::Runner {
+                    message: "actual guest output exceeds admitted byte bound".into(),
+                });
+            }
+            if self.serial_output[vm_index].is_empty() {
+                self.serial_output[vm_index] = text;
+            } else {
+                self.serial_output[vm_index].push_str(&text);
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn set_execution_deadline(&mut self, milliseconds: u64) -> Result<(), ReplayError> {
+        self.ensure_healthy()?;
         self.deadline = Some(
             host_watchdog_now()
                 .checked_add(std::time::Duration::from_millis(milliseconds))
@@ -170,6 +237,7 @@ impl RealSimulationRunner {
     }
 
     fn check_deadline(&self) -> Result<(), ReplayError> {
+        self.ensure_healthy()?;
         if self
             .deadline
             .is_some_and(|deadline| host_watchdog_now() >= deadline)
@@ -183,6 +251,7 @@ impl RealSimulationRunner {
     }
 
     fn validate_vm(&self, vm_index: usize, vcpu: Option<usize>) -> Result<(), ReplayError> {
+        self.ensure_healthy()?;
         if vm_index >= self.controller.num_vms()
             || vcpu.is_some_and(|vcpu| vcpu >= self.controller.config().vm_config.num_vcpus)
         {
@@ -191,6 +260,19 @@ impl RealSimulationRunner {
             });
         }
         Ok(())
+    }
+
+    fn ensure_healthy(&self) -> Result<(), ReplayError> {
+        if self.controller.round_poison().is_some() {
+            return Err(ReplayError::Runner { message: "replay runner is permanently poisoned; a fresh admitted checkpoint and runner are required".into() });
+        }
+        Ok(())
+    }
+
+    fn abort_attempt(&mut self, error: ReplayError) -> ReplayError {
+        ReplayError::Vm {
+            source: self.controller.poison_execution_exchange(error.to_string()),
+        }
     }
 }
 
@@ -217,6 +299,7 @@ impl SimulationRunner for RealSimulationRunner {
                 message: error.to_string(),
             })?;
         runner.set_execution_deadline(session.host_deadline_ms())?;
+        runner.set_output_limit(session.limits().max_output_bytes)?;
         Ok(runner)
     }
 
@@ -224,15 +307,20 @@ impl SimulationRunner for RealSimulationRunner {
         &mut self,
         schedule: FaultSchedule,
     ) -> Result<(), ReplayError> {
+        self.ensure_healthy()?;
         self.controller.begin_counterfactual_fault_run(schedule)?;
         Ok(())
     }
 
     fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
-        self.check_deadline()?;
-        let result = self.controller.step_round()?;
-        self.check_deadline()?;
-        Ok(result)
+        let attempt = (|| {
+            self.check_deadline()?;
+            let result = self.controller.step_round()?;
+            self.check_deadline()?;
+            self.collect_serial_output()?;
+            Ok(result)
+        })();
+        attempt.map_err(|error| self.abort_attempt(error))
     }
 
     fn fault_control_events(&self) -> &[FaultControlEvent] {
@@ -243,6 +331,7 @@ impl SimulationRunner for RealSimulationRunner {
         &mut self,
         request: chaoscontrol_fault::mechanisms::PauseControlRequest,
     ) -> Result<(), ReplayError> {
+        self.ensure_healthy()?;
         // Both admission and typed rejection are retained in control_events and
         // compared with the recording immediately after dispatch.
         let _decision = self.controller.request_pause_control(request);
@@ -250,17 +339,29 @@ impl SimulationRunner for RealSimulationRunner {
     }
 
     fn settle_exact_observation(&mut self) -> Result<(), ReplayError> {
-        self.check_deadline()?;
-        self.controller.settle_exact_observation()?;
-        self.check_deadline()
+        let attempt = (|| {
+            self.check_deadline()?;
+            self.controller.settle_exact_observation()?;
+            self.check_deadline()
+        })();
+        attempt.map_err(|error| self.abort_attempt(error))
     }
 
     fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
-        Ok(self.controller.snapshot_all()?)
+        self.ensure_healthy()?;
+        self.controller
+            .snapshot_all()
+            .map_err(|error| self.abort_attempt(error.into()))
     }
 
     fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), ReplayError> {
-        Ok(self.controller.restore_all(snapshot)?)
+        self.ensure_healthy()?;
+        self.controller.restore_all(snapshot)?;
+        for output in &mut self.serial_output {
+            output.clear();
+        }
+        self.serial_bytes = 0;
+        Ok(())
     }
 
     fn tick(&self) -> u64 {
@@ -271,10 +372,14 @@ impl SimulationRunner for RealSimulationRunner {
         self.controller.report()
     }
 
-    fn serial_output(&self, _vm_index: usize) -> String {
-        // Serial output collection would need mutable access to controller
-        // For now, return empty string as serial output is captured in checkpoints
-        String::new()
+    fn serial_output(&self, vm_index: usize) -> &str {
+        self.serial_output.get(vm_index).map_or("", String::as_str)
+    }
+
+    fn coarse_clock_projection_admitted(&self) -> bool {
+        self.controller.round_poison().is_none()
+            && (0..self.controller.num_vms())
+                .all(|vm| self.controller.vm(vm).coarse_clock_projection_admitted())
     }
 
     fn read_memory(&self, vm_index: usize, addr: u64, size: usize) -> Result<Vec<u8>, ReplayError> {
@@ -378,6 +483,11 @@ impl<R: SimulationRunner> ReplayEngine<R> {
 
     fn restored_runner(&self, checkpoint_id: Option<u64>) -> Result<R, ReplayError> {
         if let Some(session) = self.recording.session() {
+            session.require_execution_authorization().map_err(|error| {
+                ReplayError::InvalidState {
+                    message: error.to_string(),
+                }
+            })?;
             let id = checkpoint_id.ok_or_else(|| ReplayError::InvalidState {
                 message: "exact session has no checkpoint at or before target".into(),
             })?;
@@ -474,7 +584,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             advance_exact_runner(&self.recording, &mut runner, target_tick)?;
         let oracle_report = runner.report();
         let serial_output: Vec<String> = (0..self.recording.config.num_vms)
-            .map(|i| runner.serial_output(i))
+            .map(|i| runner.serial_output(i).to_owned())
             .collect();
 
         let final_snapshot = Some(runner.snapshot_all()?);
@@ -529,7 +639,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
 
         let oracle_report = runner.report();
         let serial_output: Vec<String> = (0..self.recording.config.num_vms)
-            .map(|i| runner.serial_output(i))
+            .map(|i| runner.serial_output(i).to_owned())
             .collect();
 
         let final_snapshot = Some(runner.snapshot_all()?);
@@ -595,7 +705,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
 
         let oracle_report = runner.report();
         let serial_output: Vec<String> = (0..self.recording.config.num_vms)
-            .map(|i| runner.serial_output(i))
+            .map(|i| runner.serial_output(i).to_owned())
             .collect();
 
         let final_snapshot = Some(runner.snapshot_all()?);
@@ -657,6 +767,7 @@ pub(crate) fn advance_exact_runner<R: SimulationRunner>(
         stage_event_count,
         runner.fault_control_events(),
     )?;
+    validate_actual_continuation(recording, runner)?;
     while runner.tick() < target_tick {
         let expected_tick = checked_target_tick(runner.tick(), 1)?;
         let result = runner.step_round()?;
@@ -667,6 +778,7 @@ pub(crate) fn advance_exact_runner<R: SimulationRunner>(
         }
         validate_replayed_fault_round(recording, result.tick, &result.fault_outcomes)?;
         validate_replayed_schedule_round(recording, result.tick, &result.schedule_traces)?;
+        validate_replayed_injection_round(recording, result.tick, &result.injection_traces)?;
         stage_event_count = stage_event_count
             .checked_add(result.fault_outcomes.len() as u64)
             .ok_or_else(|| ReplayError::InvalidState {
@@ -680,6 +792,7 @@ pub(crate) fn advance_exact_runner<R: SimulationRunner>(
             stage_event_count,
             runner.fault_control_events(),
         )?;
+        validate_actual_continuation(recording, runner)?;
         events.extend(
             recording
                 .events
@@ -698,7 +811,228 @@ pub(crate) fn advance_exact_runner<R: SimulationRunner>(
         });
     }
     runner.settle_exact_observation()?;
+    if runner.tick() != target_tick {
+        return Err(ReplayError::InvalidState {
+            message: "observation settlement changed the verified target coordinate".into(),
+        });
+    }
+    if recording.config.smp_progress_mode
+        == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+    {
+        for vm_index in 0..recording.config.num_vms {
+            validate_replayed_serial_suffix(
+                recording,
+                start_tick,
+                target_tick,
+                vm_index,
+                runner.serial_output(vm_index),
+            )?;
+        }
+    }
     Ok((events, fault_outcomes))
+}
+
+/// One replay/debugger continuation check over actual settled guest state.
+/// Schedule/fault suffix checks are performed per round by the same caller.
+/// Full checkpoint bytes include memory, registers, pending devices, delivery
+/// ledger, scheduler and assertion state; retained expectations are never echoed.
+fn validate_actual_continuation<R: SimulationRunner>(
+    recording: &Recording,
+    runner: &mut R,
+) -> Result<(), ReplayError> {
+    if recording.config.smp_progress_mode
+        != chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+    {
+        return Ok(());
+    }
+    let Some(checkpoint) = recording
+        .checkpoints
+        .all()
+        .iter()
+        .find(|checkpoint| checkpoint.tick == runner.tick())
+    else {
+        return Ok(());
+    };
+    validated_checkpoint_snapshot(recording, checkpoint)?;
+    runner.settle_exact_observation()?;
+    let actual = runner.snapshot_all()?;
+    if actual.tick != runner.tick() {
+        return Err(ReplayError::InvalidState {
+            message: "actual snapshot did not arrive at the runner's verified tick".into(),
+        });
+    }
+    validate_actual_snapshot_continuation(
+        recording,
+        &actual,
+        runner.coarse_clock_projection_admitted(),
+    )
+}
+
+pub(crate) fn validate_actual_snapshot_continuation(
+    recording: &Recording,
+    actual: &SimulationSnapshot,
+    projection_admitted: bool,
+) -> Result<(), ReplayError> {
+    let checkpoint = recording
+        .checkpoints
+        .all()
+        .iter()
+        .find(|checkpoint| checkpoint.tick == actual.tick)
+        .ok_or_else(|| ReplayError::InvalidState {
+            message: "actual observation has no retained checkpoint".into(),
+        })?;
+    let expected = validated_checkpoint_snapshot(recording, checkpoint)?;
+    if actual.vm_snapshots.len() != expected.vm_snapshots.len() {
+        return Err(ReplayError::InvalidState {
+            message: "actual continuation topology mismatch".into(),
+        });
+    }
+    let mut exclude_kernel_clock = projection_admitted && !actual.vm_snapshots.is_empty();
+    for ((actual_vm, _), (expected_vm, _)) in actual.vm_snapshots.iter().zip(&expected.vm_snapshots)
+    {
+        let actual_descriptor =
+            actual_vm
+                .execution_descriptor()
+                .map_err(|error| ReplayError::InvalidState {
+                    message: format!("actual descriptor: {error:?}"),
+                })?;
+        let expected_descriptor =
+            expected_vm
+                .execution_descriptor()
+                .map_err(|error| ReplayError::InvalidState {
+                    message: format!("expected descriptor: {error:?}"),
+                })?;
+        if actual_descriptor != expected_descriptor {
+            return Err(ReplayError::InvalidState {
+                message: "actual continuation execution descriptor mismatch".into(),
+            });
+        }
+        let permits = actual_descriptor.permits_coarse_clock_projection()
+            && expected_descriptor.permits_coarse_clock_projection();
+        exclude_kernel_clock &= permits;
+    }
+    if continuation_identity(actual, exclude_kernel_clock)?
+        != continuation_identity(expected, exclude_kernel_clock)?
+    {
+        return Err(ReplayError::InvalidState {
+            message: format!(
+                "actual settled continuation differs from checkpoint {} at tick {}",
+                checkpoint.id, checkpoint.tick
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn continuation_identity(
+    snapshot: &SimulationSnapshot,
+    exclude_kernel_clock: bool,
+) -> Result<[u8; 32], ReplayError> {
+    struct CanonicalWriter(blake3::Hasher);
+    impl std::io::Write for CanonicalWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.update(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut writer = CanonicalWriter(blake3::Hasher::new());
+    writer
+        .0
+        .update(b"chaoscontrol.replay.actual-continuation.v3\0");
+    ciborium::ser::into_writer(
+        &CanonicalSimulationContinuation {
+            snapshot,
+            exclude_kernel_clock,
+        },
+        &mut writer,
+    )
+    .map_err(|error| ReplayError::InvalidState {
+        message: format!("canonical continuation serialization: {error}"),
+    })?;
+    Ok(*writer.0.finalize().as_bytes())
+}
+
+/// Exhaustive borrowed projection: adding controller state requires updating this
+/// serializer. The only optional omission is the admitted inaccessible KVM clock.
+struct CanonicalSimulationContinuation<'a> {
+    snapshot: &'a SimulationSnapshot,
+    exclude_kernel_clock: bool,
+}
+
+impl Serialize for CanonicalSimulationContinuation<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let SimulationSnapshot {
+            tick,
+            vm_snapshots,
+            network_state,
+            fault_engine_snapshot,
+            vcpu_stall_until,
+            cpu_throttle,
+            clock_freeze,
+            clock_jitter_bound,
+            memory_pressure,
+            process_fault_attempt,
+            fault_operation_sequence,
+            pending_process_observations,
+        } = self.snapshot;
+        let mut state = serializer.serialize_struct("CanonicalSimulationContinuation", 14)?;
+        state.serialize_field("schema_version", &3_u16)?;
+        state.serialize_field(
+            "projection",
+            &if self.exclude_kernel_clock {
+                "exclude-inaccessible-kernel-clock-v1"
+            } else {
+                "full-state-v1"
+            },
+        )?;
+        state.serialize_field("tick", tick)?;
+        state.serialize_field(
+            "vm_snapshots",
+            &CanonicalVmContinuations {
+                snapshots: vm_snapshots,
+                exclude_kernel_clock: self.exclude_kernel_clock,
+            },
+        )?;
+        state.serialize_field("network_state", network_state)?;
+        state.serialize_field("fault_engine_snapshot", fault_engine_snapshot)?;
+        state.serialize_field("vcpu_stall_until", vcpu_stall_until)?;
+        state.serialize_field("cpu_throttle", cpu_throttle)?;
+        state.serialize_field("clock_freeze", clock_freeze)?;
+        state.serialize_field("clock_jitter_bound", clock_jitter_bound)?;
+        state.serialize_field("memory_pressure", memory_pressure)?;
+        state.serialize_field("process_fault_attempt", process_fault_attempt)?;
+        state.serialize_field("fault_operation_sequence", fault_operation_sequence)?;
+        state.serialize_field("pending_process_observations", pending_process_observations)?;
+        state.end()
+    }
+}
+
+struct CanonicalVmContinuations<'a> {
+    snapshots: &'a [(
+        chaoscontrol_vmm::snapshot::VmSnapshot,
+        chaoscontrol_vmm::controller::VmStatus,
+    )],
+    exclude_kernel_clock: bool,
+}
+
+impl Serialize for CanonicalVmContinuations<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut sequence = serializer.serialize_seq(Some(self.snapshots.len()))?;
+        for (snapshot, status) in self.snapshots {
+            let view = snapshot
+                .continuation_view(self.exclude_kernel_clock)
+                .map_err(|error| {
+                    serde::ser::Error::custom(format!("continuation view: {error:?}"))
+                })?;
+            sequence.serialize_element(&(view, status))?;
+        }
+        sequence.end()
+    }
 }
 
 pub(crate) fn validated_checkpoint_snapshot<'a>(
@@ -937,6 +1271,58 @@ pub(crate) fn validate_replayed_schedule_round(
     Ok(())
 }
 
+fn validate_replayed_injection_round(
+    recording: &Recording,
+    tick: u64,
+    replayed: &[chaoscontrol_vmm::controller::VmInjectionTrace],
+) -> Result<(), ReplayError> {
+    let expected = recording
+        .schedule_rounds
+        .iter()
+        .find(|round| round.tick == tick)
+        .map_or(&[][..], |round| round.injection_traces.as_slice());
+    if replayed != expected {
+        return Err(ReplayError::InvalidState {
+            message: format!(
+                "canonical requested/accepted injection trace mismatch at tick {tick}"
+            ),
+        });
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_replayed_serial_suffix(
+    recording: &Recording,
+    start_tick: u64,
+    target_tick: u64,
+    vm_index: usize,
+    actual: &str,
+) -> Result<(), ReplayError> {
+    let expected = recording
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            RecordedEvent::SerialOutput {
+                tick,
+                vm_index: index,
+                data,
+            } if *index == vm_index && *tick > start_tick && *tick <= target_tick => {
+                Some(data.as_bytes())
+            }
+            _ => None,
+        })
+        .flatten()
+        .copied();
+    if !expected.eq(actual.bytes()) {
+        return Err(ReplayError::InvalidState {
+            message: format!(
+                "actual guest serial suffix mismatch for VM {vm_index} through tick {target_tick}"
+            ),
+        });
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_replayed_fault_round(
     recording: &Recording,
     tick: u64,
@@ -1042,7 +1428,7 @@ mod tests {
     fn one_step_schedule_trace() -> VmScheduleTrace {
         let config = SchedulerConfig {
             num_vcpus: 2,
-            quantum: 2,
+            progress_budget: chaoscontrol_vmm::scheduler::core::ProgressBudget::Instructions(2),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 42,
         };
@@ -1056,6 +1442,7 @@ mod tests {
         VmScheduleTrace {
             vm_index: 0,
             trace: ScheduleTrace {
+                schema_version: chaoscontrol_vmm::scheduler::core::SCHEDULE_TRACE_SCHEMA_VERSION,
                 initial_state_id: initial_state.identity(),
                 initial_state,
                 records: vec![planned.record],
@@ -1198,6 +1585,7 @@ mod tests {
                         message: error.to_string(),
                     })?;
                 return Ok(RoundResult {
+                    injection_traces: Vec::new(),
                     tick: self.tick,
                     vms_running: 2,
                     vms_halted: 0,
@@ -1220,6 +1608,7 @@ mod tests {
                     }
                 }
                 return Ok(RoundResult {
+                    injection_traces: Vec::new(),
                     tick: self.tick,
                     vms_running: 2,
                     vms_halted: 0,
@@ -1282,6 +1671,7 @@ mod tests {
                 Vec::new()
             };
             Ok(RoundResult {
+                injection_traces: Vec::new(),
                 tick: self.tick,
                 vms_running: if self.tick < self.max_ticks { 2 } else { 0 },
                 vms_halted: 0,
@@ -1363,8 +1753,8 @@ mod tests {
             }
         }
 
-        fn serial_output(&self, _vm_index: usize) -> String {
-            String::new()
+        fn serial_output(&self, _vm_index: usize) -> &str {
+            ""
         }
 
         fn read_memory(
@@ -1461,9 +1851,13 @@ mod tests {
         });
 
         Recording {
+            trace_start_tick: 0,
+            schema_version: crate::recording::RECORDING_SCHEMA_VERSION,
             session_id: "test".to_string(),
             timestamp: 0,
             config: RecordingConfig {
+                smp_progress_mode: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_mode,
+                smp_progress_budget: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
                 num_vms: 2,
                 vm_memory_size: 256 * 1024 * 1024,
                 tsc_khz: 3_000_000,
@@ -1620,6 +2014,7 @@ mod tests {
                 event_end: 0,
             });
             recording.schedule_rounds.push(RecordedScheduleRound {
+                injection_traces: Vec::new(),
                 tick,
                 traces: Vec::new(),
             });
@@ -1671,6 +2066,7 @@ mod tests {
         let mut recording = test_recording();
         let trace = one_step_schedule_trace();
         recording.schedule_rounds.push(RecordedScheduleRound {
+            injection_traces: Vec::new(),
             tick: 1,
             traces: vec![trace.clone()],
         });
@@ -1701,6 +2097,7 @@ mod tests {
         let mut trace = one_step_schedule_trace();
         trace.trace.records[0].post_state_id.0[0] ^= 1;
         recording.schedule_rounds.push(RecordedScheduleRound {
+            injection_traces: Vec::new(),
             tick: 1,
             traces: vec![trace],
         });

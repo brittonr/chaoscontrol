@@ -73,6 +73,27 @@ impl<R: SimulationRunner> Debugger<R> {
         Ok(self.build_state())
     }
 
+    /// Seek only to a recorded settled coordinate, never an interior hidden region.
+    pub fn goto_progress(
+        &mut self,
+        tick: u64,
+        vm_index: usize,
+        vcpu: usize,
+        position: chaoscontrol_vmm::scheduler::core::ProgressBudget,
+    ) -> Result<DebugState, ReplayError> {
+        self.runner.take();
+        let positions = recorded_progress_positions(&self.recording, tick);
+        if positions
+            .as_ref()
+            .and_then(|vms| vms.get(vm_index))
+            .and_then(|counts| counts.get(vcpu))
+            != Some(&position)
+        {
+            return Err(ReplayError::InvalidState { message: "target is not a recorded settled mode/unit/profile coordinate; hidden-region targets cannot be represented".into() });
+        }
+        self.goto(tick)
+    }
+
     /// Rewind by N ticks from current position.
     pub fn rewind(&mut self, ticks: u64) -> Result<DebugState, ReplayError> {
         let target_tick = self
@@ -207,9 +228,9 @@ impl<R: SimulationRunner> Debugger<R> {
         result
     }
 
-    /// Get serial output up to the current position.
+    /// Retained checkpoint output (static provenance, not actual replay output).
     pub fn serial_output(&self, vm_index: usize) -> String {
-        // Find the most recent checkpoint at or before current tick
+        // Actual replay suffixes are independently checked before verified arrival.
         if let Some(cp) = self.recording.checkpoints.at_or_before(self.current_tick) {
             cp.serial_output.get(vm_index).cloned().unwrap_or_default()
         } else {
@@ -293,6 +314,13 @@ impl<R: SimulationRunner> Debugger<R> {
 
         DebugState {
             tick: self.current_tick,
+            progress_mode: self.recording.config.smp_progress_mode,
+            progress_budget: self.recording.config.smp_progress_budget,
+            progress_positions: if self.runner.is_some() && !self.counterfactual {
+                recorded_progress_positions(&self.recording, self.current_tick)
+            } else {
+                None
+            },
             checkpoint_id,
             vm_statuses: vec![
                 if self.runner.is_none() {
@@ -319,10 +347,64 @@ impl<R: SimulationRunner> Debugger<R> {
     }
 }
 
+fn recorded_progress_positions(
+    recording: &Recording,
+    tick: u64,
+) -> Option<Vec<Vec<chaoscontrol_vmm::scheduler::core::ProgressBudget>>> {
+    let project = |state: &chaoscontrol_vmm::scheduler::core::ScheduleState| {
+        state
+            .progress_counts()
+            .iter()
+            .map(|count| state.progress_budget().with_count(*count))
+            .collect()
+    };
+    if let Some(snapshot) = recording
+        .checkpoints
+        .all()
+        .iter()
+        .find(|checkpoint| checkpoint.tick == tick)
+        .and_then(|checkpoint| checkpoint.snapshot.as_ref())
+    {
+        if snapshot.vm_snapshots.len() != recording.config.num_vms {
+            return None;
+        }
+        return Some(
+            snapshot
+                .vm_snapshots
+                .iter()
+                .map(|(vm, _)| project(&vm.scheduler_snapshot.state))
+                .collect(),
+        );
+    }
+    let round = recording
+        .schedule_rounds
+        .iter()
+        .find(|round| round.tick == tick)?;
+    if round.traces.len() != recording.config.num_vms {
+        return None;
+    }
+    round
+        .traces
+        .iter()
+        .map(|trace| {
+            let state = chaoscontrol_vmm::scheduler::core::validate_transition_trace(
+                &trace.trace,
+                chaoscontrol_vmm::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+            )
+            .ok()?;
+            Some(project(&state))
+        })
+        .collect()
+}
+
 /// Current debugger state at a position.
 #[derive(Debug, Clone)]
 pub struct DebugState {
     pub tick: u64,
+    pub progress_mode: chaoscontrol_vmm::scheduler::core::ProgressMode,
+    pub progress_budget: chaoscontrol_vmm::scheduler::core::ProgressBudget,
+    /// Present only after verified arrival in the declared unit/profile.
+    pub progress_positions: Option<Vec<Vec<chaoscontrol_vmm::scheduler::core::ProgressBudget>>>,
     pub checkpoint_id: u64,
     pub vm_statuses: Vec<String>,
     pub events_at_tick: Vec<RecordedEvent>,
@@ -431,6 +513,8 @@ mod tests {
         mode: u64,
         poisoned: bool,
         observation_settled: bool,
+        coarse: bool,
+        coarse_snapshot: Option<SimulationSnapshot>,
     }
 
     impl SimulationRunner for MockRunner {
@@ -454,6 +538,9 @@ mod tests {
             static NEXT_INSTANCE: std::sync::atomic::AtomicU64 =
                 std::sync::atomic::AtomicU64::new(0);
             Ok(Self {
+                coarse: config.smp_progress_mode
+                    == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary,
+                coarse_snapshot: None,
                 tick: 0,
                 mode: config.quantum,
                 poisoned: false,
@@ -490,7 +577,7 @@ mod tests {
                     message: "poisoned fixture reused".into(),
                 });
             }
-            if self.mode == POISON_QUANTUM && self.tick == 2 {
+            if self.mode == POISON_QUANTUM && (self.tick == 2 || (self.coarse && self.tick == 12)) {
                 self.poisoned = true;
                 return Err(ReplayError::Runner {
                     message: "injected controller poison after progress".into(),
@@ -499,7 +586,52 @@ mod tests {
             if self.mode == DRIFT_QUANTUM {
                 self.tick += 1;
             }
+            if let Some(snapshot) = self.coarse_snapshot.as_mut() {
+                use chaoscontrol_vmm::scheduler::core::*;
+                let mut traces = Vec::new();
+                for (vm_index, (vm, _)) in snapshot.vm_snapshots.iter_mut().enumerate() {
+                    let initial_state = vm.scheduler_snapshot.state.clone();
+                    let planned = plan_execution_observation(
+                        &initial_state,
+                        ExecutionProgressObservation::KvmBoundary {
+                            vcpu: initial_state.active_vcpu,
+                            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                            boundary: KvmBoundaryKind::DebugSingleStep,
+                        },
+                    )
+                    .unwrap()
+                    .unwrap();
+                    traces.push(chaoscontrol_vmm::controller::VmScheduleTrace {
+                        vm_index,
+                        trace: ScheduleTrace {
+                            schema_version: SCHEDULE_TRACE_SCHEMA_VERSION,
+                            initial_state_id: initial_state.identity(),
+                            initial_state,
+                            records: vec![planned.record],
+                        },
+                    });
+                    vm.scheduler_snapshot.state = planned.next_state;
+                    vm.scheduler_snapshot.state_id = vm.scheduler_snapshot.state.identity();
+                }
+                snapshot.tick = self.tick;
+                return Ok(RoundResult {
+                    tick: self.tick,
+                    vms_running: snapshot.vm_snapshots.len(),
+                    vms_halted: 0,
+                    faults_fired: Vec::new(),
+                    fault_outcomes: Vec::new(),
+                    messages_delivered: 0,
+                    injection_traces: (0..snapshot.vm_snapshots.len())
+                        .map(|vm_id| chaoscontrol_vmm::controller::VmInjectionTrace {
+                            vm_id,
+                            records: Vec::new(),
+                        })
+                        .collect(),
+                    schedule_traces: traces,
+                });
+            }
             Ok(RoundResult {
+                injection_traces: Vec::new(),
                 tick: self.tick,
                 vms_running: if self.mode == EARLY_STOP_QUANTUM {
                     0
@@ -515,6 +647,9 @@ mod tests {
         }
 
         fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
+            if let Some(snapshot) = &self.coarse_snapshot {
+                return Ok(snapshot.clone());
+            }
             use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 
             let engine = FaultEngine::new(EngineConfig::default());
@@ -542,6 +677,9 @@ mod tests {
                 });
             }
             self.tick = snapshot.tick;
+            if self.coarse {
+                self.coarse_snapshot = Some(snapshot.clone());
+            }
             Ok(())
         }
 
@@ -556,8 +694,8 @@ mod tests {
             }
         }
 
-        fn serial_output(&self, _vm_index: usize) -> String {
-            String::new()
+        fn serial_output(&self, _vm_index: usize) -> &str {
+            ""
         }
 
         fn read_memory(
@@ -627,9 +765,13 @@ mod tests {
 
     fn test_recording() -> Recording {
         Recording {
+            trace_start_tick: 0,
+            schema_version: crate::recording::RECORDING_SCHEMA_VERSION,
             session_id: "test".to_string(),
             timestamp: 0,
             config: RecordingConfig {
+                smp_progress_mode: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_mode,
+                smp_progress_budget: chaoscontrol_vmm::vm::VmConfig::default().smp_progress_budget,
                 num_vms: 2,
                 vm_memory_size: 256 * 1024 * 1024,
                 tsc_khz: 3_000_000,
@@ -1087,5 +1229,49 @@ mod tests {
 
         assert_eq!(regs.rip, 0x1000);
         assert_eq!(regs.rsp, 0x2000);
+    }
+
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    #[test]
+    fn coarse_coordinates_are_recorded_boundaries_not_hidden_instructions() {
+        let (_, recording) = crate::session::tests::coarse_smp_fixture();
+        let budget = recording.config.smp_progress_budget;
+        let positions = recorded_progress_positions(&recording, 15).unwrap();
+        assert_eq!(positions[0][0], budget.with_count(5));
+        assert_eq!(positions[0][1], budget.with_count(0));
+        let mut debugger = Debugger::<MockRunner>::new(recording);
+        for position in [
+            budget.with_count(6),
+            chaoscontrol_vmm::scheduler::core::ProgressBudget::Instructions(5),
+        ] {
+            assert!(debugger.goto_progress(15, 0, 0, position).is_err());
+            assert!(!debugger.state().verified_original);
+            assert!(debugger.state().progress_positions.is_none());
+            assert!(debugger.read_registers(0, 0).is_err());
+        }
+        for tick in [10, 15, 10, 16] {
+            let state = debugger.goto(tick).unwrap();
+            assert!(state.verified_original);
+            assert_eq!(
+                state.progress_positions.unwrap()[0][0],
+                budget.with_count(tick - 10)
+            );
+        }
+    }
+
+    // r[verify chaoscontrol.kvm_debug_boundary.recovery]
+    #[test]
+    fn coarse_poison_drops_runner_and_only_a_fresh_runner_recovers() {
+        let (_, mut recording) = crate::session::tests::coarse_smp_fixture();
+        recording.config.quantum = POISON_QUANTUM;
+        let mut debugger = Debugger::<MockRunner>::new(recording);
+        debugger.goto(10).unwrap();
+        let first_instance = debugger.runner.as_ref().unwrap().instance;
+        assert!(debugger.goto(13).is_err());
+        assert!(debugger.runner.is_none());
+        assert!(!debugger.state().verified_original);
+        assert!(debugger.state().progress_positions.is_none());
+        debugger.goto(10).unwrap();
+        assert_ne!(debugger.runner.as_ref().unwrap().instance, first_instance);
     }
 }

@@ -39,6 +39,11 @@ fn run_commands<R: SimulationRunner>(
         debugger.recording().checkpoints.len(),
         debugger.recording().events.len(),
     );
+    println!(
+        "Execution coordinate: mode={:?}, budget={:?}; simulation ticks remain distinct",
+        debugger.recording().config.smp_progress_mode,
+        debugger.recording().config.smp_progress_budget
+    );
     println!("Type 'help' for commands.\n");
 
     // Pending modifications for the next counterfactual run.
@@ -94,6 +99,7 @@ fn run_commands<R: SimulationRunner>(
             "quit" | "q" | "exit" => break,
 
             "goto" | "g" => cmd_goto(&mut debugger, &parts),
+            "goto-boundary" => cmd_goto_boundary(&mut debugger, &parts),
             "step" | "s" => cmd_step(&mut debugger, &parts),
             "rewind" | "rw" => cmd_rewind(&mut debugger, &parts),
             "bug" => cmd_goto_bug(&mut debugger, &parts),
@@ -143,6 +149,7 @@ fn print_help() {
     println!(
         "  goto <tick>           Jump to a tick (restores nearest checkpoint, replays forward)"
     );
+    println!("  goto-boundary <tick> <vm> <vcpu> <count>  Require an exact recorded settled boundary coordinate");
     println!("  step [n]              Step forward n ticks (default: 1)");
     println!("  rewind [n]            Rewind n ticks (default: 1)");
     println!("  bug <id>              Jump to the tick where bug #id was detected");
@@ -200,6 +207,41 @@ fn cmd_goto<R: SimulationRunner>(dbg: &mut Debugger<R>, parts: &[&str]) -> Resul
             println!("  {ev:?}");
         }
     }
+    Ok(())
+}
+
+fn cmd_goto_boundary<R: SimulationRunner>(
+    dbg: &mut Debugger<R>,
+    parts: &[&str],
+) -> Result<(), ReplayError> {
+    if parts.len() != 5 {
+        return Err(ReplayError::InvalidState {
+            message: "usage: goto-boundary <tick> <vm> <vcpu> <count>".into(),
+        });
+    }
+    let parse =
+        |value: &str| parse_u64(value).map_err(|message| ReplayError::InvalidState { message });
+    let tick = parse(parts[1])?;
+    let vm = parse_usize(parts[2]).map_err(|message| ReplayError::InvalidState { message })?;
+    let vcpu = parse_usize(parts[3]).map_err(|message| ReplayError::InvalidState { message })?;
+    let count = parse(parts[4])?;
+    let budget = dbg.recording().config.smp_progress_budget;
+    if !matches!(
+        budget,
+        chaoscontrol_vmm::scheduler::core::ProgressBudget::KvmBoundaries { .. }
+    ) {
+        return Err(ReplayError::InvalidState {
+            message: "goto-boundary requires a retained boundary-mode session".into(),
+        });
+    }
+    let state = dbg.goto_progress(tick, vm, vcpu, budget.with_count(count))?;
+    println!(
+        "At verified settled boundary coordinate: tick={} vm={} vcpu={} position={:?}",
+        state.tick,
+        vm,
+        vcpu,
+        budget.with_count(count)
+    );
     Ok(())
 }
 
@@ -382,6 +424,9 @@ fn cmd_checkpoints<R: SimulationRunner>(dbg: &Debugger<R>) -> Result<(), ReplayE
 fn cmd_state<R: SimulationRunner>(dbg: &Debugger<R>) -> Result<(), ReplayError> {
     let s = dbg.state();
     println!("tick: {}", s.tick);
+    println!("progress_mode: {:?}", s.progress_mode);
+    println!("progress_budget: {:?}", s.progress_budget);
+    println!("verified_progress_positions: {:?}", s.progress_positions);
     println!("checkpoint: #{}", s.checkpoint_id);
     println!("VMs: {:?}", s.vm_statuses);
     println!("verified_original: {}", s.verified_original);

@@ -1,8 +1,9 @@
 let RunProfile = import "../run-config.ncl" in
 {
-  schema = "chaoscontrol.run-profile.v2",
+  schema = "chaoscontrol.run-profile.v3",
   profile_id = "raft-vm-exploration",
   mode = "vm-exploration",
+  progress_mode = "ExactSingleStep",
   artifacts = {
     kernel = {
       kind = "absolute-path",
@@ -24,8 +25,10 @@ let RunProfile = import "../run-config.ncl" in
     memory_mib = 128,
     scheduling = {
       strategy = "round-robin",
-      minimum_quantum = 100,
-      maximum_quantum = 100,
+      minimum_budget = { Instructions = 100 },
+      maximum_budget = { Instructions = 100 },
+      journal_limit = 4096,
+      entry_watchdog_microseconds = 100000,
       diversity = false,
     },
   },
@@ -35,7 +38,8 @@ let RunProfile = import "../run-config.ncl" in
     ticks_per_branch = 500,
     max_rounds = 3,
     max_frontier = 10000,
-    quantum = 100,
+    outer_exit_budget = 100,
+    progress_budget = { Instructions = 100 },
     bootstrap_budget = 10000,
     stale_round_limit = 10,
   },

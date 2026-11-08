@@ -6,7 +6,7 @@ use super::{valid_identifier, ArtifactReference, RunProfile};
 use crate::campaign::CampaignConfig;
 use chaoscontrol_fault::scenario::ScenarioConfig;
 
-const CAMPAIGN_SCHEMA: &str = "chaoscontrol.campaign-profile.v1";
+const CAMPAIGN_SCHEMA: &str = "chaoscontrol.campaign-profile.v2";
 const CAMPAIGN_SCOPE: &str = "pre-run campaign intent; not thread start, VM start, completed seed, fault effect, replay, report, receipt, or accepted evidence";
 const FAILURE_POLICY: &str = "fail-campaign";
 const SEED_TEMPLATE: &str = "seed_{seed}";

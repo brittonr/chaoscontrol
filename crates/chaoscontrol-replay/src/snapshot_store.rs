@@ -559,8 +559,8 @@ fn gc_in_directory(
     Ok(removed)
 }
 
-/// Encode using the file store's existing CBOR/zstd envelope and legacy store
-/// reference. The caller may lower (never raise) the compressed-byte ceiling.
+/// Encode the current versioned CBOR/zstd envelope and exact store reference.
+/// The caller may lower (never raise) the compressed-byte ceiling.
 /// No filesystem access occurs, allowing a capability-relative output shell.
 pub fn encode_snapshot_artifact(
     snapshot: &SimulationSnapshot,
@@ -584,6 +584,7 @@ pub fn encode_snapshot_artifact_with_limits(
     maximum_bytes: u64,
     maximum_decoded_bytes: u64,
 ) -> Result<(ReplayParentSnapshotRef, Vec<u8>, u64), SnapshotStoreError> {
+    validate_snapshot_execution(snapshot)?;
     if maximum_decoded_bytes == 0 || maximum_decoded_bytes > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
         return Err(SnapshotStoreError::DecompressedTooLarge {
             limit: maximum_decoded_bytes,
@@ -710,7 +711,18 @@ pub fn decode_snapshot_artifact_with_limit(
     if artifact.vm_count != artifact.snapshot.vm_snapshots.len() {
         return Err(SnapshotStoreError::MetadataMismatch { field: "vm_count" });
     }
+    validate_snapshot_execution(&artifact.snapshot)?;
     Ok((artifact, decompressed.len() as u64))
+}
+
+fn validate_snapshot_execution(snapshot: &SimulationSnapshot) -> Result<(), SnapshotStoreError> {
+    for (vm, _) in &snapshot.vm_snapshots {
+        vm.validate_retained_boundary()
+            .map_err(|_| SnapshotStoreError::MetadataMismatch {
+                field: "complete_settled_execution_state",
+            })?;
+    }
+    Ok(())
 }
 
 fn list_snapshot_entries(directory: &File) -> Result<Vec<OsString>, SnapshotStoreError> {

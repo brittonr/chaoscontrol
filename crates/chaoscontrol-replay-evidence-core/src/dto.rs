@@ -8,9 +8,7 @@ use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use serde::{Deserialize, Serialize};
 
 /// Current schema version for emitted replay verdict artifacts.
-pub const REPLAY_VERDICT_SCHEMA_VERSION: u32 = 2;
-/// Oldest schema version still admitted by compatibility readers.
-pub const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u32 = 1;
+pub const REPLAY_VERDICT_SCHEMA_VERSION: u32 = 3;
 /// Exit status recorded for a verdict whose replay reproduced the bug.
 pub const REPRODUCED_EXIT_STATUS: i32 = 0;
 /// Exit status recorded for a verdict whose replay did not reproduce the bug.
@@ -80,9 +78,9 @@ pub struct ReplaySnapshotValidation {
 #[serde(deny_unknown_fields)]
 pub struct ReplayScheduleVariant {
     pub scheduler_seed: u64,
-    pub strategy: String,
+    pub strategy: Option<chaoscontrol_sim_core::scheduler::SchedulingStrategy>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub quantum_override: Option<u64>,
+    pub progress_budget_override: Option<chaoscontrol_sim_core::scheduler::core::ProgressBudget>,
     pub policy_blake3: String,
 }
 

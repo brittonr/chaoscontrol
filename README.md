@@ -167,17 +167,18 @@ model-level per-exit versus counter-time evaluation behind the gated TSC design.
   enabling fully deterministic time progression
 - **Fixed processor identity**: Optional model/family/stepping override
   for cross-host reproducibility
-- **SMP support**: Multi-vCPU VMs with serialized execution (Antithesis-style),
-  deterministic round-robin or randomized scheduling
+- **Serialized SMP policy**: One round-robin or seeded randomized policy core,
+  with distinct instruction and explicit KVM-boundary execution contracts
 
 ### Deterministic SMP Progress
 
-ChaosControl uses `ProgressMode::ExactSingleStep` for SMP by default. KVM guest debug returns control after each guest instruction.
-The scheduler switches vCPUs only at the declared instruction quantum.
+`ProgressMode::ExactSingleStep` remains the default SMP request. It requires exact guest-instruction boundaries through IRQ, NMI and synchronous exception entry. The current portable KVM provider cannot establish that guarantee and rejects the request before VM creation or guest/output mutation. Accepting guest-debug controls is not capability evidence: interrupt entry can hide an entire handler before the next debug return.
 
-`ProgressMode::PmuAccelerated` is an explicit opt-in mode. It uses a guest-only instruction counter, then single-steps the exact remainder.
-Startup fails if the PMU, overflow delivery, or exact single-step capability is unavailable. The VMM does not use timer-only fallback.
-PMU overflow signals target the execution thread with `F_SETOWN_EX` and `F_OWNER_TID`.
+`ProgressMode::PmuAccelerated` also requires the same exact primitive for its remainder, plus admitted guest-only PMU counting and overflow delivery. It remains unavailable on this provider; no timer or coarse-mode fallback is selected automatically.
+
+The separate coarse request requires all three flags: `--smp-progress-mode kvm-debug-boundary`, `--smp-boundary-profile kvm-debug-exit-boundary-v1`, and `--smp-boundary-quantum <count>`. Budgets count validated settled Debug/PIO/MMIO/HLT boundaries, not retired instructions. Hidden handler work between boundaries is scheduler-atomic; targets inside it are not representable. The declared profile uses hidden TSC/hypervisor interfaces, per-exit virtual time with `IA32_TSC` overwritten before every guest entry, an absent in-kernel PIT with all PIT PIO and IRQ deadlines owned by the virtual-time software device, `noapictimer clocksource=jiffies notsc`, an enforced `KvmCoarseClockDenyV1` guest-clock MSR deny filter and finite thread-targeted entry recovery. Merely inhibiting the kernel PIT timer is insufficient: its counter and speaker reads still expose host time. Hiding CPUID TSC features does not trap arbitrary `RDTSC`; this is a trusted, bounded guest-cohort profile, not arbitrary-guest clock isolation. Conflicting profile inputs reject instead of being overwritten.
+
+Snapshots/session identities bind mode, typed budget, boundary/filter/projection tables, host and pending device/delivery state. Coarse replay and executable inspection require explicit matching coarse opt-in even when a retained manifest names the mode. They do not override the retained budget/profile. The guarded `ExcludeGuardedCoarseClockSamplesV2` continuation projection permits differences only in raw `KVM_GET_CLOCK` samples and each vCPU's captured MSR data at exactly `0x10` (`IA32_TSC`), `0x40000010` (Hyper-V VP runtime), and `0x40000020` (Hyper-V reference time count). Original raw values remain retained; MSR indices, order and count and every other captured field remain exact. Equal eligible measured descriptors alone are insufficient: the actual healthy coarse runner must have installed the declared deny filter and must overwrite TSC from virtual time before every guest entry. Static artifact inspection or a portable fixture grants no execution or replay authority.
 
 `SIGALRM`, unrelated `VcpuExit::Intr`, and unrelated `EINTR` have no scheduling authority.
 A runnable single-vCPU guest is retried across consecutive host watchdog intervals, so ordinary compute without a VM exit does not fail. Only an uninterrupted run of host timer interrupts with no guest exit at all is an operational timeout (about five seconds at the default 100 ms interval).
@@ -188,7 +189,7 @@ A watchdog timeout is an operational result. It does not prove a guest crash, de
 Each accepted record contains canonical pre-state and post-state BLAKE3 identities.
 Recordings preserve these traces by VM and simulation tick. Exact replay rejects missing, forged, reordered, or divergent traces.
 
-The VM becomes permanently poisoned if guest progress can occur without exact evidence or post-commit exit handling fails.
+The VM becomes permanently poisoned if guest work may have occurred without verified evidence, a coarse host interruption/timeout occurs, or post-commit exit handling fails.
 A failed controller round also creates a permanent controller poison after mutation starts.
 The controller then rejects execution, mutation, snapshots, restores, recording output, and success results.
 Partial VM journals remain available only as diagnostics. The controller never publishes the failed round as complete.
@@ -196,8 +197,9 @@ Partial VM journals remain available only as diagnostics. The controller never p
 `KVM_EXIT_HLT` leaves the userspace MP state runnable on the tested KVM host.
 ChaosControl therefore keeps a replay-stable HLT latch and clears it only after an explicit deterministic wake.
 
-The portable claim is bounded to KVM hosts that support exact guest debug single-step.
-PMU acceleration has a narrower, host-specific capability profile.
+Strict instruction-exact SMP acceptance remains blocked on a capable backend. Coarse results cannot satisfy it or qualify the strict SMP release row. Coarse replay claims require the actual repeated controls for the same admitted host/profile/guest/horizon; they do not establish nested NMI/fault-collision determinism, instruction-level delivery, cross-host portability or universal guest correctness. See the active [coarse execution contract](.cairn/changes/plan-kvm-debug-boundary-scheduling/specs/kvm-debug-boundary-scheduling/spec.md).
+
+Coarse boundaries are TF single-step boundaries, so one boundary retires one instruction or one `rep` iteration. The first actual Linux coarse probe exhausted 1,000,000 exits inside `clear_bss` (`rep stosb` over 3,940,352 bytes) with no serial output, and a 5,010,000-boundary run still had not reached the guest supervisor at about 10,300 boundaries/s; the same artifacts under strict single-vCPU control completed setup in 120,000 exits. Reaching userspace therefore needs roughly 10^8 to 10^9 boundaries. Coarse campaign, persisted-reload and negative-control qualification are blocked on a coarser-than-instruction boundary source; no batching, hidden `rep` suppression or natural-exit-only scheduling is admissible. The `ryzen9950x3d-linux61850-rust-observer-paired-v2` input cohort and its 100,000-tick bootstrap remain reviewed inputs and retained failed outcomes, not qualification evidence. See [the coarse clock and qualification boundary](docs/snapshot-fidelity.md#guarded-coarse-clock-projection-and-qualification-boundary) for exact comparison scope and unchanged bounds.
 
 ### Runtime capacity
 
@@ -586,7 +588,7 @@ Exploration commands use stable exit statuses: `0` clean, `1` bugs found,
 separate verdict contract.
 
 Output directory contains:
-- `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
+- `checkpoint.json` — resumable exploration state with required retained VM/scheduling/mutation inputs, topology, frontier policy and random-fault setting; absent execution inputs are rejected rather than defaulted. Checkpoint saves persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history
 - `assertions.json` — a closed v2 summary with exact descriptors, fingerprints, catalog tokens, verdicts, and counters
 - `bug_N.json` — catalog-bound bug reports for minimize/reproduce; ID-only historical bugs are diagnostic-only
@@ -595,9 +597,9 @@ Output directory contains:
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 - `frontier-policy.json` — `legacy-diagnostic` only: `chaoscontrol.frontier-policy-receipt.v1` receipt with `release_eligible: false`, written before bootstrap
 - `frontier-trace.jsonl` — product frontier decision trace written by both policies (header with the stale-round limit, root proposals and retained set, one record per round with recorded draws, selection, the selection's planning work, branch facts with score bits, admitted/pruned entries and the retained set, stop); input for parity replay, not VM evidence
-- `campaign-journal/` — `campaign` policy only: exclusive `LOCK` plus `epoch-NNNN/seg-NNNNNNNN.cbor` segments. Each round commits its selection segment before mutation, restore, dispatch, or KVM work, and its settlement segment before `checkpoint.json`; resume closes the previous epoch and starts a new one. Structural only: never product evidence. A journal whose last epoch uses an older genesis schema (`chaoscontrol.campaign-genesis.v1` or `.v2`) cannot resume: recovery refuses that epoch at its genesis record with `EarlierStateFraming`, before replaying any record, so rerun such a configuration into a fresh output directory
+- `campaign-journal/` — `campaign` policy only: exclusive `LOCK` plus `epoch-NNNN/seg-NNNNNNNN.cbor` segments. Each round commits its selection segment before mutation, restore, dispatch, or KVM work, and its settlement segment before `checkpoint.json`; resume closes the previous epoch and starts a new one. Structural only: never product evidence. The current genesis schema is `chaoscontrol.campaign-genesis.v4`, binding the typed execution contract. Journals naming `.v1`, `.v2` or `.v3` cannot resume: recovery refuses at genesis with `EarlierStateFraming` before replaying any moment or control record. Rerun such a configuration into a fresh output directory
 
-The Campaign policy is the default for the CLI, `ExplorerConfig`, run and campaign profiles, and checkpoints or campaign progress files written before the policy field existed. It rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. With `--rounds 0` it plans no selection. Reports name the frontier policy and state that no stop claims exhaustive search.
+The Campaign policy is the default for the CLI, `ExplorerConfig`, and run and campaign profiles. Resumable checkpoints and campaign progress configuration retain frontier policy and random-fault selection explicitly; historical inputs lacking the execution contract are not promoted to executable inputs. Per-seed diagnostic summaries do not supply those execution choices. Campaign rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. With `--rounds 0` it plans no selection. Reports name the frontier policy and state that no stop claims exhaustive search.
 
 #### Legacy-diagnostic rollback
 

@@ -8,7 +8,7 @@ use std::str::FromStr;
 ///
 /// This is a VMM-independent representation that can be serialized and
 /// passed to the replay debugger without depending on kvm_bindings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegisterState {
     pub rip: u64,
     pub rsp: u64,

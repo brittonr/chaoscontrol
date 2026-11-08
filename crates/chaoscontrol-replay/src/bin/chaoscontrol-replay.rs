@@ -8,10 +8,82 @@ use chaoscontrol_replay::serialize::{
 };
 use chaoscontrol_replay::session::{load_session, ExactSession, SessionError, SessionLimits};
 use chaoscontrol_replay::triage::TriageEngine;
+use chaoscontrol_vmm::scheduler::core::{ProgressBudget, ProgressMode};
 use clap::{Parser, Subcommand};
 use snafu::Snafu;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Default, clap::Args)]
+struct ExecutionArgs {
+    /// Explicit execution mode; a retained coarse manifest is not an opt-in.
+    #[arg(long, value_parser = ["exact-single-step", "kvm-debug-boundary"])]
+    smp_progress_mode: Option<String>,
+    /// Optional equality check against the retained boundary budget, never an override.
+    #[arg(long, requires = "smp_progress_mode", conflicts_with = "smp_instruction_quantum", value_parser = clap::value_parser!(u64).range(1..))]
+    smp_boundary_quantum: Option<u64>,
+    /// Match the retained immutable boundary table; never changes the profile.
+    #[arg(long, requires = "smp_progress_mode", conflicts_with = "smp_instruction_quantum", value_parser = ["kvm-debug-exit-boundary-v1"])]
+    smp_boundary_profile: Option<String>,
+    /// Strict instruction budget equality check; never selects coarse execution.
+    #[arg(long, conflicts_with = "smp_boundary_quantum", value_parser = clap::value_parser!(u64).range(1..))]
+    smp_instruction_quantum: Option<u64>,
+}
+
+// r[impl chaoscontrol.kvm_debug_boundary.persistence]
+impl ExecutionArgs {
+    fn selection(
+        &self,
+        retained: &chaoscontrol_vmm::vm::VmConfig,
+    ) -> Result<chaoscontrol_replay::session::ExecutionSelection, CliError> {
+        let mode = match self.smp_progress_mode.as_deref() {
+            Some("kvm-debug-boundary") => ProgressMode::KvmDebugBoundary,
+            Some("exact-single-step") | None => ProgressMode::ExactSingleStep,
+            Some(_) => {
+                return Err(CliError::Other {
+                    message: "unsupported SMP progress mode".into(),
+                })
+            }
+        };
+        let budget = retained.smp_progress_budget;
+        let matches = match (mode, budget) {
+            (
+                ProgressMode::KvmDebugBoundary,
+                ProgressBudget::KvmBoundaries { count, profile_id },
+            ) => {
+                self.smp_instruction_quantum.is_none()
+                    && self
+                        .smp_boundary_profile
+                        .as_deref()
+                        .is_none_or(|name| name == profile_id.name())
+                    && self
+                        .smp_boundary_quantum
+                        .is_none_or(|requested| requested == count)
+            }
+            (ProgressMode::ExactSingleStep, ProgressBudget::Instructions(count)) => {
+                self.smp_boundary_quantum.is_none()
+                    && self.smp_boundary_profile.is_none()
+                    && self
+                        .smp_instruction_quantum
+                        .is_none_or(|requested| requested == count)
+            }
+            _ => false,
+        };
+        if !matches || mode != retained.smp_progress_mode {
+            return Err(CliError::Other { message: "explicit progress mode/units/budget do not match the retained session; overrides are forbidden".into() });
+        }
+        Ok(chaoscontrol_replay::session::ExecutionSelection {
+            progress_mode: mode,
+            progress_budget: budget,
+        })
+    }
+
+    fn authorize(&self, session: &mut ExactSession) -> Result<(), CliError> {
+        let selection = self.selection(&session.manifest().configuration.vm_config)?;
+        session.authorize_execution(selection)?;
+        Ok(())
+    }
+}
 
 /// CLI errors for the replay binary.
 #[derive(Debug, Snafu)]
@@ -54,6 +126,9 @@ enum Commands {
         /// Number of ticks to replay (default: all)
         #[arg(short, long)]
         ticks: Option<u64>,
+
+        #[command(flatten)]
+        execution: ExecutionArgs,
     },
 
     /// Generate bug report from recording
@@ -114,6 +189,9 @@ enum Commands {
         /// Output format (text or bounded JSON)
         #[arg(short, long, value_enum, default_value = "text")]
         format: DebugFormat,
+
+        #[command(flatten)]
+        execution: ExecutionArgs,
     },
 
     /// Interactive debugger with memory/register inspection and modification
@@ -125,6 +203,9 @@ enum Commands {
         /// Read deterministic debugger commands from a bounded file; stop on error
         #[arg(long)]
         script: Option<PathBuf>,
+
+        #[command(flatten)]
+        execution: ExecutionArgs,
     },
 
     /// Determinism log tools (dump, diff, stats)
@@ -197,7 +278,8 @@ fn main() {
             recording,
             checkpoint,
             ticks,
-        } => cmd_replay(recording, checkpoint, ticks),
+            execution,
+        } => cmd_replay(recording, checkpoint, ticks, execution),
         Commands::Triage {
             recording,
             bug_id,
@@ -215,8 +297,13 @@ fn main() {
             recording,
             tick,
             format,
-        } => cmd_debug(recording, tick, format),
-        Commands::Inspect { recording, script } => cmd_inspect(recording, script),
+            execution,
+        } => cmd_debug(recording, tick, format, execution),
+        Commands::Inspect {
+            recording,
+            script,
+            execution,
+        } => cmd_inspect(recording, script, execution),
         Commands::Dlog { cmd } => match cmd {
             DlogCommands::Dump { file, from, count } => cmd_dlog_dump(file, from, count),
             DlogCommands::Diff {
@@ -238,8 +325,11 @@ fn cmd_replay(
     recording_path: PathBuf,
     checkpoint_id: Option<u64>,
     ticks: Option<u64>,
+    execution: ExecutionArgs,
 ) -> Result<(), CliError> {
-    let session = Arc::new(load_session(&recording_path, SessionLimits::default())?);
+    let mut session = load_session(&recording_path, SessionLimits::default())?;
+    execution.authorize(&mut session)?;
+    let session = Arc::new(session);
     let start = match checkpoint_id {
         Some(id) => {
             session
@@ -255,6 +345,15 @@ fn cmd_replay(
     println!(
         "Exact session {}: replaying {ticks_to_run} ticks from {start}",
         session.manifest().session_id
+    );
+    println!(
+        "Progress mode: {:?}; budget: {:?}",
+        session.manifest().configuration.vm_config.smp_progress_mode,
+        session
+            .manifest()
+            .configuration
+            .vm_config
+            .smp_progress_budget
     );
     let engine = ReplayEngine::<RealSimulationRunner>::from_session(session);
     let result = engine.replay_from(checkpoint_id, ticks_to_run)?;
@@ -449,7 +548,7 @@ fn debug_json(recording: &Recording, digest: &str, tick: u64) -> serde_json::Val
         })
         .collect();
     serde_json::json!({
-        "schema": "chaoscontrol.debug_state.v1",
+        "schema": "chaoscontrol.debug_state.v2",
         "recording_digest": digest,
         "session_id": recording.session_id,
         "seed": recording.seed,
@@ -462,6 +561,8 @@ fn debug_json(recording: &Recording, digest: &str, tick: u64) -> serde_json::Val
             "kernel_path": recording.config.kernel_path,
             "initrd_path": recording.config.initrd_path,
             "quantum": recording.config.quantum,
+            "smp_progress_mode": recording.config.smp_progress_mode,
+            "smp_progress_budget": recording.config.smp_progress_budget,
             "checkpoint_interval": recording.config.checkpoint_interval,
             "random_faults": recording.config.random_faults,
         },
@@ -476,14 +577,21 @@ fn debug_json(recording: &Recording, digest: &str, tick: u64) -> serde_json::Val
         "serial_output": checkpoint.map(|cp| cp.serial_output.clone()).unwrap_or_default(),
         "non_claims": [
             "A verified read-only seek is not an accepted replay verdict or correctness proof.",
-            "Event text is a bounded projection around the requested tick, capped at 500 events.",
+            "Boundary positions, simulation ticks, and retired instructions are distinct coordinates; coarse seeks are not instruction-accurate.",
             "Metadata is diagnostic; exact restore and continuation admission run before publishing a verified position.",
         ],
     })
 }
 
-fn cmd_debug(recording_path: PathBuf, tick: u64, format: DebugFormat) -> Result<(), CliError> {
-    let session = Arc::new(load_session(&recording_path, SessionLimits::default())?);
+fn cmd_debug(
+    recording_path: PathBuf,
+    tick: u64,
+    format: DebugFormat,
+    execution: ExecutionArgs,
+) -> Result<(), CliError> {
+    let mut session = load_session(&recording_path, SessionLimits::default())?;
+    execution.authorize(&mut session)?;
+    let session = Arc::new(session);
     let mut debugger = Debugger::<RealSimulationRunner>::from_session(session.clone());
     let state = debugger.goto(tick)?;
     let registers = debugger.read_registers(0, 0)?;
@@ -493,6 +601,9 @@ fn cmd_debug(recording_path: PathBuf, tick: u64, format: DebugFormat) -> Result<
         json["live_state_available"] = serde_json::json!(state.live_state_available);
         json["counterfactual"] = serde_json::json!(state.counterfactual);
         json["restored_checkpoint_id"] = serde_json::json!(state.checkpoint_id);
+        json["progress_mode"] = serde_json::json!(state.progress_mode);
+        json["progress_budget"] = serde_json::json!(state.progress_budget);
+        json["verified_progress_positions"] = serde_json::json!(state.progress_positions);
         json["registers_vm0_vcpu0"] = serde_json::json!({
             "rip": registers.rip, "rsp": registers.rsp, "rax": registers.rax,
         });
@@ -505,6 +616,10 @@ fn cmd_debug(recording_path: PathBuf, tick: u64, format: DebugFormat) -> Result<
             state.checkpoint_id
         );
         println!("VM0 vCPU0: {registers}");
+        println!(
+            "Progress mode: {:?}; budget: {:?}; verified positions: {:?}",
+            state.progress_mode, state.progress_budget, state.progress_positions
+        );
         println!("This read-only seek is not a replay verdict or correctness claim.");
     }
     Ok(())
@@ -564,9 +679,14 @@ fn format_event(event: &RecordedEvent) -> String {
     }
 }
 
-fn cmd_inspect(recording_path: PathBuf, script: Option<PathBuf>) -> Result<(), CliError> {
-    let session: Arc<ExactSession> =
-        Arc::new(load_session(&recording_path, SessionLimits::default())?);
+fn cmd_inspect(
+    recording_path: PathBuf,
+    script: Option<PathBuf>,
+    execution: ExecutionArgs,
+) -> Result<(), CliError> {
+    let mut session = load_session(&recording_path, SessionLimits::default())?;
+    execution.authorize(&mut session)?;
+    let session = Arc::new(session);
     let debugger = Debugger::<RealSimulationRunner>::from_session(session.clone());
     if let Some(path) = script {
         let file = std::fs::File::open(path)?;
@@ -644,10 +764,14 @@ mod tests {
 
     fn test_recording() -> Recording {
         Recording {
+            schema_version: chaoscontrol_replay::recording::RECORDING_SCHEMA_VERSION,
+            trace_start_tick: 0,
             session_id: "test_session".to_string(),
             timestamp: 1_234_567_890,
             config: RecordingConfig {
                 num_vms: 2,
+                smp_progress_mode: ProgressMode::ExactSingleStep,
+                smp_progress_budget: ProgressBudget::Instructions(10_000),
                 vm_memory_size: 256 * 1024 * 1024,
                 tsc_khz: 3_000_000,
                 kernel_path: "/test/vmlinux".to_string(),
@@ -681,15 +805,15 @@ mod tests {
         cmd_info(path.clone()).unwrap();
         cmd_events(path.clone(), EventFilterType::All, None, None).unwrap();
         assert!(matches!(
-            cmd_replay(path.clone(), None, Some(1)),
+            cmd_replay(path.clone(), None, Some(1), ExecutionArgs::default()),
             Err(CliError::Session { .. })
         ));
         assert!(matches!(
-            cmd_debug(path.clone(), 0, DebugFormat::Json),
+            cmd_debug(path.clone(), 0, DebugFormat::Json, ExecutionArgs::default()),
             Err(CliError::Session { .. })
         ));
         assert!(matches!(
-            cmd_inspect(path, None),
+            cmd_inspect(path, None, ExecutionArgs::default()),
             Err(CliError::Session { .. })
         ));
     }
@@ -717,7 +841,7 @@ mod tests {
     #[test]
     fn debug_json_has_stable_schema_window_and_non_claims() {
         let value = debug_json(&test_recording(), "b3:00", 150);
-        assert_eq!(value["schema"], "chaoscontrol.debug_state.v1");
+        assert_eq!(value["schema"], "chaoscontrol.debug_state.v2");
         assert_eq!(value["target_tick"], 150);
         assert_eq!(value["window"]["start_tick"], 100);
         assert_eq!(value["window"]["end_tick"], 200);
@@ -727,5 +851,88 @@ mod tests {
         assert!(value["events"].as_array().expect("events array").is_empty());
         assert!(!value["non_claims"].as_array().expect("claims").is_empty());
         assert_eq!(value["config"]["num_vms"], 2);
+    }
+
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    #[test]
+    fn persisted_coarse_execution_requires_explicit_mode_and_matching_optional_values() {
+        use chaoscontrol_vmm::scheduler::core::BoundaryProfileId;
+        let vm = chaoscontrol_vmm::vm::VmConfig {
+            smp_progress_mode: ProgressMode::KvmDebugBoundary,
+            smp_progress_budget: ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: 37,
+            },
+            ..Default::default()
+        };
+        assert!(ExecutionArgs::default().selection(&vm).is_err());
+        let mut explicit = ExecutionArgs {
+            smp_progress_mode: Some("kvm-debug-boundary".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            explicit.selection(&vm).unwrap().progress_budget,
+            vm.smp_progress_budget
+        );
+        explicit.smp_boundary_quantum = Some(37);
+        explicit.smp_boundary_profile = Some("kvm-debug-exit-boundary-v1".into());
+        assert!(explicit.selection(&vm).is_ok());
+        explicit.smp_boundary_quantum = Some(38);
+        assert!(explicit.selection(&vm).is_err());
+        explicit.smp_boundary_quantum = Some(37);
+        explicit.smp_instruction_quantum = Some(37);
+        assert!(explicit.selection(&vm).is_err());
+        explicit.smp_instruction_quantum = None;
+        explicit.smp_boundary_profile = Some("unknown-profile".into());
+        assert!(explicit.selection(&vm).is_err());
+        explicit.smp_boundary_profile = None;
+        explicit.smp_progress_mode = Some("exact-single-step".into());
+        assert!(explicit.selection(&vm).is_err());
+    }
+
+    // r[verify chaoscontrol.kvm_debug_boundary.admission]
+    #[test]
+    fn persisted_execution_cli_rejects_unknown_modes_profiles_and_mixed_units() {
+        for command in ["replay", "debug", "inspect"] {
+            let mut base = vec!["chaoscontrol-replay", command, "--recording", "session"];
+            if command == "debug" {
+                base.extend(["--tick", "0"]);
+            }
+            for extra in [
+                vec!["--smp-progress-mode", "automatic"],
+                vec![
+                    "--smp-progress-mode",
+                    "kvm-debug-boundary",
+                    "--smp-boundary-profile",
+                    "unknown",
+                ],
+                vec!["--smp-boundary-quantum", "37"],
+                vec![
+                    "--smp-progress-mode",
+                    "kvm-debug-boundary",
+                    "--smp-boundary-quantum",
+                    "0",
+                ],
+                vec![
+                    "--smp-progress-mode",
+                    "kvm-debug-boundary",
+                    "--smp-boundary-quantum",
+                    "37",
+                    "--smp-instruction-quantum",
+                    "37",
+                ],
+            ] {
+                assert!(Cli::try_parse_from(base.iter().copied().chain(extra)).is_err());
+            }
+            assert!(
+                Cli::try_parse_from(
+                    base.iter()
+                        .copied()
+                        .chain(["--smp-progress-mode", "kvm-debug-boundary",])
+                )
+                .is_ok(),
+                "retained budget/profile need not be respecified"
+            );
+        }
     }
 }

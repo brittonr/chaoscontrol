@@ -1,7 +1,7 @@
 //! Deterministic serialized vCPU scheduler.
 //!
-//! Multi-vCPU guests run one vCPU at a time. Guest-instruction progress,
-//! replay-stable runnable state, seeded policy state, and exact boundaries are
+//! Multi-vCPU guests run one vCPU at a time. Typed guest progress,
+//! replay-stable runnable state, seeded policy state, and declared boundaries are
 //! owned by the pure [`core`] transition. The KVM shell reserves evidence
 //! capacity before guest execution and applies a planned action only after the
 //! transition record is validated and committed.
@@ -13,13 +13,13 @@ pub mod core;
 
 use core::{
     reconfigure_policy, transition, validate_state, ExactStepState, PlannedScheduleTransition,
-    ProgressMode, ScheduleError, ScheduleEvent, ScheduleJournal, ScheduleReservation,
-    ScheduleState, ScheduleStateId, ScheduleTrace, ScheduleTransitionRecord,
+    ProgressBudget, ProgressMode, ScheduleError, ScheduleEvent, ScheduleJournal,
+    ScheduleReservation, ScheduleState, ScheduleStateId, ScheduleTrace, ScheduleTransitionRecord,
     DEFAULT_SCHEDULE_JOURNAL_LIMIT,
 };
 
 /// Scheduler snapshot schema version.
-pub const SCHEDULER_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
+pub const SCHEDULER_SNAPSHOT_SCHEMA_VERSION: u16 = 2;
 /// Default instruction quantum for deterministic SMP.
 pub const DEFAULT_SMP_INSTRUCTION_QUANTUM: u64 = 500_000;
 /// Default exact single-step margin for PMU acceleration.
@@ -27,15 +27,16 @@ pub const DEFAULT_PMU_EXACT_STEP_MARGIN: u64 = 50;
 
 /// Scheduling strategy for multi-vCPU VMs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum SchedulingStrategy {
-    /// Fixed round-robin: each vCPU gets exactly `quantum` instructions.
+    /// Fixed round-robin using the declared progress budget.
     RoundRobin,
-    /// Each turn draws a seeded quantum in `[min_quantum, max_quantum)`.
+    /// Each turn draws a seeded budget in `[min_budget, max_budget)`.
     Randomized {
-        /// Minimum guest instructions per vCPU turn.
-        min_quantum: u64,
-        /// Exclusive maximum guest instructions per vCPU turn.
-        max_quantum: u64,
+        /// Inclusive minimum, with the same unit/profile as configuration.
+        min_budget: ProgressBudget,
+        /// Exclusive maximum, with the same unit/profile as configuration.
+        max_budget: ProgressBudget,
     },
 }
 
@@ -44,8 +45,8 @@ pub enum SchedulingStrategy {
 pub struct SchedulerConfig {
     /// Number of vCPUs to schedule.
     pub num_vcpus: usize,
-    /// Default guest-instruction quantum.
-    pub quantum: u64,
+    /// Initial and round-robin turn budget, with explicit units.
+    pub progress_budget: ProgressBudget,
     /// Scheduling strategy.
     pub strategy: SchedulingStrategy,
     /// Seed for deterministic policy choices.
@@ -56,7 +57,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             num_vcpus: 1,
-            quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            progress_budget: ProgressBudget::Instructions(DEFAULT_SMP_INSTRUCTION_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 0,
         }
@@ -127,14 +128,16 @@ impl VcpuScheduler {
         self.admitted_progress_mode
     }
 
-    /// Instructions remaining before the active vCPU's exact boundary.
-    pub fn remaining(&self) -> u64 {
-        self.state().quantum_boundary - self.state().instruction_progress[self.active()]
+    /// Typed progress remaining before the active vCPU's declared turn boundary.
+    pub fn remaining_budget(&self) -> ProgressBudget {
+        self.state().turn_boundary().with_count(
+            self.state().turn_boundary().count() - self.state().progress_counts()[self.active()],
+        )
     }
 
-    /// Current exact-step state.
-    pub fn exact_step(&self) -> ExactStepState {
-        self.state().exact_step
+    /// Instruction-only exact-step state; boundary mode has no remainder.
+    pub fn exact_step(&self) -> Result<ExactStepState, ScheduleError> {
+        self.state().exact_step()
     }
 
     /// True when guest execution owns a journal reservation.
@@ -214,6 +217,13 @@ impl VcpuScheduler {
                 reason: "snapshot progress mode differs from the VM profile",
             });
         }
+        if !snapshot
+            .state
+            .progress_budget()
+            .same_unit(self.state().progress_budget())
+        {
+            return Err(ScheduleError::ProgressUnitMismatch);
+        }
         Ok(())
     }
 
@@ -229,8 +239,8 @@ impl VcpuScheduler {
         let state = self.state();
         state.rng_seed == core::policy_rng_seed(variant.scheduler_seed)
             && variant
-                .quantum_override
-                .is_none_or(|quantum| state.quantum == quantum)
+                .progress_budget_override
+                .is_none_or(|budget| state.progress_budget() == budget)
             && variant
                 .strategy_override
                 .is_none_or(|strategy| state.strategy == strategy)
@@ -241,7 +251,9 @@ impl VcpuScheduler {
         let state = self.state();
         let config = SchedulerConfig {
             num_vcpus: self.admitted_num_vcpus,
-            quantum: variant.quantum_override.unwrap_or(state.quantum),
+            progress_budget: variant
+                .progress_budget_override
+                .unwrap_or(state.progress_budget()),
             strategy: variant.strategy_override.unwrap_or(state.strategy),
             seed: variant.scheduler_seed,
         };
@@ -252,6 +264,7 @@ impl VcpuScheduler {
 
 /// Exact serialized scheduler state and identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SchedulerSnapshot {
     /// Snapshot schema version.
     pub schema_version: u16,
@@ -284,13 +297,14 @@ impl SchedulerSnapshot {
 
 /// Per-branch scheduling overrides for schedule diversity exploration.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScheduleVariant {
     /// Scheduler RNG seed for this branch.
     pub scheduler_seed: u64,
     /// Override the scheduling strategy.
     pub strategy_override: Option<SchedulingStrategy>,
-    /// Override the guest-instruction quantum.
-    pub quantum_override: Option<u64>,
+    /// Override the typed progress budget; units/profile cannot change.
+    pub progress_budget_override: Option<ProgressBudget>,
 }
 
 #[cfg(test)]
@@ -306,7 +320,7 @@ mod tests {
     fn config() -> SchedulerConfig {
         SchedulerConfig {
             num_vcpus: VCPU_COUNT,
-            quantum: QUANTUM,
+            progress_budget: ProgressBudget::Instructions(QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: TEST_SEED,
         }
@@ -323,10 +337,10 @@ mod tests {
 
     fn progress_event(scheduler: &VcpuScheduler) -> ScheduleEvent {
         let state = scheduler.state();
-        ScheduleEvent::GuestProgress {
+        ScheduleEvent::InstructionProgress {
             expected_state_id: state.identity(),
             vcpu: state.active_vcpu,
-            observed_progress: state.instruction_progress[state.active_vcpu] + 1,
+            observed_progress: state.progress_counts()[state.active_vcpu] + 1,
             runnable_changes: Vec::new(),
             source: ProgressSource::ExactSingleStep,
         }
@@ -397,7 +411,7 @@ mod tests {
         .unwrap();
         original.commit(reservation, planned).unwrap();
         assert_eq!(
-            original.exact_step(),
+            original.exact_step().unwrap(),
             ExactStepState::Active { remaining: 1 }
         );
         let snapshot = original.snapshot();
@@ -418,7 +432,10 @@ mod tests {
         commit_progress(&mut scheduler);
         let before = scheduler.clone();
         let mut forged = scheduler.snapshot();
-        forged.state.quantum_boundary += 1;
+        forged
+            .state
+            .progress
+            .set_turn_boundary(forged.state.turn_boundary().count() + 1);
 
         assert!(matches!(
             scheduler.restore(&forged),
@@ -435,10 +452,10 @@ mod tests {
         let variant = ScheduleVariant {
             scheduler_seed: TEST_SEED,
             strategy_override: Some(SchedulingStrategy::Randomized {
-                min_quantum: 1,
-                max_quantum: QUANTUM + 1,
+                min_budget: ProgressBudget::Instructions(1),
+                max_budget: ProgressBudget::Instructions(QUANTUM + 1),
             }),
-            quantum_override: None,
+            progress_budget_override: None,
         };
         first.apply_variant(&variant).unwrap();
         second.apply_variant(&variant).unwrap();
@@ -517,10 +534,10 @@ mod tests {
         let variant = ScheduleVariant {
             scheduler_seed: 173,
             strategy_override: Some(SchedulingStrategy::Randomized {
-                min_quantum: 2,
-                max_quantum: 7,
+                min_budget: ProgressBudget::Instructions(2),
+                max_budget: ProgressBudget::Instructions(7),
             }),
-            quantum_override: Some(8),
+            progress_budget_override: Some(ProgressBudget::Instructions(8)),
         };
         running.apply_variant(&variant).unwrap();
         assert!(running.matches_variant(&variant));
@@ -533,15 +550,86 @@ mod tests {
             ..variant.clone()
         }));
         assert!(!running.matches_variant(&ScheduleVariant {
-            quantum_override: Some(9),
+            progress_budget_override: Some(ProgressBudget::Instructions(9)),
             ..variant.clone()
         }));
         assert!(running.matches_variant(&ScheduleVariant {
             strategy_override: None,
-            quantum_override: None,
+            progress_budget_override: None,
             ..variant.clone()
         }));
         running.restore(&original).unwrap();
         assert!(!running.matches_variant(&variant));
+    }
+
+    #[test]
+    fn coarse_snapshot_preserves_prefix_future_and_rejects_unit_drift() {
+        use crate::scheduler::core::{
+            BoundaryProfileId, ExecutionProgressObservation, KvmBoundaryKind,
+        };
+        let budget = ProgressBudget::KvmBoundaries {
+            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+            count: QUANTUM,
+        };
+        let config = SchedulerConfig {
+            progress_budget: budget,
+            ..config()
+        };
+        let mut original = VcpuScheduler::try_new(
+            &config,
+            ProgressMode::KvmDebugBoundary,
+            vec![true; VCPU_COUNT],
+        )
+        .unwrap();
+        assert_eq!(original.remaining_budget(), budget);
+        assert_eq!(
+            original.exact_step(),
+            Err(ScheduleError::ExactStepUnavailable)
+        );
+        let observation = ExecutionProgressObservation::KvmBoundary {
+            vcpu: 0,
+            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+            boundary: KvmBoundaryKind::DebugSingleStep,
+        };
+        let planned = core::plan_execution_observation(original.state(), observation)
+            .unwrap()
+            .unwrap();
+        let reservation = original.reserve_transition().unwrap();
+        original.commit(reservation, planned).unwrap();
+        assert_eq!(original.remaining_budget(), budget.with_count(QUANTUM - 1));
+        let bytes = serde_json::to_vec(&original.snapshot()).unwrap();
+        let decoded: SchedulerSnapshot = serde_json::from_slice(&bytes).unwrap();
+        let mut restored = VcpuScheduler::try_new(
+            &config,
+            ProgressMode::KvmDebugBoundary,
+            vec![true; VCPU_COUNT],
+        )
+        .unwrap();
+        restored.restore(&decoded).unwrap();
+        assert_eq!(restored.state_id(), original.state_id());
+        assert_eq!(
+            core::plan_execution_observation(original.state(), observation).unwrap(),
+            core::plan_execution_observation(restored.state(), observation).unwrap()
+        );
+        let before = restored.clone();
+        assert!(restored.restore(&scheduler().snapshot()).is_err());
+        assert_eq!(restored, before);
+        let mixed = ScheduleVariant {
+            scheduler_seed: TEST_SEED,
+            progress_budget_override: Some(ProgressBudget::Instructions(QUANTUM)),
+            strategy_override: None,
+        };
+        assert_eq!(
+            restored.apply_variant(&mixed),
+            Err(ScheduleError::ProgressUnitMismatch)
+        );
+        assert_eq!(restored, before);
+        let mut wrong_schema = decoded;
+        wrong_schema.schema_version = 1;
+        assert_eq!(
+            restored.restore(&wrong_schema),
+            Err(ScheduleError::UnsupportedSchema { found: 1 })
+        );
+        assert_eq!(restored, before);
     }
 }

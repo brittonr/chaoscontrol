@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "run_id": "replay-fixture-accepted",
   "replay_class": "snapshot_backed_reproduced",
   "reproduced": true,
@@ -194,8 +194,8 @@
     "reference": {
       "store": "file-content-addressed",
       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      "codec": "simulation-snapshot-cbor-zstd-v2",
-      "schema_version": 2,
+      "codec": "simulation-snapshot-cbor-zstd-v4",
+      "schema_version": 4,
       "path": "snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.bin"
     }
   },

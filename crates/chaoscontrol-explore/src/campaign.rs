@@ -236,6 +236,9 @@ pub struct SerializableCampaignConfig {
     pub kernel_path: String,
     pub initrd_path: Option<String>,
     pub num_vms: usize,
+    pub vm_config: chaoscontrol_vmm::vm::VmConfig,
+    pub scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy,
+    pub mutation: crate::mutator::MutationConfig,
     pub branch_factor: usize,
     pub ticks_per_branch: u64,
     pub max_rounds: u64,
@@ -249,14 +252,9 @@ pub struct SerializableCampaignConfig {
     /// Helical scenario config (if the campaign used one).
     #[serde(default)]
     pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
-    /// Frontier policy of the campaign. Omitted for the default Campaign
-    /// policy, so progress files written before the field load as Campaign.
-    #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
+    /// Explicit frontier policy retained for campaign resume.
     pub frontier_policy: FrontierPolicy,
-    /// Whether every seed injects seed-derived random faults. Always
-    /// written; progress files written before the field existed come from
-    /// campaigns that injected none and load as off.
-    #[serde(default)]
+    /// Whether every seed injects seed-derived random faults, retained explicitly.
     pub random_faults: bool,
 }
 
@@ -266,6 +264,13 @@ impl SerializableCampaignConfig {
             kernel_path: cfg.kernel_path.clone(),
             initrd_path: cfg.initrd_path.clone(),
             num_vms: cfg.num_vms,
+            vm_config: {
+                let mut vm_config = cfg.vm_config.clone();
+                vm_config.scheduling_strategy = cfg.scheduling_strategy;
+                vm_config
+            },
+            scheduling_strategy: cfg.scheduling_strategy,
+            mutation: cfg.mutation.clone(),
             branch_factor: cfg.branch_factor,
             ticks_per_branch: cfg.ticks_per_branch,
             max_rounds: cfg.max_rounds,
@@ -327,6 +332,12 @@ fn validate_campaign_progress(progress: &CampaignProgress, output_dir: &str) -> 
         || config.max_rounds == 0
         || config.quantum == 0
         || config.num_vcpus == 0
+        || config.num_vcpus != config.vm_config.num_vcpus
+        || config.scheduling_strategy != config.vm_config.scheduling_strategy
+        || !config
+            .mutation
+            .base_progress_budget
+            .same_unit(config.vm_config.smp_progress_budget)
         || !matches!(
             config.exploration_mode.as_str(),
             "fault-schedule" | "input-tree" | "hybrid"
@@ -1882,6 +1893,37 @@ mod tests {
     }
 
     #[test]
+    fn campaign_config_retains_boundary_execution_contract_and_rejects_missing_config() {
+        use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
+        const BOUNDARY_COUNT: u64 = 64;
+        let budget = ProgressBudget::KvmBoundaries {
+            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+            count: BOUNDARY_COUNT,
+        };
+        let mut config = ExplorerConfig::default();
+        config.vm_config.num_vcpus = 2;
+        config.vm_config.smp_progress_mode = ProgressMode::KvmDebugBoundary;
+        config.vm_config.smp_progress_budget = budget;
+        config.mutation.base_progress_budget = budget;
+        config.scheduling_strategy = chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
+            min_budget: budget.with_count(BOUNDARY_COUNT / 2),
+            max_budget: budget.with_count(BOUNDARY_COUNT * 2),
+        };
+        let persisted = SerializableCampaignConfig::from_explorer_config(&config);
+        let mut json = serde_json::to_value(&persisted).unwrap();
+        let restored: SerializableCampaignConfig = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(
+            restored.vm_config.smp_progress_mode,
+            ProgressMode::KvmDebugBoundary
+        );
+        assert_eq!(restored.vm_config.smp_progress_budget, budget);
+        assert_eq!(restored.mutation.base_progress_budget, budget);
+        assert_eq!(restored.scheduling_strategy, config.scheduling_strategy);
+        json.as_object_mut().unwrap().remove("vm_config");
+        assert!(serde_json::from_value::<SerializableCampaignConfig>(json).is_err());
+    }
+
+    #[test]
     fn campaign_progress_serde_roundtrip() {
         let progress = CampaignProgress {
             seeds: vec![42, 43, 44],
@@ -1889,6 +1931,9 @@ mod tests {
                 kernel_path: "vmlinux".into(),
                 initrd_path: Some("initrd.gz".into()),
                 num_vms: 3,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 branch_factor: 8,
                 ticks_per_branch: 1000,
                 max_rounds: 100,
@@ -1937,7 +1982,7 @@ mod tests {
 
     // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
     #[test]
-    fn campaign_progress_records_random_faults_and_legacy_progress_loads_as_off() {
+    fn campaign_progress_records_random_faults_explicitly() {
         const RANDOM_FAULTS_KEY: &str = "random_faults";
         for random_faults in [true, false] {
             let config = SerializableCampaignConfig::from_explorer_config(&ExplorerConfig {
@@ -1951,21 +1996,6 @@ mod tests {
                 serde_json::from_value(value).expect("recorded progress config");
             assert_eq!(loaded.random_faults, random_faults);
         }
-
-        let mut legacy = serde_json::to_value(SerializableCampaignConfig::from_explorer_config(
-            &ExplorerConfig {
-                kernel_path: "vmlinux".into(),
-                ..ExplorerConfig::default()
-            },
-        ))
-        .expect("progress config JSON");
-        legacy
-            .as_object_mut()
-            .expect("progress config object")
-            .remove(RANDOM_FAULTS_KEY);
-        let loaded: SerializableCampaignConfig =
-            serde_json::from_value(legacy).expect("legacy progress config");
-        assert!(!loaded.random_faults);
     }
 
     #[test]
@@ -1979,6 +2009,9 @@ mod tests {
                 kernel_path: "k".into(),
                 initrd_path: None,
                 num_vms: 1,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 branch_factor: 4,
                 ticks_per_branch: 500,
                 max_rounds: 50,
@@ -2141,17 +2174,9 @@ mod tests {
     // r[verify chaoscontrol.campaign_policy.progress.valid]
     // r[verify chaoscontrol.campaign_policy.cutover.valid]
     #[test]
-    fn campaign_progress_records_the_frontier_policy_and_keeps_its_shape() {
+    fn diagnostic_campaign_progress_round_trips_policy_and_eligibility() {
         let temporary = tempfile::tempdir().expect("temporary directory");
         let dir_text = temporary.path().to_string_lossy().into_owned();
-
-        let campaign = policy_progress(FrontierPolicy::Campaign, &dir_text);
-        let campaign_json = serde_json::to_value(&campaign).expect("Campaign progress JSON");
-        assert!(campaign_json["config"].get(FRONTIER_POLICY_KEY).is_none());
-        let summary = &campaign_json["completed"][FIRST_TEST_SEED.to_string()];
-        assert!(summary.get(FRONTIER_POLICY_KEY).is_none());
-        assert!(summary.get(RELEASE_ELIGIBLE_KEY).is_none());
-        assert_eq!(summary["stop"], serde_json::json!("coverage_plateau"));
 
         let diagnostic = policy_progress(FrontierPolicy::LegacyDiagnostic, &dir_text);
         save_campaign_progress(&diagnostic, &dir_text).expect("save diagnostic progress");
@@ -2164,6 +2189,17 @@ mod tests {
         assert_eq!(summary.frontier_policy, FrontierPolicy::LegacyDiagnostic);
         assert!(!summary.release_eligible);
         assert_eq!(summary.stop, Some(ExplorationStop::CoveragePlateau));
+    }
+
+    #[test]
+    fn campaign_progress_rejects_missing_execution_choices() {
+        let progress = policy_progress(FrontierPolicy::Campaign, "campaign-out");
+        for field in [FRONTIER_POLICY_KEY, "random_faults"] {
+            let mut value = serde_json::to_value(&progress).expect("progress JSON");
+            value["config"].as_object_mut().unwrap().remove(field);
+            let error = serde_json::from_value::<CampaignProgress>(value).unwrap_err();
+            assert!(error.to_string().contains(field), "{field}: {error}");
+        }
     }
 
     // r[verify chaoscontrol.campaign_policy.rollback.invalid]

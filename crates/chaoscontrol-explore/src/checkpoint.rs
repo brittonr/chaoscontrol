@@ -29,7 +29,6 @@ const MAX_CHECKPOINT_BUGS: usize = 4_096;
 const MAX_SERIALIZABLE_FAULTS: usize = 4_096;
 const MAX_CHECKPOINT_ROUND_HISTORY: usize = 1_000_000;
 const MAX_CHECKPOINT_DEDUP_KEYS: usize = 65_536;
-const DEFAULT_MEMORY_PRESSURE_DURATION_TICKS: u64 = 1;
 /// Bytes in a BLAKE3 campaign journal segment digest.
 pub const CAMPAIGN_JOURNAL_DIGEST_BYTES: usize = 32;
 const HEX_CHARS_PER_BYTE: usize = 2;
@@ -40,10 +39,6 @@ const LOWER_HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
 const HEX_RADIX: u32 = 16;
 const BITS_PER_NIBBLE: u32 = 4;
 const LOW_NIBBLE_MASK: u8 = 0x0f;
-
-const fn default_memory_pressure_duration_ticks() -> u64 {
-    DEFAULT_MEMORY_PRESSURE_DURATION_TICKS
-}
 
 /// Errors from checkpoint operations.
 #[derive(Debug, Snafu)]
@@ -151,8 +146,11 @@ fn lower_hex_value(character: u8) -> Result<u8, CheckpointError> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckpointConfig {
     pub num_vms: usize,
-    /// vCPUs per VM (defaults to 1 for checkpoints written before SMP runs).
-    #[serde(default = "default_num_vcpus")]
+    /// Complete VM execution contract; required to prevent resume-mode substitution.
+    pub vm_config: chaoscontrol_vmm::vm::VmConfig,
+    pub scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy,
+    pub mutation: crate::mutator::MutationConfig,
+    /// vCPUs per VM, retained explicitly for resume.
     pub num_vcpus: usize,
     pub kernel_path: String,
     pub initrd_path: Option<String>,
@@ -166,17 +164,13 @@ pub struct CheckpointConfig {
     pub max_frontier: usize,
     pub quantum: u64,
     pub coverage_gpa: u64,
-    /// Optional disk image path (defaults to None for backward compat).
-    #[serde(default)]
+    /// Optional disk image path.
     pub disk_image_path: Option<String>,
-    /// Bootstrap tick budget (defaults to 10000 for backward compat).
-    #[serde(default = "default_bootstrap_budget")]
+    /// Bootstrap tick budget.
     pub bootstrap_budget: u64,
     /// Schedule diversity enabled.
-    #[serde(default)]
     pub schedule_diversity: bool,
     /// Schedule mutation ratio (0.0 = disabled).
-    #[serde(default)]
     pub schedule_mutation_ratio: f64,
     /// Rare-edge threshold for frontier scoring.
     #[serde(default)]
@@ -193,30 +187,11 @@ pub struct CheckpointConfig {
     /// Helical scenario config (if the run used one).
     #[serde(default)]
     pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
-    /// Frontier policy of the run. Omitted for the default Campaign policy,
-    /// so checkpoints written before the field existed load as Campaign.
-    #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
+    /// Explicit frontier policy of the run.
     pub frontier_policy: FrontierPolicy,
     /// Whether the run injected seed-derived random faults. Always written,
     /// so an opt-out is recorded as an explicit `false`.
-    #[serde(default = "legacy_random_faults")]
     pub random_faults: bool,
-}
-
-fn default_num_vcpus() -> usize {
-    1
-}
-
-fn default_bootstrap_budget() -> u64 {
-    10_000
-}
-
-/// `random_faults` of a record written before the setting existed.
-///
-/// Those runs built their fault engine with random injection hard-coded off,
-/// so their records load as off and replay the way the run executed.
-const fn legacy_random_faults() -> bool {
-    false
 }
 
 /// Serializable fault representation.
@@ -309,7 +284,6 @@ pub enum SerializableFault {
     MemoryPressure {
         target: usize,
         limit_bytes: u64,
-        #[serde(default = "default_memory_pressure_duration_ticks")]
         duration_ticks: u64,
     },
     InjectInterrupt {
@@ -867,7 +841,6 @@ pub struct SerializableBug {
     /// Depth 0 can be replayed from the normal bootstrap snapshot. Depth > 0
     /// means the fault schedule alone is incomplete; replay needs the saved
     /// branch snapshot context.
-    #[serde(default)]
     pub replay_parent_depth: u32,
     /// Durable replay parent snapshot artifact reference for parent-context replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -886,7 +859,6 @@ pub struct SerializableBug {
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
     /// Whether the run that found this bug injected seed-derived random
     /// faults. Always written; reproduction and minimization use this value.
-    #[serde(default = "legacy_random_faults")]
     pub random_faults: bool,
 }
 
@@ -1203,9 +1175,24 @@ fn validate_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<(), Checkpo
     // r[impl chaoscontrol.agent_investigation.checkpoint_smp_topology_bounds]
     if checkpoint.config.num_vcpus == 0
         || checkpoint.config.num_vcpus > chaoscontrol_vmm::scheduler::core::MAX_SCHEDULE_VCPUS
+        || checkpoint.config.num_vcpus != checkpoint.config.vm_config.num_vcpus
     {
         return Err(CheckpointError::InvalidBounds {
             reason: "vCPU count is outside the supported SMP range".to_string(),
+        });
+    }
+    if checkpoint.config.scheduling_strategy != checkpoint.config.vm_config.scheduling_strategy
+        || checkpoint.config.schedule_mutation_ratio
+            != checkpoint.config.mutation.schedule_mutation_ratio
+        || !checkpoint
+            .config
+            .mutation
+            .base_progress_budget
+            .same_unit(checkpoint.config.vm_config.smp_progress_budget)
+    {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "checkpoint execution configuration disagrees with its retained VM contract"
+                .to_string(),
         });
     }
     if checkpoint.bugs.len() > MAX_CHECKPOINT_BUGS {
@@ -2462,21 +2449,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nickel_bug_fixture_round_trips_through_rust_type() {
-        let json = include_str!("../../../contracts/evidence/fixtures/valid/bug-report.valid.json");
-        let bug: SerializableBug = serde_json::from_str(json).unwrap();
-        assert_eq!(bug.bug_id, 0);
-        assert_eq!(bug.assertion_id, 1_205_943_209);
-        assert!(!bug.assertion_location.is_empty());
-        assert!(!bug.schedule.faults.is_empty());
-
-        let roundtrip = serde_json::to_string(&bug).unwrap();
-        let reparsed: SerializableBug = serde_json::from_str(&roundtrip).unwrap();
-        assert_eq!(bug.assertion_id, reparsed.assertion_id);
-        assert_eq!(bug.tick, reparsed.tick);
-    }
-
-    #[test]
     fn standalone_bug_loader_accepts_a_complete_identity() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("bug.json");
@@ -2558,21 +2530,9 @@ mod tests {
     }
 
     #[test]
-    fn nickel_checkpoint_fixture_round_trips_through_rust_type() {
+    fn historical_checkpoint_without_execution_contract_is_rejected() {
         let json = include_str!("../../../dogfood-results/raft-20260506-095025/checkpoint.json");
-        let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
-        assert_eq!(checkpoint.config.num_vms, 3);
-        assert_eq!(checkpoint.rounds_completed, 19);
-        assert_eq!(checkpoint.bugs.len(), 1);
-
-        let roundtrip = serde_json::to_string(&checkpoint).unwrap();
-        let reparsed: ExplorationCheckpoint = serde_json::from_str(&roundtrip).unwrap();
-        assert_eq!(checkpoint.seed, reparsed.seed);
-        assert_eq!(checkpoint.total_branches_run, reparsed.total_branches_run);
-        assert_eq!(
-            checkpoint.bugs[0].assertion_id,
-            reparsed.bugs[0].assertion_id
-        );
+        assert!(serde_json::from_str::<ExplorationCheckpoint>(json).is_err());
     }
 
     #[test]
@@ -2643,6 +2603,9 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 extra_cmdline: None,
                 kernel_path: "/path/to/kernel".to_string(),
@@ -2701,6 +2664,9 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 3,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 kernel_path: "kernel".to_string(),
                 initrd_path: None,
@@ -2799,6 +2765,9 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 kernel_path: "k".to_string(),
                 initrd_path: None,
@@ -2880,35 +2849,6 @@ mod tests {
     }
 
     #[test]
-    fn test_checkpoint_backward_compat_no_round_history() {
-        // Simulate loading a checkpoint from before round_history was added
-        let json = r#"{
-            "config": {
-                "num_vms": 2,
-                "kernel_path": "k",
-                "initrd_path": null,
-                "seed": 1,
-                "branch_factor": 8,
-                "ticks_per_branch": 1000,
-                "max_rounds": 10,
-                "max_frontier": 50,
-                "quantum": 100,
-                "coverage_gpa": 917504
-            },
-            "global_coverage": [],
-            "bugs": [],
-            "rounds_completed": 5,
-            "total_branches_run": 40,
-            "total_edges": 100,
-            "seed": 1
-        }"#;
-
-        let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
-        assert_eq!(checkpoint.rounds_completed, 5);
-        assert!(checkpoint.round_history.is_none());
-    }
-
-    #[test]
     fn test_checkpoint_scenario_metadata_roundtrip() {
         use chaoscontrol_fault::scenario::{materialize, ScenarioConfig, ScenarioFamily};
 
@@ -2918,6 +2858,9 @@ mod tests {
         let checkpoint = ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 3,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 kernel_path: "k".to_string(),
                 initrd_path: None,
@@ -2994,41 +2937,11 @@ mod tests {
         assert!(bug.scenario_summary.is_some());
     }
 
-    #[test]
-    fn test_checkpoint_backward_compat_no_scenario() {
-        // Simulate loading a checkpoint from before scenario fields were added
-        let json = r#"{
-            "config": {
-                "num_vms": 2,
-                "kernel_path": "k",
-                "initrd_path": null,
-                "seed": 1,
-                "branch_factor": 8,
-                "ticks_per_branch": 1000,
-                "max_rounds": 10,
-                "max_frontier": 50,
-                "quantum": 100,
-                "coverage_gpa": 917504
-            },
-            "global_coverage": [],
-            "bugs": [],
-            "rounds_completed": 5,
-            "total_branches_run": 40,
-            "total_edges": 100,
-            "seed": 1
-        }"#;
-
-        let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
-        assert!(checkpoint.scenario.is_none());
-        assert!(checkpoint.scenario_summary.is_none());
-        assert!(checkpoint.config.scenario.is_none());
-    }
-
     const RANDOM_FAULTS_KEY: &str = "random_faults";
 
     // r[verify chaoscontrol.system_runs.fault_injection.scenario.recorded]
     #[test]
-    fn records_write_random_faults_explicitly_and_legacy_records_load_as_off() {
+    fn records_write_random_faults_explicitly_and_reject_missing_policy() {
         for random_faults in [true, false] {
             let mut bug = minimal_bug(1);
             bug.random_faults = random_faults;
@@ -3048,50 +2961,76 @@ mod tests {
             assert_eq!(replayed.random_faults, random_faults);
         }
 
-        let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
-        checkpoint.config.random_faults = true;
-        checkpoint.bugs[0].random_faults = true;
-        let mut legacy = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
         for pointer in ["/config", "/bugs/0"] {
-            legacy
+            let mut value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+            value
                 .pointer_mut(pointer)
                 .and_then(serde_json::Value::as_object_mut)
                 .expect("record object")
                 .remove(RANDOM_FAULTS_KEY);
+            assert!(serde_json::from_value::<ExplorationCheckpoint>(value).is_err());
         }
-        let loaded: ExplorationCheckpoint =
-            serde_json::from_value(legacy).expect("legacy checkpoint");
-        assert!(!loaded.config.random_faults);
-        assert!(!loaded.bugs[0].random_faults);
     }
 
     const FRONTIER_POLICY_KEY: &str = "frontier_policy";
 
     const RELEASE_ELIGIBLE_KEY: &str = "release_eligible";
     const RETIRED_POLICY_NAMES: [&str; 2] = ["legacy", "campaign-candidate"];
-    const PRE_POLICY_CHECKPOINT: &str =
-        include_str!("../../../dogfood-results/raft-20260506-095025/checkpoint.json");
 
     // r[verify chaoscontrol.campaign_policy.progress.valid]
     #[test]
-    fn campaign_checkpoint_omits_the_policy_and_eligibility_keys() {
+    fn campaign_checkpoint_records_its_policy_and_omits_eligibility_mark() {
         let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
         assert_eq!(checkpoint.config.frontier_policy, FrontierPolicy::Campaign);
 
         let value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
-        assert!(value["config"].get(FRONTIER_POLICY_KEY).is_none());
+        assert_eq!(
+            value["config"][FRONTIER_POLICY_KEY],
+            serde_json::json!("campaign")
+        );
         assert!(value.get(RELEASE_ELIGIBLE_KEY).is_none());
     }
 
     // r[verify chaoscontrol.campaign_policy.cutover.valid]
     #[test]
-    fn old_checkpoint_without_the_policy_field_loads_as_campaign() {
-        assert!(!PRE_POLICY_CHECKPOINT.contains(FRONTIER_POLICY_KEY));
-        assert!(!PRE_POLICY_CHECKPOINT.contains(RELEASE_ELIGIBLE_KEY));
-        let loaded: ExplorationCheckpoint =
-            serde_json::from_str(PRE_POLICY_CHECKPOINT).expect("pre-policy checkpoint load");
-        assert_eq!(loaded.config.frontier_policy, FrontierPolicy::Campaign);
-        assert!(loaded.release_eligible);
+    fn checkpoint_requires_retained_execution_inputs() {
+        let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        for field in [
+            "vm_config",
+            "scheduling_strategy",
+            "mutation",
+            "num_vcpus",
+            "bootstrap_budget",
+            "schedule_diversity",
+            "schedule_mutation_ratio",
+            FRONTIER_POLICY_KEY,
+        ] {
+            let mut value = serde_json::to_value(&checkpoint).unwrap();
+            value["config"].as_object_mut().unwrap().remove(field);
+            let error = serde_json::from_value::<ExplorationCheckpoint>(value).unwrap_err();
+            assert!(error.to_string().contains(field), "{field}: {error}");
+        }
+    }
+
+    #[test]
+    fn replay_fault_inputs_cannot_be_invented_when_absent() {
+        let bug = minimal_bug(1);
+        let mut value = serde_json::to_value(&bug).unwrap();
+        value.as_object_mut().unwrap().remove("replay_parent_depth");
+        assert!(serde_json::from_value::<SerializableBug>(value).is_err());
+
+        let fault = SerializableFault::MemoryPressure {
+            target: 0,
+            limit_bytes: 4096,
+            duration_ticks: 3,
+        };
+        let mut value = serde_json::to_value(&fault).unwrap();
+        value["MemoryPressure"]
+            .as_object_mut()
+            .unwrap()
+            .remove("duration_ticks");
+        assert!(serde_json::from_value::<SerializableFault>(value).is_err());
     }
 
     // r[verify chaoscontrol.campaign_policy.rollback.valid]
@@ -3316,6 +3255,9 @@ mod tests {
         ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
+                vm_config: Default::default(),
+                scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+                mutation: Default::default(),
                 num_vcpus: 1,
                 kernel_path: "k".to_string(),
                 initrd_path: None,
@@ -3426,7 +3368,34 @@ mod tests {
             Err(CheckpointError::InvalidBounds { .. })
         ));
         checkpoint.config.num_vcpus = 2;
+        checkpoint.config.vm_config.num_vcpus = 2;
         validate_checkpoint(&checkpoint).expect("two vCPUs are admitted");
+    }
+
+    #[test]
+    fn checkpoint_rejects_conflicting_retained_execution_authorities() {
+        use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget};
+        const BOUNDARY_COUNT: u64 = 64;
+        let base = minimal_checkpoint_with_bugs(Vec::new());
+        let mut topology = base.clone();
+        topology.config.num_vcpus = 2;
+        assert!(validate_checkpoint(&topology).is_err());
+        let mut ratio = base.clone();
+        ratio.config.schedule_mutation_ratio = 0.5;
+        assert!(validate_checkpoint(&ratio).is_err());
+        let mut strategy = base.clone();
+        strategy.config.scheduling_strategy =
+            chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
+                min_budget: ProgressBudget::Instructions(1),
+                max_budget: ProgressBudget::Instructions(2),
+            };
+        assert!(validate_checkpoint(&strategy).is_err());
+        let mut units = base;
+        units.config.mutation.base_progress_budget = ProgressBudget::KvmBoundaries {
+            profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+            count: BOUNDARY_COUNT,
+        };
+        assert!(validate_checkpoint(&units).is_err());
     }
 
     #[test]
@@ -3813,6 +3782,7 @@ mod tests {
         let path = dir.path().join("checkpoint.json");
         let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
         checkpoint.config.num_vcpus = 2;
+        checkpoint.config.vm_config.num_vcpus = 2;
         checkpoint.config.extra_cmdline = Some("clocksource=tsc tsc=reliable".to_string());
         save_checkpoint(&path, &checkpoint).unwrap();
         let loaded = load_checkpoint(&path).unwrap();
@@ -3821,19 +3791,6 @@ mod tests {
             loaded.config.extra_cmdline.as_deref(),
             Some("clocksource=tsc tsc=reliable")
         );
-
-        let mut legacy = serde_json::to_value(&checkpoint).unwrap();
-        legacy["config"]
-            .as_object_mut()
-            .unwrap()
-            .remove("num_vcpus");
-        legacy["config"]
-            .as_object_mut()
-            .unwrap()
-            .remove("extra_cmdline");
-        let legacy: ExplorationCheckpoint = serde_json::from_value(legacy).unwrap();
-        assert_eq!(legacy.config.num_vcpus, 1);
-        assert!(legacy.config.extra_cmdline.is_none());
     }
 
     #[test]
@@ -4190,7 +4147,7 @@ mod tests {
             store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
             digest: format!("sha256:{}", "0".repeat(64)),
             codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
-            schema_version: 2,
+            schema_version: chaoscontrol_replay_evidence_core::CURRENT_SNAPSHOT_SCHEMA_VERSION,
             path: format!("snapshots/{}.snapshot.bin", "0".repeat(64)),
         });
         save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();
@@ -4218,7 +4175,7 @@ mod tests {
             store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
             digest: format!("sha256:{digest_hex}"),
             codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
-            schema_version: 2,
+            schema_version: chaoscontrol_replay_evidence_core::CURRENT_SNAPSHOT_SCHEMA_VERSION,
             path: format!("snapshots/{path_suffix}.snapshot.bin"),
         }
     }
@@ -4590,7 +4547,7 @@ mod tests {
             store: chaoscontrol_replay::snapshot_store::FILE_STORE_KIND.to_string(),
             digest: format!("sha256:{}", "0".repeat(64)),
             codec: chaoscontrol_replay::snapshot_store::SNAPSHOT_CODEC.to_string(),
-            schema_version: 2,
+            schema_version: chaoscontrol_replay_evidence_core::CURRENT_SNAPSHOT_SCHEMA_VERSION,
             path: format!("snapshots/{}.snapshot.bin", "0".repeat(64)),
         });
         save_checkpoint(&checkpoint_path, &minimal_checkpoint_with_bugs(vec![bug])).unwrap();

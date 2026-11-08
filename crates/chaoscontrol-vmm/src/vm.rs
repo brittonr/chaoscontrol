@@ -24,9 +24,10 @@ use crate::devices::virtio_mmio::{MmioWriteEffect, VirtioMmioDevice};
 use crate::dlog::{DlogRecord, DlogTag, DlogWriter};
 use crate::scheduler::core::{
     canonical_runnable_changes, plan_execution_observation, validate_progress_capabilities,
-    ExactStepState, ExecutionProgressObservation, ProgressCapabilities, ProgressMode,
-    ScheduleAction, ScheduleError, ScheduleEvent, ScheduleReservation, ScheduleTrace,
-    ScheduleTransitionRecord, DEFAULT_SCHEDULE_JOURNAL_LIMIT, MAX_SCHEDULE_VCPUS,
+    BoundaryIoDirection, BoundaryProfileId, ExactStepState, ExecutionProgressObservation,
+    KvmBoundaryKind, ProgressBudget, ProgressCapabilities, ProgressMode, ScheduleAction,
+    ScheduleError, ScheduleEvent, ScheduleReservation, ScheduleTrace, ScheduleTransitionRecord,
+    DEFAULT_SCHEDULE_JOURNAL_LIMIT, MAX_SCHEDULE_VCPUS,
 };
 use crate::scheduler::{
     SchedulerConfig, SchedulingStrategy, VcpuScheduler, DEFAULT_SMP_INSTRUCTION_QUANTUM,
@@ -196,6 +197,9 @@ const BSP_VCPU_INDEX: usize = 0;
 /// Single-vCPU operational watchdog interval in microseconds.
 const SINGLE_VCPU_WATCHDOG_MICROSECONDS: i64 = 100_000;
 
+/// Named coarse per-entry recovery bound. This has abort authority only.
+pub const DEFAULT_SMP_ENTRY_WATCHDOG_MICROSECONDS: u64 = 250_000;
+
 /// Consecutive host-watchdog interrupts without an intervening KVM exit that
 /// still count as a runnable guest making progress.
 ///
@@ -260,8 +264,8 @@ pub struct VmConfig {
     pub cpu: CpuConfig,
     /// Number of vCPUs (default: 1).
     ///
-    /// More than one vCPU requires an event-entry exact backend capability.
-    /// The current portable KVM provider rejects strict SMP before mutation.
+    /// SMP requires explicit admission of either strict instruction progress
+    /// or the separate settled KVM debug-boundary profile.
     pub num_vcpus: usize,
     /// Scheduling strategy for multi-vCPU VMs.
     ///
@@ -273,8 +277,10 @@ pub struct VmConfig {
     /// Both exact mode and PMU exact remainder require full event-entry
     /// exactness. Neither falls back to wall-clock or coarse boundaries.
     pub smp_progress_mode: ProgressMode,
-    /// Guest instructions in the initial and round-robin SMP quantum.
-    pub smp_instruction_quantum: u64,
+    /// Typed initial and round-robin SMP turn budget.
+    pub smp_progress_budget: ProgressBudget,
+    /// Finite coarse-mode KVM entry deadline; host time has abort authority only.
+    pub smp_entry_watchdog_microseconds: u64,
     /// Maximum canonical schedule records retained between evidence drains.
     pub smp_schedule_journal_limit: usize,
     /// Kernel command line (NUL-terminated).
@@ -402,7 +408,8 @@ impl VmConfig {
             num_vcpus: 1,
             scheduling_strategy: SchedulingStrategy::RoundRobin,
             smp_progress_mode: ProgressMode::ExactSingleStep,
-            smp_instruction_quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            smp_progress_budget: ProgressBudget::Instructions(DEFAULT_SMP_INSTRUCTION_QUANTUM),
+            smp_entry_watchdog_microseconds: DEFAULT_SMP_ENTRY_WATCHDOG_MICROSECONDS,
             smp_schedule_journal_limit: DEFAULT_SCHEDULE_JOURNAL_LIMIT,
             cpu: CpuConfig {
                 // Hide KVM so guest doesn't use kvm-clock (reads host wall time).
@@ -436,20 +443,7 @@ impl VmConfig {
             // kfence.sample_interval=0: disable kfence (timing-dependent)
             // no_hash_pointers: make pointer output deterministic
             // virtio_mmio.device=<size>@<baseaddr>:<irq>: notify kernel of virtio devices
-            cmdline: b"console=ttyS0 earlyprintk=serial \
-                       clocksource=tsc tsc=reliable \
-                       lpj=6000000 \
-                       nokaslr noapic nosmp \
-                       nohpet \
-                       randomize_kstack_offset=off norandmaps \
-                       random.trust_cpu=off random.trust_bootloader=off \
-                       kfence.sample_interval=0 \
-                       no_hash_pointers \
-                       virtio_mmio.device=4K@0xd0000000:5 \
-                       virtio_mmio.device=4K@0xd0001000:6 \
-                       virtio_mmio.device=4K@0xd0002000:7 \
-                       panic=0\0"
-                .to_vec(),
+            cmdline: coarse_configuration::DEFAULT_KERNEL_CMDLINE.to_vec(),
             disk_image_path: None,
             extra_cmdline: None,
             core_affinity: None,
@@ -616,6 +610,7 @@ pub enum VmError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SnapshotRestorePhase {
     Quiesce,
+    Cpuid,
     MemoryTracking,
     MemoryAndKernelState,
     Determinism,
@@ -771,6 +766,11 @@ pub struct DeterministicVm {
     // Determinism state
     virtual_tsc: VirtualTsc,
     guest_determinism_profile: GuestDeterminismProfile,
+    execution_descriptor: crate::snapshot::SnapshotExecutionDescriptor,
+    coarse_clock_filter_identity: Option<[u8; 32]>,
+    injection_ledger: crate::snapshot::InjectionLedger,
+    injection_records: Vec<crate::snapshot::InjectionRecord>,
+    injection_record_limit: usize,
 
     // Deterministic entropy source (seeded PRNG replacing virtio-rng)
     entropy: DeterministicEntropy,
@@ -798,8 +798,10 @@ pub struct DeterministicVm {
     scheduler: VcpuScheduler,
     /// Evidence slot held across an unrelated host interrupt retry.
     pending_schedule_reservation: Option<ScheduleReservation>,
-    /// Permanent failure after KVM may have progressed without exact evidence.
+    /// Permanent failure after KVM may have progressed without verified evidence.
     schedule_execution_poison: Option<ScheduleExecutionPoison>,
+    /// True only between a possibly executing entry and verified completion.
+    schedule_entry_in_flight: bool,
     /// HLT observations that KVM leaves encoded as runnable MP state.
     hlt_latched_vcpus: Vec<bool>,
     /// vCPUs made non-runnable by an active fault window.
@@ -870,6 +872,7 @@ pub struct DeterministicVm {
     /// which is `!Send`. The timer is only used from the thread that
     /// created it, so this is safe.
     thread_timer: Option<SendTimerId>,
+    thread_timer_tid: Option<i32>,
 
     /// Extra kernel command line parameters (from VmConfig).
     extra_cmdline: Option<String>,
@@ -1018,6 +1021,28 @@ impl DeterministicVm {
     // particular, rearming TF before RUN cannot repair TF lost inside IRQ/NMI
     // or synchronous exception entry; PMU exact remainder needs the same primitive.
     pub(crate) fn validate_production_progress(config: &VmConfig) -> Result<(), VmError> {
+        if config.smp_progress_mode == ProgressMode::KvmDebugBoundary {
+            if config.num_vcpus < 2
+                || !matches!(
+                    config.smp_progress_budget,
+                    ProgressBudget::KvmBoundaries {
+                        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                        count: 1..,
+                    }
+                )
+                || config.smp_entry_watchdog_microseconds == 0
+                || config.smp_entry_watchdog_microseconds > (i64::MAX / 1000) as u64
+            {
+                return Err(VmError::ProgressCapability {
+                    message: "coarse SMP requires >=2 vCPUs, an explicit v1 boundary budget and a finite positive entry watchdog".into(),
+                });
+            }
+            coarse_configuration::validate_coarse_clock_configuration(config)?;
+        } else if !matches!(config.smp_progress_budget, ProgressBudget::Instructions(_)) {
+            return Err(VmError::ProgressCapability {
+                message: "strict progress requires instruction units".into(),
+            });
+        }
         if config.num_vcpus > 1 {
             validate_progress_capabilities(
                 config.smp_progress_mode,
@@ -1025,31 +1050,50 @@ impl DeterministicVm {
                     event_entry_exact_single_step: false,
                     guest_instruction_pmu: false,
                     pmu_overflow: false,
+                    kvm_debug_boundary: true,
+                    bounded_kvm_entry: true,
                 },
             )?;
         }
         Ok(())
     }
 
-    /// Install a no-op SIGALRM handler for the single-vCPU watchdog.
+    /// Install the signal-safe host recovery handler; it grants no progress units.
     /// Deterministic SMP does not use this signal as a progress source.
-    fn install_sigalrm_handler() {
-        use std::sync::Once;
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            // SAFETY: sigaction with SA_RESTART and a trivial handler is safe.
+    fn install_sigalrm_handler() -> Result<(), VmError> {
+        extern "C" fn noop_signal_handler(_sig: libc::c_int) {}
+        static INSTALL: std::sync::LazyLock<Result<(), i32>> = std::sync::LazyLock::new(|| {
+            // SAFETY: initialized sigaction and a signal-safe no-op handler;
+            // SA_RESTART is deliberately absent so KVM_RUN returns control.
             unsafe {
                 let mut sa: libc::sigaction = std::mem::zeroed();
                 sa.sa_sigaction = noop_signal_handler as *const () as usize;
-                sa.sa_flags = 0; // Do NOT set SA_RESTART — we want the signal to interrupt vcpu.run()
-                libc::sigaction(libc::SIGALRM, &sa, std::ptr::null_mut());
+                if libc::sigaction(libc::SIGALRM, &sa, std::ptr::null_mut()) != 0 {
+                    Err(io::Error::last_os_error()
+                        .raw_os_error()
+                        .unwrap_or(libc::EINVAL))
+                } else {
+                    Ok(())
+                }
             }
         });
-
-        extern "C" fn noop_signal_handler(_sig: libc::c_int) {
-            // Intentionally empty — the signal delivery interrupts vcpu.run(),
-            // causing KVM to return VcpuExit::Intr. No action needed here.
+        (*INSTALL).map_err(|errno| VmError::ProgressCapability {
+            message: format!(
+                "cannot install KVM recovery signal handler: {}",
+                io::Error::from_raw_os_error(errno)
+            ),
+        })?;
+        let mut current = std::mem::MaybeUninit::<libc::sigaction>::uninit();
+        // SAFETY: query-only sigaction initializes the output on success.
+        if unsafe { libc::sigaction(libc::SIGALRM, std::ptr::null(), current.as_mut_ptr()) } != 0
+            || unsafe { current.assume_init_ref().sa_sigaction }
+                != noop_signal_handler as *const () as usize
+        {
+            return Err(VmError::ProgressCapability {
+                message: "KVM recovery signal handler was replaced or cannot be inspected".into(),
+            });
         }
+        Ok(())
     }
 
     /// Create a new deterministic VM with the given configuration.
@@ -1068,6 +1112,9 @@ impl DeterministicVm {
         // r[impl chaoscontrol.event_entry_exact.early]
         // Reject before allocations, KVM creation, disk/log setup or guest loading.
         Self::validate_production_progress(&config)?;
+        let execution_descriptor =
+            crate::snapshot::SnapshotExecutionDescriptor::capture_host(&config)
+                .map_err(|message| VmError::Snapshot { message })?;
         let runtime_capacity_limits = runtime_capacity_limits(&config)?;
         let runtime_capacity_plan =
             plan_runtime_capacity(&runtime_capacity_limits).map_err(|error| {
@@ -1076,6 +1123,20 @@ impl DeterministicVm {
                 }
             })?;
         let kvm = Kvm::new().context(KvmCreateSnafu)?;
+        if config.smp_progress_mode == ProgressMode::KvmDebugBoundary
+            && kvm.check_extension_raw(kvm_bindings::KVM_CAP_X86_MSR_FILTER as libc::c_ulong) <= 0
+        {
+            return Err(VmError::ProgressCapability {
+                message: "coarse clock profile requires enforced KVM_CAP_X86_MSR_FILTER".into(),
+            });
+        }
+        if config.smp_progress_mode == ProgressMode::KvmDebugBoundary
+            && !kvm.check_extension(Cap::ImmediateExit)
+        {
+            return Err(VmError::ProgressCapability {
+                message: "coarse I/O settlement requires KVM_CAP_IMMEDIATE_EXIT".into(),
+            });
+        }
         let mut snapshot_msr_indices = kvm
             .get_msr_index_list()
             .map_err(|error| VmError::Snapshot {
@@ -1091,6 +1152,12 @@ impl DeterministicVm {
             });
         }
         let vm = kvm.create_vm().context(VmCreateSnafu)?;
+        let coarse_clock_filter_identity =
+            if config.smp_progress_mode == ProgressMode::KvmDebugBoundary {
+                Some(Self::install_coarse_clock_msr_filter(&vm)?)
+            } else {
+                None
+            };
 
         // Create guest memory
         let memory = GuestMemoryManager::new(config.memory_size)?;
@@ -1123,33 +1190,28 @@ impl DeterministicVm {
         // Create in-kernel IRQ chip (PIC, IOAPIC, LAPIC) — MUST be before create_vcpu
         vm.create_irq_chip().context(CreateIrqChipSnafu)?;
 
-        // Keep KVM's PIT port emulation, but disable its host-clock IRQ timer.
-        // HPET_LEGACY is KVM's PIT timer-inhibit flag; no HPET is required.
-        // DeterministicPit supplies IRQ 0 through set_irq_line instead.
-        let pit_config = kvm_pit_config {
-            flags: KVM_PIT_SPEAKER_DUMMY,
-            ..Default::default()
-        };
-        vm.create_pit2(pit_config).context(CreatePitSnafu)?;
-
-        // Set the state flag before any guest execution. KVM's 0 -> 1
-        // HPET_LEGACY transition cancels and flushes the timer, and subsequent
-        // guest reloads cannot rearm it. count_load_time does not inhibit it.
-        {
+        // Inhibited KVM PITs still consume guest PIO and expose host-clock
+        // channel/speaker reads. Coarse execution must leave that I/O bus
+        // device absent: every PIT access exits to DeterministicPit instead.
+        if config.smp_progress_mode != ProgressMode::KvmDebugBoundary {
+            let pit_config = kvm_pit_config {
+                flags: KVM_PIT_SPEAKER_DUMMY,
+                ..Default::default()
+            };
+            vm.create_pit2(pit_config).context(CreatePitSnafu)?;
             let mut pit_state = vm.get_pit2().context(CreatePitSnafu)?;
             pit_state.flags |= KVM_PIT_FLAGS_HPET_LEGACY;
-            pit_state.channels[0].count = 0; // 0 = 65536
-            pit_state.channels[0].mode = 0; // mode 0 = one-shot
-            pit_state.channels[0].gate = 1;
+            // Preserve KVM's unprogrammed mode (0xff). Installing mode 0
+            // would unnecessarily request a maximum-count host one-shot.
             vm.set_pit2(&pit_state).context(CreatePitSnafu)?;
         }
 
-        // Enable KVM_CAP_EXIT_HYPERCALL so guest `vmcall` instructions
-        // exit to userspace instead of being handled by KVM internally.
-        // This is the canonical x86 guest→hypervisor communication path
-        // (used by Antithesis's Determinator). Falls back to port I/O
-        // if the host kernel doesn't support this capability.
-        let vmcall_enabled = if kvm.check_extension(Cap::ExitHypercall) {
+        // VMCALL is outside the coarse profile's closed exit table. Its SDK
+        // transport is explicitly PIO, not an advertised unsupported hypercall.
+        // Other modes retain the host-admitted VMCALL transport when available.
+        let vmcall_enabled = if config.smp_progress_mode != ProgressMode::KvmDebugBoundary
+            && kvm.check_extension(Cap::ExitHypercall)
+        {
             let cap = kvm_enable_cap {
                 cap: Cap::ExitHypercall as u32,
                 args: [1u64 << VMCALL_NR, 0, 0, 0],
@@ -1202,7 +1264,11 @@ impl DeterministicVm {
         // the instruction-driven PIT/jiffies clock, including this early check.
         config.cpu = config.effective_cpu_config();
 
-        let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
+        // Use the exact measured source table retained in the descriptor. A
+        // second GET_SUPPORTED_CPUID can observe another host CPU's cache data.
+        let cpuid = execution_descriptor
+            .guest_cpuid_template()
+            .map_err(|message| VmError::Snapshot { message })?;
         let mut vcpus = Vec::with_capacity(num_vcpus);
         for i in 0..num_vcpus {
             let vcpu = vm.create_vcpu(i as u64).context(VcpuCreateSnafu)?;
@@ -1252,7 +1318,7 @@ impl DeterministicVm {
         // Define the deterministic instruction schedule before any guest runs.
         let scheduler_config = SchedulerConfig {
             num_vcpus,
-            quantum: config.smp_instruction_quantum,
+            progress_budget: config.smp_progress_budget,
             strategy: config.scheduling_strategy,
             seed: config.cpu.seed,
         };
@@ -1337,6 +1403,11 @@ impl DeterministicVm {
             memory_ceiling_bytes,
             virtual_tsc,
             guest_determinism_profile,
+            execution_descriptor,
+            coarse_clock_filter_identity,
+            injection_ledger: crate::snapshot::InjectionLedger::new(),
+            injection_records: Vec::new(),
+            injection_record_limit: config.smp_schedule_journal_limit,
             entropy,
             pit,
             serial,
@@ -1344,6 +1415,7 @@ impl DeterministicVm {
             scheduler,
             pending_schedule_reservation: None,
             schedule_execution_poison: None,
+            schedule_entry_in_flight: false,
             hlt_latched_vcpus: vec![false; num_vcpus],
             forced_stalled_vcpus: std::collections::BTreeSet::new(),
             fault_engine,
@@ -1352,11 +1424,15 @@ impl DeterministicVm {
             instruction_counter,
             pmu_counter_base_progress: 0,
             singlestep_active: false,
-            watchdog_microseconds: std::env::var("CHAOSCONTROL_WATCHDOG_US")
-                .ok()
-                .and_then(|value| value.parse::<i64>().ok())
-                .filter(|value| *value > 0)
-                .unwrap_or(SINGLE_VCPU_WATCHDOG_MICROSECONDS),
+            watchdog_microseconds: if config.smp_progress_mode == ProgressMode::KvmDebugBoundary {
+                config.smp_entry_watchdog_microseconds as i64
+            } else {
+                std::env::var("CHAOSCONTROL_WATCHDOG_US")
+                    .ok()
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .filter(|value| *value > 0)
+                    .unwrap_or(SINGLE_VCPU_WATCHDOG_MICROSECONDS)
+            },
             host_watchdog_retries: 0,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
@@ -1374,6 +1450,7 @@ impl DeterministicVm {
             assertion_checkpoint_stops: 0,
             assertion_hit_stop_pending: false,
             thread_timer: None,
+            thread_timer_tid: None,
             coverage_active: false,
             vmcall_enabled,
             extra_cmdline: config.extra_cmdline.clone(),
@@ -1775,9 +1852,14 @@ impl DeterministicVm {
         }])
         .map_err(|_| GuestMemoryWriteSnafu.build())?;
 
-        self.vcpus[self.active_vcpu]
+        let written = self.vcpus[self.active_vcpu]
             .set_msrs(&msrs)
             .context(SetRegistersSnafu)?;
+        if self.coarse_mode() && written != 1 {
+            return Err(VmError::ProgressCapability {
+                message: "KVM did not overwrite the per-entry guest TSC".into(),
+            });
+        }
         Ok(())
     }
 
@@ -2513,19 +2595,7 @@ impl DeterministicVm {
     /// Standard x86 IRQs: 0 = PIT timer, 4 = COM1 serial,
     /// 5-7 = virtio MMIO devices.
     pub fn inject_interrupt(&mut self, irq: u32) -> Result<(), VmError> {
-        self.vm
-            .set_irq_line(irq, true)
-            .context(CreateIrqChipSnafu)?;
-        self.vm
-            .set_irq_line(irq, false)
-            .context(CreateIrqChipSnafu)?;
-        log::debug!(
-            "Injected IRQ {} (exit_count={}, vtsc={})",
-            irq,
-            self.exit_count,
-            self.virtual_tsc.read()
-        );
-        Ok(())
+        self.inject_irq_from(irq, crate::snapshot::InjectionSource::Shell)
     }
 
     /// Inject a non-maskable interrupt (NMI) into a specific vCPU.
@@ -2537,6 +2607,14 @@ impl DeterministicVm {
     /// Uses the raw `KVM_NMI` ioctl since kvm-ioctls 0.19 doesn't
     /// expose a typed wrapper.
     pub fn inject_nmi(&mut self, vcpu_idx: usize) -> Result<(), VmError> {
+        self.ensure_schedule_execution_healthy()?;
+        if !self.supports_nmi_injection() {
+            return Err(VmError::ProgressCapability {
+                message:
+                    "NMI/nested-NMI delivery is outside the admitted coarse clock/device profile"
+                        .into(),
+            });
+        }
         if vcpu_idx >= self.vcpus.len() {
             return Err(VmError::Snapshot {
                 message: format!(
@@ -2627,6 +2705,10 @@ impl DeterministicVm {
     }
 
     fn complete_pending_kvm_exits_for_snapshot(&mut self) -> Result<(), VmError> {
+        if self.coarse_mode() {
+            // Every admitted I/O boundary was settled before its commit.
+            return self.validate_coarse_clock_devices();
+        }
         for vcpu_id in 0..self.vcpus.len() {
             self.vcpus[vcpu_id].set_kvm_immediate_exit(1);
             let interrupted = match self.vcpus[vcpu_id].run() {
@@ -2896,6 +2978,8 @@ impl DeterministicVm {
         let virtio_snapshots = self.capture_virtio_snapshots()?;
 
         let params = CaptureParams {
+            execution_descriptor: self.execution_descriptor.clone(),
+            boundary_state: self.snapshot_boundary_state(),
             topology,
             serial_state: self.serial.state(),
             entropy: self.entropy.snapshot(),
@@ -2995,6 +3079,8 @@ impl DeterministicVm {
         let virtio_snapshots = self.capture_virtio_snapshots()?;
 
         let params = CaptureParams {
+            execution_descriptor: self.execution_descriptor.clone(),
+            boundary_state: self.snapshot_boundary_state(),
             topology,
             serial_state: self.serial.state(),
             entropy: self.entropy.snapshot(),
@@ -3069,12 +3155,16 @@ impl DeterministicVm {
             })?;
             chip
         };
-        let pit = self.vm.get_pit2().map_err(|e| {
-            SnapshotSnafu {
-                message: format!("get_pit2: {e}"),
-            }
-            .build()
-        })?;
+        let pit = if self.execution_descriptor.kernel_pit_present() {
+            crate::snapshot::SnapshotKernelPitState::Present(self.vm.get_pit2().map_err(|e| {
+                SnapshotSnafu {
+                    message: format!("get_pit2: {e}"),
+                }
+                .build()
+            })?)
+        } else {
+            crate::snapshot::SnapshotKernelPitState::Absent
+        };
         let clock = self.vm.get_clock().map_err(|e| {
             SnapshotSnafu {
                 message: format!("get_clock: {e}"),
@@ -3084,9 +3174,10 @@ impl DeterministicVm {
 
         let metadata = crate::snapshot::SnapshotMetadata {
             state_schema_version: crate::snapshot::SNAPSHOT_STATE_SCHEMA_VERSION,
-            completeness_profile: crate::snapshot::SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.to_string(),
+            completeness_profile: crate::snapshot::SNAPSHOT_PROFILE_EXACT_X86_KVM_V2.to_string(),
             inventory: crate::snapshot::build_snapshot_inventory(&params.topology),
             topology: params.topology.clone(),
+            execution_descriptor: params.execution_descriptor,
         };
         let snap = crate::snapshot::VmSnapshot {
             metadata: Some(metadata),
@@ -3112,6 +3203,7 @@ impl DeterministicVm {
             coverage_active: params.coverage_active,
             scheduler_snapshot: params.scheduler_snapshot,
             hlt_latched_vcpus: params.hlt_latched_vcpus,
+            boundary_state: params.boundary_state,
         };
 
         info!(
@@ -3130,6 +3222,24 @@ impl DeterministicVm {
         snapshot: &crate::snapshot::VmSnapshot,
     ) -> Result<(), VmError> {
         self.ensure_schedule_execution_healthy()?;
+        snapshot
+            .validate_kernel_restore(self.vcpus.len())
+            .map_err(|error| VmError::Snapshot {
+                message: format!("snapshot continuation preflight failed: {error}"),
+            })?;
+        if self.coarse_mode()
+            && snapshot.vcpu_snapshots.iter().any(|vcpu| {
+                vcpu.msrs.iter().any(|msr| {
+                    coarse_boundary::UNSUPPORTED_CLOCK_MSRS.contains(&msr.index) && msr.data != 0
+                })
+            })
+        {
+            return Err(VmError::ProgressCapability {
+                message:
+                    "coarse checkpoint enabled an unsupported PV host clock or TSC-deadline source"
+                        .into(),
+            });
+        }
         if self.pending_schedule_reservation.is_some() {
             return Err(VmError::Snapshot {
                 message: "cannot restore while a host-interrupt retry holds schedule evidence"
@@ -3137,10 +3247,14 @@ impl DeterministicVm {
             });
         }
         let expected_topology = self.snapshot_topology()?;
-        crate::snapshot::validate_snapshot_metadata(snapshot.metadata.as_ref(), &expected_topology)
-            .map_err(|error| VmError::Snapshot {
-                message: format!("snapshot completeness preflight failed: {error:?}"),
-            })?;
+        crate::snapshot::validate_snapshot_metadata(
+            snapshot.metadata.as_ref(),
+            &expected_topology,
+            &self.execution_descriptor,
+        )
+        .map_err(|error| VmError::Snapshot {
+            message: format!("snapshot completeness preflight failed: {error:?}"),
+        })?;
         if let Err((snapshot_count, current_count)) =
             validate_snapshot_count(snapshot.vcpu_snapshots.len(), self.vcpus.len())
         {
@@ -3292,6 +3406,15 @@ impl DeterministicVm {
         phase: &mut SnapshotRestorePhase,
     ) -> Result<(), VmError> {
         self.complete_pending_kvm_exits_for_snapshot()?;
+        // KVM rejects a changed static table on an already-run vCPU. Attempt
+        // it before dirty tracking, guest memory or device restoration; partial
+        // multi-vCPU installation remains inside the restore poison fence.
+        *phase = SnapshotRestorePhase::Cpuid;
+        snapshot
+            .restore_cpuid(&self.vcpus)
+            .map_err(|error| VmError::Snapshot {
+                message: format!("restore guest CPUID: {error}"),
+            })?;
         *phase = SnapshotRestorePhase::MemoryTracking;
         let overlay_pages = match &snapshot.memory {
             crate::snapshot::SnapshotMemory::Overlay { dirty_pages, base } => Some(
@@ -3310,7 +3433,7 @@ impl DeterministicVm {
         let _ = self.read_guest_dirty_bitmap()?;
         *phase = SnapshotRestorePhase::MemoryAndKernelState;
         snapshot
-            .restore(&self.vcpus, &self.vm, self.memory.inner())
+            .restore_after_cpuid(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| {
                 SnapshotSnafu {
                     message: e.to_string(),
@@ -3361,6 +3484,8 @@ impl DeterministicVm {
         let previous_active_vcpu = self.active_vcpu;
         self.disable_singlestep(previous_active_vcpu)?;
         self.scheduler.restore(&snapshot.scheduler_snapshot)?;
+        self.injection_ledger = snapshot.boundary_state.injection_ledger.clone();
+        self.injection_records.clear();
         self.hlt_latched_vcpus = Self::hlt_latches_from_snapshot(snapshot);
         self.active_vcpu = self.scheduler.active();
         self.configure_progress_source_for_current_turn()?;
@@ -3409,6 +3534,15 @@ impl DeterministicVm {
             self.pages_differing_from_base.clear();
             self.incremental_base_needs_reconcile = true;
         }
+
+        // Adopt the restored guest table's provenance only after every restore
+        // stage succeeds; a failed restore must not relabel the live machine.
+        self.execution_descriptor = snapshot
+            .execution_descriptor()
+            .map_err(|error| VmError::Snapshot {
+                message: format!("restored execution descriptor: {error:?}"),
+            })?
+            .clone();
 
         Ok(())
     }
@@ -3460,6 +3594,12 @@ impl DeterministicVm {
         use crate::snapshot::SnapshotMemory;
 
         self.complete_pending_kvm_exits_for_snapshot()?;
+        *phase = SnapshotRestorePhase::Cpuid;
+        snapshot
+            .restore_cpuid(&self.vcpus)
+            .map_err(|error| VmError::Snapshot {
+                message: format!("restore guest CPUID: {error}"),
+            })?;
         *phase = SnapshotRestorePhase::MemoryTracking;
         self.reconcile_incremental_base(base)?;
 
@@ -3500,7 +3640,7 @@ impl DeterministicVm {
         // Step 3: Restore KVM device state (registers, IRQ chips, etc.)
         // Same as VmSnapshot::restore minus the memory write.
         snapshot
-            .restore_devices_only(&self.vcpus, &self.vm)
+            .restore_devices_only_after_cpuid(&self.vcpus, &self.vm)
             .map_err(|e| {
                 SnapshotSnafu {
                     message: e.to_string(),
@@ -3540,6 +3680,8 @@ impl DeterministicVm {
         let previous_active_vcpu = self.active_vcpu;
         self.disable_singlestep(previous_active_vcpu)?;
         self.scheduler.restore(&snapshot.scheduler_snapshot)?;
+        self.injection_ledger = snapshot.boundary_state.injection_ledger.clone();
+        self.injection_records.clear();
         self.hlt_latched_vcpus = Self::hlt_latches_from_snapshot(snapshot);
         self.active_vcpu = self.scheduler.active();
         self.configure_progress_source_for_current_turn()?;
@@ -3573,24 +3715,35 @@ impl DeterministicVm {
 
         self.disarm_preemption_timer();
 
+        self.execution_descriptor = snapshot
+            .execution_descriptor()
+            .map_err(|error| VmError::Snapshot {
+                message: format!("restored execution descriptor: {error:?}"),
+            })?
+            .clone();
+
         Ok(())
     }
 
     // ─── Internal: VM exit handling ──────────────────────────────────
 
-    /// Mirror KVM PIT configuration to the virtual-time DeterministicPit,
-    /// maintaining KVM's host-timer inhibit flag. Software IRQ 0 remains routed
-    /// through the in-kernel interrupt controllers.
+    /// Deliver virtual-time IRQ 0, mirroring the inhibited kernel PIT only
+    /// in the legacy single-vCPU profile. Coarse PIO programs software directly.
     /// Returns whether a software IRQ 0 edge was delivered.
     fn sync_and_suppress_pit(&mut self) -> Result<bool, VmError> {
-        let mut pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
         let current_tsc = self.virtual_tsc.read();
+        if self.coarse_mode() {
+            return self.deliver_virtual_pit_irq(current_tsc);
+        }
+        let mut pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
 
         // ── Channel 0: mirror config + suppress KVM timer ──────────
         let ch0 = &pit_state.channels[0];
         let reload = ch0.count as u16;
         let mode = ch0.mode;
-        if ch0.gate != 0 && (reload != self.pit.channel_reload(0) || mode != self.last_kvm_pit_mode)
+        if mode <= 5
+            && ch0.gate != 0
+            && (reload != self.pit.channel_reload(0) || mode != self.last_kvm_pit_mode)
         {
             // Program our DeterministicPit with the same config
             let cmd = 0x30 | ((mode & 0x7) << 1);
@@ -3634,14 +3787,12 @@ impl DeterministicVm {
 
         self.vm.set_pit2(&pit_state).context(CreatePitSnafu)?;
 
-        // ── Deliver deterministic IRQ 0 ─────────────────────────────
+        self.deliver_virtual_pit_irq(current_tsc)
+    }
+
+    fn deliver_virtual_pit_irq(&mut self, current_tsc: u64) -> Result<bool, VmError> {
         if self.pit.pending_irq(current_tsc) {
-            self.vm
-                .set_irq_line(PIT_IRQ, true)
-                .context(CreateIrqChipSnafu)?;
-            self.vm
-                .set_irq_line(PIT_IRQ, false)
-                .context(CreateIrqChipSnafu)?;
+            self.inject_irq_from(PIT_IRQ, crate::snapshot::InjectionSource::Pit)?;
             self.pit.acknowledge_irq();
             return Ok(true);
         }
@@ -3827,7 +3978,7 @@ impl DeterministicVm {
         }
     }
 
-    /// Return the permanent schedule poison, if execution lost exact evidence.
+    /// Return the permanent schedule poison after losing verified progress evidence.
     pub fn schedule_execution_poison(&self) -> Option<&ScheduleExecutionPoison> {
         self.schedule_execution_poison.as_ref()
     }
@@ -3835,13 +3986,13 @@ impl DeterministicVm {
     #[cfg(test)]
     pub(crate) fn inject_controller_test_progress(&mut self) -> Result<(), VmError> {
         let vcpu = self.scheduler.active();
-        let observed_progress = self.scheduler.state().instruction_progress[vcpu]
+        let observed_progress = self.scheduler.state().progress_counts()[vcpu]
             .checked_add(1)
             .ok_or_else(|| VmError::Snapshot {
                 message: "test schedule progress exhausted".to_string(),
             })?;
         let reservation = self.scheduler.reserve_transition()?;
-        let event = ScheduleEvent::GuestProgress {
+        let event = ScheduleEvent::InstructionProgress {
             expected_state_id: self.scheduler.state_id(),
             vcpu,
             observed_progress,
@@ -4069,24 +4220,48 @@ impl DeterministicVm {
 
     /// Bind host-local execution helpers to the current worker thread.
     pub fn init_thread_timer(&mut self) -> Result<(), VmError> {
-        if self.vcpus.len() == 1 {
-            Self::install_sigalrm_handler();
-            // SAFETY: `SIGEV_THREAD_ID` targets the calling worker thread.
-            unsafe {
-                let tid = libc::syscall(libc::SYS_gettid) as i32;
-                let mut event: libc::sigevent = std::mem::zeroed();
-                event.sigev_notify = libc::SIGEV_THREAD_ID;
-                event.sigev_signo = libc::SIGALRM;
-                event.sigev_notify_thread_id = tid;
-                let mut timer_id: libc::timer_t = std::ptr::null_mut();
-                let result = libc::timer_create(libc::CLOCK_MONOTONIC, &mut event, &mut timer_id);
-                if result == 0 {
-                    self.thread_timer = Some(SendTimerId::from_created(timer_id));
-                } else {
-                    log::warn!(
-                        "timer_create failed (errno={}); single-vCPU watchdog uses ITIMER_REAL",
-                        *libc::__errno_location()
-                    );
+        let coarse = self.scheduler.progress_mode() == ProgressMode::KvmDebugBoundary;
+        if self.vcpus.len() == 1 || coarse {
+            Self::install_sigalrm_handler()?;
+            // SAFETY: syscall returns the calling Linux thread identity.
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+            if self.thread_timer_tid != Some(tid) {
+                self.thread_timer = None;
+                self.thread_timer_tid = None;
+                // SAFETY: initialized ABI values; SIGEV_THREAD_ID targets this worker.
+                unsafe {
+                    let mut event: libc::sigevent = std::mem::zeroed();
+                    event.sigev_notify = libc::SIGEV_THREAD_ID;
+                    event.sigev_signo = libc::SIGALRM;
+                    event.sigev_notify_thread_id = tid;
+                    let mut timer_id: libc::timer_t = std::ptr::null_mut();
+                    if libc::timer_create(libc::CLOCK_MONOTONIC, &mut event, &mut timer_id) == 0 {
+                        self.thread_timer = Some(SendTimerId::from_created(timer_id));
+                        self.thread_timer_tid = Some(tid);
+                    } else if coarse {
+                        return Err(VmError::ProgressCapability {
+                            message: format!(
+                                "coarse entry requires a thread-targeted watchdog: {}",
+                                io::Error::last_os_error()
+                            ),
+                        });
+                    }
+                }
+            }
+            if coarse {
+                let mut mask = std::mem::MaybeUninit::<libc::sigset_t>::uninit();
+                // SAFETY: queries the current mask without changing it.
+                let result = unsafe {
+                    libc::pthread_sigmask(libc::SIG_SETMASK, std::ptr::null(), mask.as_mut_ptr())
+                };
+                if result != 0
+                    || unsafe { libc::sigismember(mask.assume_init_ref(), libc::SIGALRM) } != 0
+                {
+                    return Err(VmError::ProgressCapability {
+                        message:
+                            "coarse watchdog requires unblocked SIGALRM on the executing thread"
+                                .into(),
+                    });
                 }
             }
         }
@@ -4102,14 +4277,45 @@ impl DeterministicVm {
         Ok(())
     }
 
+    fn arm_coarse_watchdog(&mut self) -> Result<(), VmError> {
+        self.init_thread_timer()?;
+        let timer = self
+            .thread_timer
+            .as_ref()
+            .ok_or_else(|| VmError::ProgressCapability {
+                message: "coarse entry has no admitted thread watchdog".into(),
+            })?;
+        let deadline_ns = self.watchdog_microseconds * 1000;
+        let spec = libc::itimerspec {
+            it_interval: libc::timespec {
+                tv_sec: 0,
+                tv_nsec: 0,
+            },
+            it_value: libc::timespec {
+                tv_sec: deadline_ns / 1_000_000_000,
+                tv_nsec: deadline_ns % 1_000_000_000,
+            },
+        };
+        // SAFETY: timer owner and timespec remain valid throughout the call.
+        if unsafe { libc::timer_settime(timer.raw(), 0, &spec, std::ptr::null_mut()) } != 0 {
+            return Err(VmError::ProgressCapability {
+                message: format!(
+                    "cannot arm coarse entry watchdog: {}",
+                    io::Error::last_os_error()
+                ),
+            });
+        }
+        Ok(())
+    }
+
     fn enable_singlestep(&mut self, vcpu: usize) -> Result<(), VmError> {
         // KVM_GUESTDBG_SINGLESTEP is not a persistent instruction boundary:
         // POPF/IRET and interrupt entry can clear hardware TF. SET_GUEST_DEBUG
         // refreshes KVM's singlestep_rip and injects TF at this entry's RIP.
-        // Re-arm before every exact RUN, including a PMU exact remainder.
+        // Re-arm every debug-boundary or exact RUN, including PMU remainder.
         Self::set_vcpu_singlestep(&self.vcpus[vcpu], true).map_err(|error| {
             VmError::ProgressCapability {
-                message: format!("vCPU {vcpu} could not enable exact single-step: {error}"),
+                message: format!("vCPU {vcpu} could not enable guest debug stepping: {error}"),
             }
         })?;
         self.singlestep_active = true;
@@ -4131,9 +4337,12 @@ impl DeterministicVm {
 
     fn configure_progress_source_for_current_turn(&mut self) -> Result<(), VmError> {
         let active = self.scheduler.active();
-        let progress = self.scheduler.state().instruction_progress[active];
+        if self.coarse_mode() {
+            return self.enable_singlestep(active);
+        }
+        let progress = self.scheduler.state().progress_counts()[active];
         self.pmu_counter_base_progress = progress;
-        match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
+        match (self.scheduler.progress_mode(), self.scheduler.exact_step()?) {
             (ProgressMode::ExactSingleStep, ExactStepState::Inactive) => Ok(()),
             (ProgressMode::PmuAccelerated { .. }, ExactStepState::Active { .. }) => {
                 self.enable_singlestep(active)
@@ -4142,7 +4351,8 @@ impl DeterministicVm {
                 self.disable_singlestep(active)?;
                 let overflow_period = self
                     .scheduler
-                    .remaining()
+                    .remaining_budget()
+                    .count()
                     .checked_sub(exact_step_margin)
                     .filter(|period| *period > 0)
                     .ok_or_else(|| VmError::ProgressCapability {
@@ -4162,6 +4372,7 @@ impl DeterministicVm {
             (ProgressMode::LegacyWallClock, _) => {
                 Err(ScheduleError::UnsupportedProgressMode.into())
             }
+            (ProgressMode::KvmDebugBoundary, _) => unreachable!("coarse mode handled separately"),
             (ProgressMode::ExactSingleStep, ExactStepState::Active { .. }) => {
                 Err(VmError::ProgressCapability {
                     message: "exact single-step mode has invalid PMU remainder state".to_string(),
@@ -4176,7 +4387,12 @@ impl DeterministicVm {
         if self.num_vcpus() <= 1 {
             return Ok(None);
         }
-        match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
+        if self.coarse_mode() {
+            self.validate_coarse_clock_devices()?;
+            self.enable_singlestep(vcpu)?;
+            return Ok(None);
+        }
+        match (self.scheduler.progress_mode(), self.scheduler.exact_step()?) {
             (ProgressMode::ExactSingleStep, ExactStepState::Inactive)
             | (ProgressMode::PmuAccelerated { .. }, ExactStepState::Active { .. }) => {
                 self.enable_singlestep(vcpu)?;
@@ -4195,6 +4411,7 @@ impl DeterministicVm {
             (ProgressMode::LegacyWallClock, _) => {
                 Err(ScheduleError::UnsupportedProgressMode.into())
             }
+            (ProgressMode::KvmDebugBoundary, _) => unreachable!("coarse mode handled separately"),
             (ProgressMode::ExactSingleStep, ExactStepState::Active { .. }) => {
                 Err(VmError::ProgressCapability {
                     message: "exact single-step mode has invalid PMU remainder state".to_string(),
@@ -4205,9 +4422,27 @@ impl DeterministicVm {
 
     fn step(&mut self) -> Result<bool, VmError> {
         self.ensure_schedule_execution_healthy()?;
+        let result = self.step_inner();
+        if self.schedule_entry_in_flight {
+            if let Err(error) = &result {
+                if self.schedule_execution_poison.is_none() {
+                    self.poison_after_committed_progress(
+                        SchedulePoisonStage::KvmRunResult,
+                        error.to_string(),
+                    );
+                }
+            }
+            self.schedule_entry_in_flight = false;
+        }
+        result
+    }
+
+    fn step_inner(&mut self) -> Result<bool, VmError> {
+        self.ensure_schedule_execution_healthy()?;
         self.sync_and_suppress_pit()?;
 
         let num_vcpus = self.vcpus.len();
+        let coarse = self.coarse_mode();
         if self.pending_schedule_reservation.is_none() {
             self.refresh_hlt_wakes()?;
             if self.refresh_runnable_state()? {
@@ -4243,11 +4478,18 @@ impl DeterministicVm {
         // control so MP_STATE_HALTED can be observed; elapsed host time never
         // determines a virtual deadline or an IRQ. Runnable timeouts retain
         // their existing operational-error meaning, before and after setup.
-        // Deterministic SMP never arms this wall-clock timer.
+        // Coarse SMP uses a separately checked thread watchdog for abort only.
         if num_vcpus == 1 {
-            Self::install_sigalrm_handler();
+            Self::install_sigalrm_handler()?;
             self.arm_preemption_timer(self.watchdog_microseconds);
         }
+        if coarse {
+            if let Err(error) = self.arm_coarse_watchdog() {
+                self.release_guest_progress(reservation.take())?;
+                return Err(error);
+            }
+        }
+        self.schedule_entry_in_flight = num_vcpus > 1;
         let run_result = self.vcpus[executed_vcpu].run().or_else(|error| {
             if error.errno() == libc::EINTR {
                 Ok(VcpuExit::Intr)
@@ -4255,7 +4497,14 @@ impl DeterministicVm {
                 Err(error)
             }
         });
-        if num_vcpus == 1 {
+        let coarse_watchdog_expired = if coarse {
+            Self::coarse_watchdog_deadline_elapsed(self.thread_timer.as_ref())?
+        } else {
+            false
+        };
+        if coarse {
+            Self::disarm_coarse_watchdog(self.thread_timer.as_ref())?;
+        } else if num_vcpus == 1 {
             Self::set_preemption_timer(self.thread_timer.as_ref(), 0);
         }
         let pmu_overflow_attributed = if let Some(generation) = pmu_generation_before_run {
@@ -4288,6 +4537,16 @@ impl DeterministicVm {
             Err(error) => error.errno() == libc::EINTR,
             Ok(_) => false,
         };
+        let coarse_boundary = if coarse {
+            if interrupted && coarse_watchdog_expired {
+                return Err(VmError::HostWatchdogTimeout {
+                    vcpu: executed_vcpu,
+                });
+            }
+            Some(Self::normalize_coarse_exit(&run_result, executed_vcpu)?)
+        } else {
+            None
+        };
         let guest_progress_observed = matches!(
             &run_result,
             Ok(VcpuExit::IoIn(_, _))
@@ -4311,7 +4570,7 @@ impl DeterministicVm {
             ));
         }
         let retired_hlt = matches!(&run_result, Ok(VcpuExit::Hlt));
-        let progress_observation = if num_vcpus <= 1 || exact_progress_boundary_missing {
+        let progress_observation = if num_vcpus <= 1 || coarse || exact_progress_boundary_missing {
             ExecutionProgressObservation::NoGuestProgress
         } else if interrupted && !pmu_overflow_attributed {
             ExecutionProgressObservation::HostInterrupt
@@ -4337,7 +4596,7 @@ impl DeterministicVm {
                 counter_value,
             }
         } else {
-            match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
+            match (self.scheduler.progress_mode(), self.scheduler.exact_step()?) {
                 (ProgressMode::PmuAccelerated { .. }, ExactStepState::Inactive) => {
                     let read_result = self
                         .instruction_counter
@@ -4376,7 +4635,7 @@ impl DeterministicVm {
                 },
             }
         };
-        let planned_transition = if num_vcpus <= 1 {
+        let planned_transition = if num_vcpus <= 1 || coarse {
             None
         } else {
             match plan_execution_observation(self.scheduler.state(), progress_observation) {
@@ -4390,51 +4649,53 @@ impl DeterministicVm {
                 }
             }
         };
-        let pending_schedule_record = match (reservation.take(), planned_transition) {
-            (Some(reservation), Some(planned)) => {
-                match self.scheduler.commit(reservation, planned) {
-                    Ok(record) => Some(record),
-                    Err(error) => {
-                        return Err(self.poison_after_possible_guest_progress(
-                            None,
-                            SchedulePoisonStage::JournalCommit,
-                            format!("{error:?}"),
-                        ));
+        let mut pending_schedule_record = if coarse {
+            None
+        } else {
+            match (reservation.take(), planned_transition) {
+                (Some(reservation), Some(planned)) => {
+                    match self.scheduler.commit(reservation, planned) {
+                        Ok(record) => Some(record),
+                        Err(error) => {
+                            return Err(self.poison_after_possible_guest_progress(
+                                None,
+                                SchedulePoisonStage::JournalCommit,
+                                format!("{error:?}"),
+                            ));
+                        }
                     }
                 }
-            }
-            (Some(reservation), None)
-                if progress_observation == ExecutionProgressObservation::HostInterrupt =>
-            {
-                self.pending_schedule_reservation = Some(reservation);
-                None
-            }
-            (Some(reservation), None) => {
-                return Err(self.poison_after_possible_guest_progress(
-                    Some(reservation),
-                    SchedulePoisonStage::KvmRunResult,
-                    "post-KVM execution produced no committable evidence",
-                ));
-            }
-            (None, None) => None,
-            (None, Some(_)) => {
-                return Err(VmError::ProgressCapability {
-                    message: "single-vCPU execution produced an SMP transition".to_string(),
-                });
+                (Some(reservation), None)
+                    if progress_observation == ExecutionProgressObservation::HostInterrupt =>
+                {
+                    self.pending_schedule_reservation = Some(reservation);
+                    None
+                }
+                (Some(reservation), None) => {
+                    return Err(self.poison_after_possible_guest_progress(
+                        Some(reservation),
+                        SchedulePoisonStage::KvmRunResult,
+                        "post-KVM execution produced no committable evidence",
+                    ));
+                }
+                (None, None) => None,
+                (None, Some(_)) => {
+                    return Err(VmError::ProgressCapability {
+                        message: "single-vCPU execution produced an SMP transition".to_string(),
+                    });
+                }
             }
         };
         if num_vcpus > 1 && retired_hlt && pending_schedule_record.is_some() {
             self.hlt_latched_vcpus[executed_vcpu] = true;
         }
-        let pending_schedule_action = pending_schedule_record
-            .as_ref()
-            .map(|record| record.action.clone());
 
         // Deferred dlog record — built inside the match arm (copying
         // data out of the KVM exit struct), emitted after the match
         // closes so there is no borrow conflict with `self.vcpus`.
         let mut pending_dlog: Option<DlogRecord> = None;
         let mut pending_explicit_wake = None;
+        let mut pending_virtio_irq = None;
 
         let result = match run_result {
             Ok(VcpuExit::IoIn(port, data)) => {
@@ -4535,7 +4796,11 @@ impl DeterministicVm {
 
                 let tsc = self.virtual_tsc.read();
                 if io_port == SDK_PORT {
-                    self.handle_sdk_hypercall();
+                    if coarse {
+                        vmcall_sdk_pending = true;
+                    } else {
+                        self.handle_sdk_hypercall();
+                    }
                 } else if io_port == COVERAGE_PORT {
                     self.coverage_active = true;
                     log::info!("Coverage instrumentation activated by guest");
@@ -4555,6 +4820,7 @@ impl DeterministicVm {
                 }
                 Ok(false)
             }
+            Ok(VcpuExit::Hlt) if coarse => Ok(false),
             Ok(VcpuExit::Hlt) => match self.handle_hlt_exit() {
                 Ok((halted, record, wake_vcpu)) => {
                     pending_dlog = Some(record);
@@ -4666,19 +4932,23 @@ impl DeterministicVm {
                 self.virtual_tsc.tick();
 
                 // Find the virtio device that handles this address.
-                for dev in &mut self.virtio_devices {
+                for (device_index, dev) in self.virtio_devices.iter_mut().enumerate() {
                     if dev.handles(addr) {
                         let effect = dev.write_at(addr, data, self.memory.inner());
 
                         // Process only the queue named by a validated notification.
                         if let Ok(MmioWriteEffect::NotifyQueue(queue_index)) = effect {
                             if dev.process_queue(queue_index, self.memory.inner()) {
-                                let vm = &self.vm;
-                                deliver_virtio_interrupt_with(
-                                    dev,
-                                    queue_index,
-                                    |irq, asserted| vm.set_irq_line(irq, asserted),
-                                )?;
+                                if coarse {
+                                    pending_virtio_irq = Some((device_index, queue_index));
+                                } else {
+                                    let vm = &self.vm;
+                                    deliver_virtio_interrupt_with(
+                                        dev,
+                                        queue_index,
+                                        |irq, asserted| vm.set_irq_line(irq, asserted),
+                                    )?;
+                                }
                             }
                         }
                         break;
@@ -4811,8 +5081,48 @@ impl DeterministicVm {
             Err(error) => Err(VmError::VcpuRun { source: error }),
         };
         let result = result.and_then(|halted| {
+            let mut halted = halted;
+            if let Some(boundary) = coarse_boundary {
+                if let KvmBoundaryKind::Pio { size, .. } = boundary {
+                    let run = self.vcpus[executed_vcpu].get_kvm_run();
+                    // SAFETY: the normalized exit was KVM_EXIT_IO, selecting
+                    // the io union arm. Read before completion overwrites it.
+                    let io = unsafe { run.__bindgen_anon_1.io };
+                    if io.count != 1 || io.size != size {
+                        return Err(VmError::ProgressCapability {
+                            message: "repeated/ambiguous PIO is outside the v1 single-operation settlement table".into(),
+                        });
+                    }
+                }
+                if matches!(boundary, KvmBoundaryKind::Pio { .. } | KvmBoundaryKind::Mmio { .. }) {
+                    self.settle_coarse_io(executed_vcpu)?;
+                }
+                self.validate_coarse_clock_devices()?;
+                let planned = plan_execution_observation(self.scheduler.state(),
+                    ExecutionProgressObservation::KvmBoundary {
+                        vcpu: executed_vcpu,
+                        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                        boundary,
+                    })?.ok_or_else(|| VmError::ProgressCapability {
+                        message: "settled boundary produced no canonical transition".into(),
+                    })?;
+                let token = reservation.take().ok_or_else(|| VmError::ProgressCapability {
+                    message: "settled boundary lost its preflight journal reservation".into(),
+                })?;
+                pending_schedule_record = Some(self.scheduler.commit(token, planned)?);
+                if matches!(boundary, KvmBoundaryKind::Halt) {
+                    self.hlt_latched_vcpus[executed_vcpu] = true;
+                    let (observed_halted, record, wake_vcpu) = self.handle_hlt_exit()?;
+                    halted = observed_halted;
+                    pending_dlog = Some(record);
+                    pending_explicit_wake = wake_vcpu;
+                }
+            }
+            if let Some((device_index, queue_index)) = pending_virtio_irq {
+                self.deliver_coarse_virtio_irq(device_index, queue_index)?;
+            }
             if self.serial.interrupt_evt().0.replace(false) {
-                self.inject_interrupt(SERIAL_IRQ)?;
+                self.inject_irq_from(SERIAL_IRQ, crate::snapshot::InjectionSource::Serial)?;
             }
             Ok(halted)
         });
@@ -4822,6 +5132,9 @@ impl DeterministicVm {
         } else {
             result?
         };
+        let pending_schedule_action = pending_schedule_record
+            .as_ref()
+            .map(|record| record.action.clone());
 
         // ── Post-match phase ──────────────────────────────────
         // Emit deferred dlog record now that the KVM borrow is released.
@@ -5403,6 +5716,12 @@ impl Drop for DeterministicVm {
     }
 }
 
+#[path = "vm/coarse_configuration.rs"]
+mod coarse_configuration;
+
+#[path = "vm/coarse_boundary.rs"]
+mod coarse_boundary;
+
 #[cfg(test)]
 #[path = "vm/incremental_lineage.rs"]
 mod incremental_lineage;
@@ -5678,12 +5997,27 @@ mod tests {
         pit.channels[0].gate = 1;
         retained.vm.set_pit2(&pit).unwrap();
         retained.sync_and_suppress_pit().unwrap();
-        let mut snapshot = retained.snapshot().unwrap();
+        let snapshot = retained.snapshot().unwrap();
         assert_virtual_irq_only(&mut retained);
 
-        // A compatible pre-fix snapshot has no inhibit flag. Neither restore
-        // path may briefly rearm a host timer while installing its PIT state.
-        snapshot.pit.flags &= !KVM_PIT_FLAGS_HPET_LEGACY;
+        // An unflagged kernel PIT can rearm a physical timer. Reject it before
+        // mutation rather than silently changing the captured device identity.
+        let mut unsafe_snapshot = snapshot.clone();
+        let crate::snapshot::SnapshotKernelPitState::Present(pit) = &mut unsafe_snapshot.pit else {
+            panic!("single-vCPU profile must retain its kernel PIT");
+        };
+        pit.flags &= !KVM_PIT_FLAGS_HPET_LEGACY;
+        let pit_before = retained.pit.snapshot();
+        let tsc_before = retained.virtual_tsc.read();
+        assert!(retained.restore(&unsafe_snapshot).is_err());
+        assert!(retained
+            .restore_incremental(&unsafe_snapshot, &vec![0; TEST_MEMORY_BYTES])
+            .is_err());
+        assert_eq!(retained.pit.snapshot(), pit_before);
+        assert_eq!(retained.virtual_tsc.read(), tsc_before);
+        assert!(retained.schedule_execution_poison().is_none());
+
+        // Valid capture/restore never reloads the software timer from hardware.
         retained.restore(&snapshot).unwrap();
         assert_virtual_irq_only(&mut retained);
 
@@ -5694,6 +6028,120 @@ mod tests {
         let base = vec![0; TEST_MEMORY_BYTES];
         retained.restore_incremental(&snapshot, &base).unwrap();
         assert_virtual_irq_only(&mut retained);
+    }
+
+    #[test]
+    fn coarse_pit_pio_and_deadlines_survive_host_delay_and_both_restore_paths() {
+        use crate::snapshot::SnapshotKernelPitState;
+        use diagnostic_fixtures::{
+            coarse_smp_vm, stage_coarse_irq, COARSE_HANDLER_ADDRESS, COARSE_MEMORY_BYTES,
+            COARSE_WATCHDOG_US,
+        };
+        const HOST_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+        const BOUNDARY_QUANTUM: u64 = 128;
+        const MAX_STEPS: usize = 64;
+        // CLI; program channel 0 periodic, channel 2 one-shot (both 65535);
+        // enable channel 2's gate inside a TF-suppressed interrupt handler.
+        // Each OUT must nevertheless be a userspace PIO boundary.
+        const PROGRAM: &[u8] = &[
+            0xfa, 0xb0, 0x34, 0xe6, 0x43, 0xb0, 0xff, 0xe6, 0x40, 0xe6, 0x40, 0xb0, 0xb0, 0xe6,
+            0x43, 0xb0, 0xff, 0xe6, 0x42, 0xe6, 0x42, 0xb0, 0x01, 0xe6, 0x61,
+        ];
+        // Latch/read channel 2 into BX, then sample speaker state into CX.
+        // The final OUT establishes a settled observation before IRET.
+        const READS: &[u8] = &[
+            0xb0, 0x80, 0xe6, 0x43, 0xe4, 0x42, 0x88, 0xc3, 0xe4, 0x42, 0x88, 0xc7, 0xe4, 0x61,
+            0x88, 0xc1, 0xe4, 0x61, 0x88, 0xc5, 0xe6, 0x10,
+        ];
+        fn reach(vm: &mut DeterministicVm, target: u64) {
+            for _ in 0..MAX_STEPS {
+                if vm.vcpus[0].get_regs().unwrap().rip == target {
+                    return;
+                }
+                assert!(!vm.step().unwrap());
+            }
+            panic!("PIT microguest did not reach its declared settled boundary");
+        }
+        fn irq0_pending(vm: &DeterministicVm) -> bool {
+            let mut chip = kvm_bindings::kvm_irqchip {
+                chip_id: kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
+                ..Default::default()
+            };
+            vm.vm.get_irqchip(&mut chip).unwrap();
+            // SAFETY: chip_id selects the returned PIC union member.
+            unsafe { chip.chip.pic.irr & 1 != 0 }
+        }
+        const MAIN: &[u8] = &[0x90, 0xeb, 0xfd];
+        let handler = [PROGRAM, READS, &[0xcf]].concat();
+        let mut vm = coarse_smp_vm(MAIN, &handler, BOUNDARY_QUANTUM, COARSE_WATCHDOG_US);
+        std::thread::sleep(HOST_DELAY);
+        assert!(
+            !irq0_pending(&vm),
+            "constructor created a coarse host timer"
+        );
+        stage_coarse_irq(&mut vm);
+        assert_eq!(vm.vm.get_pit2().unwrap_err().errno(), libc::ENXIO);
+        reach(&mut vm, COARSE_HANDLER_ADDRESS + PROGRAM.len() as u64);
+        assert_eq!(vm.pit.channel_reload(0), u16::MAX);
+        assert_eq!(vm.pit.channel_reload(2), u16::MAX);
+        assert_eq!(
+            vm.io_exit_count, 7,
+            "kernel must not consume PIT programming"
+        );
+        vm.take_schedule_trace().unwrap();
+        let checkpoint = vm.snapshot().unwrap();
+        assert!(matches!(checkpoint.pit, SnapshotKernelPitState::Absent));
+        let deadline = vm.pit.next_irq_tsc().unwrap();
+        let end = COARSE_HANDLER_ADDRESS + (PROGRAM.len() + READS.len()) as u64;
+        reach(&mut vm, end);
+        let control_regs = vm.vcpus[0].get_regs().unwrap();
+        let control_pit = vm.pit.snapshot();
+        let control_tsc = vm.virtual_tsc.read();
+        let control_trace = serde_json::to_vec(&vm.take_schedule_trace().unwrap()).unwrap();
+
+        for restore_kind in 0..3 {
+            std::thread::sleep(HOST_DELAY);
+            let mut fresh = (restore_kind == 1)
+                .then(|| coarse_smp_vm(MAIN, &handler, BOUNDARY_QUANTUM, COARSE_WATCHDOG_US));
+            let vm = fresh.as_mut().unwrap_or(&mut vm);
+            if restore_kind == 2 {
+                vm.restore_incremental(&checkpoint, &vec![0; COARSE_MEMORY_BYTES])
+                    .unwrap();
+            } else {
+                vm.restore(&checkpoint).unwrap();
+            }
+            assert_eq!(
+                &vm.execution_descriptor,
+                checkpoint.execution_descriptor().unwrap()
+            );
+            assert_eq!(vm.pit.next_irq_tsc(), Some(deadline));
+            assert_eq!(vm.vm.get_pit2().unwrap_err().errno(), libc::ENXIO);
+            std::thread::sleep(HOST_DELAY);
+            assert_eq!(vm.pit.snapshot(), checkpoint.pit_snapshot);
+            assert!(!irq0_pending(vm), "host time generated coarse IRQ 0");
+            reach(vm, end);
+            assert_eq!(vm.vcpus[0].get_regs().unwrap(), control_regs);
+            assert_eq!(vm.pit.snapshot(), control_pit);
+            assert_eq!(vm.virtual_tsc.read(), control_tsc);
+            assert_eq!(
+                serde_json::to_vec(&vm.take_schedule_trace().unwrap()).unwrap(),
+                control_trace
+            );
+            assert!(!irq0_pending(vm));
+            vm.virtual_tsc.set(deadline - 1);
+            assert!(!vm.sync_and_suppress_pit().unwrap());
+            assert!(!irq0_pending(vm));
+            vm.virtual_tsc.set(deadline);
+            assert!(vm.sync_and_suppress_pit().unwrap());
+            assert!(irq0_pending(vm), "virtual deadline must reach the PIC");
+        }
+
+        // Creating even an inhibited kernel PIT would steal PIO again.
+        vm.vm.create_pit2(kvm_pit_config::default()).unwrap();
+        let mut kernel_pit = vm.vm.get_pit2().unwrap();
+        kernel_pit.flags |= KVM_PIT_FLAGS_HPET_LEGACY;
+        vm.vm.set_pit2(&kernel_pit).unwrap();
+        assert!(vm.validate_coarse_clock_devices().is_err());
     }
 
     #[test]
@@ -6070,7 +6518,7 @@ mod tests {
         let mut vm = diagnostic_fixtures::partial_smp_vm(config);
         let scheduler_config = SchedulerConfig {
             num_vcpus: TEST_VCPU_COUNT,
-            quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            progress_budget: ProgressBudget::Instructions(DEFAULT_SMP_INSTRUCTION_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 0,
         };
@@ -6108,7 +6556,7 @@ mod tests {
 
         assert!(!vm.hlt_latched_vcpus[0]);
         assert!(vm.scheduler.state().runnable_vcpus[0]);
-        assert_eq!(vm.scheduler.state().instruction_progress[0], 1);
+        assert_eq!(vm.scheduler.state().progress_counts()[0], 1);
         assert!(vm.observe_runnable_vcpus().unwrap()[0]);
     }
 
@@ -6125,7 +6573,7 @@ mod tests {
             let mut vm = diagnostic_fixtures::partial_smp_vm(VmConfig {
                 memory_size: 4 * 1024 * 1024,
                 num_vcpus: 2,
-                smp_instruction_quantum: 64,
+                smp_progress_budget: ProgressBudget::Instructions(64),
                 ..VmConfig::default()
             });
             let mut sregs = vm.vcpus[0].get_sregs().unwrap();
@@ -6176,10 +6624,7 @@ mod tests {
                 assert!(!vm.step().unwrap());
                 let regs = vm.vcpus[0].get_regs().unwrap();
                 assert_eq!(regs.rip, expected_rip, "IRET={use_iret}, step={index}");
-                assert_eq!(
-                    vm.scheduler.state().instruction_progress[0],
-                    index as u64 + 1
-                );
+                assert_eq!(vm.scheduler.state().progress_counts()[0], index as u64 + 1);
                 assert_eq!(vm.io_exit_count, 0, "compute was skipped to OUT");
             }
             let regs = vm.vcpus[0].get_regs().unwrap();
@@ -6193,7 +6638,7 @@ mod tests {
     // Known capability-negative diagnostic, not a production execution test.
     // Retain the one-instruction handler boundary: the observed RIP 0x201 with
     // AX/BX=1 after one debug exit is an overshoot, never the new expectation.
-    #[ignore = "known portable KVM IRQ-entry overshoot; diagnostic only, production SMP rejects"]
+    #[ignore = "known portable KVM IRQ-entry overshoot; diagnostic only, strict SMP rejects"]
     fn diagnostic_irq_entry_does_not_meet_exact_instruction_contract() {
         const CODE_ADDRESS: u64 = 0x200;
         const HANDLER_ADDRESS: u64 = 0x300;
@@ -6253,10 +6698,7 @@ mod tests {
                 "step={index}; before_regs={before_regs:?}; before_events={before_events:?}; \
                  after_regs={after_regs:?}; after_events={after_events:?}"
             );
-            assert_eq!(
-                vm.scheduler.state().instruction_progress[0],
-                index as u64 + 1
-            );
+            assert_eq!(vm.scheduler.state().progress_counts()[0], index as u64 + 1);
             assert_eq!(vm.io_exit_count, 0);
         }
         let regs = vm.vcpus[0].get_regs().unwrap();
@@ -6320,7 +6762,7 @@ mod tests {
         });
         let config = SchedulerConfig {
             num_vcpus: 2,
-            quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            progress_budget: ProgressBudget::Instructions(DEFAULT_SMP_INSTRUCTION_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 0,
         };
@@ -6424,13 +6866,13 @@ mod tests {
                 mp_state: kvm_bindings::KVM_MP_STATE_HALTED,
             })
             .unwrap();
-        let progress = vm.scheduler.state().instruction_progress.clone();
+        let progress = vm.scheduler.state().progress_counts().to_vec();
         let sequence = vm.scheduler.state().sequence;
         vm.refresh_hlt_wakes().unwrap();
         assert_eq!(vm.hlt_latched_vcpus, [true, false]);
         assert_eq!(vm.scheduler.state().runnable_vcpus, [false, true]);
         assert_eq!(vm.observe_runnable_vcpus().unwrap(), [false, true]);
-        assert_eq!(vm.scheduler.state().instruction_progress, progress);
+        assert_eq!(vm.scheduler.state().progress_counts(), progress);
         assert_eq!(vm.scheduler.state().sequence, sequence + 1);
         vm.refresh_hlt_wakes().unwrap();
         assert_eq!(vm.scheduler.state().sequence, sequence + 1);
@@ -6554,15 +6996,6 @@ mod tests {
     fn test_vmcall_nr_no_conflict_with_kvm_builtins() {
         // KVM's built-in hypercalls are numbered 1-12.
         const { assert!(VMCALL_NR > 12) };
-    }
-
-    #[test]
-    fn test_vmcall_enabled_reported() {
-        let config = VmConfig::default();
-        let vm = DeterministicVm::new(config).unwrap();
-        // vmcall_enabled depends on host kernel support — just verify
-        // the method is available and returns a boolean.
-        let _enabled: bool = vm.vmcall_enabled();
     }
 
     // ─── Dirty page tracking ────────────────────────────────────

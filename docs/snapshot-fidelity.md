@@ -1,7 +1,7 @@
 # Snapshot fidelity and compatibility
 
-ChaosControl snapshots use the `exact-x86-kvm-v1` completeness profile.
-The current VMM state schema version is `3`. The outer persisted codec and replay-reference schema remain version `2`; they are separate compatibility boundaries.
+ChaosControl snapshots use the `exact-x86-kvm-v2` completeness profile.
+The current VMM state schema, outer persisted codec and replay-reference schema are version `4`; they remain separate compatibility boundaries. Persisted sessions use schema `3` and recordings use schema `2`. Old artifacts are retained under their original identities, not reinterpreted as the new execution contract.
 
 ## Exact state boundary
 
@@ -9,11 +9,13 @@ The profile includes these state groups:
 
 - guest memory;
 - KVM IRQ chip, PIT, and clock state;
-- general, special, debug, LAPIC, MP, XCR, XSAVE, event, and required MSR state for each vCPU;
+- general, special, debug, LAPIC, MP, XCR, XSAVE, event, required MSR and exact guest-facing CPUID state for each vCPU;
 - deterministic time, entropy, timer, panic detection, counters, coverage, fault, and scheduler state;
 - serial controller state;
 - virtio-mmio transport registers and queue progress;
 - block, network, and entropy backend state.
+- execution mode, typed progress budgets, boundary table and host/clock policy descriptors;
+- settled pending-I/O state, available delivery state and the canonical shell-injection ledger.
 
 Each snapshot contains an inventory of these components. It also contains the vCPU count and stable virtio identities. A virtio identity contains the MMIO base address, IRQ, and device type. Restore does not use vector position as device identity.
 
@@ -26,6 +28,24 @@ Before capture, the VMM completes pending KVM userspace exits with `immediate_ex
 Capture rejects unserializable completion faults, pending schedule evidence, poisoned VMs, unsupported backend adapters, and failures to collect required vCPU state. Defined transport failures, pending completion state, and the last request outcome are serialized. Restoring a failed post-effect request must not repeat its backend effect.
 
 Runtime regressions compare the same meaningful guest-exit horizon under real host signals; an unrelated no-progress `EINTR` does not consume that horizon. The backend round-trip scenario compares actual guest continuation, registers, schedule, and virtual time rather than temporal equality of raw hardware `IA32_TSC` samples. Those samples advance with the host clock even at a quiescent guest boundary. Complete snapshot serialization still round-trips the captured MSR inventory without field loss. This is not proof of deterministic direct guest access to the hardware TSC.
+
+## Guarded coarse clock projection and qualification boundary
+
+The explicit coarse profile uses `ExcludeGuardedCoarseClockSamplesV2`, not the former raw-KVM-clock-only projection. Its versioned member-table identity is distinct from, and binds, the `KvmCoarseClockDenyV1` deny-filter identity. Canonical continuation comparison may project out only raw `KVM_GET_CLOCK` samples and the captured MSR **data** for exactly these indices on each vCPU:
+
+| MSR index | Host-clock-derived sample |
+| --- | --- |
+| `0x10` | `IA32_TSC` |
+| `0x40000010` | Hyper-V VP runtime |
+| `0x40000020` | Hyper-V reference time count |
+
+The original raw clock and MSR values remain in complete snapshots and diagnostic dumps; serialization/restore must not delete or normalize them. MSR indices, order, count and every other captured field remain exact, including guest memory, registers, device/pending state, schedule, injection and fault outcomes, and output. Strict continuation comparisons do not acquire this exception. Static descriptor equality, portable fixtures and artifact inspection cannot authorize it: equal eligible measured descriptors must be backed by the actual healthy coarse runner, successful installation of the exact immutable deny filter before vCPU creation, and the production TSC overwrite from virtual time before every guest entry.
+
+The actual full-state comparison retained at `/tmp/cc-persisted-debugger-0tw7wr4k/coarse-state-control.json` and `/tmp/cc-persisted-debugger-0tw7wr4k/coarse-state-half-watchdog.json` found only those three MSR samples per vCPU different; schedules and every other captured field matched. This observation motivates the exact V2 member set, not a broader ignore rule or a qualification verdict. CPUID hiding does **not** trap arbitrary `RDTSC`, and the deny filter is not an instruction trap. A guest may read host-advancing TSC inside a hidden interval despite the per-entry overwrite. Claims therefore remain limited to the trusted, reviewed, bounded guest cohort and its actual repeated controls, not arbitrary guest clock isolation.
+
+The first actual first-party Linux probe exhausted the original 10,000 bootstrap ticks / 1,000,000 exits with neither setup completion nor serial output. Its RIP `ffffffff8415784b` resolves to Linux 6.19 `clear_bss`; this is an incomplete bootstrap observation, not first-party SMP/replay qualification. A longer trajectory measured the cause: coarse boundaries come only from TF single-step, which retires one instruction or one `rep` iteration per boundary. `clear_bss` is `rep stosb` over 3,940,352 bytes and consumed exactly one boundary per byte, reaching `__sanitizer_cov_trace_pc` only at 5,010,000 boundaries with zero serial output at about 10,300 boundaries/s. The same kernel and initrd under strict single-vCPU control completed setup at 120,000 exits in 9.14 s with full serial output, and an actual INIT-SIPI made the second vCPU runnable, scheduled and halting, so neither the guest artifacts nor the second vCPU is the blocker. Two real 100,000-tick coarse campaigns (10,000,000 boundaries) also ended with empty assertion catalogs. Reaching the guest supervisor needs roughly 10^8 to 10^9 instructions, i.e. tens of hours at the measured rate, so coarse campaign/replay qualification is blocked on a coarser-than-instruction boundary source that still yields one validated, settled, committed unit per boundary. Preserve those outcomes and old configuration bytes. The fresh input cohort `ryzen9950x3d-linux61850-rust-observer-paired-v2` uses `BootstrapTicks = 100000` and `OuterDeadlineMilliseconds = 3600000`. All other inputs stay unchanged: seed 42; two identical repetitions per strategy; one VM with two vCPUs and 128 MiB; round-robin boundary budget 64 and randomized `[32, 128)` turns; outer exit budget 100; 20 history ticks with checkpoints/observations at 10 and 20; 65,536 journal records; 250,000 µs entry watchdog; 10,000 ms teardown; retained artifact/byte ceilings; `noapictimer clocksource=jiffies notsc`; and `random_faults = false`.
+
+These are fresh qualification **inputs**, not passing outcomes or task closure. The measured boundary granularity above blocks campaign, persisted-reload and negative-control qualification on this host; only inputs and bounded input-level checks exist. No batching, hidden `rep` suppression, natural-exit-only scheduling or PMU acceleration is admissible, because each would either fabricate unverified progress or force the documented watchdog abort and permanent poison. Neither these bounds nor the projection changes strict instruction semantics, strict admission, the strict release row or fail-closed behavior; no automatic coarse fallback is permitted.
 
 ## Incremental lineage
 
@@ -53,7 +73,7 @@ This is bounded continuation evidence, not a `snapshot_backed_reproduced` bug ve
 
 The separate watchdog-only probe executes `cli; jmp` until the existing 100 ms VMM timer interrupts it. `watchdog-event.json` must record the real `SI_TIMER` signal, `HostWatchdogTimeout`, rejection of further poisoned-controller operations, disposal, and production `RecoverySnapshot::rebuild_controller` replacement. The replacement restores the bootstrap base and retained parent; full memory and immediate incremental recapture must match. Probe state is discarded and never becomes a guest bug or admitted fault.
 
-UART interrupts are committed synchronously at handled guest-exit boundaries. Restoring a pending UART condition does not inject a second edge over captured PIC state. KVM's host-clock PIT timer is inhibited using `KVM_PIT_FLAGS_HPET_LEGACY`; software `DeterministicPit` still delivers IRQ 0 at virtual-time deadlines. Compatible snapshots retain their serialized bytes while destination PIT restore enforces the same timer inhibition. The focused ISR and PIT regressions cover retained/fresh restore and the positive virtual-time IRQ path.
+UART interrupts are committed synchronously at handled guest-exit boundaries. Restoring a pending UART condition does not inject a second edge over captured PIC state. Software `DeterministicPit` delivers IRQ 0 at virtual-time deadlines. Strict and single-vCPU profiles retain an inhibited kernel PIT using `KVM_PIT_FLAGS_HPET_LEGACY`; restore requires and preserves that flag rather than normalizing an incompatible snapshot. The coarse profile omits the kernel PIT entirely, because inhibition alone still exposes host-clock channel and speaker reads. Snapshots encode kernel PIT state as explicit `Absent` or `Present` state, and preflight rejects a presence mismatch before mutation. The focused ISR and PIT regressions cover retained/fresh restore and the positive virtual-time IRQ path.
 
 The Raft guest's `Node::restart` resets volatile protocol state without rolling back its already-applied application prefix. A retained prefix index and the persistent log provide the consumer readback while `commit_index` catches up; uncommitted tail entries remain excluded. Repeated restart and catch-up preserve the same chain, while truncating or changing applied entries still fails the adapter's rollback or divergence checks. This guest model is not a general filesystem-durability guarantee.
 
@@ -65,9 +85,15 @@ Restore first runs a read-only preflight. Preflight checks the schema, profile, 
 
 A preflight failure does not change VM state. A failure after restore starts permanently poisons the VM. A simulation restore failure after mutation starts also poisons the controller. The caller must discard a poisoned VM or controller.
 
+After quiescing pending exits, CPUID installation is the first admitted restore mutation, before memory or device restoration. A fresh, unrun destination can install the retained static table. KVM permits an already-run destination only when its static CPUID configuration is compatible with the retained table; an ioctl failure is not a reason to select the destination's current table. After the corresponding CR4, APIC, XCR0/XSS and MSR state is restored, a fresh `KVM_GET_CPUID2` must equal the retained table exactly before any guest entry or verified position. Unexpected kernel rewrites reject and poison the runner. Successful restore adopts the retained descriptor's raw provenance for subsequent captures.
+
 ## Compatibility policy
 
-Schema `3` restores only into the same exact profile and matching VM topology. It requires explicit transport/queue failure, pending completion, and last-request fields. State-schema `2` is not silently upgraded or filled with defaults. The snapshot records the sorted `KVM_GET_MSR_INDEX_LIST` inventory; the restore host must expose that same inventory and support all required KVM state operations.
+Schema `4` restores only into the same exact profile and matching VM topology. It requires explicit transport/queue failure, pending completion, last-request, execution-descriptor and kernel-device-presence fields. Older state schemas are not silently upgraded or filled with defaults. The snapshot records the sorted `KVM_GET_MSR_INDEX_LIST` inventory; the restore host must expose that same inventory and support all required KVM state operations.
+
+The execution descriptor retains raw measured kernel release/version, native CPU data, KVM API/capabilities, supported guest CPUID and the MSR inventory. Raw descriptor equality remains exact. Host execution admission separately excludes architectural processor-placement identifiers: leaf 1's initial APIC ID, the x2APIC IDs in topology leaves `0xB`/`0x1F`, and AMD leaf `0x8000001E`'s extended APIC/core/node IDs. For an `AuthenticAMD` host it also separates L3 capacity information from execution capability: leaf `0x80000006` EDX[31:18] and leaf `0x8000001D`'s number-of-sets ECX only where EAX declares an L3 cache. This permits migration between the 96-MiB and 32-MiB CCDs without substituting the current CCD's cache geometry into the guest. Every guest-facing CPUID entry remains required, bounded, captured, restored and compared exactly. Topology widths/counts, cache line sizes/associativity/sharing, CPU family/model/stepping, features and XSTATE capabilities remain bound. A different kernel, actual CPU feature or KVM capability still rejects. Portable mechanism fixtures retain their separate `PortableFixture` origin and cannot pass measured-host execution admission.
+
+Guest CPUID policy validation reuses the existing filter against the retained host source table. It derives KVM-owned OSXSAVE/APIC/OSPKE and XSTATE-size fields from captured architectural state; the visible KVM PV_UNHALT bit may only be cleared from its baseline by KVM, never added. These admission rules do not mask runtime continuation equality: raw captured guest CPUID must round-trip, including every documented runtime bit. Missing, oversized, duplicate-key or unsupported-flag CPUID tables reject rather than acquiring defaults.
 
 Legacy snapshots that omit XSAVE, vCPU events, required MSRs, metadata, or the complete inventory are incompatible. Decode or preflight rejects them. ChaosControl does not silently fill missing execution state with defaults.
 

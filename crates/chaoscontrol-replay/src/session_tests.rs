@@ -25,6 +25,8 @@ fn recording() -> Recording {
     let config = configuration();
     let mut recording = Recorder::new(
         crate::recording::RecordingConfig {
+            smp_progress_mode: config.vm_config.smp_progress_mode,
+            smp_progress_budget: config.vm_config.smp_progress_budget,
             num_vms: 1,
             vm_memory_size: FIXTURE_MEMORY_BYTES,
             tsc_khz: config.vm_config.cpu.tsc_khz,
@@ -41,6 +43,7 @@ fn recording() -> Recording {
     .recording()
     .clone();
     recording.total_ticks = FIXTURE_END_TICK;
+    recording.trace_start_tick = FIXTURE_START_TICK;
     recording.session_id = "fixture-session".into();
     recording.timestamp = 0;
     for tick in FIXTURE_START_TICK + 1..=FIXTURE_END_TICK {
@@ -54,6 +57,7 @@ fn recording() -> Recording {
         recording
             .schedule_rounds
             .push(crate::recording::RecordedScheduleRound {
+                injection_traces: Vec::new(),
                 tick,
                 traces: vec![],
             });
@@ -68,7 +72,11 @@ fn artifact(path: &str, bytes: &[u8]) -> SessionArtifact {
     }
 }
 fn fixture_manifest() -> SessionManifest {
-    let config = SessionConfiguration::capture(&configuration()).unwrap();
+    let config = SessionConfiguration::capture(
+        &configuration(),
+        fixture_execution_descriptors(&configuration()),
+    )
+    .unwrap();
     let snapshot_path = format!("snapshots/{}.snapshot.bin", "0".repeat(64));
     let mut manifest = SessionManifest {
         schema_version: SESSION_SCHEMA_VERSION,
@@ -173,7 +181,11 @@ fn absent_session_and_metadata_only_recording_fail_closed() {
         serial_output: Vec::new(),
         events_since_last: Vec::new(),
     };
-    let config = SessionConfiguration::capture(&configuration()).unwrap();
+    let config = SessionConfiguration::capture(
+        &configuration(),
+        fixture_execution_descriptors(&configuration()),
+    )
+    .unwrap();
     assert!(matches!(
         validate_checkpoint(&recording(), &metadata, &config),
         Err(SessionError::Corrupt(_))
@@ -442,7 +454,8 @@ fn sealed_guest_inputs_cannot_drift_during_execution() {
 #[test]
 fn complete_configuration_roundtrips_and_rejects_schedule_drift() {
     let config = configuration();
-    let captured = SessionConfiguration::capture(&config).unwrap();
+    let captured =
+        SessionConfiguration::capture(&config, fixture_execution_descriptors(&config)).unwrap();
     let encoded = serde_json::to_vec(&captured).unwrap();
     let decoded: SessionConfiguration = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(
@@ -573,6 +586,7 @@ fn retained_graph_uses_real_capture_order_not_timestamp_inferred_forks() {
     validate_manifest(&manifest, SessionLimits::default()).unwrap();
     // Exercise only the pure graph projection, never restored execution.
     let session = ExactSession {
+        execution_selection: None,
         root: open_directory(directory.path()).unwrap(),
         manifest,
         recording: recording(),
@@ -839,12 +853,17 @@ fn exact_snapshot_fixture(
     use chaoscontrol_vmm::devices::{entropy::DeterministicEntropy, pit::DeterministicPit};
     use chaoscontrol_vmm::snapshot::{
         build_snapshot_inventory, MsrSnapshot, SnapshotMemory, SnapshotMetadata, SnapshotTopology,
-        VcpuSnapshot, VmSnapshot, SNAPSHOT_PROFILE_EXACT_X86_KVM_V1, SNAPSHOT_STATE_SCHEMA_VERSION,
+        VcpuSnapshot, VmSnapshot, SNAPSHOT_PROFILE_EXACT_X86_KVM_V2, SNAPSHOT_STATE_SCHEMA_VERSION,
     };
     // Standard KVM_GET_XSAVE ABI image, including its zero reserved header.
     const KVM_STANDARD_XSAVE_BYTES: usize = 4096;
+    const PIT_HPET_LEGACY_INHIBIT: u32 = 1;
     const TSC_MSR_INDEX: u32 = 0x10;
     let num_vcpus = scheduler.state.num_vcpus;
+    let mut fixture_config = configuration();
+    fixture_config.vm_config.num_vcpus = num_vcpus;
+    fixture_config.vm_config.smp_progress_mode = recording.config.smp_progress_mode;
+    fixture_config.vm_config.smp_progress_budget = recording.config.smp_progress_budget;
     let mut engine =
         chaoscontrol_fault::engine::FaultEngine::new(chaoscontrol_fault::engine::EngineConfig {
             seed: recording.seed,
@@ -885,21 +904,43 @@ fn exact_snapshot_fixture(
             index: TSC_MSR_INDEX,
             data: 0,
         }],
+        cpuid: vec![chaoscontrol_vmm::snapshot::SnapshotCpuidEntry {
+            function: 0,
+            index: 0,
+            flags: 0,
+            eax: 0,
+            ebx: 0,
+            ecx: 0,
+            edx: 0,
+        }],
         mp_state: Default::default(),
     };
     vcpu.regs.rflags = 2;
     let mut vm = VmSnapshot {
         metadata: Some(SnapshotMetadata {
             state_schema_version: SNAPSHOT_STATE_SCHEMA_VERSION,
-            completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.into(),
+            completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V2.into(),
             inventory: build_snapshot_inventory(&topology),
             topology,
+            execution_descriptor: fixture_execution_descriptors(&fixture_config).remove(0),
         }),
+        boundary_state: chaoscontrol_vmm::snapshot::SnapshotBoundaryState {
+            pending_io: chaoscontrol_vmm::snapshot::SnapshotPendingIoState::Settled,
+            injection_ledger: chaoscontrol_vmm::snapshot::InjectionLedger::new(),
+            delivery_state:
+                chaoscontrol_vmm::snapshot::SnapshotDeliveryState::CapturedKernelAndUserspace,
+        },
         vcpu_snapshots: vec![vcpu; num_vcpus],
         pic_master: Default::default(),
         pic_slave: Default::default(),
         ioapic: Default::default(),
-        pit: Default::default(),
+        pit: if recording.config.smp_progress_mode
+            == chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary
+        {
+            chaoscontrol_vmm::snapshot::SnapshotKernelPitState::Absent
+        } else {
+            chaoscontrol_vmm::snapshot::SnapshotKernelPitState::Present(Default::default())
+        },
         clock: Default::default(),
         memory: SnapshotMemory::Full(vec![0; FIXTURE_MEMORY_BYTES]),
         serial_state: Default::default(),
@@ -918,6 +959,9 @@ fn exact_snapshot_fixture(
         scheduler_snapshot: scheduler,
         hlt_latched_vcpus: vec![false; num_vcpus],
     };
+    if let chaoscontrol_vmm::snapshot::SnapshotKernelPitState::Present(pit) = &mut vm.pit {
+        pit.flags = PIT_HPET_LEGACY_INHIBIT;
+    }
     // Stable KVM_IRQCHIP identities: master=0, slave=1, IOAPIC=2.
     vm.pic_slave.chip_id = 1;
     vm.ioapic.chip_id = 2;
@@ -938,6 +982,16 @@ fn exact_snapshot_fixture(
 }
 
 fn exact_smp_fixture() -> (SessionConfiguration, Recording) {
+    smp_fixture(chaoscontrol_vmm::scheduler::core::ProgressMode::ExactSingleStep)
+}
+
+pub(crate) fn coarse_smp_fixture() -> (SessionConfiguration, Recording) {
+    smp_fixture(chaoscontrol_vmm::scheduler::core::ProgressMode::KvmDebugBoundary)
+}
+
+fn smp_fixture(
+    mode: chaoscontrol_vmm::scheduler::core::ProgressMode,
+) -> (SessionConfiguration, Recording) {
     use chaoscontrol_vmm::scheduler::core::{
         plan_execution_observation, ExecutionProgressObservation, ProgressMode, ScheduleTrace,
     };
@@ -949,14 +1003,28 @@ fn exact_smp_fixture() -> (SessionConfiguration, Recording) {
     let mut config = configuration();
     config.vm_config.num_vcpus = SMP_VCPUS;
     let mut recording = recording();
+    let budget = match mode {
+        ProgressMode::KvmDebugBoundary => {
+            chaoscontrol_vmm::scheduler::core::ProgressBudget::KvmBoundaries {
+                profile_id:
+                    chaoscontrol_vmm::scheduler::core::BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: SMP_QUANTUM,
+            }
+        }
+        _ => chaoscontrol_vmm::scheduler::core::ProgressBudget::Instructions(SMP_QUANTUM),
+    };
+    config.vm_config.smp_progress_mode = mode;
+    config.vm_config.smp_progress_budget = budget;
+    recording.config.smp_progress_mode = mode;
+    recording.config.smp_progress_budget = config.vm_config.smp_progress_budget;
     let mut state = VcpuScheduler::try_new(
         &SchedulerConfig {
             num_vcpus: SMP_VCPUS,
-            quantum: SMP_QUANTUM,
+            progress_budget: budget,
             seed: FIXTURE_SEED,
             ..Default::default()
         },
-        ProgressMode::ExactSingleStep,
+        mode,
         vec![true; SMP_VCPUS],
     )
     .unwrap()
@@ -967,7 +1035,14 @@ fn exact_smp_fixture() -> (SessionConfiguration, Recording) {
         if tick > FIXTURE_START_TICK {
             let planned = plan_execution_observation(
                 &state,
-                ExecutionProgressObservation::ExactInstruction { vcpu: 0 },
+                match mode {
+                    ProgressMode::KvmDebugBoundary => ExecutionProgressObservation::KvmBoundary {
+                        vcpu: 0,
+                        profile_id: chaoscontrol_vmm::scheduler::core::BoundaryProfileId::KvmDebugExitBoundaryV1,
+                        boundary: chaoscontrol_vmm::scheduler::core::KvmBoundaryKind::DebugSingleStep,
+                    },
+                    _ => ExecutionProgressObservation::ExactInstruction { vcpu: 0 },
+                },
             )
             .unwrap()
             .unwrap();
@@ -975,11 +1050,20 @@ fn exact_smp_fixture() -> (SessionConfiguration, Recording) {
                 vec![chaoscontrol_vmm::controller::VmScheduleTrace {
                     vm_index: 0,
                     trace: ScheduleTrace {
+                        schema_version:
+                            chaoscontrol_vmm::scheduler::core::SCHEDULE_TRACE_SCHEMA_VERSION,
                         initial_state_id: state.identity(),
                         initial_state: state,
                         records: vec![planned.record],
                     },
                 }];
+            if mode == ProgressMode::KvmDebugBoundary {
+                recording.schedule_rounds[(tick - FIXTURE_START_TICK - 1) as usize]
+                    .injection_traces = vec![chaoscontrol_vmm::controller::VmInjectionTrace {
+                    vm_id: 0,
+                    records: Vec::new(),
+                }];
+            }
             state = planned.next_state;
         }
         if tick == FIXTURE_START_TICK || tick == FIXTURE_START_TICK + 5 || tick == FIXTURE_END_TICK
@@ -1002,7 +1086,10 @@ fn exact_smp_fixture() -> (SessionConfiguration, Recording) {
         }
     }
     recording.checkpoints = checkpoints;
-    (SessionConfiguration::capture(&config).unwrap(), recording)
+    (
+        SessionConfiguration::capture(&config, fixture_execution_descriptors(&config)).unwrap(),
+        recording,
+    )
 }
 
 fn retain_exact_fixture(
@@ -1151,4 +1238,341 @@ fn retained_disk_bytes_bind_every_decoded_checkpoint_base() {
         matches!(load_session(invalid.path(), SessionLimits::default()), Err(SessionError::Drift(message))
         if message == "disk snapshot base")
     );
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+// r[verify chaoscontrol.kvm_debug_boundary.admission]
+#[test]
+fn coarse_static_admission_is_not_execution_authorization() {
+    use chaoscontrol_vmm::scheduler::core::ProgressMode;
+    let (config, recording) = coarse_smp_fixture();
+    validate_recording(&recording).unwrap();
+    for checkpoint in recording.checkpoints.all() {
+        validate_checkpoint(&recording, checkpoint, &config).unwrap();
+    }
+    let directory = tempfile::tempdir().unwrap();
+    retain_exact_fixture(directory.path(), &config, &recording, None);
+    let mut session = load_session(directory.path(), SessionLimits::default()).unwrap();
+    assert!(session.require_execution_authorization().is_err());
+    assert!(session.restore_controller(0).is_err());
+    assert!(session
+        .authorize_execution(ExecutionSelection {
+            progress_mode: ProgressMode::ExactSingleStep,
+            progress_budget: config.vm_config.smp_progress_budget,
+        })
+        .is_err());
+    assert!(session
+        .authorize_execution(ExecutionSelection {
+            progress_mode: ProgressMode::KvmDebugBoundary,
+            progress_budget: config.vm_config.smp_progress_budget.with_count(33),
+        })
+        .is_err());
+    session
+        .authorize_execution(ExecutionSelection {
+            progress_mode: ProgressMode::KvmDebugBoundary,
+            progress_budget: config.vm_config.smp_progress_budget,
+        })
+        .unwrap();
+    session.require_execution_authorization().unwrap();
+    // Mechanism fixtures are explicitly non-measured, never executable host proof.
+    assert!(session.restore_controller(0).is_err());
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn coarse_schema_units_profiles_and_missing_fields_never_default() {
+    let (config, recording) = coarse_smp_fixture();
+    let mut old = recording.clone();
+    old.schema_version = crate::recording::RECORDING_SCHEMA_VERSION - 1;
+    assert_eq!(
+        validate_recording(&old),
+        Err(crate::recording::RecordingValidationError::UnsupportedSchema)
+    );
+    let value = serde_json::to_value(&recording).unwrap();
+    for field in ["schema_version", "schedule_rounds", "fault_outcome_ledger"] {
+        let mut missing = value.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<Recording>(missing).is_err());
+    }
+    for field in ["smp_progress_mode", "smp_progress_budget"] {
+        let mut missing = value.clone();
+        missing["config"].as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<Recording>(missing).is_err());
+    }
+    let mut unknown = value;
+    unknown["config"]["smp_progress_budget"]["KvmBoundaries"]["profile_id"] =
+        serde_json::json!("unknown-boundary-profile");
+    assert!(serde_json::from_value::<Recording>(unknown).is_err());
+    let mut wrong = recording.clone();
+    wrong.config.smp_progress_budget =
+        chaoscontrol_vmm::scheduler::core::ProgressBudget::Instructions(32);
+    assert!(validate_recording(&wrong).is_err());
+    assert!(validate_configuration(&wrong, &config).is_err());
+    let mut wrong_config = config.clone();
+    wrong_config.execution_descriptors[0]
+        .boundary_profile
+        .as_mut()
+        .unwrap()
+        .table_identity[0] ^= 1;
+    assert!(validate_execution_descriptors(
+        &wrong_config.execution_descriptors,
+        1,
+        &wrong_config.vm_config
+    )
+    .is_err());
+    let mut missing = serde_json::to_value(&config).unwrap();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("execution_descriptors");
+    assert!(serde_json::from_value::<SessionConfiguration>(missing).is_err());
+}
+
+fn coarse_injection_fixture() -> (SessionConfiguration, Recording) {
+    use chaoscontrol_vmm::snapshot::{
+        InjectionKind, InjectionLedger, InjectionRecord, InjectionSource,
+    };
+    let (config, mut recording) = coarse_smp_fixture();
+    let round = &mut recording.schedule_rounds[0];
+    let requested = InjectionRecord {
+        target_vcpu: None,
+        kind: InjectionKind::Irq {
+            irq: 1,
+            level: true,
+        },
+        source: InjectionSource::Shell,
+        requested_state_id: round.traces[0].trace.initial_state_id.0,
+        accepted: false,
+    };
+    let mut accepted = requested.clone();
+    accepted.accepted = true;
+    round.injection_traces[0].records = vec![requested, accepted];
+    let mut ledger = InjectionLedger::new();
+    for fact in &round.injection_traces[0].records {
+        ledger.record(fact).unwrap();
+    }
+    let mut checkpoints = CheckpointStore::new();
+    for checkpoint in recording.checkpoints.all() {
+        let mut checkpoint = checkpoint.clone();
+        if checkpoint.tick > FIXTURE_START_TICK {
+            checkpoint.snapshot.as_mut().unwrap().vm_snapshots[0]
+                .0
+                .boundary_state
+                .injection_ledger = ledger.clone();
+        }
+        checkpoints.push(checkpoint);
+    }
+    recording.checkpoints = checkpoints;
+    (config, recording)
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn coarse_injection_prefix_rejects_dropped_reordered_and_forged_facts() {
+    let (config, recording) = coarse_injection_fixture();
+    validate_recording(&recording).unwrap();
+    for checkpoint in recording.checkpoints.all() {
+        validate_checkpoint(&recording, checkpoint, &config).unwrap();
+    }
+    let valid = tempfile::tempdir().unwrap();
+    retain_exact_fixture(valid.path(), &config, &recording, None);
+    assert!(load_session(valid.path(), SessionLimits::default()).is_ok());
+    for mutation in 0..4 {
+        let mut changed = recording.clone();
+        match mutation {
+            0 => {
+                changed.schedule_rounds[0].injection_traces[0]
+                    .records
+                    .remove(0);
+            }
+            1 => changed.schedule_rounds[0].injection_traces[0]
+                .records
+                .reverse(),
+            2 => {
+                changed.schedule_rounds[0].injection_traces[0].records[0].requested_state_id =
+                    [7; 32]
+            }
+            _ => changed.schedule_rounds[0].injection_traces.clear(),
+        }
+        let invalid = tempfile::tempdir().unwrap();
+        retain_exact_fixture(invalid.path(), &config, &changed, None);
+        assert!(load_session(invalid.path(), SessionLimits::default()).is_err());
+    }
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn actual_coarse_continuation_compares_memory_registers_pending_state_and_ledger() {
+    let (_, recording) = coarse_injection_fixture();
+    let expected = recording
+        .checkpoints
+        .all()
+        .last()
+        .unwrap()
+        .snapshot
+        .as_ref()
+        .unwrap();
+    crate::replay::validate_actual_snapshot_continuation(&recording, expected, false).unwrap();
+    for mutation in 0..5 {
+        let mut actual = expected.clone();
+        let vm = &mut actual.vm_snapshots[0].0;
+        match mutation {
+            0 => vm.vcpu_snapshots[0].regs.rip ^= 1,
+            1 => {
+                if let chaoscontrol_vmm::snapshot::SnapshotMemory::Full(bytes) = &mut vm.memory {
+                    bytes[0] ^= 1;
+                } else {
+                    unreachable!();
+                }
+            }
+            2 => vm.boundary_state.injection_ledger.prefix_digest[0] ^= 1,
+            3 => vm.vcpu_snapshots[0].events.interrupt.injected ^= 1,
+            _ => vm.virtual_tsc += 1,
+        }
+        assert!(
+            crate::replay::validate_actual_snapshot_continuation(&recording, &actual, false)
+                .is_err()
+        );
+    }
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn coarse_unsettled_device_delivery_and_descriptor_mismatch_reject_before_restore() {
+    use chaoscontrol_vmm::snapshot::{SnapshotDeliveryState, SnapshotPendingIoState};
+    let (config, recording) = coarse_smp_fixture();
+    for mutation in 0..4 {
+        let mut checkpoint = recording.checkpoints.all()[0].clone();
+        let vm = &mut checkpoint.snapshot.as_mut().unwrap().vm_snapshots[0].0;
+        match mutation {
+            0 => vm.boundary_state.pending_io = SnapshotPendingIoState::Pending { vcpu: 0 },
+            1 => vm.boundary_state.delivery_state = SnapshotDeliveryState::Incomplete,
+            2 => vm.boundary_state.injection_ledger.prefix_digest = [0; 32],
+            _ => {
+                vm.metadata
+                    .as_mut()
+                    .unwrap()
+                    .execution_descriptor
+                    .host
+                    .kernel_release = "wrong-host".into()
+            }
+        }
+        assert!(validate_checkpoint(&recording, &checkpoint, &config).is_err());
+        if mutation < 3 {
+            assert!(encode_snapshot_artifact(
+                checkpoint.snapshot.as_ref().unwrap(),
+                0,
+                MAX_SESSION_SNAPSHOT_BYTES
+            )
+            .is_err());
+        }
+    }
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn coarse_boundary_rounds_reject_dropped_reordered_forged_and_old_schema_evidence() {
+    let (config, recording) = coarse_smp_fixture();
+    validate_recording(&recording).unwrap();
+    for mutation in 0..6 {
+        let mut changed = recording.clone();
+        match mutation {
+            0 => changed.schedule_rounds[0].traces[0].trace.records.clear(),
+            1 => changed.schedule_rounds.swap(0, 1),
+            2 => {
+                if let chaoscontrol_vmm::scheduler::core::ScheduleEvent::KvmBoundaryObserved {
+                    observed_boundaries,
+                    ..
+                } = &mut changed.schedule_rounds[0].traces[0].trace.records[0].event
+                {
+                    *observed_boundaries += 1;
+                } else {
+                    unreachable!();
+                }
+            }
+            3 => {
+                changed.schedule_rounds[0].traces[0].trace.records[0]
+                    .post_state_id
+                    .0[0] ^= 1
+            }
+            4 => changed.schedule_rounds[0].traces[0].trace.schema_version -= 1,
+            _ => {
+                changed.schedule_rounds.remove(0);
+            }
+        }
+        assert!(validate_recording(&changed).is_err());
+        let directory = tempfile::tempdir().unwrap();
+        retain_exact_fixture(directory.path(), &config, &changed, None);
+        assert!(load_session(directory.path(), SessionLimits::default()).is_err());
+    }
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn coarse_missing_snapshot_and_changed_guest_artifact_never_boot_a_replacement() {
+    let (config, recording) = coarse_smp_fixture();
+    for missing_snapshot in [true, false] {
+        let directory = tempfile::tempdir().unwrap();
+        retain_exact_fixture(directory.path(), &config, &recording, None);
+        let session = load_session(directory.path(), SessionLimits::default()).unwrap();
+        if missing_snapshot {
+            std::fs::remove_file(
+                directory
+                    .path()
+                    .join(&session.manifest().checkpoints[0].artifact.path),
+            )
+            .unwrap();
+        } else {
+            std::fs::write(
+                directory
+                    .path()
+                    .join(&session.manifest().guest_artifacts[0].artifact.path),
+                b"changed kernel",
+            )
+            .unwrap();
+        }
+        assert!(load_session(directory.path(), SessionLimits::default()).is_err());
+        assert!(session.restore_controller(0).is_err());
+    }
+}
+
+// r[verify chaoscontrol.kvm_debug_boundary.persistence]
+#[test]
+fn coarse_actual_output_is_the_recorded_suffix_not_checkpoint_text() {
+    let (_, mut recording) = coarse_smp_fixture();
+    use crate::recording::RecordedEvent;
+    recording.events = vec![
+        RecordedEvent::SerialOutput {
+            tick: 10,
+            vm_index: 0,
+            data: "retained prefix".into(),
+        },
+        RecordedEvent::SerialOutput {
+            tick: 11,
+            vm_index: 0,
+            data: "hello ".into(),
+        },
+        RecordedEvent::SerialOutput {
+            tick: 12,
+            vm_index: 0,
+            data: "world\n".into(),
+        },
+        RecordedEvent::SerialOutput {
+            tick: 16,
+            vm_index: 0,
+            data: "later".into(),
+        },
+    ];
+    crate::replay::validate_replayed_serial_suffix(&recording, 10, 15, 0, "hello world\n").unwrap();
+    for actual in [
+        "",
+        "hello world",
+        "hello worLd\n",
+        "retained prefixhello world\n",
+        "hello world\nlater",
+    ] {
+        assert!(
+            crate::replay::validate_replayed_serial_suffix(&recording, 10, 15, 0, actual).is_err()
+        );
+    }
 }

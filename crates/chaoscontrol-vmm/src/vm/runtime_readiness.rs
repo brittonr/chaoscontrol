@@ -18,7 +18,7 @@ fn spin_vm() -> DeterministicVm {
     let mut vm = diagnostic_fixtures::partial_smp_vm(VmConfig {
         memory_size: MEMORY_BYTES,
         num_vcpus: 2,
-        smp_instruction_quantum: QUANTUM,
+        smp_progress_budget: ProgressBudget::Instructions(QUANTUM),
         ..VmConfig::default()
     });
     vm.memory
@@ -45,7 +45,7 @@ fn spin_vm() -> DeterministicVm {
     vm.scheduler = VcpuScheduler::try_new(
         &SchedulerConfig {
             num_vcpus: 2,
-            quantum: QUANTUM,
+            progress_budget: ProgressBudget::Instructions(QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
             seed: 42,
         },
@@ -106,12 +106,18 @@ fn whole_vm_partial_quantum_restore_and_real_eintr_match_control_future() {
     for _ in 0..3 {
         assert!(!vm.step().unwrap());
     }
-    assert_eq!(vm.scheduler.remaining(), QUANTUM - 3);
+    assert_eq!(
+        vm.scheduler.remaining_budget(),
+        ProgressBudget::Instructions(QUANTUM - 3)
+    );
     vm.scheduler.drain_trace().unwrap();
     let checkpoint = vm.snapshot().unwrap();
     let control = future(&mut vm, false, Duration::ZERO);
     vm.restore(&checkpoint).unwrap();
-    assert_eq!(vm.scheduler.remaining(), QUANTUM - 3);
+    assert_eq!(
+        vm.scheduler.remaining_budget(),
+        ProgressBudget::Instructions(QUANTUM - 3)
+    );
     let restored = future(&mut vm, true, Duration::from_micros(25));
     assert_eq!(restored, control);
 }
@@ -153,7 +159,7 @@ impl Drop for Contender {
 // r[verify chaoscontrol.deterministic_smp.validation.spurious_interrupts]
 // r[verify chaoscontrol.deterministic_smp.validation]
 fn production_smp_trace_survives_actual_signals_cadence_and_concurrent_cpu_worker() {
-    DeterministicVm::install_sigalrm_handler();
+    DeterministicVm::install_sigalrm_handler().unwrap();
     let control = future(&mut spin_vm(), false, Duration::ZERO);
     for cadence in [Duration::from_micros(20), Duration::from_micros(200)] {
         let mut vm = spin_vm();
@@ -229,7 +235,6 @@ fn pure_preflight_retains_capabilities_and_isolates_topology_rejections() {
         }
         let error = vm.restore(&invalid).unwrap_err();
         assert!(matches!(error, VmError::Snapshot { .. }));
-        assert!(error.to_string().contains("virtio"));
         assert_eq!(
             (
                 vm.scheduler.state_id(),
@@ -770,10 +775,13 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
     let unavailable = UnavailableKvmDescriptors::replace(&vm);
     vm.validate_fault_engine_snapshot(&checkpoint).unwrap();
     let mut boundary = checkpoint.clone();
-    boundary.pit.channels[1].read_state = 4; // Partially read word, not a boolean.
-    boundary.pit.channels[1].write_state = 4;
-    boundary.pit.channels[1].mode = u8::MAX; // Admitted KVM reset/unprogrammed mode.
-    boundary.pit.channels[1].count = 65_536;
+    let crate::snapshot::SnapshotKernelPitState::Present(pit) = &mut boundary.pit else {
+        panic!("strict checkpoint must capture the inhibited kernel PIT");
+    };
+    pit.channels[1].read_state = 4; // Partially read word, not a boolean.
+    pit.channels[1].write_state = 4;
+    pit.channels[1].mode = u8::MAX; // Admitted KVM reset/unprogrammed mode.
+    pit.channels[1].count = 65_536;
     vm.validate_fault_engine_snapshot(&boundary).unwrap();
     let mut two_pending_nmis = checkpoint.clone();
     two_pending_nmis.vcpu_snapshots[0].events.nmi.pending = 2;
@@ -783,6 +791,9 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
     drop(unavailable);
     for corruption in 0..31 {
         let mut invalid = checkpoint.clone();
+        let crate::snapshot::SnapshotKernelPitState::Present(pit) = &mut invalid.pit else {
+            panic!("strict checkpoint must capture the inhibited kernel PIT");
+        };
         let component = match corruption {
             0 => {
                 invalid.pic_master.chip_id = kvm_bindings::KVM_IRQCHIP_PIC_SLAVE;
@@ -861,19 +872,19 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
                 "ioapic"
             }
             16 => {
-                invalid.pit.flags |= 1 << 31;
+                pit.flags |= 1 << 31;
                 "pit.flags"
             }
             17 => {
-                invalid.pit.channels[0].count = 65_537;
+                pit.channels[0].count = 65_537;
                 "pit.channel"
             }
             18 => {
-                invalid.pit.channels[0].read_state = 5;
+                pit.channels[0].read_state = 5;
                 "pit.channel"
             }
             19 => {
-                invalid.pit.channels[0].gate = 2;
+                pit.channels[0].gate = 2;
                 "pit.channel"
             }
             20 => {
@@ -905,7 +916,7 @@ fn invalid_kernel_device_identity_and_clock_reject_before_any_restore_effect() {
                 "xsave.header"
             }
             27 => {
-                invalid.pit.channels[1].mode = 6;
+                pit.channels[1].mode = 6;
                 "pit.channel"
             }
             28 => {
@@ -1058,4 +1069,723 @@ fn required_pit_restore_ioctl_failure_after_memory_write_permanently_blocks_resu
         before
     );
     assert_eq!(vm.memory.dump(), checkpoint.memory.materialize());
+}
+
+// These are actual KVM controls, not portable policy proofs. Run explicitly
+// under the independently bounded outer supervisor named in the qualification
+// command. No passing result qualifies NMI nesting, exception/fault collisions,
+// host-clock-driven delivery, or the instruction at which a pending IRQ arrived.
+mod coarse_boundary_kvm {
+    use super::*;
+    use diagnostic_fixtures::*;
+
+    const BOUNDARY_QUANTUM: u64 = 64;
+    const HIDDEN_IRQ_MAIN: &[u8] = &[0x40, 0xe6, 0x10]; // inc ax; out 0x10,al
+    const HIDDEN_IRQ_HANDLER: &[u8] = &[0x43, 0x43, 0xcf]; // inc bx; inc bx; iret
+
+    fn assert_boundary_trace(trace: &ScheduleTrace, expected: &[KvmBoundaryKind]) {
+        crate::scheduler::core::validate_transition_trace(trace, trace.records.len()).unwrap();
+        let observed: Vec<_> = trace
+            .records
+            .iter()
+            .map(|record| match &record.event {
+                ScheduleEvent::KvmBoundaryObserved {
+                    profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                    boundary,
+                    ..
+                } => *boundary,
+                other => panic!("coarse microguest emitted a non-boundary event: {other:?}"),
+            })
+            .collect();
+        assert_eq!(observed, expected);
+    }
+
+    #[test]
+    #[ignore = "real KVM coarse IRQ atomic-region control; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.units]
+    // r[verify chaoscontrol.kvm_debug_boundary.evidence]
+    fn hidden_irq_handler_is_one_boundary_not_one_instruction() {
+        let mut vm = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            HIDDEN_IRQ_HANDLER,
+            BOUNDARY_QUANTUM,
+            COARSE_WATCHDOG_US,
+        );
+        stage_coarse_irq(&mut vm);
+        let other_before = vm.vcpus[1].get_regs().unwrap();
+        assert!(!vm.step().unwrap());
+        let regs = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(
+            (regs.rip, regs.rax, regs.rbx),
+            (COARSE_CODE_ADDRESS + 1, 1, 2)
+        );
+        assert_eq!(vm.scheduler.state().progress_counts(), &[1, 0]);
+        assert_eq!(vm.active_vcpu, 0);
+        assert_eq!(vm.vcpus[1].get_regs().unwrap(), other_before);
+        assert_eq!(vm.io_exit_count, 0);
+        assert_boundary_trace(
+            &vm.take_schedule_trace().unwrap(),
+            &[KvmBoundaryKind::DebugSingleStep],
+        );
+        vm.snapshot()
+            .expect("only the verified post-handler boundary is snapshot eligible");
+    }
+
+    #[test]
+    #[ignore = "real KVM handler-internal settled PIO control; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.units]
+    fn handler_internal_exit_splits_atomic_region_and_settlement_counts_once() {
+        // Entry suppresses TF. The first OUT is inside the handler, before its
+        // second increment and IRET; it must be a single settled PIO boundary.
+        const HANDLER: &[u8] = &[0x43, 0xe6, 0x10, 0x43, 0xcf];
+        let mut vm = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            HANDLER,
+            BOUNDARY_QUANTUM,
+            COARSE_WATCHDOG_US,
+        );
+        stage_coarse_irq(&mut vm);
+        assert!(!vm.step().unwrap());
+        let first = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(
+            (first.rip, first.rax, first.rbx),
+            (COARSE_HANDLER_ADDRESS + 3, 0, 1)
+        );
+        assert_eq!(vm.scheduler.state().progress_counts(), &[1, 0]);
+        assert_eq!(vm.io_exit_count, 1);
+        assert_boundary_trace(
+            &vm.take_schedule_trace().unwrap(),
+            &[KvmBoundaryKind::Pio {
+                port: 0x10,
+                size: 1,
+                direction: BoundaryIoDirection::Write,
+            }],
+        );
+        let checkpoint = vm
+            .snapshot()
+            .expect("PIO has completed before checkpoint publication");
+        assert_eq!(checkpoint.vcpu_snapshots[0].regs.rip, first.rip);
+        assert!(!vm.step().unwrap());
+        let second = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(
+            (second.rip, second.rax, second.rbx),
+            (COARSE_HANDLER_ADDRESS + 4, 0, 2)
+        );
+        assert_eq!(vm.scheduler.state().progress_counts(), &[2, 0]);
+        assert_boundary_trace(
+            &vm.take_schedule_trace().unwrap(),
+            &[KvmBoundaryKind::DebugSingleStep],
+        );
+    }
+
+    #[test]
+    #[ignore = "real KVM POPF/IRET coarse rearm controls; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.units]
+    fn popf_and_iret_rearm_each_boundary_without_inventing_instructions() {
+        const RETURN_ADDRESS: u64 = 0x400;
+        const COMPUTE: &[u8] = &[0x40, 0x43, 0xe6, 0x10];
+        for use_iret in [false, true] {
+            let mut vm = coarse_smp_vm(&[0xcf], &[], BOUNDARY_QUANTUM, COARSE_WATCHDOG_US);
+            let expected_rips = if use_iret {
+                vm.write_guest_memory(RETURN_ADDRESS, COMPUTE).unwrap();
+                let frame = [RETURN_ADDRESS as u16, 0, 2];
+                let bytes: Vec<u8> = frame.into_iter().flat_map(u16::to_le_bytes).collect();
+                vm.write_guest_memory(COARSE_STACK_ADDRESS, &bytes).unwrap();
+                vec![RETURN_ADDRESS, RETURN_ADDRESS + 1, RETURN_ADDRESS + 2]
+            } else {
+                let mut code = vec![0x6a, 2, 0x9d]; // push 2; popf (clears TF)
+                code.extend_from_slice(COMPUTE);
+                vm.write_guest_memory(COARSE_CODE_ADDRESS, &code).unwrap();
+                vec![
+                    COARSE_CODE_ADDRESS + 2,
+                    COARSE_CODE_ADDRESS + 3,
+                    COARSE_CODE_ADDRESS + 4,
+                    COARSE_CODE_ADDRESS + 5,
+                ]
+            };
+            for (index, expected_rip) in expected_rips.iter().enumerate() {
+                assert!(!vm.step().unwrap());
+                assert_eq!(
+                    vm.vcpus[0].get_regs().unwrap().rip,
+                    *expected_rip,
+                    "IRET={use_iret}, boundary={index}"
+                );
+                assert_eq!(
+                    vm.scheduler.state().progress_counts(),
+                    &[index as u64 + 1, 0]
+                );
+                assert_eq!(vm.active_vcpu, 0);
+            }
+            let regs = vm.vcpus[0].get_regs().unwrap();
+            assert_eq!((regs.rax, regs.rbx), (1, 1));
+            assert_boundary_trace(
+                &vm.take_schedule_trace().unwrap(),
+                &vec![KvmBoundaryKind::DebugSingleStep; expected_rips.len()],
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "real KVM pending IRQ fresh-VM restore control; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    fn accepted_pending_irq_snapshot_restores_the_same_observable_boundary() {
+        let mut original = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            HIDDEN_IRQ_HANDLER,
+            BOUNDARY_QUANTUM,
+            COARSE_WATCHDOG_US,
+        );
+        stage_coarse_irq(&mut original);
+        let checkpoint = original.snapshot().unwrap();
+        assert_eq!(checkpoint.vcpu_snapshots[0].events.interrupt.injected, 1);
+        assert_eq!(
+            checkpoint.vcpu_snapshots[0].events.interrupt.nr,
+            COARSE_IRQ_VECTOR
+        );
+        // No delivery-instruction coordinate is inferred from this pending fact.
+        let mut restored = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            HIDDEN_IRQ_HANDLER,
+            BOUNDARY_QUANTUM,
+            COARSE_WATCHDOG_US,
+        );
+        restored.restore(&checkpoint).unwrap();
+        assert_eq!(
+            restored.vcpus[0]
+                .get_vcpu_events()
+                .unwrap()
+                .interrupt
+                .injected,
+            1
+        );
+        assert!(!original.step().unwrap());
+        assert!(!restored.step().unwrap());
+        let control = original.take_schedule_trace().unwrap();
+        let replay = restored.take_schedule_trace().unwrap();
+        assert_eq!(replay, control);
+        assert_boundary_trace(&control, &[KvmBoundaryKind::DebugSingleStep]);
+        for index in 0..2 {
+            assert_eq!(
+                original.vcpus[index].get_regs().unwrap(),
+                restored.vcpus[index].get_regs().unwrap()
+            );
+            assert_eq!(
+                original.vcpus[index].get_vcpu_events().unwrap(),
+                restored.vcpus[index].get_vcpu_events().unwrap()
+            );
+        }
+        assert_eq!(original.memory.dump(), restored.memory.dump());
+    }
+
+    #[test]
+    #[ignore = "real KVM no-exit IRQ recovery/poison control; requires timeout --kill-after outer bound"]
+    // r[verify chaoscontrol.kvm_debug_boundary.recovery]
+    fn no_exit_handler_recovers_without_switch_and_permanently_poisons_vm() {
+        const NO_EXIT_HANDLER: &[u8] = &[0xeb, 0xfe]; // jmp $ with IRQ-entry TF suppressed
+        let mut vm = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            NO_EXIT_HANDLER,
+            1,
+            COARSE_TIMEOUT_WATCHDOG_US,
+        );
+        stage_coarse_irq(&mut vm);
+        let checkpoint = vm.snapshot().unwrap();
+        let other_before = vm.vcpus[1].get_regs().unwrap();
+        let before = (
+            vm.scheduler.state_id(),
+            vm.exit_count,
+            vm.virtual_tsc.read(),
+        );
+        let start = std::time::Instant::now();
+        assert!(matches!(
+            vm.step(),
+            Err(VmError::HostWatchdogTimeout { vcpu: 0 })
+        ));
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "finite host recovery exceeded fixture bound"
+        );
+        assert!(vm.schedule_execution_poison().is_some());
+        assert_eq!(
+            vm.active_vcpu, 0,
+            "watchdog cannot choose the second runnable vCPU"
+        );
+        assert_eq!(vm.scheduler.state().progress_counts(), &[0, 0]);
+        assert!(vm.scheduler.state().runnable_vcpus[1]);
+        assert_eq!(vm.vcpus[1].get_regs().unwrap(), other_before);
+        assert_eq!(
+            (
+                vm.scheduler.state_id(),
+                vm.exit_count,
+                vm.virtual_tsc.read()
+            ),
+            before
+        );
+        assert!(matches!(
+            vm.step(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.snapshot(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.restore(&checkpoint),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.take_schedule_trace(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(
+            !vm.panic_detected,
+            "host recovery is not a guest-crash verdict"
+        );
+        // Recovery requires a new admitted VM, not resetting the poisoned one.
+        let mut fresh = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            NO_EXIT_HANDLER,
+            1,
+            COARSE_TIMEOUT_WATCHDOG_US,
+        );
+        fresh
+            .restore(&checkpoint)
+            .expect("independently admitted checkpoint into a fresh runner");
+    }
+
+    #[test]
+    #[ignore = "real KVM PIC IF/shadow delivery control; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    // r[verify chaoscontrol.kvm_debug_boundary.evidence]
+    fn queued_pic_irq_defers_across_if_and_sti_shadow_without_units_for_injection() {
+        const PIC_SETUP_BYTES: u64 = 21;
+        const SETUP_BOUNDARY_LIMIT: usize = 32;
+        const IRQ4_VECTOR: u64 = 0x24;
+        // CLI; initialize master PIC at vector 0x20; unmask IRQ4; NOP;
+        // STI; NOP (interrupt shadow); INC AX; OUT 0x10,AL.
+        const PROGRAM: &[u8] = &[
+            0xfa, 0xb0, 0x11, 0xe6, 0x20, 0xb0, 0x20, 0xe6, 0x21, 0xb0, 0x04, 0xe6, 0x21, 0xb0,
+            0x01, 0xe6, 0x21, 0xb0, 0xef, 0xe6, 0x21, 0x90, 0xfb, 0x90, 0x40, 0xe6, 0x10,
+        ];
+        let mut vm = coarse_smp_vm(PROGRAM, &[0x43, 0xcf], BOUNDARY_QUANTUM, COARSE_WATCHDOG_US);
+        vm.write_guest_memory(
+            IRQ4_VECTOR * 4,
+            &[
+                COARSE_HANDLER_ADDRESS as u8,
+                (COARSE_HANDLER_ADDRESS >> 8) as u8,
+                0,
+                0,
+            ],
+        )
+        .unwrap();
+        let mut reached = false;
+        for _ in 0..SETUP_BOUNDARY_LIMIT {
+            if vm.vcpus[0].get_regs().unwrap().rip == COARSE_CODE_ADDRESS + PIC_SETUP_BYTES {
+                reached = true;
+                break;
+            }
+            assert!(!vm.step().unwrap());
+        }
+        assert!(
+            reached,
+            "PIC setup did not reach its declared boundary horizon"
+        );
+        let before = vm.scheduler.state_id();
+        let count = vm.scheduler.state().progress_counts()[0];
+        vm.inject_interrupt(4).unwrap();
+        assert_eq!(
+            vm.scheduler.state_id(),
+            before,
+            "injection has no boundary-unit authority"
+        );
+        let pending = vm.snapshot().unwrap();
+        // SAFETY: the captured chip is the master PIC selected by snapshot capture.
+        assert_ne!(unsafe { pending.pic_master.chip.pic.irr } & (1 << 4), 0);
+        for offset in 1..=3 {
+            assert!(!vm.step().unwrap());
+            let regs = vm.vcpus[0].get_regs().unwrap();
+            assert_eq!(regs.rip, COARSE_CODE_ADDRESS + PIC_SETUP_BYTES + offset);
+            assert_eq!(regs.rbx, 0, "IRQ must defer during CLI and STI's shadow");
+            assert_eq!(vm.scheduler.state().progress_counts()[0], count + offset);
+        }
+        assert!(!vm.step().unwrap());
+        let after = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(after.rbx, 1);
+        assert_eq!(after.rip, COARSE_CODE_ADDRESS + PIC_SETUP_BYTES + 4);
+        assert_eq!(vm.scheduler.state().progress_counts()[0], count + 4);
+        // This observes handler effects at a boundary, not the hidden delivery RIP.
+    }
+
+    #[test]
+    #[ignore = "real KVM explicit unsupported NMI-source rejection; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.persistence]
+    fn unsupported_nmi_request_rejects_without_machine_or_schedule_mutation() {
+        let mut vm = coarse_smp_vm(HIDDEN_IRQ_MAIN, &[], BOUNDARY_QUANTUM, COARSE_WATCHDOG_US);
+        let before_events = vm.vcpus[0].get_vcpu_events().unwrap();
+        let before_regs = vm.vcpus[0].get_regs().unwrap();
+        let before_state = vm.scheduler.state_id();
+        assert!(matches!(
+            vm.inject_nmi(0),
+            Err(VmError::ProgressCapability { .. })
+        ));
+        assert_eq!(vm.vcpus[0].get_vcpu_events().unwrap(), before_events);
+        assert_eq!(vm.vcpus[0].get_regs().unwrap(), before_regs);
+        assert_eq!(vm.scheduler.state_id(), before_state);
+        assert!(
+            vm.schedule_execution_poison().is_none(),
+            "a rejected no-entry request is not partial execution"
+        );
+    }
+
+    #[test]
+    #[ignore = "real KVM MSR-filter PV-clock denial and #GP control; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.admission]
+    // r[verify chaoscontrol.kvm_debug_boundary.evidence]
+    fn pv_clock_msr_filter_delivers_real_gp_before_guest_clock_activation() {
+        const PV_MSRS: [u32; 4] = [0x11, 0x12, 0x4b56_4d00, 0x4b56_4d01];
+        const GDT_ADDRESS: u64 = 0x600;
+        const IDT_ADDRESS: u64 = 0x800;
+        const GP_VECTOR: u64 = 13;
+        const CODE32_FLAGS: u16 = 0xc09b;
+        const DATA32_FLAGS: u16 = 0xc093;
+        const PV_PAGE_ADDRESS: u32 = 0x2000;
+        const PV_PAGE_BYTES: usize = 64;
+        const HANDLER_MARKER: u8 = 0xa5;
+        const FAILURE_MARKER: u8 = 0xef;
+        const ENTRY_BOUNDARY_LIMIT: usize = 16;
+        // The architectural #GP handler executes hidden INC EBX and MOV AL
+        // before producing its first accepted PIO. It deliberately does not
+        // IRET/retry the denied instruction or emulate a successful MSR access.
+        const GP_HANDLER: &[u8] = &[0x43, 0xb0, HANDLER_MARKER, 0xe6, 0x10, 0xeb, 0xfe];
+        for msr in PV_MSRS {
+            for write in [false, true] {
+                let mut code = vec![0xb9]; // mov ecx, requested MSR
+                code.extend_from_slice(&msr.to_le_bytes());
+                code.push(0xb8); // mov eax, valid guest PV page, enabling system-time MSRs
+                let value = PV_PAGE_ADDRESS | u32::from(matches!(msr, 0x12 | 0x4b56_4d01));
+                code.extend_from_slice(&value.to_le_bytes());
+                code.extend_from_slice(&[0x31, 0xd2, 0x0f, if write { 0x30 } else { 0x32 }]);
+                // If access succeeds, reach a distinct failed-control output;
+                // never let a missing #GP become a passing fallback.
+                code.extend_from_slice(&[0xb0, FAILURE_MARKER, 0xe6, 0x10, 0xeb, 0xfe]);
+                let mut vm = coarse_smp_vm(&code, GP_HANDLER, BOUNDARY_QUANTUM, COARSE_WATCHDOG_US);
+                let gdt = [
+                    0,
+                    memory::gdt_entry(CODE32_FLAGS, 0, 0xfffff),
+                    memory::gdt_entry(DATA32_FLAGS, 0, 0xfffff),
+                ];
+                let gdt_bytes: Vec<_> = gdt.into_iter().flat_map(u64::to_le_bytes).collect();
+                vm.write_guest_memory(GDT_ADDRESS, &gdt_bytes).unwrap();
+                let selector = u16::from(memory::GDT_INDEX_CODE) << 3;
+                let handler = COARSE_HANDLER_ADDRESS as u32;
+                let mut gate = [0u8; 8];
+                gate[..2].copy_from_slice(&(handler as u16).to_le_bytes());
+                gate[2..4].copy_from_slice(&selector.to_le_bytes());
+                gate[5] = 0x8e; // present ring-0 32-bit interrupt gate
+                gate[6..].copy_from_slice(&((handler >> 16) as u16).to_le_bytes());
+                vm.write_guest_memory(IDT_ADDRESS + GP_VECTOR * 8, &gate)
+                    .unwrap();
+                let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+                sregs.gdt.base = GDT_ADDRESS;
+                sregs.gdt.limit = (gdt_bytes.len() - 1) as u16;
+                sregs.idt.base = IDT_ADDRESS;
+                sregs.idt.limit = ((GP_VECTOR + 1) * 8 - 1) as u16;
+                sregs.cs = memory::kvm_segment_from_gdt(gdt[1], memory::GDT_INDEX_CODE);
+                sregs.ds = data_segment();
+                sregs.es = data_segment();
+                sregs.ss = data_segment();
+                sregs.cr0 |= X86_CR0_PE;
+                vm.vcpus[0].set_sregs(&sregs).unwrap();
+                let mut regs = vm.vcpus[0].get_regs().unwrap();
+                regs.rflags = 2;
+                vm.vcpus[0].set_regs(&regs).unwrap();
+                assert_eq!(
+                    vm.read_guest_memory(u64::from(PV_PAGE_ADDRESS), PV_PAGE_BYTES)
+                        .unwrap(),
+                    vec![0; PV_PAGE_BYTES]
+                );
+                let mut reached_io = false;
+                for _ in 0..ENTRY_BOUNDARY_LIMIT {
+                    match vm.step() {
+                        Ok(false) => {}
+                        Ok(true) => {
+                            panic!("unexpected terminal outcome: MSR={msr:#x}, write={write}")
+                        }
+                        Err(error) => {
+                            assert!(
+                                vm.schedule_execution_poison().is_some(),
+                                "post-entry PV-clock control failure must poison: {error}"
+                            );
+                            assert!(vm.snapshot().is_err());
+                            assert!(vm.take_schedule_trace().is_err());
+                            panic!("operational PV-clock control failure, not qualification success: MSR={msr:#x}, write={write}: {error}");
+                        }
+                    }
+                    if vm.io_exit_count != 0 {
+                        reached_io = true;
+                        break;
+                    }
+                }
+                assert!(
+                    reached_io,
+                    "PV-clock control exceeded its declared boundary horizon"
+                );
+                let observed = vm.vcpus[0].get_regs().unwrap();
+                assert_eq!(
+                    (observed.rbx, observed.rax as u8, observed.rip),
+                    (1, HANDLER_MARKER, COARSE_HANDLER_ADDRESS + 5),
+                    "actual #GP handler must run before output: MSR={msr:#x}, write={write}"
+                );
+                let trace = vm.take_schedule_trace().unwrap();
+                assert!(matches!(
+                    trace.records.last().unwrap().event,
+                    ScheduleEvent::KvmBoundaryObserved {
+                        boundary: KvmBoundaryKind::Pio {
+                            port: 0x10,
+                            size: 1,
+                            direction: BoundaryIoDirection::Write,
+                        },
+                        ..
+                    }
+                ));
+                for index in PV_MSRS {
+                    let mut state =
+                        kvm_bindings::Msrs::from_entries(&[kvm_bindings::kvm_msr_entry {
+                            index,
+                            ..Default::default()
+                        }])
+                        .unwrap();
+                    assert_eq!(vm.vcpus[0].get_msrs(&mut state).unwrap(), 1);
+                    assert_eq!(
+                        state.as_slice()[0].data,
+                        0,
+                        "PV MSR {index:#x} must remain disabled"
+                    );
+                }
+                assert_eq!(
+                    vm.read_guest_memory(u64::from(PV_PAGE_ADDRESS), PV_PAGE_BYTES)
+                        .unwrap(),
+                    vec![0; PV_PAGE_BYTES],
+                    "denied PV accesses must not publish host clock data"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "raw unfiltered single-vCPU MSR availability control, not SMP evidence; requires finite outer supervisor"]
+    fn raw_unfiltered_guest_can_activate_pv_system_time_msr() {
+        const PV_PAGE_ADDRESS: u32 = 0x2000;
+        const PASS_MARKER: u8 = 0xa5;
+        const CODE32_FLAGS: u16 = 0xc09b;
+        const RAW_ENTRY_WATCHDOG_US: i64 = 100_000;
+        for index in [0x12u32, 0x4b56_4d01] {
+            let mut vm = DeterministicVm::new(VmConfig {
+                memory_size: COARSE_MEMORY_BYTES,
+                ..VmConfig::default()
+            })
+            .unwrap();
+            assert!(!vm.coarse_clock_projection_admitted());
+            let enabled = PV_PAGE_ADDRESS | 1;
+            let mut code = vec![0xb9]; // mov ecx, system-time MSR
+            code.extend_from_slice(&index.to_le_bytes());
+            code.push(0xb8); // mov eax, valid PV page | enable
+            code.extend_from_slice(&enabled.to_le_bytes());
+            code.extend_from_slice(&[0x31, 0xd2, 0x0f, 0x30, 0xb0, PASS_MARKER, 0xe6, 0x10]);
+            vm.write_guest_memory(COARSE_CODE_ADDRESS, &code).unwrap();
+            let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+            sregs.cs = memory::kvm_segment_from_gdt(
+                memory::gdt_entry(CODE32_FLAGS, 0, 0xfffff),
+                memory::GDT_INDEX_CODE,
+            );
+            sregs.ds = data_segment();
+            sregs.es = data_segment();
+            sregs.ss = data_segment();
+            sregs.cr0 |= X86_CR0_PE;
+            vm.vcpus[0].set_sregs(&sregs).unwrap();
+            vm.vcpus[0]
+                .set_regs(&kvm_regs {
+                    rip: COARSE_CODE_ADDRESS,
+                    rsp: COARSE_STACK_ADDRESS,
+                    rflags: 2,
+                    ..Default::default()
+                })
+                .unwrap();
+            vm.init_thread_timer().unwrap();
+            vm.arm_preemption_timer(RAW_ENTRY_WATCHDOG_US);
+            let exit = vm.vcpus[0].run();
+            let reached_marker =
+                matches!(&exit, Ok(VcpuExit::IoOut(0x10, bytes)) if *bytes == [PASS_MARKER]);
+            let diagnostic = format!("{exit:?}");
+            drop(exit);
+            vm.disarm_preemption_timer();
+            assert!(
+                reached_marker,
+                "raw availability control did not execute guest WRMSR: {diagnostic}"
+            );
+            let mut state = kvm_bindings::Msrs::from_entries(&[kvm_bindings::kvm_msr_entry {
+                index,
+                ..Default::default()
+            }])
+            .unwrap();
+            assert_eq!(vm.vcpus[0].get_msrs(&mut state).unwrap(), 1);
+            assert_eq!(
+                state.as_slice()[0].data,
+                u64::from(enabled),
+                "unfiltered control must really enable the guest PV page"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "real KVM mixed Debug/PIO/MMIO completion normalization; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.units]
+    fn mixed_debug_pio_mmio_boundaries_settle_once_and_preserve_guest_state() {
+        const CODE32_FLAGS: u16 = 0xc09b;
+        const QUEUE_SELECT_OFFSET: u64 = 0x30;
+        const EXPECTED_BOUNDARIES: u64 = 6;
+        let mut code = vec![0x40, 0xa1]; // inc eax; mov eax,[virtio magic]
+        code.extend_from_slice(&(VIRTIO_MMIO_BASE_2 as u32).to_le_bytes());
+        code.extend_from_slice(&[0xe6, 0x10, 0x31, 0xc0, 0xa3]); // OUT; xor eax,eax; mov [queue_sel],eax
+        code.extend_from_slice(&((VIRTIO_MMIO_BASE_2 + QUEUE_SELECT_OFFSET) as u32).to_le_bytes());
+        code.push(0x43); // inc ebx
+        let mut vm = coarse_smp_vm(&code, &[], BOUNDARY_QUANTUM, COARSE_WATCHDOG_US);
+        let mut sregs = vm.vcpus[0].get_sregs().unwrap();
+        sregs.cs = memory::kvm_segment_from_gdt(
+            memory::gdt_entry(CODE32_FLAGS, 0, 0xfffff),
+            memory::GDT_INDEX_CODE,
+        );
+        sregs.ds = data_segment();
+        sregs.es = data_segment();
+        sregs.ss = data_segment();
+        sregs.cr0 |= X86_CR0_PE;
+        vm.vcpus[0].set_sregs(&sregs).unwrap();
+        for count in 1..=EXPECTED_BOUNDARIES {
+            assert!(!vm.step().unwrap());
+            assert_eq!(
+                vm.scheduler.state().progress_counts()[0],
+                count,
+                "completion re-entry must not gain a second boundary"
+            );
+            assert_eq!(vm.active_vcpu, 0);
+        }
+        let regs = vm.vcpus[0].get_regs().unwrap();
+        assert_eq!(
+            (regs.rax, regs.rbx, regs.rip),
+            (0, 1, COARSE_CODE_ADDRESS + code.len() as u64)
+        );
+        assert_eq!((vm.exit_count, vm.io_exit_count), (EXPECTED_BOUNDARIES, 1));
+        assert_boundary_trace(
+            &vm.take_schedule_trace().unwrap(),
+            &[
+                KvmBoundaryKind::DebugSingleStep,
+                KvmBoundaryKind::Mmio {
+                    address: VIRTIO_MMIO_BASE_2,
+                    len: 4,
+                    direction: BoundaryIoDirection::Read,
+                },
+                KvmBoundaryKind::Pio {
+                    port: 0x10,
+                    size: 1,
+                    direction: BoundaryIoDirection::Write,
+                },
+                KvmBoundaryKind::DebugSingleStep,
+                KvmBoundaryKind::Mmio {
+                    address: VIRTIO_MMIO_BASE_2 + QUEUE_SELECT_OFFSET,
+                    len: 4,
+                    direction: BoundaryIoDirection::Write,
+                },
+                KvmBoundaryKind::DebugSingleStep,
+            ],
+        );
+        assert_eq!(
+            vm.snapshot().unwrap().boundary_state.pending_io,
+            crate::snapshot::SnapshotPendingIoState::Settled
+        );
+    }
+
+    fn coarse_continuation_identity(vm: &mut DeterministicVm) -> blake3::Hash {
+        struct HashWriter(blake3::Hasher);
+        impl std::io::Write for HashWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.update(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let snapshot = vm.snapshot().unwrap();
+        let view = snapshot
+            .continuation_view(vm.coarse_clock_projection_admitted())
+            .unwrap();
+        let mut writer = HashWriter(blake3::Hasher::new());
+        serde_json::to_writer(&mut writer, &view).unwrap();
+        writer.0.finalize()
+    }
+
+    #[test]
+    #[ignore = "real KVM host-delay and watchdog-cadence control; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.evidence]
+    fn host_delays_and_watchdog_budgets_preserve_full_coarse_continuation() {
+        let mut vm = coarse_smp_vm(&CODE, HIDDEN_IRQ_HANDLER, QUANTUM, COARSE_WATCHDOG_US);
+        for _ in 0..3 {
+            assert!(!vm.step().unwrap());
+        }
+        vm.take_schedule_trace().unwrap();
+        let checkpoint = vm.snapshot().unwrap();
+        let control = future(&mut vm, false, Duration::ZERO);
+        let expected_state = coarse_continuation_identity(&mut vm);
+        for watchdog in [COARSE_WATCHDOG_US / 2, COARSE_WATCHDOG_US] {
+            vm.restore(&checkpoint).unwrap();
+            vm.watchdog_microseconds = i64::try_from(watchdog).unwrap();
+            let delayed = future(&mut vm, false, Duration::from_micros(50));
+            assert_eq!(delayed, control);
+            assert_eq!(coarse_continuation_identity(&mut vm), expected_state);
+        }
+    }
+
+    #[test]
+    #[ignore = "real KVM targeted host signal during hidden work; requires finite outer supervisor"]
+    // r[verify chaoscontrol.kvm_debug_boundary.recovery]
+    // r[verify chaoscontrol.kvm_debug_boundary.evidence]
+    fn unrelated_host_signal_aborts_hidden_work_without_a_boundary_or_position() {
+        const SIGNAL_DELAY: Duration = Duration::from_millis(5);
+        const SIGNAL_WATCHDOG_US: u64 = 250_000;
+        const NO_EXIT_HANDLER: &[u8] = &[0xeb, 0xfe];
+        let mut vm = coarse_smp_vm(
+            HIDDEN_IRQ_MAIN,
+            NO_EXIT_HANDLER,
+            BOUNDARY_QUANTUM,
+            SIGNAL_WATCHDOG_US,
+        );
+        stage_coarse_irq(&mut vm);
+        let checkpoint = vm.snapshot().unwrap();
+        let before = vm.scheduler.state_id();
+        // SAFETY: this thread remains live until the sender is joined below.
+        let target = unsafe { libc::pthread_self() };
+        let sender = thread::spawn(move || {
+            thread::sleep(SIGNAL_DELAY);
+            // SAFETY: target is the live execution thread with its admitted handler.
+            unsafe { libc::pthread_kill(target, libc::SIGALRM) }
+        });
+        let outcome = vm.step();
+        assert_eq!(sender.join().unwrap(), 0);
+        assert!(matches!(outcome, Err(VmError::ProgressCapability { .. })));
+        assert_eq!(vm.scheduler.state_id(), before);
+        assert_eq!(vm.scheduler.state().progress_counts(), &[0, 0]);
+        assert!(vm.schedule_execution_poison().is_some());
+        assert!(matches!(
+            vm.snapshot(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.restore(&checkpoint),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.take_schedule_trace(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+    }
 }

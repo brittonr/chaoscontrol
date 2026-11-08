@@ -2,7 +2,7 @@
 let MarkerContext = import "marker-evidence-context.ncl" in
 let ProcessInstances = import "process-instances.ncl" in
 let Primitives = import "profile-primitives.ncl" in
-let MaxScheduleStrategyBytes = 128 in
+let Scheduler = import "scheduler-progress.ncl" in
 let MaxNamespaceBytes = 128 in
 let MaxKeyBytes = 256 in
 let MaxMessageBytes = 1024 in
@@ -12,7 +12,7 @@ let MaxCategoryBytes = 64 in
 let MaxCanonicalBytes = 2304 in
 let AcceptedArtifactCount = 2 in
 let U32Maximum = 4294967295 in
-let ExactVersion = std.contract.from_predicate (fun value => value == 2) in
+let ExactVersion = std.contract.from_predicate (fun value => value == 3) in
 let NonEmptyString = std.contract.from_predicate (fun value =>
   std.is_string value && std.string.length value > 0
 ) in
@@ -138,8 +138,8 @@ let Sha256 = std.contract.from_predicate (fun value =>
 let SnapshotReference = {
   store | std.contract.from_predicate (fun value => value == "file-content-addressed"),
   digest | Sha256,
-  codec | std.contract.from_predicate (fun value => value == "simulation-snapshot-cbor-zstd-v2"),
-  schema_version | std.contract.from_predicate (fun value => value == 2),
+  codec | std.contract.from_predicate (fun value => value == "simulation-snapshot-cbor-zstd-v4"),
+  schema_version | std.contract.from_predicate (fun value => value == 4),
   path | std.contract.from_predicate (fun value =>
     std.is_string value
     && std.string.is_match "^snapshots/[0-9a-f]{64}\\.snapshot\\.bin$" value
@@ -151,12 +151,8 @@ let ArtifactHash = {
 } in
 let ScheduleVariant = {
   scheduler_seed | Primitives.u64,
-  strategy | std.contract.from_predicate (fun value =>
-    std.is_string value
-    && std.string.length value > 0
-    && std.string.length value <= MaxScheduleStrategyBytes
-  ),
-  quantum_override | Primitives.positive_u64 | optional,
+  strategy | Scheduler.Strategy,
+  progress_budget_override | Scheduler.ProgressBudget | optional,
   policy_blake3 | Fingerprint,
 } in
 let ReplayVerdictShape = {
@@ -289,6 +285,19 @@ let ReplaySemantics = fun value =>
   in
   class_binding && status_binding
 in
+let ScheduleVariantBinding = fun value =>
+  if !std.record.has_field "schedule_variant" value then true
+  else
+    let variant = value.schedule_variant in
+    if variant.strategy == null || variant.strategy == "RoundRobin" then true
+    else
+      let range = variant.strategy.Randomized in
+      Scheduler.SameUnit range.min_budget range.max_budget
+      && Scheduler.Count range.min_budget < Scheduler.Count range.max_budget
+      && (if std.record.has_field "progress_budget_override" variant then
+        Scheduler.SameUnit range.min_budget variant.progress_budget_override
+        else true)
+in
 std.contract.custom (fun label value =>
   std.contract.check ReplayVerdictShape label value
   |> match {
@@ -298,6 +307,7 @@ std.contract.custom (fun label value =>
         && MarkerBinding checked
         && SnapshotBinding checked
         && ReplaySemantics checked
+        && ScheduleVariantBinding checked
       then 'Ok checked
       else 'Error {},
     'Error error => 'Error error,

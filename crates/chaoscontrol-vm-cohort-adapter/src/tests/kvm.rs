@@ -1,8 +1,8 @@
-use chaoscontrol_vmm::snapshot::{VcpuSnapshot, VmSnapshot};
-use kvm_bindings::{
-    kvm_irqchip, kvm_mp_state, kvm_pit_config, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER,
-    KVM_IRQCHIP_PIC_SLAVE, KVM_MP_STATE_RUNNABLE,
+use chaoscontrol_vmm::snapshot::{
+    SnapshotHostOrigin, SnapshotPreflightError, VcpuSnapshot, VmSnapshot,
 };
+use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+use kvm_bindings::{kvm_mp_state, KVM_MP_STATE_RUNNABLE};
 use kvm_ioctls::{Kvm, VcpuFd, VmFd};
 use vm_cohort_core::{CohortPhase, FailureClass};
 use vm_cohort_kvm::{FailureSchedule, KvmCohortRuntime};
@@ -13,8 +13,7 @@ use crate::{
 };
 
 use super::support::{
-    compatibility_facts, profile, replace_snapshot_topology, resource_ref, synthetic_block,
-    synthetic_snapshot,
+    compatibility_facts, profile, resource_ref, synthetic_block, synthetic_snapshot,
 };
 
 const RESTORED_RIP: u64 = 0x1000;
@@ -54,7 +53,7 @@ fn exact_vcpu_state_restores_through_vm_cohort_descriptors() {
     }
     restore_vcpu_snapshot(&snapshot, &runtime, &clone_ref, 0)
         .expect("restore through shared descriptors");
-    assert_restored_vcpu(&runtime, &clone_ref);
+    assert_restored_vcpu(&runtime, &clone_ref, &snapshot);
 }
 
 // r[verify chaoscontrol.vm_cohort.restore]
@@ -62,8 +61,15 @@ fn exact_vcpu_state_restores_through_vm_cohort_descriptors() {
 #[test]
 #[ignore = "requires readable /dev/kvm"]
 fn complete_snapshot_restores_before_shared_cohort_activation() {
-    let source = SourceVm::new();
-    let snapshot = source.complete_snapshot();
+    let snapshot = captured_vm_snapshot();
+    let descriptor = snapshot
+        .execution_descriptor()
+        .expect("captured execution descriptor");
+    assert_eq!(
+        descriptor.host.origin,
+        SnapshotHostOrigin::Measured,
+        "cohort admission requires a genuinely captured measured host"
+    );
     let block = synthetic_block();
     let kvm_profile = profile();
     let facts = compatibility_facts(&kvm_profile);
@@ -78,15 +84,38 @@ fn complete_snapshot_restores_before_shared_cohort_activation() {
     .expect("map live exact snapshot");
 
     let execution = execute_snapshot_cohort(&mapped, &snapshot).expect("execute exact cohort");
-    let ChaosCohortExecution::Active(active) = execution else {
-        panic!("exact cohort did not activate");
+    let active = match execution {
+        ChaosCohortExecution::Active(active) => active,
+        ChaosCohortExecution::Failed(failure) => {
+            panic!("exact cohort restore failed: {}", failure.detail)
+        }
     };
     assert_eq!(active.outcome.state.phase, CohortPhase::Active);
     assert_eq!(active.runtime.active_clone_count(), 1);
     assert!(!active.outcome.fault_authority_granted);
     assert!(!active.outcome.replay_authority_granted);
     assert!(!active.outcome.release_authority_granted);
-    assert_restored_vcpu(&active.runtime, &mapped.plan.clones[0].clone_ref);
+    assert_restored_vcpu(
+        &active.runtime,
+        &mapped.plan.clones[0].clone_ref,
+        &snapshot.vcpu_snapshots[0],
+    );
+}
+
+// A portable fixture remains a pure mechanism fixture. Restoring it into a
+// measured host must keep failing the host preflight instead of being made
+// admissible; this test is cheap because the rejection precedes host probing.
+#[test]
+fn portable_fixture_snapshot_fails_measured_host_preflight() {
+    let snapshot = synthetic_snapshot();
+    let descriptor = snapshot
+        .execution_descriptor()
+        .expect("portable fixture execution descriptor");
+    assert_eq!(descriptor.host.origin, SnapshotHostOrigin::PortableFixture);
+    assert_eq!(
+        descriptor.validate_current_host(),
+        Err(SnapshotPreflightError::HostMismatch)
+    );
 }
 
 // r[verify chaoscontrol.vm_cohort.verification]
@@ -139,7 +168,11 @@ fn injected_partial_creation_fails_and_confirms_cleanup_without_activation() {
     assert!(!failed.release_authority_granted);
 }
 
-fn assert_restored_vcpu(runtime: &KvmCohortRuntime, clone_ref: &vm_cohort_core::CloneRef) {
+fn assert_restored_vcpu(
+    runtime: &KvmCohortRuntime,
+    clone_ref: &vm_cohort_core::CloneRef,
+    expected: &VcpuSnapshot,
+) {
     let (_vm, vcpus) = runtime
         .clone_descriptors(clone_ref)
         .expect("target descriptors");
@@ -148,16 +181,30 @@ fn assert_restored_vcpu(runtime: &KvmCohortRuntime, clone_ref: &vm_cohort_core::
     let fpu = target.get_fpu().expect("restored FPU");
     let events = target.get_vcpu_events().expect("restored events");
     let mp_state = target.get_mp_state().expect("restored MP state");
-    assert_eq!(regs.rip, RESTORED_RIP);
-    assert_eq!(regs.rflags, REQUIRED_RFLAGS);
-    assert_eq!(fpu.xmm[0][0], EXTENDED_STATE_MARKER);
-    assert_eq!(events.nmi.pending, EVENT_SET);
-    assert_eq!(events.nmi.masked, EVENT_SET);
-    assert_eq!(mp_state.mp_state, KVM_MP_STATE_RUNNABLE);
+    assert_eq!(regs.rip, expected.regs.rip);
+    assert_eq!(regs.rflags, expected.regs.rflags);
+    assert_eq!(fpu.xmm[0][0], expected.fpu.xmm[0][0]);
+    assert_eq!(events.nmi.pending, expected.events.nmi.pending);
+    assert_eq!(events.nmi.masked, expected.events.nmi.masked);
+    assert_eq!(mp_state.mp_state, expected.mp_state.mp_state);
+}
+
+const CAPTURE_MEMORY_BYTES: usize = 8 * 1024 * 1024;
+
+/// Captures a complete snapshot from a live strict single-vCPU
+/// [`DeterministicVm`], so the retained execution descriptor is measured on
+/// this host instead of a portable fixture domain.
+fn captured_vm_snapshot() -> VmSnapshot {
+    let mut vm = DeterministicVm::new(VmConfig {
+        memory_size: CAPTURE_MEMORY_BYTES,
+        ..VmConfig::default()
+    })
+    .expect("create measured source VM");
+    vm.snapshot().expect("capture measured source snapshot")
 }
 
 struct SourceVm {
-    vm: VmFd,
+    _vm: VmFd,
     vcpu: VcpuFd,
     msr_indices: Vec<u32>,
 }
@@ -174,9 +221,11 @@ impl SourceVm {
         msr_indices.dedup();
         let vm = kvm.create_vm().expect("source VM");
         vm.create_irq_chip().expect("source IRQ chip");
-        vm.create_pit2(kvm_pit_config::default())
-            .expect("source PIT");
         let vcpu = vm.create_vcpu(0).expect("source vCPU");
+        let cpuid =
+            chaoscontrol_vmm::cpu::filter_cpuid(&kvm, &chaoscontrol_vmm::cpu::CpuConfig::default())
+                .expect("source CPU profile");
+        vcpu.set_cpuid2(&cpuid).expect("install source CPU profile");
         let mut regs = vcpu.get_regs().expect("source registers");
         regs.rip = RESTORED_RIP;
         regs.rflags = REQUIRED_RFLAGS;
@@ -193,7 +242,7 @@ impl SourceVm {
         })
         .expect("stage source MP state");
         Self {
-            vm,
+            _vm: vm,
             vcpu,
             msr_indices,
         }
@@ -201,26 +250,5 @@ impl SourceVm {
 
     fn vcpu_snapshot(&self) -> VcpuSnapshot {
         VcpuSnapshot::capture(&self.vcpu, &self.msr_indices).expect("capture source vCPU")
-    }
-
-    fn complete_snapshot(&self) -> VmSnapshot {
-        let mut snapshot = synthetic_snapshot();
-        snapshot.vcpu_snapshots = vec![self.vcpu_snapshot()];
-        snapshot.pic_master = self.irqchip(KVM_IRQCHIP_PIC_MASTER);
-        snapshot.pic_slave = self.irqchip(KVM_IRQCHIP_PIC_SLAVE);
-        snapshot.ioapic = self.irqchip(KVM_IRQCHIP_IOAPIC);
-        snapshot.pit = self.vm.get_pit2().expect("source PIT state");
-        snapshot.clock = self.vm.get_clock().expect("source KVM clock");
-        replace_snapshot_topology(&mut snapshot, self.msr_indices.clone());
-        snapshot
-    }
-
-    fn irqchip(&self, chip_id: u32) -> kvm_irqchip {
-        let mut state = kvm_irqchip {
-            chip_id,
-            ..kvm_irqchip::default()
-        };
-        self.vm.get_irqchip(&mut state).expect("source IRQ state");
-        state
     }
 }

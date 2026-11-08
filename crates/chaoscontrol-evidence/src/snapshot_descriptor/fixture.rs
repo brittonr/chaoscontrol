@@ -206,10 +206,20 @@ fn example_metadata() -> chaoscontrol_vmm::snapshot::SnapshotMetadata {
     };
     chaoscontrol_vmm::snapshot::SnapshotMetadata {
         state_schema_version: chaoscontrol_vmm::snapshot::SNAPSHOT_STATE_SCHEMA_VERSION,
-        completeness_profile: chaoscontrol_vmm::snapshot::SNAPSHOT_PROFILE_EXACT_X86_KVM_V1
+        completeness_profile: chaoscontrol_vmm::snapshot::SNAPSHOT_PROFILE_EXACT_X86_KVM_V2
             .to_string(),
         inventory: chaoscontrol_vmm::snapshot::build_snapshot_inventory(&topology),
         topology,
+        execution_descriptor:
+            chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor::portable_fixture(
+                &chaoscontrol_vmm::vm::VmConfig {
+                    num_vcpus: usize::try_from(FIXTURE_VCPU_COUNT).expect("fixture vCPU count"),
+                    memory_size: usize::try_from(FIXTURE_MEMORY_BYTES)
+                        .expect("fixture memory size"),
+                    ..chaoscontrol_vmm::vm::VmConfig::default()
+                },
+            )
+            .expect("portable descriptor fixture"),
     }
 }
 
@@ -302,5 +312,29 @@ mod tests {
         assert!(!bundle.monolithic_descriptor.hex.is_empty());
         assert!(root.path().join(MONOLITHIC_PAYLOAD_FILE).is_file());
         assert!(root.path().join("snapshots").is_dir());
+    }
+
+    #[test]
+    fn coarse_execution_is_not_exported_as_strict_snapshot_compatibility() {
+        use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget, ProgressMode};
+
+        let mut metadata = example_metadata();
+        let descriptor = example_descriptor().expect("strict snapshot descriptor fixture");
+        let mut config = chaoscontrol_vmm::vm::VmConfig {
+            num_vcpus: usize::try_from(FIXTURE_VCPU_COUNT).expect("fixture vCPU count"),
+            smp_progress_mode: ProgressMode::KvmDebugBoundary,
+            smp_progress_budget: ProgressBudget::KvmBoundaries {
+                profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+                count: crate::snapshot_descriptor::CONTINUATION_STEPS,
+            },
+            ..chaoscontrol_vmm::vm::VmConfig::default()
+        };
+        config.cpu.hide_tsc = true;
+        config.cpu.tsc_mode = chaoscontrol_vmm::cpu::TscAdvanceMode::PerExit;
+        metadata.execution_descriptor =
+            chaoscontrol_vmm::snapshot::SnapshotExecutionDescriptor::portable_fixture(&config)
+                .expect("well-formed coarse execution descriptor");
+        descriptor_from_metadata(&metadata, build_input(descriptor.payload).unwrap())
+            .expect_err("coarse execution cannot acquire strict external compatibility");
     }
 }

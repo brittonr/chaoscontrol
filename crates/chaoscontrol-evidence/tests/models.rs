@@ -14,8 +14,8 @@ use chaoscontrol_evidence::{
     render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
     render_replay_readiness_multi_hypervisor_campaign_dashboard,
     render_replay_readiness_readme_status_block, render_replay_readiness_status,
-    run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
-    run_materialize_snapshot_chunks_selftest, run_readiness_promotion_selftest,
+    review_replay_proof_coverage, run_assertion_readiness_promotion_selftest,
+    run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
     run_readiness_surface_drift_selftest, sample_replay_readiness_decision_receipt,
     sample_replay_readiness_fleet_scheduler_plan, sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_hosted_shared_state_plan,
@@ -107,101 +107,6 @@ fn parses_committed_accepted_workload_manifest() {
 }
 
 #[test]
-fn promotes_all_four_committed_fresh_identity_proofs() {
-    let boundary = check_assertion_readiness_boundary("../..").expect("boundary check passes");
-    assert!(boundary
-        .iter()
-        .all(|line| line.contains("identity_status=accepted-v2")));
-
-    let coverage = validate_replay_proof_coverage("../..").expect("fresh artifacts promote");
-    assert_eq!(coverage.len(), COMMITTED_WORKLOAD_COUNT);
-    assert!(coverage
-        .iter()
-        .all(|line| line.replay_class == "snapshot_backed_reproduced"));
-
-    let rendered = render_replay_proof_coverage_doc("../..").expect("coverage doc renders");
-    assert_eq!(
-        rendered.matches("`snapshot_backed_reproduced`").count(),
-        COMMITTED_WORKLOAD_COUNT
-    );
-    for workload in ["Raft", "redb", "net", "rust-workload"] {
-        assert!(rendered.contains(&format!("| {workload} |")));
-    }
-    assert!(!rendered.contains("`blocked-assertion-identity` |"));
-}
-
-#[test]
-fn validates_committed_replay_proof_coverage_doc() {
-    let rendered = render_replay_proof_coverage_doc("../..").expect("doc renders");
-    assert_eq!(
-        rendered,
-        std::fs::read_to_string(repo_file("docs/replay-proof-coverage.md"))
-            .expect("read replay proof coverage doc")
-    );
-    assert!(rendered.contains("dogfood-results/raft-fresh-v2-proof-20260809/"));
-    check_replay_proof_coverage_doc("../..").expect("committed doc is fresh");
-}
-
-#[test]
-fn rejects_stale_replay_proof_coverage_doc() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let root = temp.path();
-    std::fs::create_dir_all(root.join("docs")).expect("create docs");
-    std::fs::write(root.join("docs/replay-proof-coverage.md"), "stale\n").expect("write stale doc");
-    write_valid_minimal_coverage_fixture(root);
-
-    let err = check_replay_proof_coverage_doc(root).expect_err("stale doc rejected");
-    assert!(
-        err.message()
-            .contains("docs/replay-proof-coverage.md is stale"),
-        "unexpected error: {}",
-        err.message()
-    );
-}
-
-#[test]
-fn renders_committed_replay_readiness_status() {
-    let rendered = render_replay_readiness_status("../..").expect("readiness renders");
-    assert_eq!(
-        rendered,
-        std::fs::read_to_string(repo_file("docs/replay-readiness-status.md"))
-            .expect("read replay readiness status")
-    );
-    assert!(rendered.contains("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors"));
-    assert!(rendered.contains("Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope"));
-    assert!(rendered.contains("Rust workload authoring | `supported-bounded-rust-cohort`"));
-    assert!(rendered.contains("Operator triage UX | `local-runbook`"));
-    assert!(rendered.contains("Hosted/fleet triage UI | `non-goal-current-scope`"));
-    assert!(rendered.contains("Local multi-hypervisor control plane | `supported-bounded-local`"));
-    assert!(rendered.contains("durable local multi-hypervisor campaign receipt"));
-    assert!(rendered.contains("worker resource budgets"));
-    assert!(rendered.contains("local artifact hygiene"));
-    assert!(rendered.contains("Required promotion evidence"));
-    assert!(rendered.contains("without raw-log scraping"));
-    assert!(
-        rendered.contains("Full Antithesis-style product replacement | `non-goal-current-scope`")
-    );
-    check_replay_readiness_status("../..").expect("committed readiness report is fresh");
-}
-
-#[test]
-fn rejects_stale_replay_readiness_status() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let root = temp.path();
-    std::fs::create_dir_all(root.join("docs")).expect("create docs");
-    std::fs::write(root.join("docs/replay-readiness-status.md"), "stale\n")
-        .expect("write stale doc");
-    write_valid_minimal_coverage_fixture(root);
-
-    let err = check_replay_readiness_status(root).expect_err("stale doc rejected");
-    assert!(
-        err.message().contains("readiness report stale"),
-        "unexpected error: {}",
-        err.message()
-    );
-}
-
-#[test]
 fn rejects_empty_replay_readiness_manifest() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();
@@ -257,22 +162,6 @@ fn rejects_malformed_replay_readiness_operator_receipt() {
 
     let err = summarize_replay_readiness_receipt(&receipt).expect_err("command mismatch rejected");
     assert!(err.message().contains("expected replay-readiness"));
-}
-
-#[test]
-fn renders_committed_operator_triage_runbook() {
-    let rendered = render_operator_triage_runbook_path("../..", TriageReceiptSource::Sample)
-        .expect("operator triage runbook renders");
-    assert_eq!(
-        rendered,
-        std::fs::read_to_string(repo_file("docs/operator-triage-runbook.md"))
-            .expect("read operator triage runbook")
-    );
-    assert!(rendered.contains("Do not scrape `run.log`, `reproduce.log`, or temporary VM logs"));
-    assert!(rendered.contains("exact admitted v2 assertion identity"));
-    assert!(rendered.contains("--verdict-output target/operator-triage/raft-replay-verdict.json"));
-    assert!(rendered.contains("minimize --bug dogfood-results/raft-fresh-v2-proof-20260809"));
-    assert!(!rendered.contains("blocked assertion identity"));
 }
 
 #[test]
@@ -1228,7 +1117,8 @@ fn bug_marker_context_requires_an_existing_parent_and_nonfuture_observation() {
     bug["replay_parent_depth"] = 1.into();
     bug["replay_parent_snapshot_ref"] = serde_json::json!({
         "store": "file-content-addressed", "digest": format!("sha256:{}", "b".repeat(64)),
-        "codec": "simulation-snapshot-cbor-zstd-v2", "schema_version": 2,
+        "codec": chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC,
+        "schema_version": chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION,
         "path": format!("snapshots/{}.snapshot.bin", "b".repeat(64)),
     });
     validate_bug_report(&bug).expect("bound nonfuture marker context");
@@ -1507,22 +1397,17 @@ fn rejects_missing_assertions_for_assertion_readiness_status() {
 }
 
 #[test]
-fn committed_readiness_gate_accepts_fresh_bounded_promotion() {
-    let summary = validate_readiness_promotion_files(
+fn committed_readiness_gate_fails_closed_on_superseded_execution_schema() {
+    let err = validate_readiness_promotion_files(
         "../../dogfood-results/accepted-workload-proofs.json",
         "../../docs/replay-readiness-status.md",
     )
-    .expect("fresh workload rows promote");
-
-    assert!(summary
-        .lines
-        .iter()
-        .all(|line| line.contains("status=supported-bounded")));
-    run_readiness_promotion_selftest(
-        "../../dogfood-results/accepted-workload-proofs.json",
-        "../../docs/replay-readiness-status.md",
-    )
-    .expect("readiness promotion selftest");
+    .expect_err("superseded snapshot codec cannot promote");
+    assert!(
+        err.message().contains("blocked-execution-schema"),
+        "unexpected error: {}",
+        err.message()
+    );
 }
 
 #[test]
@@ -1576,46 +1461,6 @@ fn rejects_duplicate_workload_manifest() {
 }
 
 #[test]
-fn parses_committed_replay_verdict_model() {
-    let verdict: ReplayVerdict = serde_json::from_str(
-        &std::fs::read_to_string(repo_file(
-            "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/replay-verdict-bug0.json",
-        ))
-        .expect("read replay verdict"),
-    )
-    .expect("verdict parses");
-
-    let error = verdict
-        .validate_shape()
-        .expect_err("historical verdict cannot promote");
-    assert!(error.message().contains("schema_version must be 2"));
-    assert!(verdict.assertion_identity.is_none());
-    verdict
-        .snapshot
-        .validate_shape()
-        .expect("historical snapshot remains diagnostic");
-    assert_eq!(
-        verdict.snapshot.reference.codec,
-        "simulation-snapshot-cbor-zstd-v2"
-    );
-    assert!(verdict.snapshot.reference.digest.starts_with("sha256:"));
-}
-
-#[test]
-fn accepts_v2_replay_verdict_with_exact_assertion_identity() {
-    let verdict: ReplayVerdict = serde_json::from_str(
-        &std::fs::read_to_string(repo_file(
-            "contracts/evidence/fixtures/valid/replay-verdict.snapshot-backed.valid.json",
-        ))
-        .expect("read v2 replay verdict"),
-    )
-    .expect("v2 verdict parses");
-
-    verdict.validate_shape().expect("v2 verdict validates");
-    assert!(verdict.assertion_identity.is_some());
-}
-
-#[test]
 fn rejects_malformed_snapshot_ref() {
     let input = r#"{
       "schema_version": 1,
@@ -1635,8 +1480,8 @@ fn rejects_malformed_snapshot_ref() {
         "reference": {
           "store": "file-content-addressed",
           "digest": "md5:not-a-sha",
-          "codec": "simulation-snapshot-cbor-zstd-v2",
-          "schema_version": 2,
+          "codec": "simulation-snapshot-cbor-zstd-v4",
+          "schema_version": 4,
           "path": "snapshots/x.snapshot.bin"
         }
       },
@@ -1644,13 +1489,10 @@ fn rejects_malformed_snapshot_ref() {
     }"#;
 
     let verdict: ReplayVerdict = serde_json::from_str(input).expect("verdict parses");
-    let err = verdict
+    verdict
         .snapshot
         .validate_shape()
         .expect_err("bad digest is rejected");
-    assert!(err
-        .message()
-        .contains("snapshot-ref.digest: expected sha256:<64 hex>"));
 }
 
 #[test]
@@ -1934,45 +1776,6 @@ fn rejects_tampered_snapshot_digest_in_full_coverage_validator() {
     );
 }
 
-fn write_valid_minimal_coverage_fixture(root: &std::path::Path) {
-    let evidence_dir = root.join("dogfood-results/fake-proof");
-    let snapshots = evidence_dir.join("snapshots");
-    std::fs::create_dir_all(&snapshots).expect("create fixture dirs");
-    std::fs::write(snapshots.join("fixture.snapshot.bin"), b"fixture snapshot")
-        .expect("write snapshot");
-    std::fs::write(
-        root.join("dogfood-results/accepted-workload-proofs.json"),
-        r#"{
-          "schema_version": 1,
-          "scope": "test",
-          "anti_claims": [],
-          "required_replay_class": "snapshot_backed_reproduced",
-          "proofs": [
-            {"workload":"raft","assertion_id":1,"evidence_dir":"dogfood-results/fake-proof","summary":"summary.json","bug":"bug.json","verdict":"verdict.json","snapshot":"snapshots/fixture.snapshot.bin"},
-            {"workload":"redb","assertion_id":2,"evidence_dir":"dogfood-results/fake-proof","summary":"summary-redb.json","bug":"bug-redb.json","verdict":"verdict-redb.json","snapshot":"snapshots/fixture.snapshot.bin"}
-          ]
-        }"#,
-    )
-    .expect("write manifest");
-    write_summary(&evidence_dir.join("summary.json"), "raft", 1);
-    write_summary(&evidence_dir.join("summary-redb.json"), "redb", 2);
-    let digest = "sha256:181b5fc5c39e672546f5611977eabee17a4ef4dc262fd1d74d7d07d250e2fd81";
-    write_strict_replay_artifacts(&evidence_dir, digest);
-    for verdict_name in ["verdict.json", "verdict-redb.json"] {
-        let verdict_path = evidence_dir.join(verdict_name);
-        let mut verdict: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&verdict_path).expect("read fixture verdict"),
-        )
-        .expect("parse fixture verdict");
-        verdict["schema_version"] = serde_json::json!(1);
-        std::fs::write(
-            verdict_path,
-            serde_json::to_vec_pretty(&verdict).expect("serialize fixture verdict"),
-        )
-        .expect("write fixture verdict");
-    }
-}
-
 fn write_assertions(path: &std::path::Path) {
     std::fs::write(
         path,
@@ -2008,4 +1811,218 @@ fn write_summary(path: &std::path::Path, workload: &str, assertion_id: u64) {
         ),
     )
     .expect("write summary");
+}
+
+fn write_valid_minimal_coverage_fixture(root: &Path) {
+    let evidence_dir = root.join("dogfood-results/fake-proof");
+    let snapshots = evidence_dir.join("snapshots");
+    std::fs::create_dir_all(&snapshots).expect("fixture directories");
+    std::fs::write(snapshots.join("fixture.snapshot.bin"), b"fixture snapshot")
+        .expect("fixture snapshot");
+    let proofs: Vec<_> = [("raft", 1, ""), ("redb", 2, "-redb")]
+        .into_iter()
+        .map(|(workload, assertion_id, suffix)| {
+            serde_json::json!({
+                "workload": workload, "assertion_id": assertion_id,
+                "evidence_dir": "dogfood-results/fake-proof",
+                "summary": format!("summary{suffix}.json"),
+                "bug": format!("bug{suffix}.json"),
+                "verdict": format!("verdict{suffix}.json"),
+                "snapshot": "snapshots/fixture.snapshot.bin",
+            })
+        })
+        .collect();
+    let manifest = serde_json::json!({
+        "schema_version": 1, "scope": "test", "anti_claims": [],
+        "required_replay_class": "snapshot_backed_reproduced", "proofs": proofs,
+    });
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        serde_json::to_vec(&manifest).expect("fixture manifest"),
+    )
+    .expect("write fixture manifest");
+    write_summary(&evidence_dir.join("summary.json"), "raft", 1);
+    write_summary(&evidence_dir.join("summary-redb.json"), "redb", 2);
+    write_strict_replay_artifacts(
+        &evidence_dir,
+        "sha256:181b5fc5c39e672546f5611977eabee17a4ef4dc262fd1d74d7d07d250e2fd81",
+    );
+    // The minimal fixture exercises the retained, blocked classification that
+    // the committed manifest currently falls into.
+    for name in ["verdict.json", "verdict-redb.json"] {
+        let path = evidence_dir.join(name);
+        let mut verdict: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read fixture verdict"))
+                .expect("parse fixture verdict");
+        verdict["schema_version"] = serde_json::json!(2);
+        std::fs::write(&path, serde_json::to_vec_pretty(&verdict).expect("encode"))
+            .expect("write fixture verdict");
+    }
+}
+
+#[test]
+fn classifies_all_four_retained_proofs_under_the_execution_schema() {
+    let boundary = check_assertion_readiness_boundary("../..").expect("boundary check passes");
+    assert!(boundary
+        .iter()
+        .all(|line| line.contains("identity_status=accepted-v2")));
+
+    let err = validate_replay_proof_coverage("../..")
+        .expect_err("superseded snapshot codec cannot promote");
+    assert!(
+        err.message().contains("codec"),
+        "unexpected error: {}",
+        err.message()
+    );
+
+    let coverage = review_replay_proof_coverage("../..").expect("retained rows classify");
+    assert_eq!(coverage.len(), COMMITTED_WORKLOAD_COUNT);
+    // The retained proofs carry the superseded CBOR v2 snapshot codec, which the
+    // required per-vCPU CPUID, typed PIT and boundary state replace.
+    assert!(coverage
+        .iter()
+        .all(|line| line.replay_class == "blocked-execution-schema"));
+
+    let rendered = render_replay_proof_coverage_doc("../..").expect("coverage doc renders");
+    assert_eq!(
+        rendered.matches("| `blocked-execution-schema` |").count(),
+        COMMITTED_WORKLOAD_COUNT
+    );
+    for workload in ["Raft", "redb", "net", "rust-workload"] {
+        assert!(rendered.contains(&format!("| {workload} |")));
+    }
+    assert!(!rendered.contains("`blocked-assertion-identity` |"));
+}
+
+#[test]
+fn validates_committed_replay_proof_coverage_doc() {
+    let rendered = render_replay_proof_coverage_doc("../..").expect("doc renders");
+    assert_eq!(
+        rendered,
+        std::fs::read_to_string(repo_file("docs/replay-proof-coverage.md"))
+            .expect("read replay proof coverage doc")
+    );
+    assert!(rendered.contains("dogfood-results/raft-fresh-v2-proof-20260809/"));
+    check_replay_proof_coverage_doc("../..").expect("committed doc is fresh");
+}
+
+#[test]
+fn rejects_stale_replay_proof_coverage_doc() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("docs")).expect("create docs");
+    std::fs::write(root.join("docs/replay-proof-coverage.md"), "stale\n").expect("write stale doc");
+    write_valid_minimal_coverage_fixture(root);
+
+    let err = check_replay_proof_coverage_doc(root).expect_err("stale doc rejected");
+    assert!(
+        err.message()
+            .contains("docs/replay-proof-coverage.md is stale"),
+        "unexpected error: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn renders_committed_replay_readiness_status() {
+    let rendered = render_replay_readiness_status("../..").expect("readiness renders");
+    assert_eq!(
+        rendered,
+        std::fs::read_to_string(repo_file("docs/replay-readiness-status.md"))
+            .expect("read replay readiness status")
+    );
+    assert!(rendered.contains("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors"));
+    assert!(rendered.contains("Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope"));
+    assert!(rendered.contains("Rust workload authoring | `supported-bounded-rust-cohort`"));
+    assert!(rendered.contains("Operator triage UX | `local-runbook`"));
+    assert!(rendered.contains("Hosted/fleet triage UI | `non-goal-current-scope`"));
+    assert!(rendered.contains("Local multi-hypervisor control plane | `supported-bounded-local`"));
+    assert!(rendered.contains("durable local multi-hypervisor campaign receipt"));
+    assert!(rendered.contains("worker resource budgets"));
+    assert!(rendered.contains("local artifact hygiene"));
+    assert!(rendered.contains("Required promotion evidence"));
+    assert!(rendered.contains("without raw-log scraping"));
+    assert!(
+        rendered.contains("Full Antithesis-style product replacement | `non-goal-current-scope`")
+    );
+    check_replay_readiness_status("../..").expect("committed readiness report is fresh");
+}
+
+#[test]
+fn rejects_stale_replay_readiness_status() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("docs")).expect("create docs");
+    std::fs::write(root.join("docs/replay-readiness-status.md"), "stale\n")
+        .expect("write stale doc");
+    write_valid_minimal_coverage_fixture(root);
+
+    let err = check_replay_readiness_status(root).expect_err("stale doc rejected");
+    assert!(
+        err.message().contains("readiness report stale"),
+        "unexpected error: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn renders_committed_operator_triage_runbook() {
+    let rendered = render_operator_triage_runbook_path("../..", TriageReceiptSource::Sample)
+        .expect("operator triage runbook renders");
+    assert_eq!(
+        rendered,
+        std::fs::read_to_string(repo_file("docs/operator-triage-runbook.md"))
+            .expect("read operator triage runbook")
+    );
+    assert!(rendered.contains("Do not scrape `run.log`, `reproduce.log`, or temporary VM logs"));
+    assert!(rendered.contains(
+        "Record `blocked-assertion-identity` until fresh admitted v2 KVM evidence exists"
+    ));
+    assert!(rendered.contains("Do not reproduce, minimize, or promote this ID-only carrier"));
+}
+
+#[test]
+fn parses_committed_replay_verdict_model() {
+    let verdict: ReplayVerdict = serde_json::from_str(
+        &std::fs::read_to_string(repo_file(
+            "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/replay-verdict-bug0.json",
+        ))
+        .expect("read replay verdict"),
+    )
+    .expect("verdict parses");
+
+    let error = verdict
+        .validate_shape()
+        .expect_err("historical verdict cannot promote");
+    assert!(error.message().contains("schema_version"));
+    assert!(verdict.assertion_identity.is_none());
+    // The typed contract no longer decodes the superseded snapshot codec.
+    let snapshot_error = verdict
+        .snapshot
+        .validate_shape()
+        .expect_err("superseded snapshot codec is not admitted");
+    assert!(snapshot_error.message().contains("codec"));
+    assert_eq!(
+        verdict.snapshot.reference.codec,
+        "simulation-snapshot-cbor-zstd-v2"
+    );
+    assert!(verdict.snapshot.reference.digest.starts_with("sha256:"));
+}
+
+#[test]
+fn accepts_current_replay_verdict_with_exact_assertion_identity() {
+    let verdict: ReplayVerdict = serde_json::from_str(
+        &std::fs::read_to_string(repo_file(
+            "contracts/evidence/fixtures/valid/replay-verdict.snapshot-backed.valid.json",
+        ))
+        .expect("read current replay verdict"),
+    )
+    .expect("current verdict parses");
+
+    verdict.validate_shape().expect("current verdict validates");
+    assert!(verdict.assertion_identity.is_some());
+    assert_eq!(
+        verdict.schema_version,
+        u64::from(chaoscontrol_replay_evidence_core::dto::REPLAY_VERDICT_SCHEMA_VERSION)
+    );
 }

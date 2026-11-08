@@ -246,3 +246,23 @@ fn generation_profile_and_marker_digest_bind_every_declared_field() {
     };
     assert_ne!(marker_digest(&moved), marker_digest(&with_empty_ref));
 }
+
+#[test]
+fn generation_profile_separates_instruction_and_boundary_units() {
+    use chaoscontrol_vmm::scheduler::core::{BoundaryProfileId, ProgressBudget};
+    let instruction = config();
+    let mut boundary = instruction.clone();
+    boundary.mutation.base_progress_budget = ProgressBudget::KvmBoundaries {
+        profile_id: BoundaryProfileId::KvmDebugExitBoundaryV1,
+        count: instruction.mutation.base_progress_budget.count(),
+    };
+    let instruction_id = generation_profile_id(&instruction).unwrap();
+    let boundary_id = generation_profile_id(&boundary).unwrap();
+    assert_ne!(instruction_id, boundary_id);
+    assert_eq!(
+        boundary_id,
+        generation_profile_id(&boundary.clone()).unwrap()
+    );
+    boundary.mutation.base_progress_budget = boundary.mutation.base_progress_budget.with_count(1);
+    assert_ne!(boundary_id, generation_profile_id(&boundary).unwrap());
+}

@@ -363,8 +363,8 @@ mod tests {
 
     const PRODUCT_SCHEMAS: [&str; 5] = [
         "1",
-        "chaoscontrol.campaign-profile.v1",
-        "chaoscontrol.run-profile.v2",
+        "chaoscontrol.campaign-profile.v2",
+        "chaoscontrol.run-profile.v3",
         "chaoscontrol.sdk.local_report.v2",
         "campaign-profile",
     ];

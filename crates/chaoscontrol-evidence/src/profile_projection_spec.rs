@@ -23,14 +23,19 @@ const PRIMITIVES: ArtifactSpec = ArtifactSpec {
 };
 const RUN_SOURCE: ArtifactSpec = ArtifactSpec {
     path: "contracts/evidence/examples/raft-run-config.ncl",
-    identity: "blake3:fc01a81570654cff3ac66450a649aa804d1fac5866c69f6b0eac5c01663a8d5f",
+    identity: "blake3:68c9c7ce183a47585ebd4637150802c68c5d97d946e89c5a72029c639783511f",
 };
 const RUN_CONTRACT: ArtifactSpec = ArtifactSpec {
     path: "contracts/evidence/run-config.ncl",
-    identity: "blake3:df97c62b5874a3a5f059d7a3d38834a6602cf933baf2b6039244ee63e7513e8f",
+    identity: "blake3:5fc8271940ddacf8b01845470159ca8a01035a39f940fc587acb11431e5e2e75",
 };
-const RUN_IMPORTS: [ArtifactSpec; 1] = [PRIMITIVES];
-const CAMPAIGN_IMPORTS: [ArtifactSpec; 3] = [RUN_SOURCE, RUN_CONTRACT, PRIMITIVES];
+const SCHEDULER_PROGRESS: ArtifactSpec = ArtifactSpec {
+    path: "contracts/evidence/scheduler-progress.ncl",
+    identity: "blake3:cb1256af0e1752112ceb3b276d839f433acc4dd25db9156a60f901be1be4001a",
+};
+const RUN_IMPORTS: [ArtifactSpec; 2] = [PRIMITIVES, SCHEDULER_PROGRESS];
+const CAMPAIGN_IMPORTS: [ArtifactSpec; 4] =
+    [RUN_SOURCE, RUN_CONTRACT, PRIMITIVES, SCHEDULER_PROGRESS];
 const SINGLE_PRIMITIVES_IMPORT: [ArtifactSpec; 1] = [PRIMITIVES];
 
 pub(crate) const SPECS: &[ProjectionSpec] = &[
@@ -41,7 +46,7 @@ pub(crate) const SPECS: &[ProjectionSpec] = &[
         imports: &RUN_IMPORTS,
         projection: ArtifactSpec {
             path: "contracts/evidence/fixtures/valid/run-profile.valid.json",
-            identity: "blake3:060e21247896866c54852f77beab9bff62a340634c39b98e604831120612cd23",
+            identity: "blake3:48b80699b5823d6e8e5dbd98b9a68ded8ea6fd3f88c05736d2d8a0c131030da3",
         },
         receipt: "contracts/evidence/fixtures/valid/run-profile.projection-receipt.json",
     },
@@ -66,16 +71,16 @@ pub(crate) const SPECS: &[ProjectionSpec] = &[
         profile_id: "campaign",
         source: ArtifactSpec {
             path: "contracts/evidence/examples/raft-campaign-profile.ncl",
-            identity: "blake3:48d0df8127888f9388cf2bfd46c42bb4ca99ebf7b52a0fc614ea3d230a9dbf14",
+            identity: "blake3:699d0453493687c23a0c5f9928486547f344e9f58b421545c4757ea49c2e1d07",
         },
         contract: ArtifactSpec {
             path: "contracts/evidence/campaign-profile.ncl",
-            identity: "blake3:dd050710aefb3c39a81eb0b4f4b5cd15c35f202e511233adc12a5d2e1ade5efa",
+            identity: "blake3:be83fff426cf1d5f1824e15bb55c955e6cba72e87f5233dda51c652df7e6c7ea",
         },
         imports: &CAMPAIGN_IMPORTS,
         projection: ArtifactSpec {
             path: "contracts/evidence/fixtures/valid/campaign-profile.valid.json",
-            identity: "blake3:a570e82bcb0faa1cac4a8107b0f48c31cb1f514bd2c9c47eba2aa99ccaf2fe8f",
+            identity: "blake3:e4cacbc2ac1f882d4d543dbd20c7a9aa86ccc1b31223374b84aa2a3b2b7bde6f",
         },
         receipt: "contracts/evidence/fixtures/valid/campaign-profile.projection-receipt.json",
     },

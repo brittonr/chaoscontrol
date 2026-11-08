@@ -1087,6 +1087,20 @@ cc_assert_unreachable!("split brain");
 let action = random::random_choice_index(3);
 ```
 
+Because execution is serialized at VM exits, a guest that busy-polls for work
+from a peer or device must yield one boundary per wait iteration:
+
+```rust
+loop {
+    network.poll();
+    chaoscontrol_sdk::lifecycle::progress();
+}
+```
+
+`lifecycle::progress()` is one VMCALL with no state, randomness, or assertion
+output. It advances guest-visible time and lets other VMs run; without it a
+non-blocking poll loop emits no exit and the runnable watchdog aborts the run.
+
 All assertion sites are registered at compile time via `linkme` and
 reported to the VMM at startup. The exploration report shows which
 assertions were exercised, passed, failed, or never reached.

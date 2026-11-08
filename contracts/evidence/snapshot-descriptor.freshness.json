@@ -7,19 +7,19 @@
     },
     {
       "path": "contracts/evidence/fixtures/valid/snapshot-descriptor.valid.json",
-      "blake3": "eff46463d046c8c235d288372bd4aa74086290ba9beb31208fa48644d0f73764"
+      "blake3": "c88ff5dfe2dfe65273075a3f9a5cfb8bde538889a686d2f5c9ca559ec47ce60a"
     },
     {
       "path": "contracts/evidence/schema/snapshot-descriptor-v1.schema.json",
-      "blake3": "fbc08513d21eef81bbac1522d78e82491467fe039ddfe8d8bd6772ad1cfc1daf"
+      "blake3": "f0de0f4e537f3b511cfefd20c5ee148d01fc5b8fe5298c65daf9361363437864"
     },
     {
       "path": "contracts/evidence/snapshot-descriptor.ncl",
-      "blake3": "aa808496561e177af7f91aa179c3913aea2c420d4bf207dc53ff4d9c084807c8"
+      "blake3": "4954c9088af3baf8cd8333591a1ac84dfb3cc4a8f1f9a3103a736d1a28bbeed8"
     },
     {
       "path": "crates/chaoscontrol-snapshot-descriptor/src/model.rs",
-      "blake3": "a325d5b1fa2449d5cb959efef8d1b0f703bca55ad90840108a4b2bbcb8c9f96d"
+      "blake3": "2775bf3f614346db0ff9358220687e58b2b26b7ad1d1b652b3ed3fa61b0564c7"
     },
     {
       "path": "crates/chaoscontrol-snapshot-descriptor/src/observations.rs",

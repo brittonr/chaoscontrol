@@ -1,4 +1,4 @@
-# Typed review boundary for fresh schema-v2 KVM workload proofs.
+# Typed review boundary for fresh schema-v4 KVM workload proofs.
 let P = import "../evidence/profile-primitives.ncl" in
 let MaximumWorkloads = 16 in
 let GitRevision = std.contract.from_predicate (fun value =>
@@ -48,13 +48,13 @@ let Shape = {
     required_access | P.exact_string "read-write",
   },
   snapshot_policy | {
-    codec | P.exact_string "simulation-snapshot-cbor-zstd-v2",
-    schema_version | P.exact_value 2,
+    codec | P.exact_string "simulation-snapshot-cbor-zstd-v4",
+    schema_version | P.exact_value 4,
     digest | P.exact_string "sha256",
     minimum_replay_parent_depth | P.bounded_positive 16,
   },
   replay_policy | {
-    verdict_schema_version | P.exact_value 2,
+    verdict_schema_version | P.exact_value 3,
     required_class | P.exact_string "snapshot_backed_reproduced",
     exact_assertion_identity | P.exact_value true,
     exact_snapshot_reference | P.exact_value true,

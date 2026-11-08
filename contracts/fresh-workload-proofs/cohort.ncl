@@ -1,21 +1,21 @@
 let FreshWorkloadProofProfile = import "profile.ncl" in
 {
   schema_version = 1,
-  cohort_id = "fresh-v2-workload-proofs-20260809",
-  source_revision = "c6e51c072840caf2679e5c6936dcba8e444f73a3",
+  cohort_id = "fresh-v4-workload-proofs-20261108",
+  source_revision = "d95370a3eaab4b4e1e5ab8680db96cdb1e99a825",
   execution = {
     backend = "linux-kvm",
     device = "/dev/kvm",
     required_access = "read-write",
   },
   snapshot_policy = {
-    codec = "simulation-snapshot-cbor-zstd-v2",
-    schema_version = 2,
+    codec = "simulation-snapshot-cbor-zstd-v4",
+    schema_version = 4,
     digest = "sha256",
     minimum_replay_parent_depth = 1,
   },
   replay_policy = {
-    verdict_schema_version = 2,
+    verdict_schema_version = 3,
     required_class = "snapshot_backed_reproduced",
     exact_assertion_identity = true,
     exact_snapshot_reference = true,

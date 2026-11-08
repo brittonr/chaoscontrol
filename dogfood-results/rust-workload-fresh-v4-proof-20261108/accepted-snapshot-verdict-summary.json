@@ -1,0 +1,35 @@
+{
+  "accepted": true,
+  "accepted_bug": "dogfood-results/rust-workload-fresh-v4-proof-20261108/bug_0.json",
+  "accepted_verdict": "dogfood-results/rust-workload-fresh-v4-proof-20261108/replay-verdict-bug0.json",
+  "bugs": [
+    {
+      "assertion_id": 3143219316,
+      "file": "bug_0.json",
+      "has_assertion_identity": true,
+      "has_snapshot_ref": true,
+      "replay_parent_depth": 1
+    },
+    {
+      "assertion_id": 3143219316,
+      "file": "bug_1.json",
+      "has_assertion_identity": true,
+      "has_snapshot_ref": true,
+      "replay_parent_depth": 1
+    }
+  ],
+  "export_exit_status": 0,
+  "receipt": "dogfood-results/rust-workload-fresh-v4-proof-20261108/proof-receipt.json",
+  "reproduce_exit_status": 0,
+  "run_exit_status": 1,
+  "seed": 42,
+  "snapshot_probe_fail_after": 1,
+  "verdict": {
+    "path": "dogfood-results/rust-workload-fresh-v4-proof-20261108/replay-verdict-bug0.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "replay_parent_depth": 1,
+    "reproduced": true,
+    "snapshot_status": "valid"
+  },
+  "workload": "rust-workload"
+}

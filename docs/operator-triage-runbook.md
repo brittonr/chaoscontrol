@@ -11,48 +11,172 @@ Generated from a replay-readiness receipt and `dogfood-results/accepted-workload
 ## Triage steps
 
 1. Open the readiness receipt and dashboard/summary artifacts for status only.
-2. Treat every listed bug, verdict, and snapshot as historical diagnostic data.
-3. Do not run reproduction or minimization for these ID-only carriers.
-4. Record `blocked-assertion-identity` until fresh admitted v2 KVM evidence exists.
+2. Confirm that each selected bug and verdict has exact admitted v2 assertion identity.
+3. Re-run reproduce and minimize only with the catalog-bound commands shown below.
+4. Record the operator decision. Keep raw logs local unless a concise hash-bound receipt explicitly promotes them.
 
 ## Workloads
 
-### `raft` — blocked assertion identity
+### `raft`
 
-- Historical bug: `dogfood-results/raft-fresh-v2-proof-20260809/bug_4.json`
-- Historical replay verdict: `dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug4.json`
-- Historical snapshot: `dogfood-results/raft-fresh-v2-proof-20260809/snapshots/e91a40b4d06037dc463756248745dc2973560284c31a4e0d7c9561d44a8ea5ae.snapshot.bin`
-- Status: `blocked-assertion-identity`
-- Blocker: snapshot-ref.codec: unsupported
+- Assertion: `3463273124`
+- Evidence directory: `dogfood-results/raft-fresh-v4-proof-20261108/`
+- Bug: `dogfood-results/raft-fresh-v4-proof-20261108/bug_0.json`
+- Replay verdict: `dogfood-results/raft-fresh-v4-proof-20261108/replay-verdict-bug0.json`
+- Snapshot artifact or chunk manifest: `dogfood-results/raft-fresh-v4-proof-20261108/snapshots/7abbb53fbb34203efac8e95fe20cd54dad0c38e02e6d0d212212a26c77912b8a.snapshot.bin`
+- Accepted summary: `dogfood-results/raft-fresh-v4-proof-20261108/accepted-snapshot-verdict-summary.json`
+- Replay class/depth: `snapshot_backed_reproduced` / `1`
 
-Do not reproduce, minimize, or promote this ID-only carrier. Generate fresh admitted v2 KVM evidence first.
+Reproduce from committed artifacts:
 
-### `redb` — blocked assertion identity
+```bash
+mkdir -p target/operator-triage
+/home/brittonr/.cargo-target/release/chaoscontrol-explore reproduce --kernel /nix/store/d1gy1wcxcdh198bnnx2g6bvnwygggibs-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/0nnczx0h202livhw6ngml1pf51phsk8l-chaoscontrol-initrd-raft --bug dogfood-results/raft-fresh-v4-proof-20261108/bug_0.json --vms 3 --seed 42 --bootstrap-budget 10000 --memory-mb 256 --extra-cmdline raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=1 clocksource=jiffies notsc --verdict-output target/operator-triage/raft-replay-verdict.json
+```
 
-- Historical bug: `dogfood-results/redb-fresh-v2-proof-20260809/bug_0.json`
-- Historical replay verdict: `dogfood-results/redb-fresh-v2-proof-20260809/replay-verdict-bug0.json`
-- Historical snapshot: `dogfood-results/redb-fresh-v2-proof-20260809/snapshots/a2eba3c13b009865adf837500752d3de92c5e003e0fd3dbc13dedfcdc77104c4.snapshot.bin`
-- Status: `blocked-assertion-identity`
-- Blocker: snapshot-ref.codec: unsupported
+Minimize using the same kernel/initrd/VM options as the reproduce command above:
 
-Do not reproduce, minimize, or promote this ID-only carrier. Generate fresh admitted v2 KVM evidence first.
+```bash
+cargo run --release --bin chaoscontrol-explore -- minimize --bug dogfood-results/raft-fresh-v4-proof-20261108/bug_0.json --output target/operator-triage/raft-minimized-bug.json
+```
 
-### `net` — blocked assertion identity
+Record the operator decision:
 
-- Historical bug: `dogfood-results/net-fresh-v2-proof-20260809/bug_0.json`
-- Historical replay verdict: `dogfood-results/net-fresh-v2-proof-20260809/replay-verdict-bug0.json`
-- Historical snapshot: `dogfood-results/net-fresh-v2-proof-20260809/snapshots/17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin`
-- Status: `blocked-assertion-identity`
-- Blocker: snapshot-ref.codec: unsupported
+```bash
+cat > target/operator-triage/raft-decision.json <<'JSON'
+{
+  "assertion_id": 3463273124,
+  "bug": "dogfood-results/raft-fresh-v4-proof-20261108/bug_0.json",
+  "decision": "accepted|needs-refresh|blocked",
+  "minimized_bug": "target/operator-triage/raft-minimized-bug.json",
+  "raw_log_scraping": false,
+  "reason": "operator note",
+  "replay_verdict": "target/operator-triage/raft-replay-verdict.json",
+  "schema_version": 1,
+  "workload": "raft"
+}
+JSON
+```
 
-Do not reproduce, minimize, or promote this ID-only carrier. Generate fresh admitted v2 KVM evidence first.
+### `redb`
 
-### `rust-workload` — blocked assertion identity
+- Assertion: `4149728441`
+- Evidence directory: `dogfood-results/redb-fresh-v4-proof-20261108/`
+- Bug: `dogfood-results/redb-fresh-v4-proof-20261108/bug_0.json`
+- Replay verdict: `dogfood-results/redb-fresh-v4-proof-20261108/replay-verdict-bug0.json`
+- Snapshot artifact or chunk manifest: `dogfood-results/redb-fresh-v4-proof-20261108/snapshots/4c6b542e913f157d19d15c1011efb6c3209c9193c98c335c3cca0fef45f87986.snapshot.bin`
+- Accepted summary: `dogfood-results/redb-fresh-v4-proof-20261108/accepted-snapshot-verdict-summary.json`
+- Replay class/depth: `snapshot_backed_reproduced` / `1`
 
-- Historical bug: `dogfood-results/rust-workload-fresh-v2-proof-20260809/bug_0.json`
-- Historical replay verdict: `dogfood-results/rust-workload-fresh-v2-proof-20260809/replay-verdict-bug0.json`
-- Historical snapshot: `dogfood-results/rust-workload-fresh-v2-proof-20260809/snapshots/36400b0af56e8792c2c6729eaabbcd870650dcf5ad0a05aaff6cee5e36e5a9f9.snapshot.bin`
-- Status: `blocked-assertion-identity`
-- Blocker: snapshot-ref.codec: unsupported
+Reproduce from committed artifacts:
 
-Do not reproduce, minimize, or promote this ID-only carrier. Generate fresh admitted v2 KVM evidence first.
+```bash
+mkdir -p target/operator-triage
+/home/brittonr/.cargo-target/release/chaoscontrol-explore reproduce --kernel /nix/store/alklhcbzi7rppnnscr7xcsb1dgf9zr3r-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/l4czccnh3jz3n2n2mfb1ak2hycv1qz9l-chaoscontrol-initrd-redb --bug dogfood-results/redb-fresh-v4-proof-20261108/bug_0.json --vms 1 --seed 42 --bootstrap-budget 10000 --memory-mb 256 --extra-cmdline redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after=1 --verdict-output target/operator-triage/redb-replay-verdict.json
+```
+
+Minimize using the same kernel/initrd/VM options as the reproduce command above:
+
+```bash
+cargo run --release --bin chaoscontrol-explore -- minimize --bug dogfood-results/redb-fresh-v4-proof-20261108/bug_0.json --output target/operator-triage/redb-minimized-bug.json
+```
+
+Record the operator decision:
+
+```bash
+cat > target/operator-triage/redb-decision.json <<'JSON'
+{
+  "assertion_id": 4149728441,
+  "bug": "dogfood-results/redb-fresh-v4-proof-20261108/bug_0.json",
+  "decision": "accepted|needs-refresh|blocked",
+  "minimized_bug": "target/operator-triage/redb-minimized-bug.json",
+  "raw_log_scraping": false,
+  "reason": "operator note",
+  "replay_verdict": "target/operator-triage/redb-replay-verdict.json",
+  "schema_version": 1,
+  "workload": "redb"
+}
+JSON
+```
+
+### `net`
+
+- Assertion: `2074476939`
+- Evidence directory: `dogfood-results/net-fresh-v4-proof-20261108/`
+- Bug: `dogfood-results/net-fresh-v4-proof-20261108/bug_0.json`
+- Replay verdict: `dogfood-results/net-fresh-v4-proof-20261108/replay-verdict-bug0.json`
+- Snapshot artifact or chunk manifest: `dogfood-results/net-fresh-v4-proof-20261108/snapshots/699d353ad24b8063d6b55c49ddefc222eb6c46ffcea68b5d69c78a796bb21dc7.snapshot.bin`
+- Accepted summary: `dogfood-results/net-fresh-v4-proof-20261108/accepted-snapshot-verdict-summary.json`
+- Replay class/depth: `snapshot_backed_reproduced` / `1`
+
+Reproduce from committed artifacts:
+
+```bash
+mkdir -p target/operator-triage
+/home/brittonr/.cargo-target/release/chaoscontrol-explore reproduce --kernel /nix/store/d1gy1wcxcdh198bnnx2g6bvnwygggibs-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/ln9l7xbfy9niifnwvfv8whsx70xfylgy-chaoscontrol-initrd-net --bug dogfood-results/net-fresh-v4-proof-20261108/bug_0.json --vms 3 --seed 42 --bootstrap-budget 10000 --memory-mb 256 --extra-cmdline net_bug=snapshot_replay_probe net_snapshot_probe_fail_after=1 --verdict-output target/operator-triage/net-replay-verdict.json
+```
+
+Minimize using the same kernel/initrd/VM options as the reproduce command above:
+
+```bash
+cargo run --release --bin chaoscontrol-explore -- minimize --bug dogfood-results/net-fresh-v4-proof-20261108/bug_0.json --output target/operator-triage/net-minimized-bug.json
+```
+
+Record the operator decision:
+
+```bash
+cat > target/operator-triage/net-decision.json <<'JSON'
+{
+  "assertion_id": 2074476939,
+  "bug": "dogfood-results/net-fresh-v4-proof-20261108/bug_0.json",
+  "decision": "accepted|needs-refresh|blocked",
+  "minimized_bug": "target/operator-triage/net-minimized-bug.json",
+  "raw_log_scraping": false,
+  "reason": "operator note",
+  "replay_verdict": "target/operator-triage/net-replay-verdict.json",
+  "schema_version": 1,
+  "workload": "net"
+}
+JSON
+```
+
+### `rust-workload`
+
+- Assertion: `3143219316`
+- Evidence directory: `dogfood-results/rust-workload-fresh-v4-proof-20261108/`
+- Bug: `dogfood-results/rust-workload-fresh-v4-proof-20261108/bug_0.json`
+- Replay verdict: `dogfood-results/rust-workload-fresh-v4-proof-20261108/replay-verdict-bug0.json`
+- Snapshot artifact or chunk manifest: `dogfood-results/rust-workload-fresh-v4-proof-20261108/snapshots/cf14a43ec9b533c3c752245579dc96cc28f07fc08afb58ba4acd03966e1c1cf3.snapshot.bin`
+- Accepted summary: `dogfood-results/rust-workload-fresh-v4-proof-20261108/accepted-snapshot-verdict-summary.json`
+- Replay class/depth: `snapshot_backed_reproduced` / `1`
+
+Reproduce from committed artifacts:
+
+```bash
+mkdir -p target/operator-triage
+/home/brittonr/.cargo-target/release/chaoscontrol-explore reproduce --kernel /nix/store/5aya7zvynanjw5mh3xvz40sga3zfsmn8-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/wdx6f941qb2cdsf1c1p50sygqy32pa3w-chaoscontrol-initrd-rust-workload --bug dogfood-results/rust-workload-fresh-v4-proof-20261108/bug_0.json --vms 1 --seed 42 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=1 clocksource=jiffies notsc --verdict-output target/operator-triage/rust-workload-replay-verdict.json
+```
+
+Minimize using the same kernel/initrd/VM options as the reproduce command above:
+
+```bash
+cargo run --release --bin chaoscontrol-explore -- minimize --bug dogfood-results/rust-workload-fresh-v4-proof-20261108/bug_0.json --output target/operator-triage/rust-workload-minimized-bug.json
+```
+
+Record the operator decision:
+
+```bash
+cat > target/operator-triage/rust-workload-decision.json <<'JSON'
+{
+  "assertion_id": 3143219316,
+  "bug": "dogfood-results/rust-workload-fresh-v4-proof-20261108/bug_0.json",
+  "decision": "accepted|needs-refresh|blocked",
+  "minimized_bug": "target/operator-triage/rust-workload-minimized-bug.json",
+  "raw_log_scraping": false,
+  "reason": "operator note",
+  "replay_verdict": "target/operator-triage/rust-workload-replay-verdict.json",
+  "schema_version": 1,
+  "workload": "rust-workload"
+}
+JSON
+```

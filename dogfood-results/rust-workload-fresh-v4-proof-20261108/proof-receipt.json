@@ -1,0 +1,91 @@
+{
+  "artifacts": [
+    {
+      "path": "dogfood-results/rust-workload-fresh-v4-proof-20261108/assertions.json",
+      "sha256": "sha256:e855117a1b106af3a0610c5cef4d7eac1914a80bc9c493f185a3f29961ce5fce"
+    },
+    {
+      "path": "dogfood-results/rust-workload-fresh-v4-proof-20261108/bug_0.json",
+      "sha256": "sha256:9315d5724c04bca8962dd03f5d05612f7410dd229d72eb0e104f11f838c513c9"
+    },
+    {
+      "path": "dogfood-results/rust-workload-fresh-v4-proof-20261108/replay-verdict-bug0.json",
+      "sha256": "sha256:347d75e153ca52d2d9b2df029c6c2a5b19fd3885298ffe62c43daba585e3d83a"
+    },
+    {
+      "path": "dogfood-results/rust-workload-fresh-v4-proof-20261108/snapshots/cf14a43ec9b533c3c752245579dc96cc28f07fc08afb58ba4acd03966e1c1cf3.snapshot.bin",
+      "sha256": "sha256:cf14a43ec9b533c3c752245579dc96cc28f07fc08afb58ba4acd03966e1c1cf3"
+    }
+  ],
+  "assertion": {
+    "category": "recovery",
+    "compatibility_id": 3143219316,
+    "guest": "sample-rust-service",
+    "logical_key": "snapshot-replay-probe",
+    "message": "rust workload snapshot replay probe trips only after restored parent context",
+    "namespace": "org.onixresearch.chaoscontrol.rust-workload"
+  },
+  "bounds": {
+    "bootstrap_ticks": 10000,
+    "branches": 2,
+    "export_timeout_seconds": 300,
+    "max_attempts": 6,
+    "memory_mib": 128,
+    "replay_timeout_seconds": 300,
+    "rounds": 3,
+    "run_timeout_seconds": 240,
+    "snapshot_probe_fail_after": 1,
+    "ticks": 80,
+    "vms": 1
+  },
+  "cohort_id": "fresh-v4-workload-proofs-20261108",
+  "execution": {
+    "backend": "linux-kvm",
+    "device": "/dev/kvm",
+    "required_access": "read-write"
+  },
+  "kvm_observation": {
+    "readable": true,
+    "writable": true
+  },
+  "non_claims": [
+    "A promoted row does not prove workload correctness.",
+    "A promoted row does not prove universal hypervisor determinism.",
+    "A promoted row does not prove host equivalence.",
+    "A promoted row does not establish release eligibility."
+  ],
+  "replay_policy": {
+    "exact_assertion_identity": true,
+    "exact_snapshot_reference": true,
+    "required_class": "snapshot_backed_reproduced",
+    "verdict_schema_version": 3
+  },
+  "runtime_artifacts": [
+    {
+      "path": "/home/brittonr/.cargo-target/release/chaoscontrol-explore",
+      "role": "host-binary",
+      "sha256": "sha256:655e1a9754039b23501e43c86c5340ff3d6b10147725d9e12339092e7758e094"
+    },
+    {
+      "path": "/nix/store/5aya7zvynanjw5mh3xvz40sga3zfsmn8-chaoscontrol-vmlinux/vmlinux",
+      "role": "guest-kernel",
+      "sha256": "sha256:7a2bb58184d5acda57f14e1cc01ec011df8d7758c305989767fe8877d34d1278"
+    },
+    {
+      "path": "/nix/store/wdx6f941qb2cdsf1c1p50sygqy32pa3w-chaoscontrol-initrd-rust-workload",
+      "role": "guest-initrd",
+      "sha256": "sha256:b6d209beebb866be0864b05b302c930e8925276aff16dc1e119d9b7ee926b955"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "bounded snapshot-backed replay proof for the recorded workload and cohort",
+  "snapshot_policy": {
+    "codec": "simulation-snapshot-cbor-zstd-v4",
+    "digest": "sha256",
+    "minimum_replay_parent_depth": 1,
+    "schema_version": 4
+  },
+  "source_revision": "6feaee1b46b15b3175d0f144e6ff18f795ac8378",
+  "status": "accepted",
+  "workload": "rust-workload"
+}

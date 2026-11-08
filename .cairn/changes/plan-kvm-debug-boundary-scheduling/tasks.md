@@ -28,7 +28,7 @@
 - [ ] [serial] Run coarse campaign finding/reproduction/session export, exit producer, then separate replay and inspect processes; seek backward/forward across persisted checkpoints containing supported pending delivery/device state under non-default topology/clock/budget and compare complete canonical suffixes and selected memory/register observations. Reject an unobservable-region target. r[chaoscontrol.kvm_debug_boundary.persistence] r[chaoscontrol.kvm_debug_boundary.evidence]
 - [ ] [serial] Through both actual CLI paths, reject isolated wrong-mode/unit/profile/schema/host/artifact/config/prefix copies, omitted/reordered/forged boundary and injection records, corrupt/truncated/missing snapshots, incomplete settlement, no-opt-in/mixed flags, impossible targets and poison reuse; prove no unverified position or restore/boot fallback escapes. r[chaoscontrol.kvm_debug_boundary.admission] r[chaoscontrol.kvm_debug_boundary.persistence] r[chaoscontrol.kvm_debug_boundary.evidence]
 - [ ] [serial] Retain and validate a receipt binding exact source/executables, all configs/commands/seeds/repetitions/outcomes, host capability profile, canonical comparisons, snapshots/sessions, controls, operational failures, supported delivery classes and non-claims. Review a mode-qualified bounded same-cohort claim only after all required actual controls pass; keep failed/unavailable controls blocking. r[chaoscontrol.kvm_debug_boundary.evidence]
-- [ ] [serial] After all implementation lands, run affected product checks and required native gates once under the owning integrator; do not mark implementation/evidence complete merely from document checks. Review downstream verdict migration and operator docs against observed evidence. r[chaoscontrol.kvm_debug_boundary.persistence] r[chaoscontrol.kvm_debug_boundary.evidence]
+- [x] [serial] After all implementation lands, run affected product checks and required native gates once under the owning integrator; do not mark implementation/evidence complete merely from document checks. Review downstream verdict migration and operator docs against observed evidence. r[chaoscontrol.kvm_debug_boundary.persistence] r[chaoscontrol.kvm_debug_boundary.evidence]
 
 ## Phase 5: Acceptance and lifecycle closure
 
@@ -86,3 +86,46 @@ The first-party Linux guest does not reach guest setup under this profile, and t
 Reaching the guest supervisor needs roughly 10^8 to 10^9 instructions, i.e. tens of hours at the measured rate. No smaller admissible fix exists inside coarse mode: natural-exit-only scheduling starves compute intervals and forces the documented watchdog abort plus permanent poison, batching or hiding `rep` work would fabricate unverified progress under a new unit, and PMU/MTF batching is excluded by the contract. The two real 100,000-tick campaigns (`/tmp/cc-persisted-debugger-0tw7wr4k/coarse-live-v2`) are retained as failed outcomes with their checkpoints and empty assertion catalogs; they are not qualification evidence.
 
 Accordingly, campaign/session/replay qualification, CLI rejection of forged coarse artifacts, and the mode-qualified receipt remain open and blocked on a coarser-than-instruction boundary source that preserves one validated, settled, committed unit per boundary. No coarse execution, determinism, replay or release claim is made.
+
+## Fresh schema-v4 proof restoration
+
+The snapshot codec advance invalidated the four committed strict proofs, so
+`contracts/fresh-workload-proofs` now admits cohort
+`fresh-v4-workload-proofs-20261108` (codec `simulation-snapshot-cbor-zstd-v4`,
+verdict schema 3) and the four workloads were regenerated from the current
+revision with `accepted-snapshot-verdict-dogfood`:
+
+```text
+raft          vms=3 rounds=3 branches=2 ticks=80  memory=256MiB  assertion=3463273124
+redb          vms=1 rounds=3 branches=2 ticks=80  memory=256MiB  assertion=4149728441
+net           vms=3 rounds=4 branches=3 ticks=120 memory=256MiB  assertion=2074476939
+rust-workload vms=1 rounds=3 branches=2 ticks=80  memory=128MiB  assertion=3143219316
+```
+
+Each run reached `snapshot_backed_reproduced` at replay parent depth 1 with
+`export_exit_status=0` and `reproduce_exit_status=0`, and the retained receipts,
+chunked snapshots, verdicts and assertion summaries validate through
+`check-replay-proof-coverage`. Raw `attempts/` run output was pruned; the
+committed evidence is the receipt, summary, assertions, bug, verdict and
+retained snapshot.
+
+Three defects surfaced while producing this evidence and were fixed in the
+product rather than worked around:
+
+- The in-kernel 8254 was left in KVM's reset sentinel, so Linux under `notsc`
+  spun in `i8254()` during KASLR until the runnable watchdog aborted. The
+  constructor now presents the firmware-programmed channel 0 as exact retained
+  state, with a real readback regression test.
+- Reproduction derived its own machine policy, so `hide_tsc` disagreed with the
+  recorded run and restore failed with `ExecutionDescriptorMismatch`.
+  `admit_guest_determinism_policy` is now the single owner for explorer runs,
+  diagnostics and reproduction.
+- The multi-VM network workload busy-polled `recvfrom` in userspace with no VM
+  exit, so the strictly serialized scheduler could not advance peers or guest
+  time and the runnable watchdog aborted. The guest now issues an explicit
+  `lifecycle::progress()` hypercall at the end of its poll loops; the VMM treats
+  it as an owned no-op boundary. Watchdog bounds, retry policy and scheduling
+  rules are unchanged.
+
+These are strict single-vCPU evidence restorations. They do not qualify coarse
+execution, and the coarse blocked rows above remain blocked.

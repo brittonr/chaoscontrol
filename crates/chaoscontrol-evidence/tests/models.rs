@@ -14,8 +14,8 @@ use chaoscontrol_evidence::{
     render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
     render_replay_readiness_multi_hypervisor_campaign_dashboard,
     render_replay_readiness_readme_status_block, render_replay_readiness_status,
-    review_replay_proof_coverage, run_assertion_readiness_promotion_selftest,
-    run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
+    run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
+    run_materialize_snapshot_chunks_selftest, run_readiness_promotion_selftest,
     run_readiness_surface_drift_selftest, sample_replay_readiness_decision_receipt,
     sample_replay_readiness_fleet_scheduler_plan, sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_hosted_shared_state_plan,
@@ -1397,17 +1397,22 @@ fn rejects_missing_assertions_for_assertion_readiness_status() {
 }
 
 #[test]
-fn committed_readiness_gate_fails_closed_on_superseded_execution_schema() {
-    let err = validate_readiness_promotion_files(
+fn committed_readiness_gate_accepts_fresh_bounded_promotion() {
+    let summary = validate_readiness_promotion_files(
         "../../dogfood-results/accepted-workload-proofs.json",
         "../../docs/replay-readiness-status.md",
     )
-    .expect_err("superseded snapshot codec cannot promote");
-    assert!(
-        err.message().contains("blocked-execution-schema"),
-        "unexpected error: {}",
-        err.message()
-    );
+    .expect("fresh workload rows promote");
+
+    assert!(summary
+        .lines
+        .iter()
+        .all(|line| line.contains("status=supported-bounded")));
+    run_readiness_promotion_selftest(
+        "../../dogfood-results/accepted-workload-proofs.json",
+        "../../docs/replay-readiness-status.md",
+    )
+    .expect("readiness promotion selftest");
 }
 
 #[test]
@@ -1861,31 +1866,21 @@ fn write_valid_minimal_coverage_fixture(root: &Path) {
 }
 
 #[test]
-fn classifies_all_four_retained_proofs_under_the_execution_schema() {
+fn promotes_all_four_committed_fresh_identity_proofs() {
     let boundary = check_assertion_readiness_boundary("../..").expect("boundary check passes");
     assert!(boundary
         .iter()
         .all(|line| line.contains("identity_status=accepted-v2")));
 
-    let err = validate_replay_proof_coverage("../..")
-        .expect_err("superseded snapshot codec cannot promote");
-    assert!(
-        err.message().contains("codec"),
-        "unexpected error: {}",
-        err.message()
-    );
-
-    let coverage = review_replay_proof_coverage("../..").expect("retained rows classify");
+    let coverage = validate_replay_proof_coverage("../..").expect("fresh artifacts promote");
     assert_eq!(coverage.len(), COMMITTED_WORKLOAD_COUNT);
-    // The retained proofs carry the superseded CBOR v2 snapshot codec, which the
-    // required per-vCPU CPUID, typed PIT and boundary state replace.
     assert!(coverage
         .iter()
-        .all(|line| line.replay_class == "blocked-execution-schema"));
+        .all(|line| line.replay_class == "snapshot_backed_reproduced"));
 
     let rendered = render_replay_proof_coverage_doc("../..").expect("coverage doc renders");
     assert_eq!(
-        rendered.matches("| `blocked-execution-schema` |").count(),
+        rendered.matches("| `snapshot_backed_reproduced` |").count(),
         COMMITTED_WORKLOAD_COUNT
     );
     for workload in ["Raft", "redb", "net", "rust-workload"] {
@@ -1902,7 +1897,7 @@ fn validates_committed_replay_proof_coverage_doc() {
         std::fs::read_to_string(repo_file("docs/replay-proof-coverage.md"))
             .expect("read replay proof coverage doc")
     );
-    assert!(rendered.contains("dogfood-results/raft-fresh-v2-proof-20260809/"));
+    assert!(rendered.contains("dogfood-results/raft-fresh-v4-proof-20261108/"));
     check_replay_proof_coverage_doc("../..").expect("committed doc is fresh");
 }
 
@@ -1975,10 +1970,9 @@ fn renders_committed_operator_triage_runbook() {
             .expect("read operator triage runbook")
     );
     assert!(rendered.contains("Do not scrape `run.log`, `reproduce.log`, or temporary VM logs"));
-    assert!(rendered.contains(
-        "Record `blocked-assertion-identity` until fresh admitted v2 KVM evidence exists"
-    ));
-    assert!(rendered.contains("Do not reproduce, minimize, or promote this ID-only carrier"));
+    assert!(rendered.contains("exact admitted v2 assertion identity"));
+    assert!(rendered.contains("--verdict-output target/operator-triage/raft-replay-verdict.json"));
+    assert!(rendered.contains("minimize --bug dogfood-results/raft-fresh-v4-proof-20261108/"));
 }
 
 #[test]

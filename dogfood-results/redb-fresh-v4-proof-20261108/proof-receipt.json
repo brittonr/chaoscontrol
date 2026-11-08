@@ -1,0 +1,91 @@
+{
+  "artifacts": [
+    {
+      "path": "dogfood-results/redb-fresh-v4-proof-20261108/assertions.json",
+      "sha256": "sha256:2854af057c49ee4d8185bedeadd2633c2e1f9318ee06d6f0619dce22bb8743a7"
+    },
+    {
+      "path": "dogfood-results/redb-fresh-v4-proof-20261108/bug_0.json",
+      "sha256": "sha256:ce3aa1af75b57fba46652b139c6eb0ceead1ddb83ce4b25b77cf866b48056bb9"
+    },
+    {
+      "path": "dogfood-results/redb-fresh-v4-proof-20261108/replay-verdict-bug0.json",
+      "sha256": "sha256:b536cd88dca567ac52154cbeb666af96f682e7309440b7d14c765c32c0940345"
+    },
+    {
+      "path": "dogfood-results/redb-fresh-v4-proof-20261108/snapshots/4c6b542e913f157d19d15c1011efb6c3209c9193c98c335c3cca0fef45f87986.snapshot.bin",
+      "sha256": "sha256:4c6b542e913f157d19d15c1011efb6c3209c9193c98c335c3cca0fef45f87986"
+    }
+  ],
+  "assertion": {
+    "category": "recovery",
+    "compatibility_id": 4149728441,
+    "guest": "redb",
+    "logical_key": "snapshot-replay-probe",
+    "message": "redb snapshot replay probe trips only after restored parent context",
+    "namespace": "org.onixresearch.chaoscontrol.redb"
+  },
+  "bounds": {
+    "bootstrap_ticks": 10000,
+    "branches": 2,
+    "export_timeout_seconds": 300,
+    "max_attempts": 6,
+    "memory_mib": 256,
+    "replay_timeout_seconds": 300,
+    "rounds": 3,
+    "run_timeout_seconds": 240,
+    "snapshot_probe_fail_after": 1,
+    "ticks": 80,
+    "vms": 1
+  },
+  "cohort_id": "fresh-v4-workload-proofs-20261108",
+  "execution": {
+    "backend": "linux-kvm",
+    "device": "/dev/kvm",
+    "required_access": "read-write"
+  },
+  "kvm_observation": {
+    "readable": true,
+    "writable": true
+  },
+  "non_claims": [
+    "A promoted row does not prove workload correctness.",
+    "A promoted row does not prove universal hypervisor determinism.",
+    "A promoted row does not prove host equivalence.",
+    "A promoted row does not establish release eligibility."
+  ],
+  "replay_policy": {
+    "exact_assertion_identity": true,
+    "exact_snapshot_reference": true,
+    "required_class": "snapshot_backed_reproduced",
+    "verdict_schema_version": 3
+  },
+  "runtime_artifacts": [
+    {
+      "path": "/home/brittonr/.cargo-target/release/chaoscontrol-explore",
+      "role": "host-binary",
+      "sha256": "sha256:655e1a9754039b23501e43c86c5340ff3d6b10147725d9e12339092e7758e094"
+    },
+    {
+      "path": "/nix/store/alklhcbzi7rppnnscr7xcsb1dgf9zr3r-chaoscontrol-vmlinux/vmlinux",
+      "role": "guest-kernel",
+      "sha256": "sha256:51487f6136e74e766b28d1b5af99ff878908619ef43c828186f7316f10a4289d"
+    },
+    {
+      "path": "/nix/store/l4czccnh3jz3n2n2mfb1ak2hycv1qz9l-chaoscontrol-initrd-redb",
+      "role": "guest-initrd",
+      "sha256": "sha256:c1d4eddf4a4ff89125fa89a7d5787db3d67ef40351e4129b733d0a4471d0efd6"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "bounded snapshot-backed replay proof for the recorded workload and cohort",
+  "snapshot_policy": {
+    "codec": "simulation-snapshot-cbor-zstd-v4",
+    "digest": "sha256",
+    "minimum_replay_parent_depth": 1,
+    "schema_version": 4
+  },
+  "source_revision": "6feaee1b46b15b3175d0f144e6ff18f795ac8378",
+  "status": "accepted",
+  "workload": "redb"
+}

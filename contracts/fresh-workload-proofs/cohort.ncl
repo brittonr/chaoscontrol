@@ -2,7 +2,7 @@ let FreshWorkloadProofProfile = import "profile.ncl" in
 {
   schema_version = 1,
   cohort_id = "fresh-v4-workload-proofs-20261108",
-  source_revision = "d95370a3eaab4b4e1e5ab8680db96cdb1e99a825",
+  source_revision = "6feaee1b46b15b3175d0f144e6ff18f795ac8378",
   execution = {
     backend = "linux-kvm",
     device = "/dev/kvm",

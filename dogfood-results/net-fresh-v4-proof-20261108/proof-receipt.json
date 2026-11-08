@@ -1,0 +1,91 @@
+{
+  "artifacts": [
+    {
+      "path": "dogfood-results/net-fresh-v4-proof-20261108/assertions.json",
+      "sha256": "sha256:5b425f5b7991c1347cec677155cc59b9d52b07941007b7348bd39ecdf3d04be3"
+    },
+    {
+      "path": "dogfood-results/net-fresh-v4-proof-20261108/bug_0.json",
+      "sha256": "sha256:a774b399d4a84096a1755c552f7c161928454515f040a05cefc1bc50e1e9e1c8"
+    },
+    {
+      "path": "dogfood-results/net-fresh-v4-proof-20261108/replay-verdict-bug0.json",
+      "sha256": "sha256:27bdd6b7b09bbe8f757eee13b5de2297135ab6c3af762e9bd5150a4203b20a5a"
+    },
+    {
+      "path": "dogfood-results/net-fresh-v4-proof-20261108/snapshots/699d353ad24b8063d6b55c49ddefc222eb6c46ffcea68b5d69c78a796bb21dc7.snapshot.bin",
+      "sha256": "sha256:699d353ad24b8063d6b55c49ddefc222eb6c46ffcea68b5d69c78a796bb21dc7"
+    }
+  ],
+  "assertion": {
+    "category": "recovery",
+    "compatibility_id": 2074476939,
+    "guest": "net",
+    "logical_key": "snapshot-replay-probe",
+    "message": "net snapshot replay probe trips only after restored parent context",
+    "namespace": "org.onixresearch.chaoscontrol.net"
+  },
+  "bounds": {
+    "bootstrap_ticks": 10000,
+    "branches": 3,
+    "export_timeout_seconds": 300,
+    "max_attempts": 1,
+    "memory_mib": 256,
+    "replay_timeout_seconds": 300,
+    "rounds": 4,
+    "run_timeout_seconds": 240,
+    "snapshot_probe_fail_after": 1,
+    "ticks": 120,
+    "vms": 3
+  },
+  "cohort_id": "fresh-v4-workload-proofs-20261108",
+  "execution": {
+    "backend": "linux-kvm",
+    "device": "/dev/kvm",
+    "required_access": "read-write"
+  },
+  "kvm_observation": {
+    "readable": true,
+    "writable": true
+  },
+  "non_claims": [
+    "A promoted row does not prove workload correctness.",
+    "A promoted row does not prove universal hypervisor determinism.",
+    "A promoted row does not prove host equivalence.",
+    "A promoted row does not establish release eligibility."
+  ],
+  "replay_policy": {
+    "exact_assertion_identity": true,
+    "exact_snapshot_reference": true,
+    "required_class": "snapshot_backed_reproduced",
+    "verdict_schema_version": 3
+  },
+  "runtime_artifacts": [
+    {
+      "path": "/home/brittonr/.cargo-target/release/chaoscontrol-explore",
+      "role": "host-binary",
+      "sha256": "sha256:655e1a9754039b23501e43c86c5340ff3d6b10147725d9e12339092e7758e094"
+    },
+    {
+      "path": "/nix/store/d1gy1wcxcdh198bnnx2g6bvnwygggibs-chaoscontrol-vmlinux/vmlinux",
+      "role": "guest-kernel",
+      "sha256": "sha256:4497c73f3fbf1668c4b4c02838d445215ca16866caccdf4c8dbad304b0533d10"
+    },
+    {
+      "path": "/nix/store/ln9l7xbfy9niifnwvfv8whsx70xfylgy-chaoscontrol-initrd-net",
+      "role": "guest-initrd",
+      "sha256": "sha256:181debd24b7484d70f28a20a2607b37a223f7f6fb1643f52399385a3572fe050"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "bounded snapshot-backed replay proof for the recorded workload and cohort",
+  "snapshot_policy": {
+    "codec": "simulation-snapshot-cbor-zstd-v4",
+    "digest": "sha256",
+    "minimum_replay_parent_depth": 1,
+    "schema_version": 4
+  },
+  "source_revision": "6feaee1b46b15b3175d0f144e6ff18f795ac8378",
+  "status": "accepted",
+  "workload": "net"
+}

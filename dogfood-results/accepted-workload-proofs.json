@@ -10,46 +10,46 @@
     {
       "workload": "raft",
       "assertion_id": 3463273124,
-      "evidence_dir": "dogfood-results/raft-fresh-v2-proof-20260809",
+      "evidence_dir": "dogfood-results/raft-fresh-v4-proof-20261108",
       "summary": "accepted-snapshot-verdict-summary.json",
-      "bug": "bug_4.json",
-      "verdict": "replay-verdict-bug4.json",
-      "snapshot": "snapshots/e91a40b4d06037dc463756248745dc2973560284c31a4e0d7c9561d44a8ea5ae.snapshot.bin",
+      "bug": "bug_0.json",
+      "verdict": "replay-verdict-bug0.json",
+      "snapshot": "snapshots/7abbb53fbb34203efac8e95fe20cd54dad0c38e02e6d0d212212a26c77912b8a.snapshot.bin",
       "receipt": "proof-receipt.json",
-      "notes": "Fresh strict schema-v2 KVM proof with exact stable assertion identity and snapshot-backed reproduction."
+      "notes": "Fresh strict schema-v4 KVM proof with exact stable assertion identity and snapshot-backed reproduction."
     },
     {
       "workload": "redb",
       "assertion_id": 4149728441,
-      "evidence_dir": "dogfood-results/redb-fresh-v2-proof-20260809",
+      "evidence_dir": "dogfood-results/redb-fresh-v4-proof-20261108",
       "summary": "accepted-snapshot-verdict-summary.json",
       "bug": "bug_0.json",
       "verdict": "replay-verdict-bug0.json",
-      "snapshot": "snapshots/a2eba3c13b009865adf837500752d3de92c5e003e0fd3dbc13dedfcdc77104c4.snapshot.bin",
+      "snapshot": "snapshots/4c6b542e913f157d19d15c1011efb6c3209c9193c98c335c3cca0fef45f87986.snapshot.bin",
       "receipt": "proof-receipt.json",
-      "notes": "Fresh strict redb schema-v2 KVM proof with exact disk, assertion, snapshot, and replay linkage."
+      "notes": "Fresh strict redb schema-v4 KVM proof with exact disk, assertion, snapshot, and replay linkage."
     },
     {
       "workload": "net",
       "assertion_id": 2074476939,
-      "evidence_dir": "dogfood-results/net-fresh-v2-proof-20260809",
+      "evidence_dir": "dogfood-results/net-fresh-v4-proof-20261108",
       "summary": "accepted-snapshot-verdict-summary.json",
       "bug": "bug_0.json",
       "verdict": "replay-verdict-bug0.json",
-      "snapshot": "snapshots/17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin",
+      "snapshot": "snapshots/699d353ad24b8063d6b55c49ddefc222eb6c46ffcea68b5d69c78a796bb21dc7.snapshot.bin",
       "receipt": "proof-receipt.json",
-      "notes": "Fresh strict multi-VM network schema-v2 KVM proof with exact snapshot-backed reproduction."
+      "notes": "Fresh strict multi-VM network schema-v4 KVM proof with exact snapshot-backed reproduction."
     },
     {
       "workload": "rust-workload",
       "assertion_id": 3143219316,
-      "evidence_dir": "dogfood-results/rust-workload-fresh-v2-proof-20260809",
+      "evidence_dir": "dogfood-results/rust-workload-fresh-v4-proof-20261108",
       "summary": "accepted-snapshot-verdict-summary.json",
       "bug": "bug_0.json",
       "verdict": "replay-verdict-bug0.json",
-      "snapshot": "snapshots/36400b0af56e8792c2c6729eaabbcd870650dcf5ad0a05aaff6cee5e36e5a9f9.snapshot.bin",
+      "snapshot": "snapshots/cf14a43ec9b533c3c752245579dc96cc28f07fc08afb58ba4acd03966e1c1cf3.snapshot.bin",
       "receipt": "proof-receipt.json",
-      "notes": "Fresh strict downstream-shaped Rust schema-v2 KVM proof with bounded onboarding classification."
+      "notes": "Fresh strict downstream-shaped Rust schema-v4 KVM proof with bounded onboarding classification."
     }
   ]
 }

@@ -1,0 +1,1716 @@
+{
+  "schema": "chaoscontrol.assertion-summary.v2",
+  "catalog_status": "accepted",
+  "collision_safe_evidence": true,
+  "assertions": [
+    {
+      "id": 2608033797,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1074:9"
+          },
+          "compatibility_id": 2608033797,
+          "kind": "sometimes",
+          "message": "value committed",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1074,
+          "source_column": 9,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "0a70d7c53160be2a08cf7fe5b5ec6bd4901e27b5429aabb65f433eee81aad540",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313037343a3903010001040f0076616c756520636f6d6d6974746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604003204000007040009000000080400726166740906006272616e63680a04000570739b",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "value committed",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 8,
+      "true_count": 0,
+      "false_count": 8,
+      "last_failure_details": "{\"committed\":0,\"tick\":2}"
+    },
+    {
+      "id": 3463273124,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "org.onixresearch.chaoscontrol.raft",
+          "logical_key": {
+            "type": "stable",
+            "key": "snapshot-replay-probe.v1"
+          },
+          "compatibility_id": 3463273124,
+          "kind": "always",
+          "message": "snapshot replay probe trips only after restored parent context",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1052,
+          "source_column": 13,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "111d048bb1bf5512013c209feafcebb9c7df12330260743f2e9ace4a0dd20afe",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0122006f72672e6f6e697872657365617263682e6368616f73636f6e74726f6c2e7261667402190002736e617073686f742d7265706c61792d70726f62652e763103010000043e00736e617073686f74207265706c61792070726f6265207472697073206f6e6c7920616674657220726573746f72656420706172656e7420636f6e74657874052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604001c0400000704000d00000008040072616674090900696e76617269616e740a0400a45a6dce",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "snapshot replay probe trips only after restored parent context",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 10,
+      "true_count": 3,
+      "false_count": 7,
+      "last_failure_details": "{\"fail_after\":1,\"tick\":3}"
+    },
+    {
+      "id": 3584790446,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:641:29"
+          },
+          "compatibility_id": 3584790446,
+          "kind": "sometimes",
+          "message": "append accepted",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 641,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "1dc813ef4466a746b119b10030577c737a3303427ccc9ac987091de7b71b8cfb",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3634313a323903010001040f00617070656e64206163636570746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400810200000704001d000000080400726166740906006272616e63680a0400ae8fabd5",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "append accepted",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3610338948,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:603:21"
+          },
+          "compatibility_id": 3610338948,
+          "kind": "sometimes",
+          "message": "leader commit advanced after replication",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 603,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "20439eacd80bd578bdaf46a0deab154cc6ade0e93d25c240a8c96a74b919b0d4",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3630333a3231030100010428006c656164657220636f6d6d697420616476616e636564206166746572207265706c69636174696f6e052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604005b02000007040015000000080400726166740906006272616e63680a0400846631d7",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "leader commit advanced after replication",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1943486970,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:362:21"
+          },
+          "compatibility_id": 1943486970,
+          "kind": "reachable",
+          "message": "node restarted",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 362,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "2692b52d74a04d991995349f7034ae65a6705cb35bac7e896ad97646caa6c050",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3336323a323103010002040e006e6f646520726573746172746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604006a01000007040015000000080400726166740906006272616e63680a0400fa41d773",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "node restarted",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3024490488,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:489:25"
+          },
+          "compatibility_id": 3024490488,
+          "kind": "reachable",
+          "message": "append_entries handler",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 489,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "2a4e604ea6c746773fac83ca8b26b0a7c73354f431ebdfcf27c8fdc8275b03ba",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3438393a323503010002041600617070656e645f656e74726965732068616e646c6572052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400e901000007040019000000080400726166740906006272616e63680a0400f80f46b4",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "append_entries handler",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3530244818,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "raft",
+          "logical_key": {
+            "type": "stable",
+            "key": "leader-elected"
+          },
+          "compatibility_id": 3530244818,
+          "kind": "reachable",
+          "message": "Raft leader elected",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 578,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch-marker"
+        },
+        "fingerprint": "2ebe409b4a01ba3cc5401f47ffab5ae9031deab2ffe473219a4166236648df69",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a01040072616674020f00026c65616465722d656c65637465640301000204130052616674206c656164657220656c6563746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400420200000704001500000008040072616674090d006272616e63682d6d61726b65720a0400d2426bd2",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "Raft leader elected",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch-marker",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1542120996,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:857:17"
+          },
+          "compatibility_id": 1542120996,
+          "kind": "reachable",
+          "message": "message reordered",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 857,
+          "source_column": 17,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "368314dac591b004cbee31ccbfa3e24f703a5c2545a66405f44a8ed07e7acced",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3835373a3137030100020411006d6573736167652072656f726465726564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604005903000007040011000000080400726166740906006272616e63680a040024e6ea5b",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "message reordered",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1959388816,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:871:17"
+          },
+          "compatibility_id": 1959388816,
+          "kind": "reachable",
+          "message": "message duplicated",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 871,
+          "source_column": 17,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "3e5bd28d93352b15a01606808b660cf33f064f00094167ef6d1e7cf283c5b940",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3837313a3137030100020412006d657373616765206475706c696361746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604006703000007040011000000080400726166740906006272616e63680a040090e6c974",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "message duplicated",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2325558359,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:789:25"
+          },
+          "compatibility_id": 2325558359,
+          "kind": "always",
+          "message": "commit_index within log bounds",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 789,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "42cdb29af96b8708f06d15b089c326d3d66e03f349d8e4d508ade7c2e4794728",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3738393a323503010000041e00636f6d6d69745f696e6465782077697468696e206c6f6720626f756e6473052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400150300000704001900000008040072616674090900696e76617269616e740a040057349d8a",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "commit_index within log bounds",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 988312043,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:662:21"
+          },
+          "compatibility_id": 988312043,
+          "kind": "always",
+          "message": "match_index within bounds",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 662,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "42d538fb0bb1457012786a58bd34f6b7b611707968aa6bedc9e0e3d45b17eb50",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3636323a3231030100000419006d617463685f696e6465782077697468696e20626f756e6473052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400960200000704001500000008040072616674090900696e76617269616e740a0400eb71e83a",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "match_index within bounds",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2982169478,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:616:29"
+          },
+          "compatibility_id": 2982169478,
+          "kind": "sometimes",
+          "message": "vote granted",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 616,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "4e55e7700de5abc8d78f695d0cc81b73cb47b367180323de024461b977375876",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3631363a323903010001040c00766f7465206772616e746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400680200000704001d000000080400726166740906006272616e63680a0400864bc0b1",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "vote granted",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3672671943,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:473:25"
+          },
+          "compatibility_id": 3672671943,
+          "kind": "reachable",
+          "message": "request_vote handler",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 473,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "5671ecd4405d8d73a126f6a9e3043bbd4d285686b8cd9ff886575b18d81d3b50",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3437333a323503010002041400726571756573745f766f74652068616e646c6572052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400d901000007040019000000080400726166740906006272616e63680a0400c786e8da",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "request_vote handler",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1641870145,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:881:13"
+          },
+          "compatibility_id": 1641870145,
+          "kind": "sometimes",
+          "message": "message delivered",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 881,
+          "source_column": 13,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "588b1aebec9d79ec7876846b4d00383e673b12e01fdee57d631f9b6183e425b7",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3838313a3133030100010411006d6573736167652064656c697665726564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400710300000704000d000000080400726166740906006272616e63680a040041f3dc61",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "message delivered",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 4077103701,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1067:9"
+          },
+          "compatibility_id": 4077103701,
+          "kind": "sometimes",
+          "message": "leader elected",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1067,
+          "source_column": 9,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "5966b4abab11d9b6b3ac03a9bc051ded7d712f71e3d7d217a05d62ff4148dfe0",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313036373a3903010001040e006c656164657220656c6563746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604002b04000007040009000000080400726166740906006272616e63680a040055aa03f3",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "leader elected",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 8,
+      "true_count": 0,
+      "false_count": 8,
+      "last_failure_details": "{\"tick\":2}"
+    },
+    {
+      "id": 976915693,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1081:9"
+          },
+          "compatibility_id": 976915693,
+          "kind": "sometimes",
+          "message": "3+ values committed",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1081,
+          "source_column": 9,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "6de63516c3fc2cc2962f0645b24c68b71f5ab23e0404b8b51c26a80357884dd8",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313038313a3903010001041300332b2076616c75657320636f6d6d6974746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604003904000007040009000000080400726166740906006272616e63680a0400ed8c3a3a",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "3+ values committed",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 8,
+      "true_count": 0,
+      "false_count": 8,
+      "last_failure_details": "{\"committed\":0,\"tick\":2}"
+    },
+    {
+      "id": 166672207,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:393:17"
+          },
+          "compatibility_id": 166672207,
+          "kind": "reachable",
+          "message": "link partitioned",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 393,
+          "source_column": 17,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "7216cca7a41f951f7d327334560803e904f971a8d4c982f8764f3b0d180755c8",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3339333a3137030100020410006c696e6b20706172746974696f6e6564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604008901000007040011000000080400726166740906006272616e63680a04004f37ef09",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "link partitioned",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3498442232,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:746:25"
+          },
+          "compatibility_id": 3498442232,
+          "kind": "reachable",
+          "message": "follower started election",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 746,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "7a83c0d5d4c3c98abcf2d4a9f59467ccd1f5aaf60d3d75b5ea454134653cede8",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3734363a323503010002041900666f6c6c6f776572207374617274656420656c656374696f6e052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400ea02000007040019000000080400726166740906006272616e63680a0400f8fd85d0",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "follower started election",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1402950483,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:730:21"
+          },
+          "compatibility_id": 1402950483,
+          "kind": "sometimes",
+          "message": "election timeout fired",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 730,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "7ab0b6488bb5a739508ba0dabd3d542fed1645a2262c1b3109b1a9cd3ed145e5",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3733303a323103010001041600656c656374696f6e2074696d656f7574206669726564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400da02000007040015000000080400726166740906006272616e63680a040053539f53",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "election timeout fired",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 11,
+      "true_count": 0,
+      "false_count": 11,
+      "last_failure_details": "{\"node\":2}"
+    },
+    {
+      "id": 207215817,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:501:25"
+          },
+          "compatibility_id": 207215817,
+          "kind": "reachable",
+          "message": "append_entries_response handler",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 501,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "7ec440a54df6cbe068f86e6bb975286d8933359e42f07b6f3cd06d4c3f01d1a5",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3530313a323503010002041f00617070656e645f656e74726965735f726573706f6e73652068616e646c6572052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400f501000007040019000000080400726166740906006272616e63680a0400c9dc590c",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "append_entries_response handler",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1180182590,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:837:17"
+          },
+          "compatibility_id": 1180182590,
+          "kind": "sometimes",
+          "message": "message dropped",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 837,
+          "source_column": 17,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "8db2e315e18f923a84dfce5f70ad1a5a5cfe8cb7f8dd765d5f8900d62a40aed4",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3833373a313703010001040f006d6573736167652064726f70706564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604004503000007040011000000080400726166740906006272616e63680a04003e285846",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "message dropped",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3253391737,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:808:21"
+          },
+          "compatibility_id": 3253391737,
+          "kind": "sometimes",
+          "message": "leader skipped proposal",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 808,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "a08d7fa8320790bb1e92fd3b610b745d040b72cf5b2cfc3956cf464becea5f14",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3830383a3231030100010417006c656164657220736b69707065642070726f706f73616c052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604002803000007040015000000080400726166740906006272616e63680a040079d1eac1",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "leader skipped proposal",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3204876416,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:711:29"
+          },
+          "compatibility_id": 3204876416,
+          "kind": "reachable",
+          "message": "new entries appended",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 711,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "a8a2fc25737812f9fdb1db6b2592017985858b9f476bfa36e2dc7a9d02e8cb2e",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3731313a3239030100020414006e657720656e747269657320617070656e646564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400c70200000704001d000000080400726166740906006272616e63680a0400808806bf",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "new entries appended",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2321980624,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:481:25"
+          },
+          "compatibility_id": 2321980624,
+          "kind": "reachable",
+          "message": "request_vote_response handler",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 481,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "a8bc1805b6d9948acb096ec233654f9ee387248cd121d11e384babdc0f00f504",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3438313a323503010002041d00726571756573745f766f74655f726573706f6e73652068616e646c6572052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400e101000007040019000000080400726166740906006272616e63680a0400d09c668a",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "request_vote_response handler",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1474623748,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:571:21"
+          },
+          "compatibility_id": 1474623748,
+          "kind": "reachable",
+          "message": "candidate won election",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 571,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "aa995be1c950e8223478700b2d90c58888ce746046be3e190fd0d89f4f20301a",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3537313a32310301000204160063616e64696461746520776f6e20656c656374696f6e052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604003b02000007040015000000080400726166740906006272616e63680a040004f9e457",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "candidate won election",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2312109431,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:648:29"
+          },
+          "compatibility_id": 2312109431,
+          "kind": "sometimes",
+          "message": "append rejected",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 648,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "ad58c19d85e3601191723cbf31ba366d881ac6e46f940486ab9b120cf56ad956",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3634383a323903010001040f00617070656e642072656a6563746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400880200000704001d000000080400726166740906006272616e63680a040077fdcf89",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "append rejected",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2662291102,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:623:29"
+          },
+          "compatibility_id": 2662291102,
+          "kind": "sometimes",
+          "message": "vote denied",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 623,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "b222c025c3748a086dd90d03d6498d91506f33f61e30932798d8e4fb65cea8f5",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3632333a323903010001040b00766f74652064656e696564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604006f0200000704001d000000080400726166740906006272616e63680a04009e56af9e",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "vote denied",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 827148369,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:563:21"
+          },
+          "compatibility_id": 827148369,
+          "kind": "reachable",
+          "message": "candidate stepped down on append_entries",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 563,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "b41e34598d3fec9dd1b5f06057025854afd193bcfe563b4afa59daa8fc1bbaff",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3536333a32310301000204280063616e646964617465207374657070656420646f776e206f6e20617070656e645f656e7472696573052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604003302000007040015000000080400726166740906006272616e63680a040051484d31",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "candidate stepped down on append_entries",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1723320788,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:669:21"
+          },
+          "compatibility_id": 1723320788,
+          "kind": "always",
+          "message": "next_index stays positive",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 669,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "ba3150f8fd95c18fe03a773427d448ac4e751bf7dba68c41ef4aebbf57db831d",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3636393a3231030100000419006e6578745f696e64657820737461797320706f736974697665052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604009d0200000704001500000008040072616674090900696e76617269616e740a0400d4c9b766",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "next_index stays positive",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 566633768,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:782:25"
+          },
+          "compatibility_id": 566633768,
+          "kind": "always",
+          "message": "leader self match_index tracks log",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 782,
+          "source_column": 25,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "ba6957c63152cc7ac4e2a6942401daa00f3026b809294cb33b115dd575ea493e",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3738323a3235030100000422006c65616465722073656c66206d617463685f696e64657820747261636b73206c6f67052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604000e0300000704001900000008040072616674090900696e76617269616e740a04002825c621",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "leader self match_index tracks log",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3990870681,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:695:29"
+          },
+          "compatibility_id": 3990870681,
+          "kind": "reachable",
+          "message": "log conflict: truncated",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 695,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "bc115b5d66e18912608ce8445851348b8d05e4ca70985c3e4aa55d03f36df645",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3639353a3239030100020417006c6f6720636f6e666c6963743a207472756e6361746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400b70200000704001d000000080400726166740906006272616e63680a040099dadfed",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "log conflict: truncated",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 4216142370,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:555:21"
+          },
+          "compatibility_id": 4216142370,
+          "kind": "reachable",
+          "message": "stepped down to follower",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 555,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "c2e4ffef362c733bab0d8c00ef8ffb5cf017d763fd71111def84ea2bc41b0056",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3535353a3231030100020418007374657070656420646f776e20746f20666f6c6c6f776572052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604002b02000007040015000000080400726166740906006272616e63680a0400223a4dfb",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "stepped down to follower",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1714071556,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:905:17"
+          },
+          "compatibility_id": 1714071556,
+          "kind": "sometimes",
+          "message": "commits advance when quorum healthy",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 905,
+          "source_column": 17,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "d1b067d4e129abc41f8808803419d3bd76056009902a7ebaab17558d793eaf36",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3930353a313703010001042300636f6d6d69747320616476616e6365207768656e2071756f72756d206865616c746879052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604008903000007040011000000080400726166740906006272616e63680a040004a82a66",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "commits advance when quorum healthy",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1049576189,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:703:29"
+          },
+          "compatibility_id": 1049576189,
+          "kind": "reachable",
+          "message": "log entries consistent",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 703,
+          "source_column": 29,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "d64492ce8cf308b6f2ebac1e22258f791c63f7661ae02af2ddcbc619868eab66",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3730333a3239030100020416006c6f6720656e747269657320636f6e73697374656e74052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400bf0200000704001d000000080400726166740906006272616e63680a0400fd428f3e",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "log entries consistent",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2148891582,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:407:21"
+          },
+          "compatibility_id": 2148891582,
+          "kind": "reachable",
+          "message": "partition healed",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 407,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "d977fc14a4e72aae4fa7a568fd5cff8a57cbe97dfa7138ee7c102f32db621de7",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3430373a323103010002041000706172746974696f6e206865616c6564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604009701000007040015000000080400726166740906006272616e63680a0400be7b1580",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "partition healed",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3909127432,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:631:33"
+          },
+          "compatibility_id": 3909127432,
+          "kind": "always",
+          "message": "voted_for matches granted candidate",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 631,
+          "source_column": 33,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "e50fcfc1230dbb016f1670b3fb922c30eb4893799f37501d14ca026c01e2a907",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3633313a333303010000042300766f7465645f666f72206d617463686573206772616e7465642063616e646964617465052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400770200000704002100000008040072616674090900696e76617269616e740a0400088d00e9",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "voted_for matches granted candidate",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3995385805,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:592:21"
+          },
+          "compatibility_id": 3995385805,
+          "kind": "always",
+          "message": "commit_index within log bounds",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 592,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "eb82d09c8e2d33ffdb0db2e09eb077db10a09da3101645078cd65eb78eed9693",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3539323a323103010000041e00636f6d6d69745f696e6465782077697468696e206c6f6720626f756e6473052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400500200000704001500000008040072616674090900696e76617269616e740a0400cdbf24ee",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "commit_index within log bounds",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3073349112,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:801:21"
+          },
+          "compatibility_id": 3073349112,
+          "kind": "sometimes",
+          "message": "leader proposed value",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 801,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "ed83dc6b46ccd1a5df7aeae60223af77ee6455625314e515bb4cf7ab5c68f149",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3830313a3231030100010415006c65616465722070726f706f7365642076616c7565052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604002103000007040015000000080400726166740906006272616e63680a0400f8952fb7",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "leader proposed value",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "failed",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 916631872,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:737:21"
+          },
+          "compatibility_id": 916631872,
+          "kind": "sometimes",
+          "message": "election timer decremented",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 737,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "0ef767a1ec27ba0de70e727b310c33e53e910ba1ba80b749fc8d94fd86edb512",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3733373a323103010001041a00656c656374696f6e2074696d65722064656372656d656e746564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400e102000007040015000000080400726166740906006272616e63680a040040b1a236",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "election timer decremented",
+      "kind": "sometimes",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "passed",
+      "hit_count": 11,
+      "true_count": 11,
+      "false_count": 0
+    },
+    {
+      "id": 3267220655,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1159:5"
+          },
+          "compatibility_id": 3267220655,
+          "kind": "always",
+          "message": "log matching: divergence before agreement",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1159,
+          "source_column": 5,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "26d23f85bc400c9b4e898ae2e5030482ae8efc3461e4dff861dd7543c8410ee7",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313135393a35030100000429006c6f67206d61746368696e673a20646976657267656e6365206265666f72652061677265656d656e74052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400870400000704000500000008040072616674090900696e76617269616e740a0400afd4bdc2",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "log matching: divergence before agreement",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 12,
+      "true_count": 12,
+      "false_count": 0
+    },
+    {
+      "id": 2060528323,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1133:5"
+          },
+          "compatibility_id": 2060528323,
+          "kind": "always",
+          "message": "SMR chain: committed application histories agree",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1133,
+          "source_column": 5,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "39a10e8e91df46467c69a04c154c3a8a2e5bb4ffa73dc9d8d4bd97f0eeff7fde",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313133333a3503010000043000534d5220636861696e3a20636f6d6d6974746564206170706c69636174696f6e20686973746f72696573206167726565052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604006d0400000704000500000008040072616674090900696e76617269616e740a0400c32ad17a",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "SMR chain: committed application histories agree",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 13,
+      "true_count": 13,
+      "false_count": 0
+    },
+    {
+      "id": 2636624412,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1176:5"
+          },
+          "compatibility_id": 2636624412,
+          "kind": "always",
+          "message": "leader completeness: committed entry preserved",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1176,
+          "source_column": 5,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "49c7b3ff7fe4759043cf2669f41ac281456ee5d44efebb73db4c729a884001a4",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313137363a3503010000042e006c656164657220636f6d706c6574656e6573733a20636f6d6d697474656420656e74727920707265736572766564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400980400000704000500000008040072616674090900696e76617269616e740a04001cb2279d",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "leader completeness: committed entry preserved",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 12,
+      "true_count": 12,
+      "false_count": 0
+    },
+    {
+      "id": 2214290502,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1149:5"
+          },
+          "compatibility_id": 2214290502,
+          "kind": "always",
+          "message": "election safety: at most one leader per term",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1149,
+          "source_column": 5,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "63762f25b0c0622fabcecc16013b2b06823307754597e1a3e9c6484a7cb87423",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313134393a3503010000042c00656c656374696f6e207361666574793a206174206d6f7374206f6e65206c656164657220706572207465726d052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604007d0400000704000500000008040072616674090900696e76617269616e740a04004664fb83",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "election safety: at most one leader per term",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 12,
+      "true_count": 12,
+      "false_count": 0
+    },
+    {
+      "id": 130577056,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:1121:5"
+          },
+          "compatibility_id": 130577056,
+          "kind": "always",
+          "message": "data integrity: committed entry never overwritten",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 1121,
+          "source_column": 5,
+          "guest": "raft",
+          "category": "invariant"
+        },
+        "fingerprint": "ac962a1af589b144bd6052cf0dd188b2de2ed0584dae1384dc7a78d49d36eaf6",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a313132313a35030100000431006461746120696e746567726974793a20636f6d6d697474656420656e747279206e65766572206f7665727772697474656e052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e7273060400610400000704000500000008040072616674090900696e76617269616e740a0400a072c807",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "data integrity: committed entry never overwritten",
+      "kind": "always",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 13,
+      "true_count": 13,
+      "false_count": 0
+    },
+    {
+      "id": 1370751537,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-raft-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-raft-guest/src/main.rs:376:21"
+          },
+          "compatibility_id": 1370751537,
+          "kind": "reachable",
+          "message": "node crashed",
+          "source_file": "crates/chaoscontrol-raft-guest/src/main.rs",
+          "source_line": 376,
+          "source_column": 21,
+          "guest": "raft",
+          "category": "branch"
+        },
+        "fingerprint": "de35bfc95ca154d054e778ae40136238d893d8dc147db09e1e25db88495935c5",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726166742d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72733a3337363a323103010002040c006e6f64652063726173686564052a006372617465732f6368616f73636f6e74726f6c2d726166742d67756573742f7372632f6d61696e2e72730604007801000007040015000000080400726166740906006272616e63680a04003102b451",
+        "catalog_tokens": [
+          "a72f0d8264052b21349012aabb8103f9e38889fe0fb6b687046251cb9fc36660"
+        ]
+      },
+      "message": "node crashed",
+      "kind": "reachable",
+      "must_hit": true,
+      "guest": "raft",
+      "category": "branch",
+      "verdict": "passed",
+      "hit_count": 1,
+      "true_count": 1,
+      "false_count": 0
+    }
+  ],
+  "liveness_gaps": [
+    {
+      "fingerprint": "0a70d7c53160be2a08cf7fe5b5ec6bd4901e27b5429aabb65f433eee81aad540",
+      "kind": "sometimes",
+      "message": "value committed",
+      "hit_count": 8
+    },
+    {
+      "fingerprint": "2692b52d74a04d991995349f7034ae65a6705cb35bac7e896ad97646caa6c050",
+      "kind": "reachable",
+      "message": "node restarted",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "2a4e604ea6c746773fac83ca8b26b0a7c73354f431ebdfcf27c8fdc8275b03ba",
+      "kind": "reachable",
+      "message": "append_entries handler",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "2ebe409b4a01ba3cc5401f47ffab5ae9031deab2ffe473219a4166236648df69",
+      "kind": "reachable",
+      "message": "Raft leader elected",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "368314dac591b004cbee31ccbfa3e24f703a5c2545a66405f44a8ed07e7acced",
+      "kind": "reachable",
+      "message": "message reordered",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "3e5bd28d93352b15a01606808b660cf33f064f00094167ef6d1e7cf283c5b940",
+      "kind": "reachable",
+      "message": "message duplicated",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "5671ecd4405d8d73a126f6a9e3043bbd4d285686b8cd9ff886575b18d81d3b50",
+      "kind": "reachable",
+      "message": "request_vote handler",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "5966b4abab11d9b6b3ac03a9bc051ded7d712f71e3d7d217a05d62ff4148dfe0",
+      "kind": "sometimes",
+      "message": "leader elected",
+      "hit_count": 8
+    },
+    {
+      "fingerprint": "6de63516c3fc2cc2962f0645b24c68b71f5ab23e0404b8b51c26a80357884dd8",
+      "kind": "sometimes",
+      "message": "3+ values committed",
+      "hit_count": 8
+    },
+    {
+      "fingerprint": "7216cca7a41f951f7d327334560803e904f971a8d4c982f8764f3b0d180755c8",
+      "kind": "reachable",
+      "message": "link partitioned",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "7a83c0d5d4c3c98abcf2d4a9f59467ccd1f5aaf60d3d75b5ea454134653cede8",
+      "kind": "reachable",
+      "message": "follower started election",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "7ab0b6488bb5a739508ba0dabd3d542fed1645a2262c1b3109b1a9cd3ed145e5",
+      "kind": "sometimes",
+      "message": "election timeout fired",
+      "hit_count": 11
+    },
+    {
+      "fingerprint": "7ec440a54df6cbe068f86e6bb975286d8933359e42f07b6f3cd06d4c3f01d1a5",
+      "kind": "reachable",
+      "message": "append_entries_response handler",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "a8a2fc25737812f9fdb1db6b2592017985858b9f476bfa36e2dc7a9d02e8cb2e",
+      "kind": "reachable",
+      "message": "new entries appended",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "a8bc1805b6d9948acb096ec233654f9ee387248cd121d11e384babdc0f00f504",
+      "kind": "reachable",
+      "message": "request_vote_response handler",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "aa995be1c950e8223478700b2d90c58888ce746046be3e190fd0d89f4f20301a",
+      "kind": "reachable",
+      "message": "candidate won election",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "b41e34598d3fec9dd1b5f06057025854afd193bcfe563b4afa59daa8fc1bbaff",
+      "kind": "reachable",
+      "message": "candidate stepped down on append_entries",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "bc115b5d66e18912608ce8445851348b8d05e4ca70985c3e4aa55d03f36df645",
+      "kind": "reachable",
+      "message": "log conflict: truncated",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "c2e4ffef362c733bab0d8c00ef8ffb5cf017d763fd71111def84ea2bc41b0056",
+      "kind": "reachable",
+      "message": "stepped down to follower",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "d64492ce8cf308b6f2ebac1e22258f791c63f7661ae02af2ddcbc619868eab66",
+      "kind": "reachable",
+      "message": "log entries consistent",
+      "hit_count": 0
+    },
+    {
+      "fingerprint": "d977fc14a4e72aae4fa7a568fd5cff8a57cbe97dfa7138ee7c102f32db621de7",
+      "kind": "reachable",
+      "message": "partition healed",
+      "hit_count": 0
+    }
+  ],
+  "distinct_failing_assertions": 1
+}

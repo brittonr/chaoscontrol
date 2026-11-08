@@ -324,12 +324,19 @@ fn main() {
                     }),
                 );
             }
+            // Waiting on a non-blocking socket produces no VM exits by itself.
+            // The strict single-vCPU scheduler advances guest time and peer
+            // turns only at exits, so every wait iteration must cross one.
+            lifecycle::progress();
         }
     } else {
         let mut client = Client::new(&mut net, my_id);
         loop {
             net.poll();
             client.tick(&mut net);
+            // See the server loop: an exit-free wait would never reach a
+            // smoltcp retransmit timer and would abort the host watchdog.
+            lifecycle::progress();
         }
     }
 }

@@ -178,6 +178,14 @@ pub const CMD_LIFECYCLE_SETUP_COMPLETE: u8 = 0x10;
 /// Lifecycle: emit a named structured event.
 pub const CMD_LIFECYCLE_SEND_EVENT: u8 = 0x11;
 
+/// Lifecycle: yield one deterministic scheduler boundary.
+///
+/// The VMM records a guest exit without changing guest-visible state. A guest
+/// that waits inside its own poll loop must emit this command periodically:
+/// under the strictly serialized single-vCPU scheduler, guest-visible time and
+/// peer turns advance only on VM exits, so an exit-free wait cannot progress.
+pub const CMD_LIFECYCLE_PROGRESS: u8 = 0x12;
+
 /// Random: request a guided random u64 from the VMM.
 pub const CMD_RANDOM_GET: u8 = 0x20;
 

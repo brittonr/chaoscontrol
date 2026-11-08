@@ -5653,6 +5653,11 @@ impl DeterministicVm {
         let (result, status) = if page.command == chaoscontrol_protocol::CMD_RESOURCE_MEMORY_CEILING
         {
             (self.memory_ceiling_bytes, chaoscontrol_protocol::STATUS_OK)
+        } else if page.command == chaoscontrol_protocol::CMD_LIFECYCLE_PROGRESS {
+            // A cooperative wait boundary. The exit, virtual-time tick and SDK
+            // idle reset already happened at the VMCALL boundary; the command
+            // itself carries no state.
+            (0, chaoscontrol_protocol::STATUS_OK)
         } else if page.command == chaoscontrol_protocol::CMD_PROCESS_FAULT_POLL {
             response_payload = true;
             match self.fault_engine.write_process_fault_response(&mut page) {

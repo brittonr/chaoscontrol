@@ -87,3 +87,34 @@ pub(crate) fn send_event_uninitialized(name: &str, details: &serde_json::Value) 
 pub fn send_event<T: ?Sized>(_name: &str, _details: &T) {
     // No-op: transport discards everything
 }
+
+/// Yield one deterministic scheduler boundary to the VMM.
+///
+/// A guest that waits inside its own poll loop (for example, a non-blocking
+/// socket that has no data) can run for an unbounded stretch without any KVM
+/// exit. Under the strictly serialized single-vCPU scheduler, guest-visible
+/// time and the turns of peer VMs advance only on VM exits, so such a wait can
+/// neither reach its timers nor let another VM run. Call this once per wait
+/// iteration: it forces one VM exit without changing guest-visible state.
+///
+/// Outside a VM the call is a local no-op.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// loop {
+///     network.poll();
+///     chaoscontrol_sdk::lifecycle::progress();
+/// }
+/// ```
+#[cfg(feature = "full")]
+pub fn progress() {
+    crate::internal::init();
+    let _ = transport::hypercall_simple(CMD_LIFECYCLE_PROGRESS, 0);
+}
+
+/// No-op stub for `progress` when SDK features are disabled.
+#[cfg(not(feature = "full"))]
+pub fn progress() {
+    // No-op: there is no VMM scheduler to yield to.
+}

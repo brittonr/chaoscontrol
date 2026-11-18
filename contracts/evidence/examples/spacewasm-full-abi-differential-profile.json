@@ -1,0 +1,120 @@
+{
+  "abi": {
+    "exports": [
+      {
+        "kind": "memory",
+        "name": "memory",
+        "parameters": [],
+        "results": []
+      },
+      {
+        "kind": "function",
+        "name": "molten_alloc",
+        "parameters": [
+          "i32"
+        ],
+        "results": [
+          "i32"
+        ]
+      },
+      {
+        "kind": "function",
+        "name": "molten_dealloc",
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": []
+      },
+      {
+        "kind": "function",
+        "name": "molten_run",
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i64"
+        ]
+      }
+    ],
+    "hostcalls": [
+      {
+        "module": "molten:hostcall",
+        "name": "assert",
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i64"
+        ]
+      },
+      {
+        "module": "molten:hostcall",
+        "name": "send",
+        "parameters": [
+          "i32",
+          "i32"
+        ],
+        "results": [
+          "i64"
+        ]
+      }
+    ],
+    "maximum_memory_pages": 1,
+    "memories": 1,
+    "memory_grow": "not-admitted",
+    "name": "molten.wasm.abi.v1",
+    "reply_descriptor": "high-u32-offset-low-u32-length",
+    "reply_offset": 4096,
+    "start_function": "not-admitted",
+    "tables": 0
+  },
+  "bounds": {
+    "maximum_cases": 64,
+    "maximum_functions": 256,
+    "maximum_globals": 16,
+    "maximum_hostcall_bytes": 61440,
+    "maximum_hostcalls_per_run": 64,
+    "maximum_input_bytes": 1048576,
+    "maximum_resume_segments": 4096,
+    "maximum_types": 256,
+    "spacewasm_run_fuel": 10000000,
+    "wasmtime_fuel": 10000000
+  },
+  "bundle": {
+    "bundle_identity_blake3": "774331f6c2defe75e30c354b2b3080838cf56438bbd99268779fe4590f8c9f39",
+    "mantle_change": "materialize-molten-spacewasm-abi",
+    "mantle_revision": "67fe04fe88edce20cc1bdf3faa7e51fcd8bfbeef",
+    "publication": "release-authority-receipt-required"
+  },
+  "cohort": {
+    "host_authority": "declared-hostcalls-only",
+    "spacewasm_revision": "e24cf09355a90497148eb5029fdb8e3400bd63e3",
+    "wasm_tools_version": "wasm-tools 1.245.0",
+    "wasmtime_patch_line": "patched-wasmtime-49.0.5",
+    "wasmtime_version": "wasmtime 49.0.5"
+  },
+  "non_claims": [
+    "not-spacewasm-correctness",
+    "not-spacewasm-wasmtime-equivalence",
+    "not-memory-safety",
+    "not-webassembly-conformance",
+    "not-molten-runtime-correctness",
+    "not-flight-qualification",
+    "not-sandbox-effectiveness",
+    "not-production-readiness",
+    "not-release-eligibility"
+  ],
+  "profile_id": "molten-abi-v1-wasmtime-49-0-5",
+  "scenario_classes": [
+    "abi",
+    "cumulative-fuel",
+    "hostcall",
+    "memory",
+    "stack",
+    "trap"
+  ],
+  "schema": "chaoscontrol.spacewasm-full-abi-differential-profile.v1"
+}

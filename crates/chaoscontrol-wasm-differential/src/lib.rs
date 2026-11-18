@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 pub mod admission;
+pub mod full_abi;
 pub mod rail;
 
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.spacewasm-mvp-differential-profile.v1";

@@ -146,13 +146,20 @@
                 nickel export --format json contracts/evidence/examples/raft-campaign-profile.ncl >/dev/null
                 nickel export --format json contracts/evidence/examples/raft-fault-schedule-profile.ncl >/dev/null
                 nickel export --format json contracts/guest-determinism/fixtures/valid/bit-exact.valid.ncl >/dev/null
+                nickel export --format json contracts/evidence/examples/spacewasm-full-abi-differential-profile.ncl \
+                  > "$TMPDIR/spacewasm-full-abi-differential-profile.json"
+                cmp "$TMPDIR/spacewasm-full-abi-differential-profile.json" \
+                  contracts/evidence/examples/spacewasm-full-abi-differential-profile.json
                 for invalid in \
                   contracts/guest-determinism/fixtures/invalid/accepted-drift.invalid.ncl \
                   contracts/nickel-toolchain/fixtures/invalid/malformed.ncl \
                   contracts/nickel-toolchain/fixtures/invalid/missing-import.ncl \
                   contracts/evidence/fixtures/invalid/run-profile.unknown-field.invalid.ncl \
                   contracts/evidence/fixtures/invalid/run-profile.zero-budget.invalid.ncl \
-                  contracts/evidence/fixtures/invalid/fault-schedule.unknown-action.invalid.ncl; do
+                  contracts/evidence/fixtures/invalid/fault-schedule.unknown-action.invalid.ncl \
+                  contracts/evidence/fixtures/invalid/spacewasm-full-abi-differential-profile.widened-hostcalls.invalid.ncl \
+                  contracts/evidence/fixtures/invalid/spacewasm-full-abi-differential-profile.table.invalid.ncl \
+                  contracts/evidence/fixtures/invalid/spacewasm-full-abi-differential-profile.reply-overflow.invalid.ncl; do
                   if nickel export --format json "$invalid" >/dev/null 2>&1; then
                     echo "invalid Nickel fixture unexpectedly passed: $invalid" >&2
                     exit 1

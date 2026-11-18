@@ -43,6 +43,11 @@ pub enum DenialReason {
     MissingRunExport,
     RunExportKind,
     RunSignature,
+    StartFunction,
+    HostcallSignature,
+    DuplicateHostcall,
+    AbiExports,
+    AbiExportSignature,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -348,7 +353,7 @@ pub fn admit_module(
     })
 }
 
-fn denial(class: AdmissionClass, reason: DenialReason, detail: &str) -> AdmissionDenial {
+pub(crate) fn denial(class: AdmissionClass, reason: DenialReason, detail: &str) -> AdmissionDenial {
     AdmissionDenial {
         class,
         reason,
@@ -357,7 +362,7 @@ fn denial(class: AdmissionClass, reason: DenialReason, detail: &str) -> Admissio
     }
 }
 
-fn malformed(error: wasmparser::BinaryReaderError) -> AdmissionDenial {
+pub(crate) fn malformed(error: wasmparser::BinaryReaderError) -> AdmissionDenial {
     AdmissionDenial {
         class: AdmissionClass::Malformed,
         reason: DenialReason::InvalidModule,
@@ -366,7 +371,11 @@ fn malformed(error: wasmparser::BinaryReaderError) -> AdmissionDenial {
     }
 }
 
-fn check_count(actual: usize, maximum: usize, reason: DenialReason) -> Result<(), AdmissionDenial> {
+pub(crate) fn check_count(
+    actual: usize,
+    maximum: usize,
+    reason: DenialReason,
+) -> Result<(), AdmissionDenial> {
     if actual > maximum {
         Err(denial(
             AdmissionClass::BoundExceeded,
@@ -378,7 +387,7 @@ fn check_count(actual: usize, maximum: usize, reason: DenialReason) -> Result<()
     }
 }
 
-fn add_count(
+pub(crate) fn add_count(
     current: usize,
     added: usize,
     maximum: usize,

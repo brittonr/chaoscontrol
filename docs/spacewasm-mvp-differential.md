@@ -99,3 +99,9 @@ The command fails closed for profile drift, producer revision drift, bundle drif
 ## Evidence boundary
 
 A matching report proves only that the two selected engine builds produced the same normalized observations for the admitted bounded corpus. It does not prove SpaceWasm correctness, SpaceWasm/Wasmtime equivalence, memory safety, WebAssembly conformance, flight qualification, sandbox effectiveness, production readiness, or release eligibility.
+
+## Full-ABI lane
+
+The `add-spacewasm-full-abi-differential-rail` change extends this comparison to Molten's `molten.wasm.abi.v1` actor surface on the patched Wasmtime 49.0.5 cohort. Its typed profile (`contracts/evidence/spacewasm-full-abi-differential-profile.ncl`) and pure module admission (`chaoscontrol_wasm_differential::full_abi`) exist. The admission requires exactly the declared `molten:hostcall` imports, one bounded memory and the four ABI exports, and denies tables, start functions and `memory.grow`. The MVP profile never admits these modules.
+
+The Wasmtime embedding harness, the SpaceWasm full-ABI host and the scenario runs do not exist yet. Evidence use of Mantle's ABI bundle also waits for a release-authority publication receipt.

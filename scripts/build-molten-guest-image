@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Build a Molten collaboration-native guest image without an 85 GB initrd.
+#
+# Usage:
+#   scripts/build-molten-guest-image SIGNED_OUTPUT DRIVER_BINARY SOURCE_TRUST OUT_DIR
+#
+# OUT_DIR receives:
+#   initrd  - musl wrapper, driver and its runtime libraries, trust record
+#   disk    - ext4 image containing the signed output's closure at /nix/store
+#
+# The guest wrapper mounts /dev/vda at /nix before running the driver. The signed
+# output and trust must already be independently provisioned; this script only
+# assembles bytes and never edits or re-signs either input.
+set -euo pipefail
+
+if [ "$#" -ne 4 ]; then
+    echo "usage: $0 SIGNED_OUTPUT DRIVER_BINARY SOURCE_TRUST OUT_DIR" >&2
+    exit 2
+fi
+
+signed_output=$1
+driver=$2
+trust=$3
+out=$4
+
+for input in "$signed_output" "$driver" "$trust"; do
+    if [ ! -e "$input" ]; then
+        echo "missing input: $input" >&2
+        exit 2
+    fi
+done
+
+mkdir -p "$out"
+initrd_root=$(mktemp -d)
+disk_root=$(mktemp -d)
+trap 'rm -rf "$initrd_root" "$disk_root"' EXIT
+
+# Initrd: wrapper, driver, driver runtime libraries, trust.
+mkdir -p "$initrd_root"/{dev,proc,sys,sys/kernel/debug,etc/molten,usr/bin,data,tmp,nix}
+wrapper=${CHAOSCONTROL_MOLTEN_WRAPPER:-$(command -v chaoscontrol-molten-guest || true)}
+if [ -z "$wrapper" ] || [ ! -x "$wrapper" ]; then
+    echo "chaoscontrol-molten-guest wrapper not found; set CHAOSCONTROL_MOLTEN_WRAPPER or build .#guest-molten" >&2
+    exit 2
+fi
+cp "$wrapper" "$initrd_root/init"
+cp "$driver" "$initrd_root/usr/bin/molten-collaborationnative"
+cp "$trust" "$initrd_root/etc/molten/source-gate-trust.json"
+chmod +x "$initrd_root/init" "$initrd_root/usr/bin/molten-collaborationnative"
+
+# The driver is dynamically linked; preserve the exact interpreter and libraries.
+ldd "$driver" | awk '/=> \/nix\/store/{print $3}' | while IFS= read -r lib; do
+    mkdir -p "$initrd_root$(dirname "$lib")"
+    cp -L "$lib" "$initrd_root$lib"
+done
+interpreter=$(readelf -l "$driver" | sed -n 's/.*interpreter: \(.*\)\]/\1/p' | head -1)
+if [ -n "$interpreter" ] && [ -e "$interpreter" ]; then
+    mkdir -p "$initrd_root$(dirname "$interpreter")"
+    cp -L "$interpreter" "$initrd_root$interpreter"
+fi
+
+(cd "$initrd_root" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
+
+# Disk: every path in the signed output's measured closure at its absolute path.
+mkdir -p "$disk_root/nix/store"
+nix-store -qR "$signed_output" | awk -F/ '{print $4}' > "$disk_root/.closure-paths"
+tar -C /nix/store -cf - --verbatim-files-from -T "$disk_root/.closure-paths" \
+    | tar -C "$disk_root/nix/store" -xpf - --no-same-owner --delay-directory-restore
+rm "$disk_root/.closure-paths"
+
+bytes=$(du -sb "$disk_root" | cut -f1)
+image_bytes=$((bytes + 8 * 1024 * 1024 * 1024))
+truncate -s "$image_bytes" "$out/disk"
+mkfs.ext4 -q -F -m 0 -d "$disk_root" "$out/disk"
+printf 'initrd=%s\ndisk=%s\n' "$out/initrd" "$out/disk"

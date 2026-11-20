@@ -30,6 +30,30 @@ struct DriverOutcome {
     selected_case_passed: bool,
 }
 
+/// Mount the signed output store from the attached read-only disk when it is not
+/// already present in the initrd.
+fn mount_signed_store() {
+    if std::path::Path::new("/nix/store").exists() {
+        return;
+    }
+    std::fs::create_dir_all("/nix").ok();
+    for _ in 0..50 {
+        let rc = unsafe {
+            libc::mount(
+                c"/dev/vda".as_ptr(),
+                c"/nix".as_ptr(),
+                c"ext4".as_ptr(),
+                libc::MS_RDONLY,
+                std::ptr::null(),
+            )
+        };
+        if rc == 0 {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
 fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<DriverOutcome> {
     std::fs::create_dir_all(workspace)?;
     let output = std::process::Command::new(driver)
@@ -52,6 +76,7 @@ fn main() {
         guest_init();
     }
 
+    mount_signed_store();
     let workload = WorkloadHarness::new(WORKLOAD);
     workload.init();
     let driver = std::env::var("MOLTEN_GUEST_DRIVER").unwrap_or_else(|_| DEFAULT_DRIVER.to_owned());

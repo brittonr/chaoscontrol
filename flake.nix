@@ -481,6 +481,7 @@
                 "-p chaoscontrol-raft-guest"
                 "-p chaoscontrol-net-guest"
                 "-p chaoscontrol-rust-workload-guest"
+                "-p chaoscontrol-molten-guest"
               ];
             }
           );
@@ -526,6 +527,7 @@
           guest-net = mkGuestPackage { pname = "chaoscontrol-net-guest"; };
           guest-redb = mkGuestPackage { pname = "chaoscontrol-redb-guest"; };
           guest-rust-workload = mkGuestPackage { pname = "chaoscontrol-rust-workload-guest"; };
+          guest-molten = mkGuestPackage { pname = "chaoscontrol-molten-guest"; };
           guest-supervisor = mkGuestPackage {
             pname = "chaoscontrol-sdk";
             cargoExtraArgs = "-p chaoscontrol-sdk --bin chaoscontrol-guest-supervisor";
@@ -1737,6 +1739,7 @@
               guest-net
               guest-redb
               guest-rust-workload
+              guest-molten
               guest-supervisor
               ;
             inherit

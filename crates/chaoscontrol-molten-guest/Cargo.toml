@@ -1,0 +1,12 @@
+[package]
+name = "chaoscontrol-molten-guest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ChaosControl guest wrapper for Aspen's collaboration-native qualification driver"
+
+[dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
+libc = "0.2"
+serde_json = "1.0"

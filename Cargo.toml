@@ -31,6 +31,7 @@ members = [
     "crates/chaoscontrol-net-guest",
     "crates/chaoscontrol-redb-guest",
     "crates/chaoscontrol-rust-workload-guest",
+    "crates/chaoscontrol-molten-guest",
     "crates/chaoscontrol-thread-runtime",
 ]
 resolver = "2"

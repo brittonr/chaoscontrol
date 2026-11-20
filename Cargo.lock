@@ -552,6 +552,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-molten-guest"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-sdk",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
 name = "chaoscontrol-net-guest"
 version = "0.1.0"
 dependencies = [

@@ -24,17 +24,27 @@ fn selected_value(cmdline: &str, name: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_owned())
 }
 
-fn run_driver(
-    driver: &str,
-    trust: &str,
-    workspace: &str,
-) -> std::io::Result<std::process::ExitStatus> {
+struct DriverOutcome {
+    status: std::process::ExitStatus,
+    output: String,
+    selected_case_passed: bool,
+}
+
+fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<DriverOutcome> {
     std::fs::create_dir_all(workspace)?;
-    std::process::Command::new(driver)
+    let output = std::process::Command::new(driver)
         .args(["--ignored", "--exact", DRIVER_CASE, "--nocapture"])
         .env("MOLTEN_TEST_SOURCE_TRUST", trust)
         .current_dir(workspace)
-        .status()
+        .output()?;
+    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    let selected_case_passed = output.status.success() && text.contains("1 passed");
+    Ok(DriverOutcome {
+        status: output.status,
+        output: text,
+        selected_case_passed,
+    })
 }
 
 fn main() {
@@ -59,24 +69,25 @@ fn main() {
         "evidence_class": "bounded-vm-campaign-with-external-signed-source-trust",
     }));
 
-    let status = workload.scenario("real collaboration-native three-node flow", || {
+    let outcome = workload.scenario("real collaboration-native three-node flow", || {
         run_driver(&driver, &trust, &workspace)
     });
-    match status {
-        Ok(status) => {
+    match outcome {
+        Ok(outcome) => {
+            println!("{}", outcome.output);
             send_event(
                 "molten_driver_done",
                 &json!({
                     "workload": WORKLOAD,
-                    "success": status.success(),
-                    "exit_code": status.code(),
+                    "success": outcome.selected_case_passed,
+                    "exit_code": outcome.status.code(),
                 }),
             );
             cc_assert_always_category!(
                 WORKLOAD,
                 "completion",
-                status.success(),
-                "the admitted Molten driver completed successfully"
+                outcome.selected_case_passed,
+                "the admitted Molten driver completed its selected case successfully"
             );
         }
         Err(error) => {

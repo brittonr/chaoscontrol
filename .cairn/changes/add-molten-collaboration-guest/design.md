@@ -10,11 +10,11 @@ Aspen exposes the collaboration-native runtime through `molten node serve` and t
 
 **Rationale:** The driver already owns three signed node processes, installed-effect admission, protected delivery, completion, shutdown, and source-admitted reopen. Copying that flow into ChaosControl would fork authority semantics and make drift undetectable.
 
-### 2. Preserve absolute Nix store identity in the initrd
+### 2. Preserve absolute Nix store identity
 
-**Choice:** Copy the signed output, every path in its closure, the driver binary, and its closure to the same absolute paths inside the initrd. Set the cmdline trust path to the copied record.
+**Choice:** Copy the signed output, the driver binary, and the required closure paths to the same absolute paths, and set the cmdline trust path to the copied record. The current signed output's measured build closure is 21,247 paths and about 83.9 GB, so an initrd is not viable as-is. A campaign requires either a signed guest output with a bounded runtime cohort or a disk-backed Nix store.
 
-**Rationale:** Aspen authenticates the exact output path and its signatures; relocating `bin/molten` or rewriting the trust invalidates admission.
+**Rationale:** Aspen authenticates the exact output path and re-hashes every path in the measured build closure; relocating `bin/molten` or dropping build-closure paths invalidates admission. The measured bounds are facts, not packaging preferences.
 
 ### 3. One guest first, three guests later
 

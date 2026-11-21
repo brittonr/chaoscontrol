@@ -47,5 +47,7 @@ runs the trusted `nix` binary with `--store daemon --offline`, then performs
 `path-info`, `hash path`, and `store verify` against that daemon. The signed
 output's bytes and closure alone are insufficient: a guest needs a running Nix
 daemon and writable store database, or an Aspen source-verification profile that
-does not use the daemon. The initrd/disk work therefore does not yet produce an
-admissible guest, even when the closure is present.
+does not use the daemon. The image builder now includes the selected Nix
+closure and a database dump, and the wrapper loads the dump and starts the daemon.
+That path remains unexecuted; the campaign is still blocked on a consistent signed
+output.

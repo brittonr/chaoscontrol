@@ -86,14 +86,16 @@ fn start_nix_daemon(trust: &str) -> Option<std::process::Child> {
     ] {
         std::fs::create_dir_all(directory).ok()?;
     }
-    let dump = std::fs::File::open("/etc/molten/nix-db.dump").ok()?;
-    let loaded = std::process::Command::new(nix_store)
-        .arg("--load-db")
-        .stdin(std::process::Stdio::from(dump))
-        .status()
-        .ok()?;
-    if !loaded.success() {
-        return None;
+    if std::path::Path::new("/etc/molten/nix-db.dump").exists() {
+        let dump = std::fs::File::open("/etc/molten/nix-db.dump").ok()?;
+        let loaded = std::process::Command::new(nix_store)
+            .arg("--load-db")
+            .stdin(std::process::Stdio::from(dump))
+            .status()
+            .ok()?;
+        if !loaded.success() {
+            return None;
+        }
     }
     let child = std::process::Command::new(nix_daemon)
         .stdout(std::process::Stdio::null())

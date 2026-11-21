@@ -33,3 +33,11 @@ the baseline completes. No guest campaign evidence is claimed.
 
 Runtime-only admission proves the measured runtime cohort and executing binary,
 not the omitted build/compiler/gate closures.
+
+## Streaming guest attempt
+
+The wrapper now streams the driver output to the serial console instead of
+buffering it until exit. The guest reached `running 1 test` and the baseline test
+remained active for over eight minutes without completing; the run was stopped
+rather than claimed. The host run of the same signed output and driver completed
+in about six minutes.

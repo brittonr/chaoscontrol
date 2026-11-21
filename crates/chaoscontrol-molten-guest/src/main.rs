@@ -25,7 +25,6 @@ fn selected_value(cmdline: &str, name: &str, fallback: &str) -> String {
 
 struct DriverOutcome {
     status: std::process::ExitStatus,
-    output: String,
     selected_case_passed: bool,
 }
 
@@ -113,6 +112,18 @@ fn start_nix_daemon(trust: &str) -> Option<std::process::Child> {
 
 fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<DriverOutcome> {
     std::fs::create_dir_all(workspace)?;
+    let listed = std::process::Command::new(driver).arg("--list").output()?;
+    let list = String::from_utf8_lossy(&listed.stdout);
+    if !listed.status.success()
+        || !list
+            .lines()
+            .any(|line| line == format!("{DRIVER_CASE}: test"))
+    {
+        return Ok(DriverOutcome {
+            status: listed.status,
+            selected_case_passed: false,
+        });
+    }
     let mut command = std::process::Command::new(driver);
     command
         .args(["--ignored", "--exact", DRIVER_CASE, "--nocapture"])
@@ -124,14 +135,10 @@ fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<Dri
             "/etc/molten/source-closure-validation.json",
         );
     }
-    let output = command.output()?;
-    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-    text.push_str(&String::from_utf8_lossy(&output.stderr));
-    let selected_case_passed = output.status.success() && text.contains("1 passed");
+    let status = command.status()?;
     Ok(DriverOutcome {
-        status: output.status,
-        output: text,
-        selected_case_passed,
+        selected_case_passed: status.success(),
+        status,
     })
 }
 
@@ -168,7 +175,6 @@ fn main() {
     });
     match outcome {
         Ok(outcome) => {
-            println!("{}", outcome.output);
             send_event(
                 "molten_driver_done",
                 &json!({

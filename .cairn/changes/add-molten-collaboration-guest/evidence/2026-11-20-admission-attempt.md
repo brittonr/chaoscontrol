@@ -39,3 +39,13 @@ Aspen output on this host admits its own recorded closure. The campaign requires
 freshly built and independently signed output whose recorded NAR identities match
 the actual store paths, or a guest-specific signed output with a bounded runtime
 cohort. Neither is available in this workspace.
+
+## Additional guest blocker
+
+The admission verifier is not a pure byte check. `src/node/source-binding/process.rs`
+runs the trusted `nix` binary with `--store daemon --offline`, then performs
+`path-info`, `hash path`, and `store verify` against that daemon. The signed
+output's bytes and closure alone are insufficient: a guest needs a running Nix
+daemon and writable store database, or an Aspen source-verification profile that
+does not use the daemon. The initrd/disk work therefore does not yet produce an
+admissible guest, even when the closure is present.

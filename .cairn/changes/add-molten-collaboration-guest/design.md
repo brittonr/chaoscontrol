@@ -16,6 +16,8 @@ Aspen exposes the collaboration-native runtime through `molten node serve` and t
 
 **Rationale:** Aspen authenticates the exact output path and re-hashes every path in the measured build closure; relocating `bin/molten` or dropping build-closure paths invalidates admission. The measured bounds are facts, not packaging preferences.
 
+Source admission also invokes `nix --store daemon` to read path signatures and NAR hashes. A guest that only carries store bytes has no daemon, no writable store database, and therefore cannot perform that check. A guest campaign requires either a guest-side Nix daemon with a writable store database or a separately admitted source-verification profile that does not require a daemon. The current image builder supplies neither and is therefore insufficient for a campaign.
+
 ### 3. One guest first, three guests later
 
 **Choice:** The first campaign runs the three-process driver inside one guest. Only after that completes do we add a three-guest cohort with one node per VM.

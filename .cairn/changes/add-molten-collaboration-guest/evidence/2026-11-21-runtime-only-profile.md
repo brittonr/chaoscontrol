@@ -50,3 +50,9 @@ spends minutes per `molten node service-host` invocation because each process
 re-authenticates source through the guest Nix daemon. `scope::select` alone
 issues multiple preview and operation processes per node per round. The guest
 does not finish inside the bounded run; no campaign evidence is claimed.
+
+## Hardened run: the driver reached its terminal result
+
+With fresh source authentication still enabled, pueue task 51 ran one VM, one vCPU, one round/branch, seed 42, no random faults, 2 GiB, quantum 100, bootstrap budget 120,000, and a 300,000-tick limit. After seven unsuccessful scope rounds it observed currentness in round eight, completed the installed work and reopen path, and the real driver reported one passing test. It printed baseline reference `blake3:6723ae7c751f38ce99ad25f12fc69eca30a574d72c15dba412228bec07386cbe`.
+
+The outer 2,200-second limit then sent termination and eventually killed the explorer (task exit 137); the log BLAKE3 is `882d29afd2f8d3670a0ad190b769b6b29a846d4f65a8ab258a477b9ac7c4d905`. Unlike the 50,000- and 100,000-tick attempts, this run reached real quorum and driver completion. It did not retain the packed observation, a terminal assertion report, or a replay verdict. The wrapper must keep yielding after the driver returns and explicitly export the artifact before this milestone is a complete campaign result.

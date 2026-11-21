@@ -11,6 +11,9 @@ const WORKLOAD: &str = "molten-collaboration-native";
 const DEFAULT_DRIVER: &str = "/usr/bin/molten-collaborationnative";
 const DEFAULT_TRUST: &str = "/etc/molten/source-gate-trust.json";
 const DRIVER_CASE: &str = "driver::collaboration_native_baseline";
+const OBSERVATIONS_DIR: &str = "observations";
+const OBSERVATION_MAX_BYTES: u64 = 64 * 1024;
+const OBSERVATION_CHUNK_BYTES: usize = 512;
 
 fn cmdline() -> String {
     std::fs::read_to_string("/proc/cmdline").unwrap_or_default()
@@ -110,7 +113,12 @@ fn start_nix_daemon(trust: &str) -> Option<std::process::Child> {
     None
 }
 
-fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<DriverOutcome> {
+fn run_driver(
+    driver: &str,
+    trust: &str,
+    workspace: &str,
+    in_guest: bool,
+) -> std::io::Result<DriverOutcome> {
     std::fs::create_dir_all(workspace)?;
     let listed = std::process::Command::new(driver).arg("--list").output()?;
     let list = String::from_utf8_lossy(&listed.stdout);
@@ -124,10 +132,13 @@ fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<Dri
             selected_case_passed: false,
         });
     }
+    let observations = std::fs::canonicalize(workspace)?.join(OBSERVATIONS_DIR);
+    std::fs::create_dir(&observations)?;
     let mut command = std::process::Command::new(driver);
     command
         .args(["--ignored", "--exact", DRIVER_CASE, "--nocapture"])
         .env("MOLTEN_TEST_SOURCE_TRUST", trust)
+        .env("MOLTEN_TEST_EVIDENCE_ROOT", &observations)
         .current_dir(workspace);
     if std::path::Path::new("/etc/molten/source-closure-validation.json").exists() {
         command.env(
@@ -135,11 +146,87 @@ fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<Dri
             "/etc/molten/source-closure-validation.json",
         );
     }
-    let status = command.status()?;
+    let status = if in_guest {
+        let mut child = command.spawn()?;
+        loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            // An idle KVM vCPU may wait a host watchdog interval for each guest timer tick.
+            // Keep admitting explicit scheduler boundaries while the real driver waits.
+            chaoscontrol_sdk::lifecycle::progress();
+            std::thread::yield_now();
+        }
+    } else {
+        command.status()?
+    };
+    if status.success() && in_guest {
+        export_observation(&observations, &mut std::io::stdout().lock())?;
+    }
     Ok(DriverOutcome {
         selected_case_passed: status.success(),
         status,
     })
+}
+
+/// Carry the actual packed artifact across the guest console. The host verifies its size and
+/// content reference instead of reconstructing anything from diagnostic messages.
+fn export_observation(
+    root: &std::path::Path,
+    out: &mut impl std::io::Write,
+) -> std::io::Result<()> {
+    use std::io::Read;
+
+    let invalid = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "invalid driver observation",
+        )
+    };
+    let mut entries = root.read_dir()?;
+    let entry = entries.next().transpose()?.ok_or_else(invalid)?;
+    if entries.next().is_some() || !entry.file_type()?.is_file() {
+        return Err(invalid());
+    }
+    let name = entry.file_name();
+    let digest = name
+        .to_str()
+        .and_then(|name| name.strip_suffix(".preserves"))
+        .filter(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+        .ok_or_else(invalid)?;
+    let mut file = std::fs::File::open(entry.path())?;
+    let size = file.metadata()?.len();
+    if !(1..=OBSERVATION_MAX_BYTES).contains(&size) {
+        return Err(invalid());
+    }
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut remaining = size as usize;
+    let mut bytes = [0; OBSERVATION_CHUNK_BYTES];
+    let mut encoded = [0; OBSERVATION_CHUNK_BYTES * 2];
+    writeln!(out, "molten-observation-v1 {digest} {size}")?;
+    while remaining != 0 {
+        let len = remaining.min(bytes.len());
+        file.read_exact(&mut bytes[..len])?;
+        let (pairs, _) = encoded.as_chunks_mut::<2>();
+        for (byte, pair) in bytes[..len].iter().zip(pairs) {
+            pair[0] = HEX[usize::from(byte >> 4)];
+            pair[1] = HEX[usize::from(byte & 15)];
+        }
+        out.write_all(b"molten-observation-data-v1 ")?;
+        out.write_all(&encoded[..len * 2])?;
+        out.write_all(b"\n")?;
+        remaining -= len;
+    }
+    if file.read(&mut bytes[..1])? != 0 {
+        return Err(invalid());
+    }
+    writeln!(out, "molten-observation-end-v1 {digest}")?;
+    out.flush()
 }
 
 #[repr(C)]
@@ -183,7 +270,8 @@ fn bring_up_loopback() {
 }
 
 fn main() {
-    if std::env::var_os("CHAOSCONTROL_SDK_LOCAL_OUTPUT").is_none() {
+    let in_guest = std::env::var_os("CHAOSCONTROL_SDK_LOCAL_OUTPUT").is_none();
+    if in_guest {
         guest_init();
     }
 
@@ -207,12 +295,12 @@ fn main() {
         "packaging": "chaoscontrol-initrd",
         "driver": driver,
         "source_trust": trust,
-        "evidence_root": workspace,
+        "evidence_root": std::path::Path::new(&workspace).join(OBSERVATIONS_DIR),
         "evidence_class": "bounded-vm-campaign-with-external-signed-source-trust",
     }));
 
     let outcome = workload.scenario("real collaboration-native three-node flow", || {
-        run_driver(&driver, &trust, &workspace)
+        run_driver(&driver, &trust, &workspace, in_guest)
     });
     match outcome {
         Ok(outcome) => {
@@ -233,15 +321,18 @@ fn main() {
         }
         Err(error) => {
             cc_assert_unreachable!(
-                "the admitted Molten driver could not start",
+                "the admitted Molten driver could not run or retain its observation",
                 &json!({"workload": WORKLOAD, "error": error.to_string()})
             );
         }
     }
 
-    if std::env::var_os("CHAOSCONTROL_SDK_LOCAL_OUTPUT").is_none() {
+    if in_guest {
         loop {
-            unsafe { libc::pause() };
+            // PID 1 cannot return. Keep cheap deterministic boundaries available until the
+            // explorer reaches its tick limit and writes the campaign result.
+            chaoscontrol_sdk::lifecycle::progress();
+            std::thread::yield_now();
         }
     }
 }

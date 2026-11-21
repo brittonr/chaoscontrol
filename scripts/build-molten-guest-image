@@ -47,6 +47,12 @@ cp "$driver" "$initrd_root/usr/bin/molten-collaborationnative"
 cp "$trust" "$initrd_root/etc/molten/source-gate-trust.json"
 chmod +x "$initrd_root/init" "$initrd_root/usr/bin/molten-collaborationnative"
 
+nix_bin=$(jq -r '.nix' "$trust")
+if [ ! -x "$nix_bin" ]; then
+    echo "trust selects an unavailable Nix binary: $nix_bin" >&2
+    exit 2
+fi
+
 # The driver is dynamically linked; preserve the exact interpreter and libraries.
 for executable in "$initrd_root/init" "$driver"; do
     ldd "$executable" | awk '/=> \/nix\/store/{print $3}' | while IFS= read -r lib; do
@@ -60,14 +66,19 @@ for executable in "$initrd_root/init" "$driver"; do
     fi
 done
 
-(cd "$initrd_root" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
+# Disk: the signed output and the Nix verifier at their absolute /nix/store paths.
+# The guest mounts this filesystem at /nix/store, so the image root is the store root.
+mkdir -p "$disk_root"
+{
+    nix-store -qR "$signed_output"
+    nix-store -qR "$nix_bin"
+} | sort -u > /tmp/molten-guest-paths.$$
+tar -C /nix/store -cf - --verbatim-files-from -T /tmp/molten-guest-paths.$$ \
+    | tar -C "$disk_root" -xpf - --no-same-owner --delay-directory-restore
+nix-store --dump-db $(cat /tmp/molten-guest-paths.$$) > "$initrd_root/etc/molten/nix-db.dump"
+rm /tmp/molten-guest-paths.$$
 
-# Disk: every path in the signed output's measured closure at its absolute path.
-mkdir -p "$disk_root/nix/store"
-nix-store -qR "$signed_output" | awk -F/ '{print $4}' > "$disk_root/.closure-paths"
-tar -C /nix/store -cf - --verbatim-files-from -T "$disk_root/.closure-paths" \
-    | tar -C "$disk_root/nix/store" -xpf - --no-same-owner --delay-directory-restore
-rm "$disk_root/.closure-paths"
+(cd "$initrd_root" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
 
 bytes=$(du -sb "$disk_root" | cut -f1)
 image_bytes=$((bytes + 8 * 1024 * 1024 * 1024))

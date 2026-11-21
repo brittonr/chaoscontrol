@@ -33,15 +33,15 @@ struct DriverOutcome {
 /// Mount the signed output store from the attached read-only disk when it is not
 /// already present in the initrd.
 fn mount_signed_store() {
-    if std::path::Path::new("/nix/store").exists() {
+    if std::path::Path::new("/nix/store/nix").exists() {
         return;
     }
-    std::fs::create_dir_all("/nix").ok();
+    std::fs::create_dir_all("/nix/store").ok();
     for _ in 0..50 {
         let rc = unsafe {
             libc::mount(
                 c"/dev/vda".as_ptr(),
-                c"/nix".as_ptr(),
+                c"/nix/store".as_ptr(),
                 c"ext4".as_ptr(),
                 libc::MS_RDONLY,
                 std::ptr::null(),
@@ -52,6 +52,49 @@ fn mount_signed_store() {
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+}
+
+/// Start the guest-side Nix daemon that Aspen's source admission requires.
+///
+/// The signed output carries store bytes and a database dump, not a daemon. The
+/// dump is loaded once into the initramfs state directory and the daemon serves
+/// read-only path, hash, and signature queries from the mounted store.
+fn start_nix_daemon(trust: &str) -> Option<std::process::Child> {
+    let bytes = std::fs::read(trust).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let nix = value.get("nix")?.as_str()?;
+    let nix_store = std::path::Path::new(nix).parent()?.join("nix-store");
+    let nix_daemon = std::path::Path::new(nix).parent()?.join("nix-daemon");
+    for directory in [
+        "/nix/var/nix/db",
+        "/nix/var/nix/profiles",
+        "/nix/var/nix/gcroots",
+        "/nix/var/nix/temproots",
+        "/nix/var/nix/daemon-socket",
+    ] {
+        std::fs::create_dir_all(directory).ok()?;
+    }
+    let dump = std::fs::File::open("/etc/molten/nix-db.dump").ok()?;
+    let loaded = std::process::Command::new(nix_store)
+        .arg("--load-db")
+        .stdin(std::process::Stdio::from(dump))
+        .status()
+        .ok()?;
+    if !loaded.success() {
+        return None;
+    }
+    let child = std::process::Command::new(nix_daemon)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    for _ in 0..500 {
+        if std::path::Path::new("/nix/var/nix/daemon-socket/socket").exists() {
+            return Some(child);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    None
 }
 
 fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<DriverOutcome> {
@@ -76,15 +119,16 @@ fn main() {
         guest_init();
     }
 
-    mount_signed_store();
-    let workload = WorkloadHarness::new(WORKLOAD);
-    workload.init();
-    let driver = std::env::var("MOLTEN_GUEST_DRIVER").unwrap_or_else(|_| DEFAULT_DRIVER.to_owned());
     let cmdline = cmdline();
     let trust = std::env::var("MOLTEN_GUEST_SOURCE_TRUST")
         .unwrap_or_else(|_| selected_value(&cmdline, "molten_source_trust", DEFAULT_TRUST));
     let workspace = std::env::var("MOLTEN_GUEST_WORKSPACE")
         .unwrap_or_else(|_| selected_value(&cmdline, "molten_guest_workspace", "/data/molten"));
+    mount_signed_store();
+    let _nix_daemon = start_nix_daemon(&trust);
+    let workload = WorkloadHarness::new(WORKLOAD);
+    workload.init();
+    let driver = std::env::var("MOLTEN_GUEST_DRIVER").unwrap_or_else(|_| DEFAULT_DRIVER.to_owned());
     workload.setup_complete(json!({
         "nodes": 3,
         "packaging": "chaoscontrol-initrd",

@@ -48,15 +48,17 @@ cp "$trust" "$initrd_root/etc/molten/source-gate-trust.json"
 chmod +x "$initrd_root/init" "$initrd_root/usr/bin/molten-collaborationnative"
 
 # The driver is dynamically linked; preserve the exact interpreter and libraries.
-ldd "$driver" | awk '/=> \/nix\/store/{print $3}' | while IFS= read -r lib; do
-    mkdir -p "$initrd_root$(dirname "$lib")"
-    cp -L "$lib" "$initrd_root$lib"
+for executable in "$initrd_root/init" "$driver"; do
+    ldd "$executable" | awk '/=> \/nix\/store/{print $3}' | while IFS= read -r lib; do
+        mkdir -p "$initrd_root$(dirname "$lib")"
+        cp -L "$lib" "$initrd_root$lib"
+    done
+    interpreter=$(readelf -l "$executable" | sed -n 's/.*interpreter: \(.*\)\]/\1/p' | head -1)
+    if [ -n "$interpreter" ] && [ -e "$interpreter" ]; then
+        mkdir -p "$initrd_root$(dirname "$interpreter")"
+        cp -L "$interpreter" "$initrd_root$interpreter"
+    fi
 done
-interpreter=$(readelf -l "$driver" | sed -n 's/.*interpreter: \(.*\)\]/\1/p' | head -1)
-if [ -n "$interpreter" ] && [ -e "$interpreter" ]; then
-    mkdir -p "$initrd_root$(dirname "$interpreter")"
-    cp -L "$interpreter" "$initrd_root$interpreter"
-fi
 
 (cd "$initrd_root" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
 

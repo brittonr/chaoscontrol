@@ -69,13 +69,27 @@ done
 # Disk: the signed output and the Nix verifier at their absolute /nix/store paths.
 # The guest mounts this filesystem at /nix/store, so the image root is the store root.
 mkdir -p "$disk_root"
-{
-    nix-store -qR "$signed_output"
-    nix-store -qR "$nix_bin"
-} | sort -u > /tmp/molten-guest-paths.$$
+if [ -n "${MOLTEN_GUEST_CLOSURE_CACHE:-}" ]; then
+    cp -a "$signed_output" "$disk_root/"
+    {
+        printf '%s\n' "$signed_output"
+        nix-store -qR "$nix_bin"
+    } | sort -u > /tmp/molten-guest-paths.$$
+    for binary in "$signed_output"/bin/*; do
+        ldd "$binary" 2>/dev/null | awk '/=> \/nix\/store/{print $3}' || true
+    done | sort -u >> /tmp/molten-guest-paths.$$
+    sort -u -o /tmp/molten-guest-paths.$$ /tmp/molten-guest-paths.$$
+    cp "${MOLTEN_GUEST_CLOSURE_CACHE}" "$initrd_root/etc/molten/source-closure-validation.json"
+else
+    {
+        nix-store -qR "$signed_output"
+        nix-store -qR "$nix_bin"
+    } | sort -u > /tmp/molten-guest-paths.$$
+fi
 awk -F/ '{print $4}' /tmp/molten-guest-paths.$$ > /tmp/molten-guest-names.$$
-tar -C /nix/store -cf - --verbatim-files-from -T /tmp/molten-guest-names.$$ \
-    | tar -C "$disk_root" -xpf - --no-same-owner --delay-directory-restore
+grep -v -x "$(basename "$signed_output")" /tmp/molten-guest-names.$$ > /tmp/molten-guest-missing.$$
+tar -C /nix/store -cf - --verbatim-files-from -T /tmp/molten-guest-missing.$$ \
+    | tar -C "$disk_root" -xpf - --no-same-owner --delay-directory-restore --overwrite
 : > "$initrd_root/etc/molten/nix-db.dump"
 DB_DUMP="$initrd_root/etc/molten/nix-db.dump" \
     xargs -a /tmp/molten-guest-paths.$$ -n 500 \
@@ -85,7 +99,15 @@ rm /tmp/molten-guest-paths.$$ /tmp/molten-guest-names.$$
 (cd "$initrd_root" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
 
 bytes=$(du -sb "$disk_root" | cut -f1)
-image_bytes=$((bytes + 8 * 1024 * 1024 * 1024))
+overhead=$((256 * 1024 * 1024))
+if [ -n "${MOLTEN_GUEST_CLOSURE_CACHE:-}" ]; then
+    overhead=$((128 * 1024 * 1024))
+fi
+image_bytes=$((bytes + overhead))
+if [ "$image_bytes" -gt $((1024 * 1024 * 1024)) ]; then
+    echo "guest disk exceeds ChaosControl's 1 GiB block-image limit" >&2
+    exit 2
+fi
 truncate -s "$image_bytes" "$out/disk"
 mkfs.ext4 -q -F -m 0 -d "$disk_root" "$out/disk"
 printf 'initrd=%s\ndisk=%s\n' "$out/initrd" "$out/disk"

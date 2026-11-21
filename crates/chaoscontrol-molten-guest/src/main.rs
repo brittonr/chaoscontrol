@@ -10,8 +10,7 @@ use serde_json::json;
 const WORKLOAD: &str = "molten-collaboration-native";
 const DEFAULT_DRIVER: &str = "/usr/bin/molten-collaborationnative";
 const DEFAULT_TRUST: &str = "/etc/molten/source-gate-trust.json";
-const DRIVER_CASE: &str =
-    "driver::installed_native_effect_commits_through_raft_and_returns_a_completion";
+const DRIVER_CASE: &str = "driver::collaboration_native_baseline";
 
 fn cmdline() -> String {
     std::fs::read_to_string("/proc/cmdline").unwrap_or_default()
@@ -32,12 +31,21 @@ struct DriverOutcome {
 
 /// Mount the signed output store from the attached read-only disk when it is not
 /// already present in the initrd.
-fn mount_signed_store() {
+fn mount_signed_store(trust: &str) {
+    if let Ok(bytes) = std::fs::read(trust) {
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if let Some(output) = value.get("output").and_then(|value| value.as_str()) {
+                if std::path::Path::new(output).exists() {
+                    return;
+                }
+            }
+        }
+    }
     if std::path::Path::new("/nix/store/nix").exists() {
         return;
     }
     std::fs::create_dir_all("/nix/store").ok();
-    for _ in 0..50 {
+    for attempt in 0..50 {
         let rc = unsafe {
             libc::mount(
                 c"/dev/vda".as_ptr(),
@@ -48,7 +56,11 @@ fn mount_signed_store() {
             )
         };
         if rc == 0 {
+            eprintln!("molten-guest: mounted /dev/vda at /nix/store");
             return;
+        }
+        if attempt == 49 {
+            eprintln!("molten-guest: failed to mount /dev/vda at /nix/store");
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
@@ -99,11 +111,18 @@ fn start_nix_daemon(trust: &str) -> Option<std::process::Child> {
 
 fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<DriverOutcome> {
     std::fs::create_dir_all(workspace)?;
-    let output = std::process::Command::new(driver)
+    let mut command = std::process::Command::new(driver);
+    command
         .args(["--ignored", "--exact", DRIVER_CASE, "--nocapture"])
         .env("MOLTEN_TEST_SOURCE_TRUST", trust)
-        .current_dir(workspace)
-        .output()?;
+        .current_dir(workspace);
+    if std::path::Path::new("/etc/molten/source-closure-validation.json").exists() {
+        command.env(
+            "MOLTEN_TEST_CLOSURE_CACHE",
+            "/etc/molten/source-closure-validation.json",
+        );
+    }
+    let output = command.output()?;
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&output.stderr));
     let selected_case_passed = output.status.success() && text.contains("1 passed");
@@ -119,12 +138,16 @@ fn main() {
         guest_init();
     }
 
+    std::env::set_var("HOME", "/root");
+    std::env::set_var("USER", "root");
+    std::env::set_var("LOGNAME", "root");
+    std::fs::create_dir_all("/root").ok();
     let cmdline = cmdline();
     let trust = std::env::var("MOLTEN_GUEST_SOURCE_TRUST")
         .unwrap_or_else(|_| selected_value(&cmdline, "molten_source_trust", DEFAULT_TRUST));
     let workspace = std::env::var("MOLTEN_GUEST_WORKSPACE")
         .unwrap_or_else(|_| selected_value(&cmdline, "molten_guest_workspace", "/data/molten"));
-    mount_signed_store();
+    mount_signed_store(&trust);
     let _nix_daemon = start_nix_daemon(&trust);
     let workload = WorkloadHarness::new(WORKLOAD);
     workload.init();

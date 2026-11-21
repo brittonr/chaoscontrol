@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Build a self-contained Molten guest initrd. The signed output and Nix verifier
+# live in the initrd at their absolute /nix/store paths; no block disk is needed.
+#
+# Usage:
+#   MOLTEN_GUEST_CLOSURE_CACHE=<cache> CHAOSCONTROL_MOLTEN_WRAPPER=<wrapper> \
+#     scripts/build-molten-guest-initrd SIGNED_OUTPUT DRIVER SOURCE_TRUST OUT
+set -euo pipefail
+if [ "$#" -ne 4 ]; then
+    echo "usage: $0 SIGNED_OUTPUT DRIVER SOURCE_TRUST OUT" >&2
+    exit 2
+fi
+
+signed_output=$1
+driver=$2
+trust=$3
+out=$4
+: "${MOLTEN_GUEST_CLOSURE_CACHE:?set MOLTEN_GUEST_CLOSURE_CACHE}"
+wrapper=${CHAOSCONTROL_MOLTEN_WRAPPER:-$(command -v chaoscontrol-molten-guest || true)}
+if [ -z "$wrapper" ] || [ ! -x "$wrapper" ]; then
+    echo "chaoscontrol-molten-guest wrapper not found" >&2
+    exit 2
+fi
+
+mkdir -p "$out"
+root=$(mktemp -d)
+trap 'chmod -R u+w "$root" 2>/dev/null || true; rm -rf "$root" || true' EXIT
+mkdir -p "$root"/{dev,proc,sys,sys/kernel/debug,etc/molten,etc,root,usr/bin,data,tmp,nix/store}
+printf 'root:x:0:0:root:/root:/bin/sh\n' > "$root/etc/passwd"
+printf 'root:x:0:\n' > "$root/etc/group"
+
+cp "$wrapper" "$root/init"
+cp "$driver" "$root/usr/bin/molten-collaborationnative"
+cp "$trust" "$root/etc/molten/source-gate-trust.json"
+cp "$MOLTEN_GUEST_CLOSURE_CACHE" "$root/etc/molten/source-closure-validation.json"
+chmod +x "$root/init" "$root/usr/bin/molten-collaborationnative"
+
+for executable in "$root/init" "$driver"; do
+    ldd "$executable" | awk '/=> \/nix\/store/{print $3}' | while IFS= read -r lib; do
+        [ -e "$root$lib" ] && continue
+        mkdir -p "$root$(dirname "$lib")"
+        cp -L "$lib" "$root$lib"
+    done
+    interpreter=$(readelf -l "$executable" | sed -n 's/.*interpreter: \(.*\)\]/\1/p' | head -1)
+    if [ -n "$interpreter" ] && [ -e "$interpreter" ] && [ ! -e "$root$interpreter" ]; then
+        mkdir -p "$root$(dirname "$interpreter")"
+        cp -L "$interpreter" "$root$interpreter"
+    fi
+done
+
+nix_bin=$(jq -r '.nix' "$trust")
+{
+    printf '%s\n' "$signed_output"
+    nix-store -qR "$nix_bin"
+    ldd "$driver" | awk '/=> \/nix\/store/{print $3}'
+    ldd "$wrapper" | awk '/=> \/nix\/store/{print $3}'
+} | sort -u > /tmp/molten-initrd-paths.$$
+awk -F/ '{print $4}' /tmp/molten-initrd-paths.$$ > /tmp/molten-initrd-names.$$
+while IFS= read -r name; do
+    rm -rf "$root/nix/store/$name"
+    rsync -aH --no-owner --no-group --no-perms --chmod=u+rwX "/nix/store/$name" "$root/nix/store/"
+done < /tmp/molten-initrd-names.$$
+: > "$root/etc/molten/nix-db.dump"
+DB_DUMP="$root/etc/molten/nix-db.dump" \
+    xargs -a /tmp/molten-initrd-paths.$$ -n 500 \
+    sh -c 'nix-store --dump-db "$@" >> "$DB_DUMP"' sh
+rm /tmp/molten-initrd-paths.$$ /tmp/molten-initrd-names.$$
+
+if [ -n "${MOLTEN_GUEST_INITRD_UNCOMPRESSED:-}" ]; then
+    (cd "$root" && find . -print0 | cpio --null -o -H newc --quiet) > "$out/initrd"
+else
+    (cd "$root" && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > "$out/initrd"
+fi
+printf 'initrd=%s\n' "$out/initrd"

@@ -41,3 +41,12 @@ buffering it until exit. The guest reached `running 1 test` and the baseline tes
 remained active for over eight minutes without completing; the run was stopped
 rather than claimed. The host run of the same signed output and driver completed
 in about six minutes.
+
+## Loopback and guest bottleneck
+
+The guest starts with `lo` down (`flags 0x8`). The wrapper now raises it
+(`0x49`), after which all three nodes complete setup and start. The driver then
+spends minutes per `molten node service-host` invocation because each process
+re-authenticates source through the guest Nix daemon. `scope::select` alone
+issues multiple preview and operation processes per node per round. The guest
+does not finish inside the bounded run; no campaign evidence is claimed.

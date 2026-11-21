@@ -142,11 +142,52 @@ fn run_driver(driver: &str, trust: &str, workspace: &str) -> std::io::Result<Dri
     })
 }
 
+#[repr(C)]
+struct IfReq {
+    name: [u8; 16],
+    flags: libc::c_short,
+    pad: [u8; 22],
+}
+
+/// Bring up the loopback interface. The collaboration driver starts three
+/// processes that exchange over 127.0.0.1, but the guest starts with `lo` down.
+fn bring_up_loopback() {
+    const SIOCGIFFLAGS: libc::c_ulong = 0x8913;
+    const SIOCSIFFLAGS: libc::c_ulong = 0x8914;
+    const IFF_UP: libc::c_short = 0x1;
+    const IFF_RUNNING: libc::c_short = 0x40;
+    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+    if fd < 0 {
+        eprintln!("molten-guest: loopback socket failed");
+        return;
+    }
+    let mut request = IfReq {
+        name: [0; 16],
+        flags: 0,
+        pad: [0; 22],
+    };
+    request.name[..2].copy_from_slice(b"lo");
+    if unsafe { libc::ioctl(fd, SIOCGIFFLAGS as libc::Ioctl, &mut request) } != 0 {
+        eprintln!("molten-guest: loopback flags read failed");
+        unsafe { libc::close(fd) };
+        return;
+    }
+    let before = request.flags;
+    request.flags |= IFF_UP | IFF_RUNNING;
+    let result = unsafe { libc::ioctl(fd, SIOCSIFFLAGS as libc::Ioctl, &request) };
+    eprintln!(
+        "molten-guest: loopback flags {before:#x} -> {:#x} result={result}",
+        request.flags
+    );
+    unsafe { libc::close(fd) };
+}
+
 fn main() {
     if std::env::var_os("CHAOSCONTROL_SDK_LOCAL_OUTPUT").is_none() {
         guest_init();
     }
 
+    bring_up_loopback();
     std::env::set_var("HOME", "/root");
     std::env::set_var("USER", "root");
     std::env::set_var("LOGNAME", "root");

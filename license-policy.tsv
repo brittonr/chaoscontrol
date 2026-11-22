@@ -22,6 +22,7 @@ package	crates/chaoscontrol-guest-determinism-probe/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-raft-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-guest-net/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-net-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-molten-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-redb-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-rust-workload-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-thread-runtime/Cargo.toml	AGPL-3.0-or-later
@@ -48,6 +49,7 @@ artifact	crates/chaoscontrol-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-raft-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-guest-net/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-net-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-molten-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-redb-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-rust-workload-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-thread-runtime/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE

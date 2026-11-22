@@ -4,6 +4,8 @@
 //! Molten's exact actor surface. Any other module is denied before an engine
 //! runs, with the first violated rule.
 
+pub mod host;
+
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};

@@ -73,6 +73,10 @@ crate = "chaoscontrol-guest-net"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-molten-guest"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-net-guest"
 allow = ["AGPL-3.0-or-later"]
 

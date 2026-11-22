@@ -220,6 +220,11 @@ fn export_observation(
         out.write_all(b"molten-observation-data-v1 ")?;
         out.write_all(&encoded[..len * 2])?;
         out.write_all(b"\n")?;
+        out.flush()?;
+        // A serial drain can consume many KVM exits without an SDK call. Report
+        // progress at each bounded record so the explorer does not stop a live
+        // export under its ordinary idle-exit budget.
+        chaoscontrol_sdk::lifecycle::progress();
         remaining -= len;
     }
     if file.read(&mut bytes[..1])? != 0 {

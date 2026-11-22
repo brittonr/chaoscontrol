@@ -40,4 +40,6 @@ After the driver exits, the wrapper continues yielding explicit boundaries until
 
 The driver receives a fresh observation directory. Only a successful guest driver returns a single, bounded packed Preserves artifact through the framed console channel. `scripts/extract-molten-guest-observation.py` requires the complete frame and verifies BLAKE3 before writing bytes. Byte transport and readback do not substitute for the explorer's assertion report or establish replay.
 
+Each serialized data record is flushed before one SDK progress boundary. UART I/O counts toward the VMM's idle-exit threshold. Without progress between records, an active export can be classified idle before reaching its terminal marker, even if the outer branch budget has time left. This keeps the current idle threshold and artifact bounds unchanged; the wrapper still requires complete export before reporting completion.
+
 **Rationale:** The driver's own non-claim already excludes authority, production, and global exactly-once conclusions; ChaosControl must not widen it.

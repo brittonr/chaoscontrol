@@ -26,6 +26,12 @@ confidence-threshold = 0.8
 [licenses.private]
 ignore = false
 
+# FoldHash 0.2.0 enters through Wasmtime 49.0.5's Cranelift/Hashbrown graph.
+# Keep the permissive upstream Zlib notice allowed only for the reviewed crate.
+[[licenses.exceptions]]
+crate = "foldhash@0.2.0"
+allow = ["Zlib"]
+
 # Every repository-owned package uses AGPL. Keep these exceptions explicit so
 # unrelated third-party AGPL dependencies still require review.
 [[licenses.exceptions]]

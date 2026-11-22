@@ -5,6 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license = "AGPL-3.0-or-later"
 
+[features]
+full-abi-wasmtime = ["dep:wasmtime"]
+
 [dependencies]
 blake3 = "1"
 libc = "0.2"
@@ -16,6 +19,7 @@ thiserror = "2"
 wait-timeout = "0.2"
 differential-execution-core = { git = "https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git", rev = "cad5a7cb6c6502b0ec5dc76c51e03352260d8efd" }
 wasmparser = { version = "=0.236.0", default-features = false, features = ["std", "validate", "features", "simd", "prefer-btree-collections"] }
+wasmtime = { version = "=49.0.5", optional = true, default-features = false, features = ["cranelift", "runtime", "std"] }
 
 [dev-dependencies]
 proptest = "1"

@@ -4,6 +4,7 @@
 use super::{
     validate_full_abi_profile, FullAbiProfile, ABI_REPLY_OFFSET, HOSTCALL_NAMES, WASM_PAGE_BYTES,
 };
+use std::sync::Arc;
 
 /// Already typed scenario values; no guest memory or effect ports enter admission.
 pub struct DeclaredCall<'a> {
@@ -61,6 +62,10 @@ struct Call {
 }
 
 pub struct Script {
+    data: Arc<ScriptData>,
+}
+
+struct ScriptData {
     calls: Vec<Call>,
     maximum_call_bytes: usize,
     maximum_memory_bytes: usize,
@@ -73,6 +78,16 @@ impl Script {
         calls: &[DeclaredCall<'_>],
     ) -> Result<Self, ScriptIssue> {
         validate_full_abi_profile(profile).map_err(ScriptIssue::Profile)?;
+        let mut remaining =
+            usize::try_from(profile.bounds.maximum_input_bytes).map_err(|_| ScriptIssue::Bounds)?;
+        Self::for_checked_profile(profile, calls, &mut remaining)
+    }
+
+    pub(super) fn for_checked_profile(
+        profile: &FullAbiProfile,
+        calls: &[DeclaredCall<'_>],
+        remaining: &mut usize,
+    ) -> Result<Self, ScriptIssue> {
         if calls.len() > profile.bounds.maximum_hostcalls_per_run {
             return Err(ScriptIssue::Bounds);
         }
@@ -81,23 +96,23 @@ impl Script {
         let maximum_memory_bytes =
             usize::try_from(profile.abi.maximum_memory_pages * WASM_PAGE_BYTES)
                 .map_err(|_| ScriptIssue::Bounds)?;
-        let mut remaining =
-            usize::try_from(profile.bounds.maximum_input_bytes).map_err(|_| ScriptIssue::Bounds)?;
         let calls = calls
             .iter()
-            .map(|call| compile(call, maximum_call_bytes, &mut remaining))
+            .map(|call| compile(call, maximum_call_bytes, remaining))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
-            calls,
-            maximum_call_bytes,
-            maximum_memory_bytes,
+            data: Arc::new(ScriptData {
+                calls,
+                maximum_call_bytes,
+                maximum_memory_bytes,
+            }),
         })
     }
 
     /// Each engine gets independent progress over the same admitted packets.
-    pub const fn start(&self) -> Run<'_> {
+    pub fn start(&self) -> Run {
         Run {
-            script: self,
+            script: Arc::clone(&self.data),
             completed: 0,
             trap: None,
         }
@@ -128,7 +143,7 @@ fn compile(
     })
 }
 
-fn packet(
+pub(super) fn packet(
     value: &preserves::IOValue,
     per_value: usize,
     remaining: &mut usize,
@@ -167,13 +182,13 @@ impl std::io::Write for PacketSink {
     }
 }
 
-pub struct Run<'a> {
-    script: &'a Script,
+pub struct Run {
+    script: Arc<ScriptData>,
     completed: usize,
     trap: Option<RequestTrap>,
 }
 
-impl Run<'_> {
+impl Run {
     // r[impl chaoscontrol.spacewasm_full_abi.host]
     pub fn invoke(
         &mut self,

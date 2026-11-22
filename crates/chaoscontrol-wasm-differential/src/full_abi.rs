@@ -4,7 +4,13 @@
 //! Molten's exact actor surface. Any other module is denied before an engine
 //! runs, with the first violated rule.
 
+#[cfg(feature = "full-abi-wasmtime")]
+mod case;
 pub mod host;
+#[cfg(feature = "full-abi-wasmtime")]
+pub mod wasmtime;
+#[cfg(feature = "full-abi-wasmtime")]
+pub use case::{AdmittedCase, CaseDenial, DiagnosticObservation, Terminal};
 
 use std::collections::BTreeSet;
 
@@ -585,6 +591,8 @@ fn is_identifier(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "full-abi-wasmtime")]
+    mod wasmtime_tests;
 
     const EXAMPLE: &str = include_str!(
         "../../../contracts/evidence/examples/spacewasm-full-abi-differential-profile.json"
@@ -669,6 +677,15 @@ mod tests {
     }
 
     fn encode(shape: &Shape) -> Vec<u8> {
+        let run: &[u8] = if shape.grow {
+            &[0x41, 0x00, 0x40, 0x00, 0x1a, 0x42, 0x00, 0x0b]
+        } else {
+            &[0x42, 0x00, 0x0b]
+        };
+        encode_with_run(shape, run)
+    }
+
+    fn encode_with_run(shape: &Shape, run: &[u8]) -> Vec<u8> {
         let mut out = b"\0asm\x01\0\0\0".to_vec();
         let types = TYPES
             .iter()
@@ -744,11 +761,6 @@ mod tests {
             start.extend(index);
             out.extend(start);
         }
-        let run: &[u8] = if shape.grow {
-            &[0x41, 0x00, 0x40, 0x00, 0x1a, 0x42, 0x00, 0x0b]
-        } else {
-            &[0x42, 0x00, 0x0b]
-        };
         let mut bodies = vec![
             vec![0x00, 0x41, 0x80, 0x08, 0x0b],
             vec![0x00, 0x0b],
